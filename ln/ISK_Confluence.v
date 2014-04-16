@@ -1,6 +1,6 @@
 (***************************************************************************
 * Confluence property for parallel reductions in the ISK system            *
-* Arthur Charguéraud, January 2009, updated November 2011                  *
+* Arthur CharguÃ©raud, January 2009, updated November 2011                  *
 ***************************************************************************)
 
 (** NOT COMPLETE: contains only the diamond property for parallel reductions *)

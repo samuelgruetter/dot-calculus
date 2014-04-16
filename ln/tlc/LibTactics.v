@@ -1,6 +1,6 @@
 (**************************************************************************
 * Useful General-Purpose Tactics for Coq                                  *
-* Arthur Charguéraud                                                      *
+* Arthur CharguÃ©raud                                                      *
 * Distributed under the terms of the LGPL-v3 license                      *
 ***************************************************************************)
 

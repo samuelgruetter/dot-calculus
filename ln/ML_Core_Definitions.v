@@ -1,6 +1,6 @@
 (***************************************************************************
 * Preservation and Progress for mini-ML (CBV) - Definitions                *
-* Arthur Charguéraud, March 2007                                           *
+* Arthur CharguÃ©raud, March 2007                                           *
 ***************************************************************************)
 
 Set Implicit Arguments.
