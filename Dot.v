@@ -27,8 +27,8 @@ with cyp : Set := (* concrete/class type *)
 with dec : Set :=
   | dec_typ  : label -> typ -> typ -> dec
   | dec_cyp  : label -> cyp -> dec
-  | dec_field : label -> typ -> dec
-  | dec_method : label -> typ -> typ -> dec
+  | dec_fld  : label -> typ -> dec
+  | dec_mtd  : label -> typ -> typ -> dec
 .
 
 Inductive trm : Set :=
@@ -36,10 +36,10 @@ Inductive trm : Set :=
   | trm_fvar : var -> trm
   | trm_new  : cyp -> list def -> trm -> trm
   | trm_sel  : trm -> label -> trm
-  | trm_call : trm -> label -> trm -> trm
+  | trm_cll  : trm -> label -> trm -> trm
 with def : Set :=
-  | def_field : label -> trm -> def
-  | def_method : label -> trm -> def
+  | def_fld : label -> trm -> def
+  | def_mtd : label -> trm -> def
 .
 
 Fixpoint pth2trm (p: pth) { struct p } : trm :=
@@ -82,8 +82,8 @@ with open_rec_dec (k: nat) (u: pth) (d: dec) { struct d } : dec :=
   match d with
   | dec_typ l ts tu => dec_typ l (open_rec_typ k u ts) (open_rec_typ k u tu)
   | dec_cyp l c => dec_cyp l (open_rec_cyp k u c)
-  | dec_field l t => dec_field l (open_rec_typ k u t)
-  | dec_method m ts tu => dec_method m (open_rec_typ k u ts) (open_rec_typ k u tu)
+  | dec_fld l t => dec_fld l (open_rec_typ k u t)
+  | dec_mtd m ts tu => dec_mtd m (open_rec_typ k u ts) (open_rec_typ k u tu)
   end
 .
 
@@ -94,11 +94,101 @@ Fixpoint open_rec_trm (k: nat) (u: pth) (t: trm) { struct t } : trm :=
   | trm_fvar x => trm_fvar x
   | trm_new  c ds t => trm_new (open_rec_cyp k u c) (List.map (open_rec_def (S k) u) ds) (open_rec_trm (S k) u t)
   | trm_sel t l => trm_sel (open_rec_trm k u t) l
-  | trm_call o m a => trm_call (open_rec_trm k u o) m (open_rec_trm k u a)
+  | trm_cll o m a => trm_cll (open_rec_trm k u o) m (open_rec_trm k u a)
   end
 with open_rec_def (k: nat) (u: pth) (d: def) { struct d } : def :=
   match d with
-  | def_field l t => def_field l (open_rec_trm k u t)
-  | def_method m t => def_method m (open_rec_trm (S k) u t)
+  | def_fld l t => def_fld l (open_rec_trm k u t)
+  | def_mtd m t => def_mtd m (open_rec_trm (S k) u t)
   end
+.
+
+Definition open_pth p u := open_rec_pth 0 u p.
+Definition open_typ t u := open_rec_typ 0 u t.
+Definition open_cyp c u := open_rec_cyp 0 u c.
+Definition open_dec d u := open_rec_dec 0 u d.
+Definition open_trm t u := open_rec_trm 0 u t.
+Definition open_def d u := open_rec_def 0 u d.
+
+Inductive path : pth -> Prop :=
+  | path_var : forall x,
+      path (pth_fvar x)
+  | path_sel : forall p l,
+      path p ->
+      path (pth_sel p l).
+
+Inductive type : typ -> Prop :=
+  | type_asel : forall p l,
+      path p ->
+      type (typ_asel p l)
+  | type_csel : forall p l,
+      path p ->
+      type (typ_csel p l)
+  | type_rfn : forall L t ds,
+      type t ->
+      (forall x, x \notin L -> List.Forall (fun d => decl (open_dec d (pth_fvar x))) ds) ->
+      type (typ_rfn t ds)
+  | type_and : forall t1 t2,
+      type t1 ->
+      type t2 ->
+      type (typ_and t1 t2)
+  | type_or : forall t1 t2,
+      type t1 ->
+      type t2 ->
+      type (typ_or t1 t2)
+  | type_top : type (typ_top)
+  | type_bot : type (typ_bot)
+with cype : cyp -> Prop :=
+  | cype_csel : forall p l,
+      path p ->
+      cype (cyp_csel p l)
+  | cype_rfn : forall L c ds,
+      cype c ->
+      (forall x, x \notin L -> List.Forall (fun d => decl (open_dec d (pth_fvar x))) ds) ->
+      cype (cyp_rfn c ds)
+  | cype_and : forall c1 c2,
+      cype c1 ->
+      cype c2 ->
+      cype (cyp_and c1 c2)
+  | cype_top : cype (cyp_top)
+with decl : dec -> Prop :=
+  | decl_typ  : forall l ts tu,
+      type ts ->
+      type tu ->
+      decl (dec_typ l ts tu)
+  | decl_cyp  : forall l c,
+      cype c ->
+      decl (dec_cyp l c)
+  | decl_fld : forall l t,
+      type t ->
+      decl (dec_fld l t)
+  | decl_mtd : forall m ts tu,
+      type ts ->
+      type tu ->
+      decl (dec_mtd m ts tu)
+.
+
+Inductive term : trm -> Prop :=
+  | term_var : forall x,
+      term (trm_fvar x)
+  | term_new : forall L c ds t,
+      cype c ->
+      (forall x, x \notin L ->
+         List.Forall (fun d => defn (open_def d (pth_fvar x))) ds /\
+         term (open_trm t (pth_fvar x))) ->
+      term (trm_new c ds t)
+  | term_sel : forall t l,
+       term t ->
+       term (trm_sel t l)
+  | term_cll : forall o m a,
+       term o ->
+       term a ->
+       term (trm_cll o m a)
+with defn : def -> Prop :=
+  | defn_fld : forall l t,
+       term t ->
+       defn (def_fld l t)
+  | defn_mtd : forall L m t,
+       (forall x, x \notin L -> term (open_trm t (pth_fvar x))) ->
+       defn (def_mtd m t)
 .
