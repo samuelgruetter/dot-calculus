@@ -1,4 +1,6 @@
 Set Implicit Arguments.
+
+(* coqide users: run open.sh (in ./ln) to start coqide, then open this file *)
 Require Import LibLN.
 
 Definition label := var.
@@ -10,14 +12,14 @@ Inductive pth : Set :=
 .
 
 Inductive typ : Set :=
-  | typ_asel : pth -> label -> typ
-  | typ_csel : pth -> label -> typ
+  | typ_asel : pth -> label -> typ (* select abstract type *)
+  | typ_csel : pth -> label -> typ (* select concrete type *)
   | typ_rfn  : typ -> list dec -> typ
   | typ_and  : typ -> typ -> typ
   | typ_or   : typ -> typ -> typ
   | typ_top  : typ
   | typ_bot  : typ
-with cyp : Set :=
+with cyp : Set := (* concrete/class type *)
   | cyp_csel : pth -> label -> cyp
   | cyp_rfn  : cyp -> list dec -> cyp
   | cyp_and  : cyp -> cyp -> cyp
@@ -47,6 +49,8 @@ Fixpoint pth2trm (p: pth) { struct p } : trm :=
     | pth_sel p l => trm_sel (pth2trm p) l
   end.
 
+
+(* Substitutes in path p bound var with index k by path u *)
 Fixpoint open_rec_pth (k: nat) (u: pth) (p: pth) { struct p } : pth :=
   match p with
   | pth_bvar i => If k = i then u else (pth_bvar i)
@@ -55,6 +59,8 @@ Fixpoint open_rec_pth (k: nat) (u: pth) (p: pth) { struct p } : pth :=
   end
 .
 
+(* Substitutes in type t bound var with index k by path u.
+   Has no effect as long as types cannot bind vars. *)
 Fixpoint open_rec_typ (k: nat) (u: pth) (t: typ) { struct t } : typ :=
   match t with
   | typ_asel p l => typ_asel (open_rec_pth k u p) l
@@ -81,6 +87,7 @@ with open_rec_dec (k: nat) (u: pth) (d: dec) { struct d } : dec :=
   end
 .
 
+(* Substitutes in term t bound var with index k by path u *)
 Fixpoint open_rec_trm (k: nat) (u: pth) (t: trm) { struct t } : trm :=
   match t with
   | trm_bvar i => If k = i then (pth2trm u) else (trm_bvar i)
