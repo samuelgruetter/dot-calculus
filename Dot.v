@@ -54,6 +54,7 @@ Inductive trm : Type :=
 with def : Type :=
   | def_fld : avar -> def
   | def_mtd : trm -> def
+  | def_non : def (* place holder for matching type declarations *)
 .
 
 (* ... opening ...
@@ -111,6 +112,7 @@ with open_rec_def (k: nat) (u: var) (d: def) { struct d } : def :=
   match d with
   | def_fld a => def_fld (open_rec_avar k u a)
   | def_mtd t => def_mtd (open_rec_trm (S k) u t)
+  | def_non => def_non
   end
 .
 
@@ -209,6 +211,7 @@ with defn : def -> Prop :=
   | defn_mtd : forall L t,
        (forall x, x \notin L -> term (open_trm t x)) ->
        defn (def_mtd t)
+  | defn_non : defn (def_non)
 .
 
 (** Operational Semantics **)
@@ -308,6 +311,7 @@ with fv_def (d: def) { struct d } : vars :=
   match d with
   | def_fld a => fv_avar a
   | def_mtd t => fv_trm t
+  | def_non => \{}
   end
 .
 
@@ -352,6 +356,10 @@ with typing_def : ctx -> def -> dec -> Prop :=
       x \notin fv_typ(T) ->
       typing_trm (G & x ~ S) (open_trm t x) T ->
       typing_def G (def_mtd t) (dec_mtd S T)
+  | typing_def_typ : forall G S U,
+      typing_def G def_non (dec_typ S U)
+  | typing_def_cyp : forall G U,
+      typing_def G def_non (dec_cyp U)
 with typing_env_def : ctx -> env def -> env dec -> Prop :=
 with weak_mem_trm : ctx -> trm -> label -> dec -> Prop :=
 with imp_typ : ctx -> typ -> Prop :=
