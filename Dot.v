@@ -25,8 +25,8 @@ with cyp : Set :=
 with dec : Set :=
   | dec_typ  : label -> typ -> typ -> dec
   | dec_cyp  : label -> cyp -> dec
-  | dec_field : label -> typ -> dec
-  | dec_method : label -> typ -> typ -> dec
+  | dec_fld  : label -> typ -> dec
+  | dec_mtd  : label -> typ -> typ -> dec
 .
 
 Inductive trm : Set :=
@@ -34,10 +34,10 @@ Inductive trm : Set :=
   | trm_fvar : var -> trm
   | trm_new  : cyp -> list def -> trm -> trm
   | trm_sel  : trm -> label -> trm
-  | trm_call : trm -> label -> trm -> trm
+  | trm_cll  : trm -> label -> trm -> trm
 with def : Set :=
-  | def_field : label -> trm -> def
-  | def_method : label -> trm -> def
+  | def_fld : label -> trm -> def
+  | def_mtd : label -> trm -> def
 .
 
 Fixpoint pth2trm (p: pth) { struct p } : trm :=
@@ -76,8 +76,8 @@ with open_rec_dec (k: nat) (u: pth) (d: dec) { struct d } : dec :=
   match d with
   | dec_typ l ts tu => dec_typ l (open_rec_typ k u ts) (open_rec_typ k u tu)
   | dec_cyp l c => dec_cyp l (open_rec_cyp k u c)
-  | dec_field l t => dec_field l (open_rec_typ k u t)
-  | dec_method m ts tu => dec_method m (open_rec_typ k u ts) (open_rec_typ k u tu)
+  | dec_fld l t => dec_fld l (open_rec_typ k u t)
+  | dec_mtd m ts tu => dec_mtd m (open_rec_typ k u ts) (open_rec_typ k u tu)
   end
 .
 
@@ -87,12 +87,12 @@ Fixpoint open_rec_trm (k: nat) (u: pth) (t: trm) { struct t } : trm :=
   | trm_fvar x => trm_fvar x
   | trm_new  c ds t => trm_new (open_rec_cyp k u c) (List.map (open_rec_def (S k) u) ds) (open_rec_trm (S k) u t)
   | trm_sel t l => trm_sel (open_rec_trm k u t) l
-  | trm_call o m a => trm_call (open_rec_trm k u o) m (open_rec_trm k u a)
+  | trm_cll o m a => trm_cll (open_rec_trm k u o) m (open_rec_trm k u a)
   end
 with open_rec_def (k: nat) (u: pth) (d: def) { struct d } : def :=
   match d with
-  | def_field l t => def_field l (open_rec_trm k u t)
-  | def_method m t => def_method m (open_rec_trm (S k) u t)
+  | def_fld l t => def_fld l (open_rec_trm k u t)
+  | def_mtd m t => def_mtd m (open_rec_trm (S k) u t)
   end
 .
 
@@ -152,13 +152,13 @@ with decl : dec -> Prop :=
   | decl_cyp  : forall l c,
       cype c ->
       decl (dec_cyp l c)
-  | decl_field : forall l t,
+  | decl_fld : forall l t,
       type t ->
-      decl (dec_field l t)
-  | decl_method : forall m ts tu,
+      decl (dec_fld l t)
+  | decl_mtd : forall m ts tu,
       type ts ->
       type tu ->
-      decl (dec_method m ts tu)
+      decl (dec_mtd m ts tu)
 .
 
 Inductive term : trm -> Prop :=
@@ -173,15 +173,15 @@ Inductive term : trm -> Prop :=
   | term_sel : forall t l,
        term t ->
        term (trm_sel t l)
-  | term_call : forall o m a,
+  | term_cll : forall o m a,
        term o ->
        term a ->
-       term (trm_call o m a)
+       term (trm_cll o m a)
 with defn : def -> Prop :=
-  | defn_field : forall l t,
+  | defn_fld : forall l t,
        term t ->
-       defn (def_field l t)
-  | defn_method : forall L m t,
+       defn (def_fld l t)
+  | defn_mtd : forall L m t,
        (forall x, x \notin L -> term (open_trm t (pth_fvar x))) ->
-       defn (def_method m t)
+       defn (def_mtd m t)
 .
