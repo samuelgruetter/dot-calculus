@@ -3,7 +3,7 @@ Set Implicit Arguments.
 (* CoqIDE users: Run open.sh (in ./ln) to start coqide, then open this file. *)
 Require Import LibLN.
 
-(* Utilities *)
+(** Utilities **)
 (* For some reason,
    the default map on env is opaque, and so
    it cannot be used in recursive definitions. *)
@@ -11,6 +11,8 @@ Definition envmap {A B: Type} (f: A -> B) (E: env A): env B :=
   List.map (fun p => (fst p, f (snd p))) E.
 Definition EnvForall {A: Type} (P: A -> Prop) (E: env A): Prop :=
   List.Forall (fun p => P (snd p)) E.
+
+(** Syntax **)
 
 Definition label := var.
 
@@ -213,4 +215,23 @@ with defn : def -> Prop :=
   | defn_mtd : forall L t,
        (forall x, x \notin L -> term (open_trm t x)) ->
        defn (def_mtd t)
+.
+
+(** Operational Semantics **)
+
+Definition cds := (cyp * env def) % type.
+Definition sto := env cds.
+
+Inductive red : sto -> trm -> sto -> trm -> Prop :=
+  | red_cll : forall s x m y c ds t,
+      binds x (c, ds) s ->
+      binds m (def_mtd t) ds ->
+      red s (trm_cll (trm_var (avar_f x)) m (trm_var (avar_f y))) s (open_trm t y)
+  | red_sel : forall s x l c ds y,
+      binds x (c, ds) s ->
+      binds l (def_fld y) ds ->
+      red s (trm_sel (trm_var (avar_f x)) l) s (trm_var y)
+  | red_new : forall s c ds t x,
+      x # s ->
+      red s (trm_new c ds t) (s & x ~ (c, ds)) (open_trm t x)
 .
