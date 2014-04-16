@@ -1,0 +1,585 @@
+Term     t, u = x                               variable
+                val x = new c; t                new
+                t.l                             selection
+                t.m(s)                          method call
+
+Path        p = x
+                p.l
+
+Constructor c = p.K { ds }
+
+Definition  d = l = x                           field definition
+                m(x) = t                        method definition
+                ?                               placeholder matching type declarations
+
+Type  S, T, U = p.L                             abstract or alias type selection
+                p.K                             class type selection
+                T { z => D }                    refinement
+                T & T                           intersection
+                T | T                           union
+                Top
+                Bot
+
+ClassType  Tc = p.K
+                Tc { z => D }
+                Tc & Tc
+                Top
+
+Declaration D = L: S..U                         abstract or alias type declaration
+                K: Tc                           class declaration
+                l: T                            field declaration
+                m: S -> T                       method declaration
+
+Store       s = ... x -> c ...
+Environment G = ... x: T ...
+
+
+Expansion: G |- T <!z Ds
+========================
+
+                            G |- T <!z Ds
+                     ----------------------------
+                     G |- T { z => D } <!z D & Ds
+
+                 G |- p has! L: S..U    G |- U <!z Ds
+                 ------------------------------------
+                           G |- p.L <!z Ds
+
+                  G |- p has! K: U    G |- U <!z Ds
+                  ---------------------------------
+                           G |- p.K <!z Ds
+
+                  G |- T1 <!z Ds1    G |- T2 <!z Ds2
+                  ----------------------------------
+                      G |- T1 & T2 <!z Ds1 & Ds2
+
+                  G |- T1 <!z Ds1    G |- T2 <!z Ds2
+                  ----------------------------------
+                      G |- T1 | T2 <!z Ds1 | Ds2
+
+                           G |- Top <!z {}
+
+depends on: path membership (p has! D)
+
+
+Weak Expansion: G |- T <:z D
+============================
+
+Rules like expansion, but with `has` instead of `has!`.
+
+                            G |- T <:z Ds
+                     ----------------------------
+                     G |- T { z => D } <:z D & Ds
+
+                 G |- p has L: S..U    G |- U <:z Ds
+                 -----------------------------------
+                           G |- p.L <:z Ds
+
+                   G |- p has K: U    G |- U <:z Ds
+                 -----------------------------------
+                           G |- p.K <:z Ds
+
+                  G |- T1 <:z Ds1    G |- T2 <:z Ds2
+                  ----------------------------------
+                      G |- T1 & T2 <:z Ds1 & Ds2
+
+                  G |- T1 <:z Ds1    G |- T2 <:z Ds2
+                --------------------------------------
+                      G |- T1 | T2 <:z Ds1 | Ds2
+
+                           G |- Top <:z {}
+
+depends on: weak path membership (p has D)
+
+
+Path membership: p has! D
+==========================
+
+                     G |- p :! T    G |- T <!z D
+                     ---------------------------
+                          G |- p has [p/z]D
+
+depends on: precise path typing (p :! T), expansion (z: T <! Ds)
+
+
+
+Weak Path Membership: p has D
+=============================
+
+                      G |- p : T    G |- T <:z D
+                      --------------------------
+                          G |- p has [p/z]D
+
+depends on: path typing (p: T), weak expansion (T <:z D)
+
+
+Weak Term Membership: t has D
+=============================
+
+               G |- t: T    G |- T <:z D    z not in D
+               ---------------------------------------
+                             G |- t has D
+
+depends on term typing (t: T), weak expansion (T <:z D)
+
+
+Subtyping: G |- S <: T
+======================
+
+                             G |- T <: T
+
+                            G |- T <: Top
+
+                            G |- Bot <: T
+
+          G |- S <: T    G |- S <:z Ds    G, z: T |- Ds <: D
+          --------------------------------------------------
+                        G |- S <: T { z => D }
+
+                             G |- T <: S
+                        ----------------------
+                        G |- T { z => D } <: S
+
+                  G |- p has L: S..U    G |- U <: T
+                  ---------------------------------
+                            G |- p.L <: T
+
+                  G |- p has L: S..U    G |- T <: S
+                  ---------------------------------
+                            G |- T <: p.L
+
+                    G |- p has K: U    G |- U <: T
+                    ------------------------------
+                            G |- p.K <: T
+
+                     G |- S <: T1    G |- S <: T2
+                     ----------------------------
+                          G |- S <: T1 & T2
+
+                             G |- Ti <: S
+                          -----------------
+                          G |- T1 & T2 <: S
+
+                             G |- S <: Ti
+                          -----------------
+                          G |- S <: T1 | T2
+
+                     G |- T1 <: S    G |- T2 <: S
+                     ----------------------------
+                          G |- T1 | T2 <: S
+
+depends on: weak path membership (p has D), weak expansion (T <:z D), declaration subtyping (D <: D')
+
+Lemma (Weakening):
+
+If G |- T <: T' and G, x: T' |- D <: D'
+then G, x: T |- D <: D'
+
+Proof: The only rule that can make use of x: T' in G is path typing. That is, a branch of the
+proof starts with
+
+    x: T' in G, x: T'
+    -----------------
+       G |- x: T'
+
+Insert a subsumption step to arrive from G, x: T to the same conclusion:
+
+    x: T in G, x: T
+    ---------------
+       G |- x: T      G |- T <: T'
+    ------------------------------
+             G |- x: T'
+
+
+Question:
+
+Is <: transitive in implementable environments? If G imp, G |- S <: T, G |- T <: U
+then G |- S <: U?
+
+Not sure whether it holds. Can we do without?
+
+
+Declaration Subtyping: G |- D <: D'
+===================================
+
+                    G |- S2 <: S1    G |- U1 <: U2
+                    ------------------------------
+                     G |- L: S1..U1 <: L: S2..U2
+
+                          G |- K: U <: K: U
+
+                            G |- T1 <: T2
+                         -------------------
+                         G |- l: T1 <: l: T2
+
+                    G |- S2 <: S1    G |- T1 <: T2
+                   -------------------------------
+                   G |- m: S1 -> T1 <: m: S2 -> T2
+
+depends on: subtyping (T <: T')
+
+
+Well-formed types: G |- T wf
+============================
+
+                             G |- Bot wf
+
+                             G |- Top wf
+
+            G |- p has! L: S..U    G |- S wf    G |- U wf
+            ---------------------------------------------
+                             G |- p.L wf
+
+                           G |- p has! K: U
+                           ----------------
+                             G |- p.K wf
+
+                     G |- T wf    G, z: T |- D wf
+                     ----------------------------
+                         G |- T { z => D } wf
+
+                       G |- T1 wf    G |- T2 wf
+                       ------------------------
+                           G |- T1 & T2 wf
+
+                       G |- T1 wf    G |- T2 wf
+                       ------------------------
+                           G |- T1 | T2 wf
+
+depends on: path membership (p has! D), well-formed declarations (D wf)
+
+
+Well-formed declarations: G |- D wf
+===================================
+
+                        G |- S wf    G |- U wf
+                        ----------------------
+                           G |- L: S..U wf
+
+                              G |- U wf
+                             ------------
+                             G |- K: U wf
+
+                              G |- T wf
+                             ------------
+                             G |- l: T wf
+
+                        G |- S wf    G |- T wf
+                        ----------------------
+                          G |- m: S -> T wf
+
+depends on: well-formed types (T wf)
+
+
+Implementable types: G |- T imp
+===============================
+
+              G |- T wf    G |- T <!z Ds    G |- Ds imp
+              -----------------------------------------
+                              G |- T imp
+
+depends on well-formedness (T wf, D wf), expansion (T <!z Ds), implementable declarations (D imp)
+
+
+Implementable declarations: G |- D imp
+======================================
+
+                             G |- S <: U
+                           ----------------
+                           G |- L: S..U imp
+
+                             G |- Tc imp
+                            --------------
+                            G |- K: Tc imp
+
+                              G |- T imp
+                            -------------
+                            G |- l: T imp
+
+                          G |- m: S -> T imp
+
+depends on subtyping (T <: T')
+
+
+Lemma: Implementable environments have only good bounds and implementable fields.
+
+(1) If G imp, G |- p has! L: S..U
+then G |- p.L <: p.U
+
+(2) If G imp, G |- p.l :! T
+then G |- T imp.
+
+Proof by induction on p.
+
+
+Precise path typing G |- p :! T
+===============================
+
+                              x: T in G
+                             -----------
+                             G |- x :! T
+
+                           G |- p has! l: T
+                           ---------------
+                            G |- p.l :! T
+
+depends on: path membership (p has! D)
+
+
+Path and term typing: G |- p: T and G |- t: T
+=============================================
+
+                              x: T in G
+(Var)                         ----------
+                              G |- x : T
+
+                           G |- t has l: T
+(Sel)                      ---------------
+                             G |- t.l : T
+
+                  G |- t has m: U -> T    G |- u : U
+(App)             -----------------------------------
+                           G |- t.m(u) : T
+
+                   G |- p.K imp    G |- p.K <!x Ds
+              G, x: p.K |- ds : Ds    G, x: p.K |- t : T
+(New)         -------------------------------------------
+                 G |- (val x = new p.K { ds }; t) : T
+
+                      G |- t : T    G |- T <: U
+(Sub)                 -------------------------
+                              G |- t : U
+
+Path typing depends on weak path membership (p has T), subtyping (T <: U)
+Term typing also depends on implementable types (T imp), expansion (T <!z Ds), implementation typing (d: D)
+
+Implementation typing : G |- d : D
+==================================
+
+                               G |- v: T
+                        ---------------------
+                        G |- (l = v) : (l: T)
+
+                   G, x: S |- t : T    x not in T
+                   ------------------------------
+                    G |- (m(x) = t) : (m: S -> T)
+
+                           G |- ? : L: S..U
+
+                            G |- ? : K: U
+
+                     G |- d : D'    G |- D' <: D
+                     ---------------------------
+                              G |- d : D
+
+Reduction: t | s --> t' | s'
+============================
+
+
+                     x.m(y) | s  -->  [y/z]t | s        if s(x) = p.K { m(z) = t, ds }
+
+                         x.l | s  -->  y | s            if s(x) = p.K { l = y, ds }
+
+               val x = new c; t | s  -->  t | s, x -> c
+
+                         t | s  -->  t' | s'
+                        ----------------------
+                      e[t] | s  -->  e[t'] | s'
+
+Store Equivalence: s |- p ~ q
+=============================
+
+                 s, x -> p.K { ds, l = y } |- x.l ~ y
+
+                              s |- p ~ p
+
+                       s |- p ~ q   s |- q ~ r
+                       -----------------------
+                              s |- p ~ r
+
+                              s |- p ~ q
+                              ----------
+                              s |- q ~ p
+
+                              s |- p ~ q
+                           ---------------
+                            s |- p.l ~ q.l
+
+(Question: Need to keep track of var renamings in method calls as well?)
+
+
+Runtime rules
+=============
+
+Runtime Environment G(s):
+
+G(x -> p.K { ds }) = x: p.K, extended homomorphically
+
+                      s |- p ~ q    G(s) |- p: T
+(Eqv)                 --------------------------
+                             G(s) |- q: T
+
+
+(plus, whatever else is needed)
+
+
+
+Invariant Expansions Lemma:
+===========================
+
+If p has! K: U
+   q has! K: U
+   p <!z Ds1
+   q <!z Ds2
+then
+   Ds1 = Ds2
+
+
+Weakening Lemma:
+================
+
+If G, x: U |- t: T
+   G |- S <: U
+   G, x: S imp
+then
+   G, x: S |- t: T
+
+Proof sketch: By induction on derivation of t: T.
+The only ways x: U can be used in the derivation are
+(1) in a judgment x.l1...ln has D. Use subsumption to make it work with x: S.
+(2) in rule (New). Since G, x: S imp it follows that p.K is also imp with x: S.
+Furthermore, by invariant expansions lemma, p.K expands to the same declarations.
+Hence all premises are fulfilled.
+
+Substitution Lemma:
+===================
+
+If G, x: U |- t: T
+   G |- y: U
+then
+   G |- [y/x]t: [y/x]T
+
+Implementability Lemma:
+=======================
+
+If G(s) imp, t|s -> t'|s'
+then G(s') imp.
+
+Preservation Conjecture:
+========================
+
+If G(s) imp, G(s) |- t : T, t|s -> t'|s'
+then s' = s,s'' and G(s') |- t' : T
+
+Proof sketch:
+
+Case x.m(y) | s  -->  [y/z]t | s  where  s(x) = p.K { m(z) = t, ds }
+
+Assume G(s) |- x.m(y): T. By inversion,
+
+    G(s) |- p.K has m: S' -> T'
+    G(s) |- y: S
+    G(s) |- S imp
+    G(s) |- S <:* S'
+    G(s) |- T' <:* T
+
+Need to show:
+    G(s), z: S' |- t: T'
+
+By weakening:
+    G(s), z: S |- t: T'
+
+By substitution:
+    G(s) |- [y/z]t: [y/z]T'
+
+Since z not in T, [y/z]T' = T'. Then by subsumption:
+    G(s) |- [y/z]t: T
+
+Case x.l|s --> y|s  where s(x) = p.K { l = y, ds }
+
+Assume G(s) |- x.l: T. By def of store equivalence  x.l ~ y.
+By (Eqv), G(s) |- y: T
+
+Case val x = new c; t | s  -->  t | s, x -> c
+
+Let c = p.K(ds). By inversion,
+
+    G(s), x: p.K |- t: T'
+    G(s), x: p.K |- T' <:* T
+
+By subsumption:
+
+    G(s), x: p.K |- t: T
+
+Furthermore G(s), x: p.K = G(s, x -> c).
+
+
+Progress Conjecture:
+====================
+
+If G(s) |- t: T
+then t is a variable, or ex s', t' such that
+   s|t -> s'|t'
+
+Proof by induction on type assignment proof of t: T.
+
+
+Nested Subclasses and Cyclic Paths
+==================================
+
+Note: The rules for implementability rule out nested classes extending outer classes.
+The following would be illegal:
+
+    class C {
+      class D extends C
+    }
+
+We can recover nested subclasses by extending the implementation judgments with a set of class names.
+The new rules allow nested subsclasses, but enforce in turn the restriction that a nested class may not
+have the same name as an outer class.
+
+The same change also allows direct cycles through fields. I.e. the following would now be allowed:
+
+    class C {
+      val self: C = this
+    }
+
+The class above would be encoded as follows:
+
+    global =>
+      ...
+      C: Top { z => self: global.C }
+
+and on every instantiation site
+
+    val x = new global.C { self = x }
+
+
+Implementable types: G, Ks |- T imp
+===================================
+
+            G |- T wf    G |- T <!z Ds    G, Ks |- Ds imp
+            ---------------------------------------------
+                            G, Ks |- T imp
+
+                               K in Ks
+                           ----------------
+                           G, Ks |- p.K imp
+
+
+Implementable declarations: G, Ks |- D imp
+===========================================
+
+                           G, Ks |- S <: U
+                         --------------------
+                         G, Ks |- L: S..U imp
+
+                 G, (K, Ks) |- Tc imp    K not in Ks
+                 -----------------------------------
+                          G, Ks |- K: Tc imp
+
+                            G, Ks |- T imp
+                          -----------------
+                          G, Ks |- l: T imp
+
+                        G, Ks |- m: S -> T imp
