@@ -95,3 +95,93 @@ with open_rec_def (k: nat) (u: pth) (d: def) { struct d } : def :=
   | def_method m t => def_method m (open_rec_trm (S k) u t)
   end
 .
+
+Definition open_pth p u := open_rec_pth 0 u p.
+Definition open_typ t u := open_rec_typ 0 u t.
+Definition open_cyp c u := open_rec_cyp 0 u c.
+Definition open_dec d u := open_rec_dec 0 u d.
+Definition open_trm t u := open_rec_trm 0 u t.
+Definition open_def d u := open_rec_def 0 u d.
+
+Inductive path : pth -> Prop :=
+  | path_var : forall x,
+      path (pth_fvar x)
+  | path_sel : forall p l,
+      path p ->
+      path (pth_sel p l).
+
+Inductive type : typ -> Prop :=
+  | type_asel : forall p l,
+      path p ->
+      type (typ_asel p l)
+  | type_csel : forall p l,
+      path p ->
+      type (typ_csel p l)
+  | type_rfn : forall L t ds,
+      type t ->
+      (forall x, x \notin L -> List.Forall (fun d => decl (open_dec d (pth_fvar x))) ds) ->
+      type (typ_rfn t ds)
+  | type_and : forall t1 t2,
+      type t1 ->
+      type t2 ->
+      type (typ_and t1 t2)
+  | type_or : forall t1 t2,
+      type t1 ->
+      type t2 ->
+      type (typ_or t1 t2)
+  | type_top : type (typ_top)
+  | type_bot : type (typ_bot)
+with cype : cyp -> Prop :=
+  | cype_csel : forall p l,
+      path p ->
+      cype (cyp_csel p l)
+  | cype_rfn : forall L c ds,
+      cype c ->
+      (forall x, x \notin L -> List.Forall (fun d => decl (open_dec d (pth_fvar x))) ds) ->
+      cype (cyp_rfn c ds)
+  | cype_and : forall c1 c2,
+      cype c1 ->
+      cype c2 ->
+      cype (cyp_and c1 c2)
+  | cype_top : cype (cyp_top)
+with decl : dec -> Prop :=
+  | decl_typ  : forall l ts tu,
+      type ts ->
+      type tu ->
+      decl (dec_typ l ts tu)
+  | decl_cyp  : forall l c,
+      cype c ->
+      decl (dec_cyp l c)
+  | decl_field : forall l t,
+      type t ->
+      decl (dec_field l t)
+  | decl_method : forall m ts tu,
+      type ts ->
+      type tu ->
+      decl (dec_method m ts tu)
+.
+
+Inductive term : trm -> Prop :=
+  | term_var : forall x,
+      term (trm_fvar x)
+  | term_new : forall L c ds t,
+      cype c ->
+      (forall x, x \notin L ->
+         List.Forall (fun d => defn (open_def d (pth_fvar x))) ds /\
+         term (open_trm t (pth_fvar x))) ->
+      term (trm_new c ds t)
+  | term_sel : forall t l,
+       term t ->
+       term (trm_sel t l)
+  | term_call : forall o m a,
+       term o ->
+       term a ->
+       term (trm_call o m a)
+with defn : def -> Prop :=
+  | defn_field : forall l t,
+       term t ->
+       defn (def_field l t)
+  | defn_method : forall L m t,
+       (forall x, x \notin L -> term (open_trm t (pth_fvar x))) ->
+       defn (def_method m t)
+.
