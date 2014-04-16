@@ -3,6 +3,15 @@ Set Implicit Arguments.
 (* CoqIDE users: Run open.sh (in ./ln) to start coqide, then open this file. *)
 Require Import LibLN.
 
+(* Utilities *)
+(* For some reason,
+   the default map on env is opaque, and so
+   it cannot be used in recursive definitions. *)
+Definition envmap {A B: Type} (f: A -> B) (E: env A): env B :=
+  List.map (fun p => (fst p, f (snd p))) E.
+Definition EnvForall {A: Type} (P: A -> Prop) (E: env A): Prop :=
+  List.Forall (fun p => P (snd p)) E.
+
 Definition label := var.
 
 Inductive pth : Set :=
@@ -11,35 +20,35 @@ Inductive pth : Set :=
   | pth_sel  : pth -> label -> pth
 .
 
-Inductive typ : Set :=
+Inductive typ : Type :=
   | typ_asel : pth -> label -> typ (* select abstract type *)
   | typ_csel : pth -> label -> typ (* select concrete type *)
-  | typ_rfn  : typ -> list dec -> typ
+  | typ_rfn  : typ -> env dec -> typ
   | typ_and  : typ -> typ -> typ
   | typ_or   : typ -> typ -> typ
   | typ_top  : typ
   | typ_bot  : typ
-with cyp : Set := (* concrete/class type *)
+with cyp : Type := (* concrete/class type *)
   | cyp_csel : pth -> label -> cyp
-  | cyp_rfn  : cyp -> list dec -> cyp
+  | cyp_rfn  : cyp -> env dec -> cyp
   | cyp_and  : cyp -> cyp -> cyp
   | cyp_top  : cyp
-with dec : Set :=
-  | dec_typ  : label -> typ -> typ -> dec
-  | dec_cyp  : label -> cyp -> dec
-  | dec_fld  : label -> typ -> dec
-  | dec_mtd  : label -> typ -> typ -> dec
+with dec : Type :=
+  | dec_typ  : typ -> typ -> dec
+  | dec_cyp  : cyp -> dec
+  | dec_fld  : typ -> dec
+  | dec_mtd  : typ -> typ -> dec
 .
 
-Inductive trm : Set :=
+Inductive trm : Type :=
   | trm_bvar : nat -> trm
   | trm_fvar : var -> trm
-  | trm_new  : cyp -> list def -> trm -> trm
+  | trm_new  : cyp -> env def -> trm -> trm
   | trm_sel  : trm -> label -> trm
   | trm_cll  : trm -> label -> trm -> trm
-with def : Set :=
-  | def_fld : label -> trm -> def
-  | def_mtd : label -> trm -> def
+with def : Type :=
+  | def_fld : trm -> def
+  | def_mtd : trm -> def
 .
 
 Fixpoint pth2trm (p: pth) { struct p } : trm :=
@@ -63,7 +72,7 @@ Fixpoint open_rec_typ (k: nat) (u: pth) (t: typ) { struct t } : typ :=
   match t with
   | typ_asel p l => typ_asel (open_rec_pth k u p) l
   | typ_csel p l => typ_csel (open_rec_pth k u p) l
-  | typ_rfn  t ds => typ_rfn (open_rec_typ k u t) (List.map (open_rec_dec (S k) u) ds)
+  | typ_rfn  t ds => typ_rfn (open_rec_typ k u t) (envmap (open_rec_dec (S k) u) ds)
   | typ_and t1 t2 => typ_and (open_rec_typ k u t1) (open_rec_typ k u t2)
   | typ_or t1 t2 => typ_or (open_rec_typ k u t1) (open_rec_typ k u t2)
   | typ_top => typ_top
@@ -72,16 +81,16 @@ Fixpoint open_rec_typ (k: nat) (u: pth) (t: typ) { struct t } : typ :=
 with open_rec_cyp (k: nat) (u: pth) (c: cyp) { struct c } : cyp :=
   match c with
   | cyp_csel p l => cyp_csel (open_rec_pth k u p) l
-  | cyp_rfn  c ds => cyp_rfn (open_rec_cyp k u c) (List.map (open_rec_dec (S k) u) ds)
+  | cyp_rfn  c ds => cyp_rfn (open_rec_cyp k u c) (envmap (open_rec_dec (S k) u) ds)
   | cyp_and c1 c2 => cyp_and (open_rec_cyp k u c1) (open_rec_cyp k u c2)
   | cyp_top => cyp_top
   end
 with open_rec_dec (k: nat) (u: pth) (d: dec) { struct d } : dec :=
   match d with
-  | dec_typ l ts tu => dec_typ l (open_rec_typ k u ts) (open_rec_typ k u tu)
-  | dec_cyp l c => dec_cyp l (open_rec_cyp k u c)
-  | dec_fld l t => dec_fld l (open_rec_typ k u t)
-  | dec_mtd m ts tu => dec_mtd m (open_rec_typ k u ts) (open_rec_typ k u tu)
+  | dec_typ ts tu => dec_typ (open_rec_typ k u ts) (open_rec_typ k u tu)
+  | dec_cyp c => dec_cyp (open_rec_cyp k u c)
+  | dec_fld t => dec_fld (open_rec_typ k u t)
+  | dec_mtd ts tu => dec_mtd (open_rec_typ k u ts) (open_rec_typ k u tu)
   end
 .
 
@@ -90,14 +99,14 @@ Fixpoint open_rec_trm (k: nat) (u: pth) (t: trm) { struct t } : trm :=
   match t with
   | trm_bvar i => If k = i then (pth2trm u) else (trm_bvar i)
   | trm_fvar x => trm_fvar x
-  | trm_new  c ds t => trm_new (open_rec_cyp k u c) (List.map (open_rec_def (S k) u) ds) (open_rec_trm (S k) u t)
+  | trm_new  c ds t => trm_new (open_rec_cyp k u c) (envmap (open_rec_def (S k) u) ds) (open_rec_trm (S k) u t)
   | trm_sel t l => trm_sel (open_rec_trm k u t) l
   | trm_cll o m a => trm_cll (open_rec_trm k u o) m (open_rec_trm k u a)
   end
 with open_rec_def (k: nat) (u: pth) (d: def) { struct d } : def :=
   match d with
-  | def_fld l t => def_fld l (open_rec_trm k u t)
-  | def_mtd m t => def_mtd m (open_rec_trm (S k) u t)
+  | def_fld t => def_fld (open_rec_trm k u t)
+  | def_mtd t => def_mtd (open_rec_trm (S k) u t)
   end
 .
 
@@ -124,7 +133,7 @@ Inductive type : typ -> Prop :=
       type (typ_csel p l)
   | type_rfn : forall L t ds,
       type t ->
-      (forall x, x \notin L -> List.Forall (fun d => decl (open_dec d (pth_fvar x))) ds) ->
+      (forall x, x \notin L -> EnvForall (fun d => decl (open_dec d (pth_fvar x))) ds) ->
       type (typ_rfn t ds)
   | type_and : forall t1 t2,
       type t1 ->
@@ -142,7 +151,7 @@ with cype : cyp -> Prop :=
       cype (cyp_csel p l)
   | cype_rfn : forall L c ds,
       cype c ->
-      (forall x, x \notin L -> List.Forall (fun d => decl (open_dec d (pth_fvar x))) ds) ->
+      (forall x, x \notin L -> EnvForall (fun d => decl (open_dec d (pth_fvar x))) ds) ->
       cype (cyp_rfn c ds)
   | cype_and : forall c1 c2,
       cype c1 ->
@@ -150,20 +159,20 @@ with cype : cyp -> Prop :=
       cype (cyp_and c1 c2)
   | cype_top : cype (cyp_top)
 with decl : dec -> Prop :=
-  | decl_typ  : forall l ts tu,
+  | decl_typ  : forall ts tu,
       type ts ->
       type tu ->
-      decl (dec_typ l ts tu)
-  | decl_cyp  : forall l c,
+      decl (dec_typ ts tu)
+  | decl_cyp  : forall c,
       cype c ->
-      decl (dec_cyp l c)
-  | decl_fld : forall l t,
+      decl (dec_cyp c)
+  | decl_fld : forall t,
       type t ->
-      decl (dec_fld l t)
-  | decl_mtd : forall m ts tu,
+      decl (dec_fld t)
+  | decl_mtd : forall ts tu,
       type ts ->
       type tu ->
-      decl (dec_mtd m ts tu)
+      decl (dec_mtd ts tu)
 .
 
 Inductive term : trm -> Prop :=
@@ -172,7 +181,7 @@ Inductive term : trm -> Prop :=
   | term_new : forall L c ds t,
       cype c ->
       (forall x, x \notin L ->
-         List.Forall (fun d => defn (open_def d (pth_fvar x))) ds /\
+         EnvForall (fun d => defn (open_def d (pth_fvar x))) ds /\
          term (open_trm t (pth_fvar x))) ->
       term (trm_new c ds t)
   | term_sel : forall t l,
@@ -183,10 +192,10 @@ Inductive term : trm -> Prop :=
        term a ->
        term (trm_cll o m a)
 with defn : def -> Prop :=
-  | defn_fld : forall l t,
+  | defn_fld : forall t,
        term t ->
-       defn (def_fld l t)
-  | defn_mtd : forall L m t,
+       defn (def_fld t)
+  | defn_mtd : forall L t,
        (forall x, x \notin L -> term (open_trm t (pth_fvar x))) ->
-       defn (def_mtd m t)
+       defn (def_mtd t)
 .
