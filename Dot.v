@@ -56,12 +56,6 @@ with def : Type :=
   | def_mtd : trm -> def
 .
 
-Fixpoint pth2trm (p: pth) { struct p } : trm :=
-  match p with
-    | pth_var a => trm_var a
-    | pth_sel p l => trm_sel (pth2trm p) l
-  end.
-
 (* ... opening ...
    replaces in some syntax a bound variable with dangling index (k) by a free variable x
 *)
@@ -245,4 +239,53 @@ Inductive red : sto -> trm -> sto -> trm -> Prop :=
   | red_sel1 : forall s o l s' o',
       red s o s' o' ->
       red s (trm_sel o l) s' (trm_sel o' l)
+.
+
+(** Helpers **)
+Fixpoint pth2trm (p: pth) { struct p } : trm :=
+  match p with
+    | pth_var a => trm_var a
+    | pth_sel p l => trm_sel (pth2trm p) l
+  end.
+
+Fixpoint cyp2typ (c: cyp) { struct c } : typ :=
+  match c with
+  | cyp_csel p k => typ_csel p k
+  | cyp_rfn c ds => typ_rfn (cyp2typ c) ds
+  | cyp_and c1 c2 => typ_and (cyp2typ c1) (cyp2typ c2)
+  | cyp_top => typ_top
+  end.
+
+(** Typing **)
+
+Definition ctx := env typ.
+
+Inductive typing_trm : ctx -> trm -> typ -> Prop :=
+  | typing_trm_var : forall G x T,
+      binds x T G ->
+      typing_trm G (trm_var (avar_f x)) T
+  | typing_trm_sel : forall G t l T,
+      weak_mem_trm G t l (dec_fld T) ->
+      typing_trm G (trm_sel t l) T
+  | typing_trm_app : forall G t m U T u,
+      weak_mem_trm G t m (dec_mtd U T) ->
+      typing_trm G u U ->
+      typing_trm G (trm_cll t m u) T
+  | typing_trm_new : forall G x c ds t T Tc Ds,
+      Tc=(cyp2typ c) ->
+      imp_typ G Tc ->
+      strg_exp_typ G Tc Ds ->
+      x # G -> (* is this enough or do we need cofinite quantification *)
+      typing_def (G & x ~ Tc) ds Ds ->
+      typing_trm (G & x ~ Tc) (open_trm t x) T ->
+      typing_trm G (trm_new c ds t) T
+  | typing_trm_sub : forall G t T U,
+      typing_trm G t T ->
+      sub_typ G T U ->
+      typing_trm G t U
+with typing_def : ctx -> env def -> env dec -> Prop :=
+with weak_mem_trm : ctx -> trm -> label -> dec -> Prop :=
+with imp_typ : ctx -> typ -> Prop :=
+with strg_exp_typ : ctx -> typ -> env dec -> Prop :=
+with sub_typ : ctx -> typ -> typ -> Prop :=
 .
