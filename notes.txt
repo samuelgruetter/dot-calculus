@@ -6,7 +6,7 @@ Term     t, u = x                               variable
 Path        p = x
                 p.l
 
-Constructor c = p.K { ds }
+Constructor c = Tc { ds }
 
 Definition  d = l = x                           field definition
                 m(x) = t                        method definition
