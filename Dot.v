@@ -14,10 +14,14 @@ Definition EnvForall {A: Type} (P: A -> Prop) (E: env A): Prop :=
 
 Definition label := var.
 
-Inductive pth : Set :=
-  | pth_bvar : nat -> pth
-  | pth_fvar : var -> pth
-  | pth_sel  : pth -> label -> pth
+Inductive avar : Type :=
+  | avar_b : nat -> avar
+  | avar_f : var -> avar
+.
+
+Inductive pth : Type :=
+  | pth_var : avar -> pth
+  | pth_sel : pth -> label -> pth
 .
 
 Inductive typ : Type :=
@@ -41,34 +45,40 @@ with dec : Type :=
 .
 
 Inductive trm : Type :=
-  | trm_bvar : nat -> trm
-  | trm_fvar : var -> trm
+  | trm_var  : avar -> trm
   | trm_new  : cyp -> env def -> trm -> trm
   | trm_sel  : trm -> label -> trm
   | trm_cll  : trm -> label -> trm -> trm
 with def : Type :=
-  | def_fld : trm -> def
+  | def_fld : avar -> def
   | def_mtd : trm -> def
 .
 
 Fixpoint pth2trm (p: pth) { struct p } : trm :=
   match p with
-    | pth_bvar i => trm_bvar i
-    | pth_fvar x => trm_fvar x
+    | pth_var a => trm_var a
     | pth_sel p l => trm_sel (pth2trm p) l
   end.
 
-(* Substitutes in path p a bound var with dangling index k by path u. *)
-Fixpoint open_rec_pth (k: nat) (u: pth) (p: pth) { struct p } : pth :=
+(* ... opening ...
+   replaces in some syntax a bound variable with dangling index (k) by a free variable x
+*)
+
+Fixpoint open_rec_avar (k: nat) (u: var) (a: avar) { struct a } : avar :=
+  match a with
+  | avar_b i => If k = i then avar_f u else avar_b i
+  | avar_f x => avar_f x
+  end
+.
+
+Fixpoint open_rec_pth (k: nat) (u: var) (p: pth) { struct p } : pth :=
   match p with
-  | pth_bvar i => If k = i then u else (pth_bvar i)
-  | pth_fvar x => pth_fvar x
+  | pth_var a => pth_var (open_rec_avar k u a)
   | pth_sel p l => pth_sel (open_rec_pth k u p) l
   end
 .
 
-(* Substitutes in type t a bound var with dangling index k by path u. *)
-Fixpoint open_rec_typ (k: nat) (u: pth) (t: typ) { struct t } : typ :=
+Fixpoint open_rec_typ (k: nat) (u: var) (t: typ) { struct t } : typ :=
   match t with
   | typ_asel p l => typ_asel (open_rec_pth k u p) l
   | typ_csel p l => typ_csel (open_rec_pth k u p) l
@@ -78,14 +88,14 @@ Fixpoint open_rec_typ (k: nat) (u: pth) (t: typ) { struct t } : typ :=
   | typ_top => typ_top
   | typ_bot => typ_bot
   end
-with open_rec_cyp (k: nat) (u: pth) (c: cyp) { struct c } : cyp :=
+with open_rec_cyp (k: nat) (u: var) (c: cyp) { struct c } : cyp :=
   match c with
   | cyp_csel p l => cyp_csel (open_rec_pth k u p) l
   | cyp_rfn  c ds => cyp_rfn (open_rec_cyp k u c) (envmap (open_rec_dec (S k) u) ds)
   | cyp_and c1 c2 => cyp_and (open_rec_cyp k u c1) (open_rec_cyp k u c2)
   | cyp_top => cyp_top
   end
-with open_rec_dec (k: nat) (u: pth) (d: dec) { struct d } : dec :=
+with open_rec_dec (k: nat) (u: var) (d: dec) { struct d } : dec :=
   match d with
   | dec_typ ts tu => dec_typ (open_rec_typ k u ts) (open_rec_typ k u tu)
   | dec_cyp c => dec_cyp (open_rec_cyp k u c)
@@ -94,22 +104,21 @@ with open_rec_dec (k: nat) (u: pth) (d: dec) { struct d } : dec :=
   end
 .
 
-(* Substitutes in term t bound var with dangling index k by path u. *)
-Fixpoint open_rec_trm (k: nat) (u: pth) (t: trm) { struct t } : trm :=
+Fixpoint open_rec_trm (k: nat) (u: var) (t: trm) { struct t } : trm :=
   match t with
-  | trm_bvar i => If k = i then (pth2trm u) else (trm_bvar i)
-  | trm_fvar x => trm_fvar x
+  | trm_var a => trm_var (open_rec_avar k u a)
   | trm_new  c ds t => trm_new (open_rec_cyp k u c) (envmap (open_rec_def (S k) u) ds) (open_rec_trm (S k) u t)
   | trm_sel t l => trm_sel (open_rec_trm k u t) l
   | trm_cll o m a => trm_cll (open_rec_trm k u o) m (open_rec_trm k u a)
   end
-with open_rec_def (k: nat) (u: pth) (d: def) { struct d } : def :=
+with open_rec_def (k: nat) (u: var) (d: def) { struct d } : def :=
   match d with
-  | def_fld t => def_fld (open_rec_trm k u t)
+  | def_fld a => def_fld (open_rec_avar k u a)
   | def_mtd t => def_mtd (open_rec_trm (S k) u t)
   end
 .
 
+Definition open_avar a u := open_rec_avar 0 u a.
 Definition open_pth p u := open_rec_pth 0 u p.
 Definition open_typ t u := open_rec_typ 0 u t.
 Definition open_cyp c u := open_rec_cyp 0 u c.
@@ -117,9 +126,14 @@ Definition open_dec d u := open_rec_dec 0 u d.
 Definition open_trm t u := open_rec_trm 0 u t.
 Definition open_def d u := open_rec_def 0 u d.
 
+Inductive fvar : avar -> Prop :=
+  | fvar_f : forall x,
+      fvar (avar_f x).
+
 Inductive path : pth -> Prop :=
-  | path_var : forall x,
-      path (pth_fvar x)
+  | path_var : forall a,
+      fvar a ->
+      path (pth_var a)
   | path_sel : forall p l,
       path p ->
       path (pth_sel p l).
@@ -133,7 +147,7 @@ Inductive type : typ -> Prop :=
       type (typ_csel p l)
   | type_rfn : forall L t ds,
       type t ->
-      (forall x, x \notin L -> EnvForall (fun d => decl (open_dec d (pth_fvar x))) ds) ->
+      (forall x, x \notin L -> EnvForall (fun d => decl (open_dec d x)) ds) ->
       type (typ_rfn t ds)
   | type_and : forall t1 t2,
       type t1 ->
@@ -151,7 +165,7 @@ with cype : cyp -> Prop :=
       cype (cyp_csel p l)
   | cype_rfn : forall L c ds,
       cype c ->
-      (forall x, x \notin L -> EnvForall (fun d => decl (open_dec d (pth_fvar x))) ds) ->
+      (forall x, x \notin L -> EnvForall (fun d => decl (open_dec d x)) ds) ->
       cype (cyp_rfn c ds)
   | cype_and : forall c1 c2,
       cype c1 ->
@@ -176,13 +190,14 @@ with decl : dec -> Prop :=
 .
 
 Inductive term : trm -> Prop :=
-  | term_var : forall x,
-      term (trm_fvar x)
+  | term_var : forall a,
+      fvar a ->
+      term (trm_var a)
   | term_new : forall L c ds t,
       cype c ->
       (forall x, x \notin L ->
-         EnvForall (fun d => defn (open_def d (pth_fvar x))) ds /\
-         term (open_trm t (pth_fvar x))) ->
+         EnvForall (fun d => defn (open_def d x)) ds /\
+         term (open_trm t x)) ->
       term (trm_new c ds t)
   | term_sel : forall t l,
        term t ->
@@ -192,10 +207,10 @@ Inductive term : trm -> Prop :=
        term a ->
        term (trm_cll o m a)
 with defn : def -> Prop :=
-  | defn_fld : forall t,
-       term t ->
-       defn (def_fld t)
+  | defn_fld : forall a,
+       fvar a ->
+       defn (def_fld a)
   | defn_mtd : forall L t,
-       (forall x, x \notin L -> term (open_trm t (pth_fvar x))) ->
+       (forall x, x \notin L -> term (open_trm t x)) ->
        defn (def_mtd t)
 .
