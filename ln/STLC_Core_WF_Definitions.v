@@ -1,6 +1,6 @@
 (***************************************************************************
 * Safety for STLC in Wright & Felleisen style - Definitions                *
-* Arthur Charguéraud, July 2007                                            *
+* Arthur CharguÃ©raud, July 2007                                            *
 ***************************************************************************)
 
 Set Implicit Arguments.

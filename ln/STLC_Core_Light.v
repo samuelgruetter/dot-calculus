@@ -2,7 +2,7 @@
 * A light safety proof for STLC (contains axioms)                          *
 * The purpose is to show how infrastructure lemmas can be skipped at first.*
 * Simplified from "Type Safety for STLC" by                                *
-* Arthur Charguéraud, July 2007                                            *
+* Arthur CharguÃ©raud, July 2007                                            *
 ***************************************************************************)
 
 (* To be compiled, this script expects the "skip" tactic to be

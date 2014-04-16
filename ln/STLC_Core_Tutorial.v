@@ -8,13 +8,13 @@
     conference paper:
 
    Engineering Formal LibLN
-   B. Aydemir, A. Charguéraud, B. C. Pierce, R. Pollack and S. Weirich
+   B. Aydemir, A. CharguÃ©raud, B. C. Pierce, R. Pollack and S. Weirich
    Symposium on Principles of Programming Languages (POPL), January 2008
 
 and its follow-up journal version:
    
    The Locally Nameless Representation
-   Arthur Charguéraud
+   Arthur CharguÃ©raud
    Journal of Automated Reasoning (JAR), 2011.
 
 This tutorial also reuses material prepared for the POPL'08 tutorial:

@@ -1,6 +1,6 @@
 (***************************************************************************
 * Preservation and Progress for System-F with Subtyping - Part 1A          *
-* Brian Aydemir & Arthur Charguéraud, March 2007                           *
+* Brian Aydemir & Arthur CharguÃ©raud, March 2007                           *
 ***************************************************************************)
 
 Set Implicit Arguments.

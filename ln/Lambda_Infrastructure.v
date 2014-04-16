@@ -1,6 +1,6 @@
 (***************************************************************************
 * Church-Rosser Property in Pure Lambda-Calculus - Infrastructure          *
-* Arthur Charguéraud, March 2007                                           *
+* Arthur CharguÃ©raud, March 2007                                           *
 ***************************************************************************)
 
 Set Implicit Arguments.

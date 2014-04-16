@@ -58,7 +58,7 @@ Instance single_bind_inst : forall A B, BagSingleBind A B (map A B).
   constructor. rapply (@single_bind_impl A B). Defined.
 Instance binds_inst : forall A B, BagBinds A B (map A B). 
   constructor. rapply (@binds_impl A B). Defined.
-Instance union_inst : forall A B, BagUnion (map A B). (* todo: bug pas si on enlève B *)
+Instance union_inst : forall A B, BagUnion (map A B). (* todo: bug pas si on enlÃ¨ve B *)
   constructor. rapply (@union_impl A B). Defined.
 Instance remove_inst : forall A B, BagRemove (map A B) (set A).
   constructor. rapply (@remove_impl A B). Defined.

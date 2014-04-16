@@ -1,6 +1,6 @@
 (***************************************************************************
 * Safety for STLC with Patterns - Proofs                                  *
-* Arthur Charguéraud, July 2007                                            *
+* Arthur CharguÃ©raud, July 2007                                            *
 ***************************************************************************)
 
 Set Implicit Arguments.
@@ -111,7 +111,7 @@ Lemma matching_successful : forall p Us v T,
 Proof.
 
   (* todo : prouver que :
-  pat_typing Us p T ->   (* induction là dessus *)
+  pat_typing Us p T ->   (* induction lÃ  dessus *)
   binds p ns ->
   empty |= v ~: T -> 
   value v ->
