@@ -241,7 +241,8 @@ Inductive red : sto -> trm -> sto -> trm -> Prop :=
       red s (trm_sel o l) s' (trm_sel o' l)
 .
 
-(** Helpers **)
+(** Infrastructure **)
+
 Fixpoint pth2trm (p: pth) { struct p } : trm :=
   match p with
     | pth_var a => trm_var a
@@ -256,10 +257,69 @@ Fixpoint cyp2typ (c: cyp) { struct c } : typ :=
   | cyp_top => typ_top
   end.
 
+Fixpoint fv_avar (a: avar) { struct a } : vars :=
+  match a with
+  | avar_b i => \{}
+  | avar_f x => \{x}
+  end
+.
+
+Fixpoint fv_pth (p: pth) { struct p } : vars :=
+  match p with
+  | pth_var a => fv_avar a
+  | pth_sel p l => fv_pth p
+  end
+.
+
+Fixpoint fv_typ (t: typ) { struct t } : vars :=
+  match t with
+  | typ_asel p l => fv_pth p
+  | typ_csel p l => fv_pth p
+  | typ_rfn  t ds => (fv_typ t) \u (fold_vars id (envmap fv_dec ds))
+  | typ_and t1 t2 => (fv_typ t1) \u (fv_typ t2)
+  | typ_or t1 t2 => (fv_typ t1) \u (fv_typ t2)
+  | typ_top => \{}
+  | typ_bot => \{}
+  end
+with fv_cyp (c: cyp) { struct c } : vars :=
+  match c with
+  | cyp_csel p l => fv_pth p
+  | cyp_rfn  c ds => (fv_cyp c) \u (fold_vars id (envmap fv_dec ds))
+  | cyp_and c1 c2 => (fv_cyp c1) \u (fv_cyp c2)
+  | cyp_top => \{}
+  end
+with fv_dec (d: dec) { struct d } : vars :=
+  match d with
+  | dec_typ ts tu => (fv_typ ts) \u (fv_typ tu)
+  | dec_cyp c => fv_cyp c
+  | dec_fld t => fv_typ t
+  | dec_mtd ts tu => (fv_typ ts) \u (fv_typ tu)
+  end
+.
+
+Fixpoint fv_trm (t: trm) { struct t } : vars :=
+  match t with
+  | trm_var a => fv_avar a
+  | trm_new  c ds t => (fv_cyp c) \u (fold_vars id (envmap fv_def ds)) \u (fv_trm t)
+  | trm_sel t l => fv_trm t
+  | trm_cll o m a => (fv_trm o) \u (fv_trm a)
+  end
+with fv_def (d: def) { struct d } : vars :=
+  match d with
+  | def_fld a => fv_avar a
+  | def_mtd t => fv_trm t
+  end
+.
+
 (** Typing **)
 
 Definition ctx := env typ.
 
+(*
+   ?question?:
+   for now, just using # instead of cofinite quantification...
+   ... we will see if it's enough
+*)
 Inductive typing_trm : ctx -> trm -> typ -> Prop :=
   | typing_trm_var : forall G x T,
       binds x T G ->
@@ -275,15 +335,24 @@ Inductive typing_trm : ctx -> trm -> typ -> Prop :=
       Tc=(cyp2typ c) ->
       imp_typ G Tc ->
       strg_exp_typ G Tc Ds ->
-      x # G -> (* is this enough or do we need cofinite quantification *)
-      typing_def (G & x ~ Tc) ds Ds ->
+      x # G ->
+      typing_env_def (G & x ~ Tc) ds Ds ->
       typing_trm (G & x ~ Tc) (open_trm t x) T ->
       typing_trm G (trm_new c ds t) T
   | typing_trm_sub : forall G t T U,
       typing_trm G t T ->
       sub_typ G T U ->
       typing_trm G t U
-with typing_def : ctx -> env def -> env dec -> Prop :=
+with typing_def : ctx -> def -> dec -> Prop :=
+  | typing_def_fld : forall G v T,
+      typing_trm G (trm_var v) T ->
+      typing_def G (def_fld v) (dec_fld T)
+  | typing_def_mtd : forall G x t S T,
+      x # G ->
+      x \notin fv_typ(T) ->
+      typing_trm (G & x ~ S) (open_trm t x) T ->
+      typing_def G (def_mtd t) (dec_mtd S T)
+with typing_env_def : ctx -> env def -> env dec -> Prop :=
 with weak_mem_trm : ctx -> trm -> label -> dec -> Prop :=
 with imp_typ : ctx -> typ -> Prop :=
 with strg_exp_typ : ctx -> typ -> env dec -> Prop :=
