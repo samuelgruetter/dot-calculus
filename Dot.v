@@ -1,6 +1,6 @@
 Set Implicit Arguments.
 
-(* coqide users: run open.sh (in ./ln) to start coqide, then open this file *)
+(* CoqIDE users: Run open.sh (in ./ln) to start coqide, then open this file. *)
 Require Import LibLN.
 
 Definition label := var.
@@ -49,8 +49,7 @@ Fixpoint pth2trm (p: pth) { struct p } : trm :=
     | pth_sel p l => trm_sel (pth2trm p) l
   end.
 
-
-(* Substitutes in path p bound var with index k by path u *)
+(* Substitutes in path p a bound var with dangling index k by path u. *)
 Fixpoint open_rec_pth (k: nat) (u: pth) (p: pth) { struct p } : pth :=
   match p with
   | pth_bvar i => If k = i then u else (pth_bvar i)
@@ -59,8 +58,7 @@ Fixpoint open_rec_pth (k: nat) (u: pth) (p: pth) { struct p } : pth :=
   end
 .
 
-(* Substitutes in type t bound var with index k by path u.
-   Has no effect as long as types cannot bind vars. *)
+(* Substitutes in type t a bound var with dangling index k by path u. *)
 Fixpoint open_rec_typ (k: nat) (u: pth) (t: typ) { struct t } : typ :=
   match t with
   | typ_asel p l => typ_asel (open_rec_pth k u p) l
@@ -87,7 +85,7 @@ with open_rec_dec (k: nat) (u: pth) (d: dec) { struct d } : dec :=
   end
 .
 
-(* Substitutes in term t bound var with index k by path u *)
+(* Substitutes in term t bound var with dangling index k by path u. *)
 Fixpoint open_rec_trm (k: nat) (u: pth) (t: trm) { struct t } : trm :=
   match t with
   | trm_bvar i => If k = i then (pth2trm u) else (trm_bvar i)
