@@ -1,0 +1,4 @@
+beautify ML_infrastructure: phi_ok_binds and also iterated operators
+beautify Fsub_infrastructure: wft_from_env_has_sub and next lemma
+try to go faster with: Ltac auto_star ::= try solve [ jauto ].
+

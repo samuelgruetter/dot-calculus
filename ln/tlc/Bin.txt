@@ -1,0 +1,1052 @@
+
+(* TODO: cleanup *)
+
+(** [test E] can be used to test an expression [E] which can be 
+    either a boolean, or a proposition, or a constructive sum. *)
+
+Ltac testd_base E H1 H2 :=
+  destruct E as [H1|H2].
+
+Ltac testp_base E H1 H2 :=
+  testd_base (classicT E) H1 H2.
+
+Ltac testb_base E H1 H2 :=
+  testp_base (istrue E) H1 H2.
+
+Ltac test_dispatch E H1 H2 :=
+  match type of E with
+  | bool => testb_base E H1 H2
+  | Prop => testp_base E H1 H2
+  | {_}+{_} => testd_base E H1 H2
+  end.
+
+Ltac test_post H I :=
+  tryfalse; rew_logic in H; revert H; 
+  intros I; tryfalse.
+
+Ltac test_base E I1 I2 :=
+  let H1 := fresh "TEMP" in
+  let H2 := fresh "TEMP" in
+  test_dispatch E H1 H2; [ test_post H1 I1 | test_post H2 I2 ].
+
+(* todo: change syntax *)
+
+Tactic Notation "test" constr(E) "as" simple_intropattern(I1) simple_intropattern(I2) := 
+  test_base E I1 I2.
+Tactic Notation "test" constr(E) "as" simple_intropattern(I) :=
+  test E as I I.
+Tactic Notation "test" constr(E) :=
+  let H := fresh "C" in test E as H.
+Tactic Notation "test" "~" constr(E) :=
+  test E; auto_tilde.
+Tactic Notation "test" "*" constr(E) :=
+  test E; auto_star.
+
+(** [tests E] is similar to [test E] except that it tries 
+    to perform substitutions using the equality produced. *)
+
+Ltac tests_post H I :=
+  tryfalse; rew_logic in H; revert H; 
+  first [ intro_subst_hyp | intros I ]; tryfalse.
+
+Ltac tests_base E I1 I2 :=
+  let H1 := fresh "TEMP" in
+  let H2 := fresh "TEMP" in
+  test_dispatch E H1 H2; [ tests_post H1 I1 | tests_post H2 I2 ].
+
+Tactic Notation "tests" constr(E) "as" simple_intropattern(I1) simple_intropattern(I2) := 
+  tests_base E I1 I2.
+Tactic Notation "tests" constr(E) "as" simple_intropattern(I) :=
+  tests E as I I.
+Tactic Notation "tests" constr(E) :=
+  let H := fresh "C" in tests E as H.
+Tactic Notation "tests" "~" constr(E) :=
+  tests E; auto_tilde.
+Tactic Notation "tests" "*" constr(E) :=
+  tests E; auto_star.
+
+
+
+
+(** [introv] iterates [intro] on all universally-quantified "variables"
+    at the head of the goal. More precisely, it introduces only the 
+    dependently-used variables. For example, [introv] applied
+    to the goal [forall x y, P x -> Q] introduces [x] and [y] but not
+    the hypothesis [P x]. If the goal is a definition, then it will
+    unfold this definition.
+    
+    [introv H1 .. HN] calls [introv] then introduces an hypothesis as [H1],
+    then call [introv] again and introduces an hypothesis as [H2], 
+    and so on. It provides a convenient way of introducing all the arguments 
+    of a theorem and name only the non-dependent hypotheses.
+  
+    Note that [introv] without arguments will unfold the head constant
+    if the goal is not a product. *)
+   
+Ltac introv_rec :=
+  match goal with
+  | |- (ltac_tag_subst (?x = ?y) -> ?Q) =>
+     let H := fresh "Aux" in 
+     intro H; unfold ltac_tag_subst in H;
+     try subst x; introv_rec
+  | |- ?P -> ?Q => idtac
+  | |- forall _, _ => intro; introv_rec
+  | |- _ => idtac
+  end.
+
+Ltac introv_to :=
+  match goal with
+  | |- (ltac_tag_subst (?x = ?y) -> ?Q) =>
+     let H := fresh "Aux" in 
+     intro H; unfold ltac_tag_subst in H;
+     try subst x; introv_to
+  | |- ?P -> ?Q => idtac
+  | |- forall _, _ => intro; introv_to
+  | |- ?G => let P := get_head G in progress (unfold P); introv_to
+  end.
+
+Ltac introv_base :=
+  match goal with
+  | |- forall _, _ => introv_rec
+  | |- ?G => let P := get_head G in unfold P; introv_rec
+  end.
+
+Tactic Notation "introv" :=
+  introv_base.
+Tactic Notation "introv" simple_intropattern(I) :=
+  introv_to; intros I.
+Tactic Notation "introv" simple_intropattern(I1) simple_intropattern(I2) :=
+  introv_to; intros I1; introv_to; intros I2.
+Tactic Notation "introv" simple_intropattern(I1) simple_intropattern(I2) 
+ simple_intropattern(I3) :=
+  introv; intros I1; introv; intros I2; introv; intros I3.
+Tactic Notation "introv" simple_intropattern(I1) simple_intropattern(I2) 
+ simple_intropattern(I3) simple_intropattern(I4) :=
+  introv; intros I1; introv; intros I2; introv; intros I3;
+  introv; intros I4.
+Tactic Notation "introv" simple_intropattern(I1) simple_intropattern(I2) 
+ simple_intropattern(I3) simple_intropattern(I4) simple_intropattern(I5) :=
+  introv; intros I1; introv; intros I2; introv; intros I3;
+  introv; intros I4; introv; intros I5.
+Tactic Notation "introv" simple_intropattern(I1) simple_intropattern(I2) 
+ simple_intropattern(I3) simple_intropattern(I4) simple_intropattern(I5)
+ simple_intropattern(I6) :=
+  introv; intros I1; introv; intros I2; introv; intros I3;
+  introv; intros I4; introv; intros I5; introv; intros I6.
+Tactic Notation "introv" simple_intropattern(I1) simple_intropattern(I2) 
+ simple_intropattern(I3) simple_intropattern(I4) simple_intropattern(I5)
+ simple_intropattern(I6) simple_intropattern(I7) :=
+  introv; intros I1; introv; intros I2; introv; intros I3;
+  introv; intros I4; introv; intros I5; introv; intros I6; 
+  introv; intros I7.
+Tactic Notation "introv" simple_intropattern(I1) simple_intropattern(I2) 
+ simple_intropattern(I3) simple_intropattern(I4) simple_intropattern(I5)
+ simple_intropattern(I6) simple_intropattern(I7) simple_intropattern(I8) :=
+  introv; intros I1; introv; intros I2; introv; intros I3;
+  introv; intros I4; introv; intros I5; introv; intros I6; 
+  introv; intros I7; introv; intros I8.
+Tactic Notation "introv" simple_intropattern(I1) simple_intropattern(I2) 
+ simple_intropattern(I3) simple_intropattern(I4) simple_intropattern(I5)
+ simple_intropattern(I6) simple_intropattern(I7) simple_intropattern(I8)
+ simple_intropattern(I9) :=
+  introv; intros I1; introv; intros I2; introv; intros I3;
+  introv; intros I4; introv; intros I5; introv; intros I6; 
+  introv; intros I7; introv; intros I8; introv; intros I9.
+Tactic Notation "introv" simple_intropattern(I1) simple_intropattern(I2) 
+ simple_intropattern(I3) simple_intropattern(I4) simple_intropattern(I5)
+ simple_intropattern(I6) simple_intropattern(I7) simple_intropattern(I8)
+ simple_intropattern(I9) simple_intropattern(I10) :=
+  introv; intros I1; introv; intros I2; introv; intros I3;
+  introv; intros I4; introv; intros I5; introv; intros I6; 
+  introv; intros I7; introv; intros I8; introv; intros I9;
+  introv; intros I10.
+
+
+
+
+
+Parameter map : Type -> Type -> Type.
+
+Section Operations.
+Variables (A B : Type) (EA : Equ A) (IB : Inhab B).
+Notation "'F'" := (map A B).
+
+Parameter empty : F.
+Parameter single : A -> B -> F.
+Parameter add : A -> B -> F -> F.
+Parameter remove : A -> F -> F.
+Parameter get_option : A -> F -> option B.
+Parameter get : A -> F -> B.
+Parameter mem : A -> F -> bool.
+Parameter union : F -> F -> F.
+Parameter restrict : F -> set A -> F.
+
+End Operations.
+
+
+(*
+
+Axiom div2_odd : forall n k, 
+  n = 2 * k -> n mod 2 = 0 /\ n / 2 = k.
+Axiom div2_even : forall n k, 
+  n = 2 * k + 1 -> n mod 2 = 1 /\ n / 2 = k.
+Axiom mod2_not_odd : forall n,
+  n mod 2 = 0 -> (forall k, n = 2 * k + 1 -> False).
+Axiom mod2_not_even : forall n,
+  n mod 2 <> 0 -> (forall k, n = 2 * k -> False).
+Ltac check_mod2 := 
+  match goal with 
+  | H: ?n mod 2 = 0, G: ?n = 2 * ?k + 1 |- _ => 
+     false (mod2_not_odd H G)
+  | H: ?n mod 2 <> 0, G: ?n = 2 * ?k |- _ => 
+     false (mod2_not_even H G)
+  end.
+*)
+
+(*
+Lemma Xor_bcases : forall b1 b2 : bool, 
+  Xor b1 b2 -> (b1 = true /\ b2 = false)
+            \/ (b1 = false /\ b2 = true).
+Proof. introv [[? ?]|[? ?]]; tautob*. Qed.
+*)
+
+
+
+
+Global Instance set_card_empty : Card_empty (T:=set A).
+Proof. skip. Qed.
+
+Global Instance set_card_single : Card_single (A:=A) (T:=set A).
+Proof. skip. Qed.
+
+Global Instance set_card_union : Card_union (T:=set A).
+Proof. skip. Qed.
+
+Instance card_inst : forall A, BagCard (set A).
+Admitted. (* todo *)
+
+
+Lemma foreach_empty : forall A (P:A->Prop),
+  @foreach A (set A) _ P \{}. 
+Proof. intros_all. false* @in_empty. typeclass. Qed.
+
+Lemma foreach_single : forall A (P:A->Prop) (X:A),
+  P X -> @foreach A (set A) _ P (\{ X }). 
+Proof. intros_all. rewrite~ (in_single H0). Qed.
+
+Lemma foreach_union : forall A (P:A->Prop) (E F: set A),
+  foreach P E -> foreach P F -> foreach P (E \u F).
+Proof. intros_all. destruct~ (in_union_inv H1). Qed.
+
+Hint Resolve foreach_empty foreach_single foreach_union.
+
+Lemma foreach_union_inv : forall A (P:A->Prop) (E F:set A),
+  foreach P (E \u F) -> foreach P E /\ foreach P F.
+Proof.
+
+Qed.
+
+Axiom foreach_union_eq : forall A (P:A->Prop) (E F:set A),
+  foreach P (E \u F) = (foreach P E /\ foreach P F).
+Axiom foreach_single_eq : forall A (P:A->Prop) (X:A),
+  foreach P (\{X}:set A) = P X.
+
+Axiom foreach_weaken : forall A (P Q:A->Prop) (E:set A),
+  foreach P E -> pred_le P Q -> foreach Q E.
+
+Hint Rewrite foreach_union_eq foreach_single_eq : rew_foreach.
+
+
+
+
+(* ---------------------------------------------------------------------- *)
+(** ** Basic definitions *)
+
+Parameter multiset : Type -> Type.
+
+Section Operations.
+Variables (A : Type).
+Implicit Types x : A.
+Implicit Types E F G : multiset A.
+
+Parameter empty_impl : multiset A.
+Parameter single_impl : A -> multiset A. 
+Parameter in_impl : A -> multiset A -> Prop.
+Parameter union_impl : multiset A -> multiset A -> multiset A.
+Parameter incl_impl : binary (multiset A).
+End Operations.
+
+Implicit Arguments empty_impl [A].
+Implicit Arguments single_impl [A].
+Implicit Arguments in_impl [A].
+Implicit Arguments union_impl [A].
+Implicit Arguments incl_impl [A].
+
+
+
+
+
+
+Lemma flip_strict_to_not : forall A (R:binary A) x y,
+  total R -> flip (strict R) x y -> ~ R x y.
+Proof. 
+  introv T H K. hnf in H. destruct (T x y).
+  skip.
+ auto_false~. 
+  hnf. split~. intro_subst~. 
+Qed.
+
+Lemma 
+
+(** Properties as typeclasses -- TODO *)
+
+(* todo: mettre total en hypothèse simplement ?
+
+Lemma ge_from_not_le : forall `{Le_total} x y,
+  ~ le x y -> ge x y.
+Proof. intros. rew_le. apply* flip_from_not. Qed.
+
+Lemma ge_from_not_lt : forall {A} `{Eqb A, Le A} {_:Le_total} x y,
+  refl le -> ~ lt x y -> ge x y.
+Proof. intros. rew_le. apply flip_from_not. auto*.
+ intros K. apply H2. unfold strict. split. auto. Qed.
+
+Lemma gt_from_not_lt : forall `{Le_total} x y,
+  ~ lt x y -> gt x y.
+Proof. intros. rew_le. apply* flip_from_not.
+  intros. simpls. apply flip_from_not; simpl. 
+  apply* flip_total. unfolds~ flip.
+Qed.
+
+
+*)
+
+
+
+(** Notation *)
+
+Instance preorder_le_inst : forall A (R:binary A), 
+  preorder R -> Le A := R.
+
+Hint Extern 1 (Le ?A) => 
+  eapply (preorder_le_inst (A:=A)); solve[eauto] : typeclass_instances.
+
+(* todo: mettre total en hypothèse simplement ?
+
+Lemma ge_from_not_le : forall `{Le_total} x y,
+  ~ le x y -> ge x y.
+Proof. intros. rew_le. apply* flip_from_not. Qed.
+
+Lemma ge_from_not_lt : forall {A} `{Eqb A, Le A} {_:Le_total} x y,
+  refl le -> ~ lt x y -> ge x y.
+Proof. intros. rew_le. apply flip_from_not. auto*.
+ intros K. apply H2. unfold strict. split. auto. Qed.
+
+Lemma gt_from_not_lt : forall `{Le_total} x y,
+  ~ lt x y -> gt x y.
+Proof. intros. rew_le. apply* flip_from_not.
+  intros. simpls. apply flip_from_not; simpl. 
+  apply* flip_total. unfolds~ flip.
+Qed.
+
+
+
+
+Lemma ge_preorder_from_le_preorder : forall `{Le A},
+  Le_preorder -> preorder ge.
+Proof. intros A R [H]. rewrite ge_is_flip_le. apply~ preorder_flip. Qed.
+
+(**useful?
+Lemma preorder_le_from_ge : forall `{Le A},
+  preorder ge -> preorder le.
+Proof. intros. rewrite le_is_flip_ge. apply~ preorder_flip. Qed.
+*)
+
+(** order *)
+
+Instance le_refl_from_le_order : forall `{Le A},
+  Le_order -> Le_refl.
+Proof. constructor. intros. apply* order_refl. Qed.
+
+Instance le_trans_from_le_order : forall `{Le A},
+  Le_order -> Le_trans.
+Proof. constructor. intros. apply* order_trans. Qed.
+
+Instance le_order_from_le_total_order : forall `{Le A},
+  Le_total_order -> Le_order.
+Proof. constructor. intros. apply* total_order_order. Qed.
+
+
+
+Instance lt_irrefl_from_lt_strict_order : forall `{Lt A},
+  Lt_strict_order -> Lt_irrefl. 
+Proof. intros A R [[Ir As Tr]]. constructor~. Qed.
+
+Instance lt_trans_from_lt_strict_order : forall `{Lt A},
+  Lt_strict_order -> Lt_trans. 
+Proof. intros A R [[Ir As Tr]]. constructor~. Qed.
+
+
+
+Ltac destructs_disjunction_tactic_as N T H :=
+  match N with
+  | 2 => destruct T as [H | H]
+  | 3 => destruct T as [H | [H | H]]
+  | 4 => destruct T as [H | [H | [H | H]]]
+  | 5 => destruct T as [H | [H | [H | [H | H]]]]
+  end.
+
+Tactic Notation "branches" constr(T) "as" ident(H) :=
+  let TT := type of T in
+  let N := get_term_disjunction_arity TT in
+  destructs_disjunction_tactic_as N T H.
+
+Tactic Notation "branches" constr(N) constr(T) "as" ident(H) :=
+  destructs_disjunction_tactic_as N T H.
+
+
+
+
+(*--------------------------------------*)
+(** [intros_all] repeats [intro] as long as possible. Contrary to [intros],
+    it unfolds any definition on the way. Remark that it also unfolds the
+    definition of negation, so applying [introz] to a goal of the form
+    [forall x, P x -> ~Q] will introduce [x] and [P x] and [Q], and will
+    leave [False] in the goal. *)
+
+Tactic Notation "intros_all" :=
+  repeat intro.
+
+
+(*--------------------------------------*)
+(* test cases for [intros_all] *)
+
+Definition IMP P A (x y : A) := P -> x = y.
+
+Lemma demo_intros_all :
+     (forall a b, P1 a -> P2 b -> IMP True a b)
+  /\ (forall a b, a = 0 -> b = 1 -> ~ (a = b)).
+Proof.
+  split.
+  (* [intros_all] introduces as many arguments as possible *)
+  intros_all. skip.
+  intros_all. skip.
+Qed.
+ 
+
+
+Lemma demo_introv_1 :
+  forall a b, P1 a -> P2 b -> forall c d, P3 c -> P1 d -> c = b.
+Proof.
+  dup 4.
+  (* [introv] introduces all the variables which are not hypotheses,
+     more precisely all the variables used dependently. *) 
+  introv.
+  (* if there is no head variables, it does not do anything *)
+  introv. skip.
+  (* [introv A] introduces all variables, then does [intros A] *)
+  introv A. introv B. introv. intros C D. skip.
+  (* [introv] may take several arguments, as illustrated below *)
+  introv A B. introv. skip.
+  introv A B C D. skip.
+Qed.
+
+Definition Same (x y : nat) := True -> x = y.
+Definition Sym (x:nat) := forall y, x = y -> Same y x.
+
+Lemma demo_introv_2 :
+  (forall a, Sym a) /\ 
+  (forall a, a = 0 -> Sym a) /\
+  (forall a, a = 0 -> ~ Sym a).
+Proof.
+  splits.
+    dup 2.
+      introv.
+      (* [introv] is able to unfold definitions if necessary *)
+      introv E.
+      (* it can unfold the head definition, even if it performs
+         no introduction at all *)
+      introv. skip.
+      (* it can unfold definitions occuring between arguments *)
+      introv E F. skip.
+    (* another example *)
+    introv E F G. skip.
+    (* and finally an example with a negated goal *)
+    introv E F. skip.
+Qed.
+
+Lemma demo_introv_3 :
+  forall a (c:nat) b, P1 a -> P2 b -> True.
+Proof.
+  (* notice that variables which are not used dependently
+     are treated as hypotheses, e.g. variable [c] below *)
+  introv c M1 M2. skip.
+Qed.
+
+
+Ltac applys_build Ei ::=
+  let args := ltac_args Ei in 
+  let args' := args_unfold_head_if_not_product_but_params args in
+  build_app args' ltac:(fun R =>
+   first [ apply R | eapply R | rapply R ]);
+  rm_inside_if_requested args.
+
+
+(*
+Ltac rm_inside_if_requested E :=
+  try match E with
+  | rm ?X => rm_inside E
+  | (boxer rm)::_ => rm_inside E 
+  | (boxer (rm _))::_ => rm_inside E 
+  | (boxer _)::(boxer rm)::_ => rm_inside E 
+  | (boxer _)::(boxer (rm _))::_ => rm_inside E 
+  end.
+
+
+
+
+Ltac clear_term E :=
+  let P := get_head E in
+  let T := type of P in
+  match type of T with Prop => 
+  match goal with H: T |- _ => try clear H 
+  end end.
+
+Ltac clear_list Ei :=
+  match Ei with
+  | nil => idtac
+  | (boxer ?E)::?L => try clear_term E; clear_list L
+  end. (*   | (boxer Hnts)::?L => clear_list L*)
+
+Ltac applys_build Ei :=
+  let args := ltac_args Ei in 
+  let args := args_unfold_head_if_not_product_but_params args in
+  build_app args ltac:(fun R =>
+   first [ apply R | eapply R | rapply R ]).
+
+Ltac applys_clear_base Ei := (* todo: factorize with applys_base *)
+  let args := ltac_args Ei in 
+  let args' := args_unfold_head_if_not_product_but_params args in
+  build_app args' ltac:(fun R =>
+   first [ apply R | eapply R | rapply R ]);
+  clear_list args.
+
+Tactic Notation "applys_clear" constr(E0) :=  (* todo: use the tactic for that*)
+  applys_clear_base E0.
+
+
+
+Ltac on_formula_formula cont :=
+  match goal with
+  | |- _ _ _ _ ?F _ _ => cont F
+  | |- ?F _ _ => cont F
+  | |- _ ?F _ _ => cont F
+  | |- _ _ ?F _  _ => cont F
+  | |- _ _ _ ?F _ _ => cont F
+  | |- _ _ _ _ _ ?F _ _ => cont F
+  end.
+
+
+
+(** Analysis without substitution:
+    - [test E as H1 H2]
+    - [test E as H]
+    - [test E]
+    performs a case analysis on the proposition [E].
+    Works also when [E] is a boolean or a strong sum. *)
+
+Ltac testd_base E H1 H2 :=
+  destruct E as [H1|H2].
+
+Ltac testp_base E H1 H2 :=
+  testd_base (classicT E) H1 H2.
+
+Tactic Notation "test" constr(E) "as" simple_intropattern(H1) simple_intropattern(H2) :=
+  match type of E with
+  | bool => testb H1: E (*todo fix*)
+  | Prop => testp_base E H1 H2
+  | {_}+{_} => testd_base E H1 H2
+  end.
+
+Tactic Notation "test" constr(E) "as" simple_intropattern(H) :=
+  test E as H H.
+
+Tactic Notation "test" constr(E) :=
+  let H := fresh "Test" in test E as H.
+
+(** Analysis with substitution: [tests] instead of [test] *)
+
+Ltac testsd_base E H1 H2 :=
+  destruct E as [H1|H2]; 
+  [ try subst_hyp H1 | try subst_hyp H2 ].
+
+Ltac testsp_base E H1 H2 :=
+  testsd_base (classicT E) H1 H2.
+
+Tactic Notation "tests" constr(E) "as" simple_intropattern(H1) simple_intropattern(H2) :=
+  match type of E with
+  | bool => testsb H1: E (*todo fix*)
+  | Prop => testsp_base E H1 H2
+  | {_}+{_} => testsd_base E H1 H2
+  end.
+
+Tactic Notation "tests" constr(E) "as" simple_intropattern(H) :=
+  tests E as H H.
+
+Tactic Notation "tests" constr(E) :=
+  let H := fresh "Test" in tests E as H.
+
+
+
+
+(* TODO: add
+Lemma classic_or_elim_l : forall P Q, P \/ Q -> P \/ (~ P /\ Q).
+Proof. intros. destruct (classic P); auto_false*. Qed.
+*)
+
+
+
+(* ---------------------------------------------------------------------- *)
+(** ** Elimination lemmas for reflection *)
+
+Section ReflectionElim.
+Implicit Types b : bool.
+Implicit Types P : Prop.
+
+Lemma refl_bool : forall b P,
+  reflect b P -> P -> b.
+Proof. tautob*. Qed.
+
+Lemma refl_prop : forall b P,
+  reflect b P -> b -> P.
+Proof. tautob*. Qed.
+
+Lemma refl_neg : forall b P,
+  reflect b P -> ((!b) <-> ~P).
+Proof. tautob*. Qed.
+
+Lemma refl_neg_bool : forall b P,
+  reflect b P -> ~P -> !b.
+Proof. tautob*. Qed.
+
+Lemma refl_neg_prop : forall b P,
+  reflect b P -> !b -> ~P.
+Proof. tautob*. Qed.
+
+End ReflectionElim.
+
+
+(* ---------------------------------------------------------------------- *)
+(** ** Reflection of logical operators *)
+
+Section ReflectionBool.
+Implicit Types x y z : bool. 
+
+Lemma R_false : forall x,
+  reflect (!x) (x = false).
+Proof. tautob*. Qed.
+
+Lemma R_neg : forall x,
+  reflect (!x) (~x).
+Proof. tautob*. Qed.
+
+Lemma R_not_neg : forall x,
+  reflect x (~!x).
+Proof. tautob*. Qed.
+
+Lemma R_or : forall x y,
+  reflect (x || y) (x \/ y).
+Proof. tautob*. Qed.
+
+Lemma R_or_1 : forall x y,
+  x || y -> x \/ y.
+Proof. tautob*. Qed.
+
+Lemma R_or_2 : forall x y,
+  x \/ y -> x || y.
+Proof. tautob*. Qed.
+
+Lemma R_and : forall x y,
+  reflect (x && y) (x /\ y).
+Proof. tautob*. Qed.
+
+Lemma R_and_1 : forall x y,
+  x && y -> x /\ y.
+Proof. tautob*. Qed.
+
+Lemma R_and_2 : forall x y,
+  x -> y -> x && y.
+Proof. tautob*. Qed.
+
+End ReflectionBool.
+
+Implicit Arguments R_and_1 [x y].
+Implicit Arguments R_or_1 [x y].
+
+(** The tactic [rew_reflect] replaces boolean combinators
+    with their logical counterpart. *)
+
+Hint Rewrite R_neg R_or R_and : rew_reflect.
+
+Tactic Notation "rew_reflect" :=
+  autorewrite with rew_reflect.
+Tactic Notation "rew_reflect" "in" "*" :=
+  autorewrite with rew_reflect in *.
+Tactic Notation "rew_reflect" "in" hyp(H) :=
+  autorewrite with rew_reflect in H.
+
+Tactic Notation "rew_reflect" "*" :=
+  rew_reflect; auto_star.
+Tactic Notation "rew_reflect" "*" "in" "*" :=
+  rew_reflect in *; auto_star.
+Tactic Notation "rew_reflect" "*" "in" hyp(H) :=
+  rew_reflect in H; auto_star.
+
+(* todo: rewrite with reflection *)
+Lemma Xor_bool : forall (b1 b2 : bool),
+  (b1 && !b2 || b2 && !b1) -> Xor b1 b2.
+Proof. unfold Xor. tautob*. Qed.
+
+
+(* ********************************************************************** *)
+(** * Lemmas and tactics for translations *)
+
+(* ---------------------------------------------------------------------- *)
+(** ** Simplification of equalities involving [true] and [false] *)
+
+(** TODO: reorganize *)
+
+Section FoldingBool.
+Variables (P : Prop) (b : bool).
+
+Lemma istrue_isTrue : 
+  istrue (isTrue P) = P.
+Proof. extens. rewrite* isTrue_iff. Qed.
+
+Lemma isTrue_istrue : 
+  isTrue (istrue b) = b.
+Proof. extens. rewrite* isTrue_iff. Qed.
+
+Lemma istrue_neg_isTrue : forall P,
+  istrue (! isTrue P) = ~ P.
+Proof.
+  extens. unfold isTrue. case_if; rew_bool.
+  rewrite* istrue_false_eq_False.
+  rewrite* istrue_true_eq_True.
+Qed.
+
+Lemma isTrue_not_istrue : 
+  isTrue (~ istrue b) = !b.
+Proof. 
+  extens. unfold isTrue.
+  destruct b; case_if; rew_bool; auto*.
+Qed.
+
+Lemma istrue_isTrue_back :
+  P -> istrue (isTrue P).
+Proof. rewrite~ istrue_isTrue. Qed.
+
+Lemma istrue_isTrue_forw :
+  istrue (isTrue P) -> P.
+Proof. rewrite~ istrue_isTrue. Qed.
+
+Lemma istrue_not_isTrue_back :
+  ~ P -> istrue (! isTrue P).
+Proof. rewrite~ istrue_neg_isTrue. Qed.
+
+Lemma istrue_not_isTrue_forw :
+  istrue (! isTrue P) -> ~ P.
+Proof. rewrite~ istrue_neg_isTrue. Qed.
+
+Lemma prop_eq_True_forw :
+  (P = True) -> P.
+Proof. intros. subst~. Qed.
+
+Lemma prop_eq_True_back :
+  P -> (P = True).
+Proof. intros. extens*. Qed.
+
+Lemma prop_eq_False_forw :
+  (P = False) -> ~ P.
+Proof. intro. subst*. Qed.
+
+Lemma prop_eq_False_back :
+  ~ P -> (P = False).
+Proof. intros. extens*. Qed.
+
+Lemma prop_neq_True_forw :
+  (P <> True) -> ~ P.
+Proof. intros_all. apply H. extens*. Qed.
+
+Lemma prop_neq_True_back :
+  ~ P -> (P <> True).
+Proof. intros_all. subst~. Qed.
+
+Lemma prop_neq_False_forw :
+  (P <> False) -> P.
+Proof.
+  intros_all. apply not_not_elim.
+  intros_all. apply H. extens*.
+Qed.
+
+Lemma prop_neq_False_back :
+  P -> (P <> False).
+Proof. introv M K. rewrite~ <- K. Qed.
+
+Lemma not_istrue_isTrue_forw : 
+  ~ istrue (isTrue P) -> ~ P.
+Proof. apply contrapose_intro. rewrite~ istrue_isTrue. Qed.
+
+Lemma not_istrue_not_isTrue_forw : 
+  ~ istrue (! isTrue P) -> P.
+Proof.
+  rewrite <- (@not_not P). apply contrapose_intro.
+  rewrite~ istrue_neg_isTrue. 
+Qed. (* todo: missing lemma from lib logic about ~A->B *)
+
+Lemma not_istrue_isTrue_back : 
+  ~ P -> ~ istrue (isTrue P).
+Proof. apply contrapose_intro. rewrite~ istrue_isTrue. Qed.
+
+Lemma not_istrue_not_isTrue_back : 
+  P -> ~ istrue (! isTrue P).
+Proof. 
+  rewrite <- (@not_not P). apply contrapose_intro.
+  rewrite~ istrue_neg_isTrue. 
+Qed.
+
+End FoldingBool.
+
+(** Tactic [fold_prop] simplifies goal and hypotheses 
+    using the lemmas above *)
+
+Ltac fold_prop := 
+  repeat match goal with 
+  | H: istrue (isTrue ?P) |- _ => applys_to H istrue_isTrue_forw
+  | H: istrue (! isTrue ?P) |- _ => applys_to H istrue_not_isTrue_forw
+  | H: ~ istrue (isTrue ?P) |- _ => applys_to H not_istrue_isTrue_forw
+  | H: ~ istrue (! isTrue ?P) |- _ => applys_to H not_istrue_not_isTrue_forw
+  | H: (?P = True) |- _ => applys_to H prop_eq_True_forw
+  | H: (?P = False) |- _ => applys_to H prop_eq_False_forw
+  | H: (True = ?P) |- _ => symmetry in H; applys_to H prop_eq_True_forw
+  | H: (False = ?P) |- _ => symmetry in H; applys_to H prop_eq_False_forw
+  | H: ~ (~ ?P) |- _ => applys_to H not_not_elim 
+  | |- istrue (isTrue ?P) => apply istrue_isTrue_back
+  | |- istrue (! isTrue ?P) => apply istrue_not_isTrue_back
+  | |- ~ istrue (isTrue ?P) => apply not_istrue_isTrue_back
+  | |- ~ istrue (! isTrue ?P) => apply not_istrue_not_isTrue_back
+  | |- (?P = True) => apply prop_eq_True_back
+  | |- (?P = False) => apply prop_eq_False_back
+  | |- (True = ?P) => symmetry; apply prop_eq_True_back
+  | |- (False = ?P) => symmetry; apply prop_eq_False_back
+  | |- ~ (~ ?P) => apply not_not_intro
+  end.
+
+(* todo: add
+    | H: (P <> True) |- _ => applys_to H prop_neq_True_forw
+    | H: (P <> False) |- _ => applys_to H prop_neq_False_forw
+    ...
+*)
+
+Ltac case_if_post ::= fold_prop.
+(* todo: improve case_if so that there is no need for that *)
+
+(* ---------------------------------------------------------------------- *)
+(** ** Properties of boolean comparison *)
+
+Lemma isTrue_true : forall (P:Prop),
+  P -> isTrue P = true.
+Proof. intros. rewrite~ (@prop_eq_True_back P). apply isTrue_True. Qed.
+
+Lemma isTrue_false : forall (P:Prop),
+  ~ P -> isTrue P = false.
+Proof. intros. rewrite~ (@prop_eq_False_back P). apply isTrue_False. Qed.
+
+Lemma eqb_eq : forall A (x y:A),
+  x = y -> (x '= y) = true.
+Proof. intros. subst. apply~ isTrue_true. Qed.
+
+Lemma eqb_self : forall A (x:A),
+  (x '= x) = true.
+Proof. intros. apply~ eqb_eq. Qed.
+
+Lemma eqb_neq : forall A (x y:A),
+  x <> y -> (x '= y) = false.
+Proof. intros. subst. apply~ isTrue_false. Qed.
+
+Lemma neqb_eq : forall A (x y:A),
+  x = y -> (x '<> y) = false.
+Proof. intros. subst. rewrite~ isTrue_false. Qed.
+
+Lemma neqb_neq : forall A (x y:A),
+  x <> y -> (x '<> y) = true.
+Proof. intros. subst. rewrite~ isTrue_true. Qed.
+
+Lemma neqb_self : forall A (x:A),
+  (x '<> x) = false.
+Proof. intros. apply~ neqb_eq. Qed.
+
+
+
+(* todo: rewrite with reflection *)
+Lemma Xor_bool : forall (b1 b2 : bool),
+  (b1 && !b2 || b2 && !b1) -> Xor b1 b2.
+Proof. unfold Xor. tautob*. Qed.
+
+Section FoldingReflect.
+Implicit Types P : Prop.
+Implicit Types b : bool.
+
+Lemma equiv_true : forall P, 
+  reflect true P -> P.
+Proof. auto*. Qed.
+Lemma equiv_false : forall P, 
+  reflect false P -> ~P.
+Proof. auto*. Qed.
+Lemma equiv_True : forall b, 
+  reflect b True -> b.
+Proof. auto*. Qed.
+Lemma equiv_False : forall b, 
+  reflect b False -> !b.
+Proof. tautob*. Qed.
+
+Lemma equiv_true_back : forall P, 
+  P -> reflect true P.
+Proof. auto*. Qed.
+Lemma equiv_false_back : forall P, 
+  ~P -> reflect false P.
+Proof. split; intros; tryfalse~. Qed.
+Lemma equiv_True_back : forall b, 
+  b -> reflect b True.
+Proof. auto*. Qed.
+Lemma equiv_False_back : forall b, 
+  !b -> reflect b False.
+Proof. tautob*. Qed.
+
+End FoldingReflect.
+
+(** Tactic [rew_prop] simplifies goals of the form 
+    [reflect true P], [reflect false P], and
+    [reflect b True] and [reflect b False] *)
+
+Ltac rew_prop :=
+  repeat match goal with
+  | H: reflect (istrue true) ?P |- _ => applys_to H equiv_true
+  | H: reflect (istrue false) ?P |- _ => applys_to H equiv_false
+  | H: reflect ?b True |- _ => applys_to H equiv_True
+  | H: reflect ?b False |- _ => applys_to H equiv_False
+  | |- reflect (istrue true) ?P => apply equiv_true_back
+  | |- reflect (istrue false) ?P => apply equiv_false_back
+  | |- reflect ?b True => apply equiv_True_back
+  | |- reflect ?b False => apply equiv_False_back
+  end.
+
+
+
+
+(* ---------------------------------------------------------------------- *)
+(** ** Lemma versions of the rewriting rules *)
+
+(* TODO: simplify proofs using [testprop], once the tactic is generalized
+   to booleans *)
+
+Section ReflectionTactics.
+Implicit Types b : bool.
+Implicit Types P : Prop.
+
+Lemma istrue_isTrue_back :
+  P -> istrue (isTrue P).
+Proof. rewrite~ istrue_isTrue. Qed.
+
+Lemma istrue_isTrue_forw :
+  istrue (isTrue P) -> P.
+Proof. rewrite~ istrue_isTrue. Qed.
+
+Lemma istrue_not_isTrue_back :
+  ~ P -> istrue (! isTrue P).
+Proof. rewrite~ istrue_neg_isTrue. Qed.
+
+Lemma istrue_not_isTrue_forw :
+  istrue (! isTrue P) -> ~ P.
+Proof. rewrite~ istrue_neg_isTrue. Qed.
+
+Lemma prop_eq_True_forw :
+  (P = True) -> P.
+Proof. intros. subst~. Qed.
+
+Lemma prop_eq_True_back :
+  P -> (P = True).
+Proof. intros. extens*. Qed.
+
+Lemma prop_eq_False_forw :
+  (P = False) -> ~ P.
+Proof. intro. subst*. Qed.
+
+Lemma prop_eq_False_back :
+  ~ P -> (P = False).
+Proof. intros. extens*. Qed.
+
+Lemma prop_neq_True_forw :
+  (P <> True) -> ~ P.
+Proof. intros_all. apply H. extens*. Qed.
+
+Lemma prop_neq_True_back :
+  ~ P -> (P <> True).
+Proof. intros_all. subst~. Qed.
+
+Lemma prop_neq_False_forw :
+  (P <> False) -> P.
+Proof.
+  intros_all. apply not_not_elim.
+  intros_all. apply H. extens*.
+Qed.
+
+Lemma prop_neq_False_back :
+  P -> (P <> False).
+Proof. introv M K. rewrite~ <- K. Qed.
+
+Lemma not_istrue_isTrue_forw : 
+  ~ istrue (isTrue P) -> ~ P.
+Proof. apply contrapose_intro. rewrite~ istrue_isTrue. Qed.
+
+Lemma not_istrue_not_isTrue_forw : 
+  ~ istrue (! isTrue P) -> P.
+Proof.
+  rewrite <- (@not_not P). apply contrapose_intro.
+  rewrite~ istrue_neg_isTrue. 
+Qed. (* todo: missing lemma from lib logic about ~A->B *)
+
+Lemma not_istrue_isTrue_back : 
+  ~ P -> ~ istrue (isTrue P).
+Proof. apply contrapose_intro. rewrite~ istrue_isTrue. Qed.
+
+Lemma not_istrue_not_isTrue_back : 
+  P -> ~ istrue (! isTrue P).
+Proof. 
+  rewrite <- (@not_not P). apply contrapose_intro.
+  rewrite~ istrue_neg_isTrue. 
+Qed.
+
+End ReflectionTactics.
+
+
+
+
+
+(* Decidability -- todo: remove *)
+
+Definition decidable R := 
+  forall x y, {R x y} + {~ R x y}.
+
+
+
+
+(* todo: check ok 
+Lemma app_assoc : forall l1 l2 l3,
+  l1 ++ (l2 ++ l3) = (l1 ++ l2) ++ l3.
+Proof. 
+  intros. induction l1.
+  rewrite_all~ app_nil_l. 
+  rewrite_all~ app_cons. fequals~.
+Qed.
+*)
