@@ -223,6 +223,7 @@ Definition cds := (cyp * env def) % type.
 Definition sto := env cds.
 
 Inductive red : sto -> trm -> sto -> trm -> Prop :=
+  (* computation rules *)
   | red_cll : forall s x m y c ds t,
       binds x (c, ds) s ->
       binds m (def_mtd t) ds ->
@@ -234,4 +235,14 @@ Inductive red : sto -> trm -> sto -> trm -> Prop :=
   | red_new : forall s c ds t x,
       x # s ->
       red s (trm_new c ds t) (s & x ~ (c, ds)) (open_trm t x)
+  (* congruence rules *)
+  | red_cll1 : forall s o m a s' o',
+      red s o s' o' ->
+      red s (trm_cll o m a) s' (trm_cll o' m a)
+  | red_cll2 : forall s x m a s' a',
+      red s a s' a' ->
+      red s (trm_cll (trm_var (avar_f x)) m a) s' (trm_cll (trm_var (avar_f x)) m a')
+  | red_sel1 : forall s o l s' o',
+      red s o s' o' ->
+      red s (trm_sel o l) s' (trm_sel o' l)
 .
