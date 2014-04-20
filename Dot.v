@@ -50,7 +50,7 @@ Inductive trm : Type :=
   | trm_var  : avar -> trm
   | trm_new  : cyp -> env def -> trm -> trm
   | trm_sel  : trm -> label -> trm
-  | trm_cll  : trm -> label -> trm -> trm
+  | trm_cll  : trm -> label -> trm -> trm (* call *)
 with def : Type :=
   | def_fld : avar -> def
   | def_mtd : trm -> def
@@ -116,13 +116,17 @@ with open_rec_def (k: nat) (u: var) (d: def) { struct d } : def :=
   end
 .
 
+(* Question: why do we change the order of the args here? I'd like to use a partially
+   applied (open_dec u) for envmap *)
 Definition open_avar a u := open_rec_avar 0 u a.
 Definition open_pth p u := open_rec_pth 0 u p.
 Definition open_typ t u := open_rec_typ 0 u t.
 Definition open_cyp c u := open_rec_cyp 0 u c.
 Definition open_dec d u := open_rec_dec 0 u d.
+Definition open_decs ds u := (envmap (open_rec_dec 0 u) ds).
 Definition open_trm t u := open_rec_trm 0 u t.
 Definition open_def d u := open_rec_def 0 u d.
+
 
 Inductive fvar : avar -> Prop :=
   | fvar_f : forall x,
@@ -319,34 +323,44 @@ with fv_def (d: def) { struct d } : vars :=
 
 Definition ctx := env typ.
 
+Fixpoint decs_intersect(D1 D2: env dec): env dec := D1. (* TODO *)
+
+Fixpoint decs_union(D1 D2: env dec): env dec := D1. (* TODO *)
+
+(* declaration D (taken from { z => Ds }) does not contain z *)
+Definition dec_no_selfref(D: dec): Prop := forall (v: var), open_dec D v = D.
+
 (*
    ?question?:
    for now, just using # instead of cofinite quantification...
    ... we will see if it's enough
 *)
+(* Term typing *)
 Inductive typing_trm : ctx -> trm -> typ -> Prop :=
   | typing_trm_var : forall G x T,
       binds x T G ->
       typing_trm G (trm_var (avar_f x)) T
   | typing_trm_sel : forall G t l T,
-      weak_mem_trm G t l (dec_fld T) ->
+      weak_trm_mem G t l (dec_fld T) ->
       typing_trm G (trm_sel t l) T
   | typing_trm_app : forall G t m U T u,
-      weak_mem_trm G t m (dec_mtd U T) ->
+      weak_trm_mem G t m (dec_mtd U T) ->
       typing_trm G u U ->
       typing_trm G (trm_cll t m u) T
   | typing_trm_new : forall G x c ds t T Tc Ds,
       Tc=(cyp2typ c) ->
       imp_typ G Tc ->
-      strg_exp_typ G Tc Ds ->
+      strg_expand G Tc Ds ->
       x # G ->
-      typing_env_def (G & x ~ Tc) ds Ds ->
+      typing_defs (G & x ~ Tc) ds Ds ->
       typing_trm (G & x ~ Tc) (open_trm t x) T ->
       typing_trm G (trm_new c ds t) T
   | typing_trm_sub : forall G t T U,
       typing_trm G t T ->
       sub_typ G T U ->
       typing_trm G t U
+
+(* Definition (implementation) typing *)
 with typing_def : ctx -> def -> dec -> Prop :=
   | typing_def_fld : forall G v T,
       typing_trm G (trm_var v) T ->
@@ -360,9 +374,235 @@ with typing_def : ctx -> def -> dec -> Prop :=
       typing_def G def_non (dec_typ S U)
   | typing_def_cyp : forall G U,
       typing_def G def_non (dec_cyp U)
-with typing_env_def : ctx -> env def -> env dec -> Prop :=
-with weak_mem_trm : ctx -> trm -> label -> dec -> Prop :=
+with typing_defs : ctx -> env def -> env dec -> Prop :=
+  | typing_defs_all : forall G Defs Decs, 
+      List.Forall2 (fun (p1: (label * def)) (p2: (label * dec)) => 
+        (fst p1) = (fst p2) /\ typing_def G (snd p1) (snd p2)
+      ) Defs Decs ->
+      typing_defs G Defs Decs
+
+(* Precise path typing *)
+(* TODO: should accept a path instead of just a var *)
+with typing_pth : ctx -> var -> typ -> Prop :=
+  | typing_pth_var : forall G x T,
+      binds x T G ->
+      typing_pth G x T
+(*| typing_pth_pth : TODO *)
+
+(* Strong path membership *)
+(* TODO: Should take a path instead of just a var => need to change open s.t. it
+   also accepts a path instead of just a var. Question: Is this correct? *)
+with strg_pth_mem : ctx -> var -> label -> dec -> Prop :=
+  | strg_pth_mem_pth : forall G p l T Ds d,
+      typing_pth G p T ->
+      strg_expand G T Ds ->
+      binds l d Ds ->
+      strg_pth_mem G p l (open_dec d p)
+
+(* Weak path membership *)
+(* TODO allow any path *)
+with weak_pth_mem : ctx -> var -> label -> dec -> Prop :=
+  | weak_pth_mem_pth : forall G p T l Ds d,
+      typing_trm G (trm_var (avar_f p)) T ->
+      weak_expand G T Ds ->
+      binds l d Ds ->
+      weak_pth_mem G p l (open_dec d p)
+
+(* Weak term membership *)
+with weak_trm_mem : ctx -> trm -> label -> dec -> Prop :=
+  | weak_trm_mem_trm : forall G t T l Ds d,
+      typing_trm G t T ->
+      weak_expand G T Ds ->
+      binds l d Ds ->
+      dec_no_selfref d ->   (* <---- Question: Is this ok? *) 
+      weak_trm_mem G t l d
+
+(* Implementable types *)
 with imp_typ : ctx -> typ -> Prop :=
-with strg_exp_typ : ctx -> typ -> env dec -> Prop :=
+  | imp_typ_typ : forall G T Ds,
+      wf_typ G T ->
+      strg_expand G T Ds ->
+      EnvForall (imp_dec G) Ds ->
+      imp_typ G T
+
+(* Implementable declarations *)
+with imp_dec : ctx -> dec -> Prop :=
+  | imp_dec_typ : forall G S U,
+      sub_typ G S U ->
+      imp_dec G (dec_typ S U)
+  | imp_dec_cyp : forall G U,
+      imp_typ G (cyp2typ U) ->
+      imp_dec G (dec_cyp U)
+  | imp_dec_fld : forall G T,
+      imp_typ G T ->
+      imp_dec G (dec_fld T)
+  | imp_dec_mtd : forall G S U,
+      (* note: no conditions here *)
+      imp_dec G (dec_mtd S U)
+
+(* Strong expansion *)
+with strg_expand : ctx -> typ -> env dec -> Prop :=
+  | strg_expand_rfn : forall G T Ds1 Ds2,
+      strg_expand G T Ds1 ->
+      strg_expand G (typ_rfn T Ds2) (decs_intersect Ds1 Ds2)
+  | strg_expand_asel : forall G p L S U Ds,
+      strg_pth_mem G p L (dec_typ S U) ->
+      strg_expand G U Ds ->
+      (* TODO replace (path_var (avar_f p)) by just p *)
+      strg_expand G (typ_asel (pth_var (avar_f p)) L) Ds
+  | strg_expand_csel : forall G p K U Ds,
+      strg_pth_mem G p K (dec_cyp U) ->
+      strg_expand G (cyp2typ U) Ds ->
+      (* TODO replace (path_var (avar_f p)) by just p *)
+      strg_expand G (typ_csel (pth_var (avar_f p)) K) Ds
+  | strg_expand_and : forall G T1 Ds1 T2 Ds2,
+      strg_expand G T1 Ds1 ->
+      strg_expand G T2 Ds2 ->
+      strg_expand G (typ_and T1 T2) (decs_intersect Ds1 Ds2)
+  | strg_expand_or : forall G T1 Ds1 T2 Ds2,
+      strg_expand G T1 Ds1 ->
+      strg_expand G T2 Ds2 ->
+      strg_expand G (typ_or T1 T2) (decs_union Ds1 Ds2)
+  | strg_expand_top : forall G,
+      strg_expand G typ_top empty
+
+(* Weak expansion (like strong expansion, but uses weak path membership) *)
+with weak_expand : ctx -> typ -> env dec -> Prop :=
+  | weak_expand_rfn : forall G T Ds1 Ds2,
+      weak_expand G T Ds1 ->
+      weak_expand G (typ_rfn T Ds2) (decs_intersect Ds1 Ds2)
+  | weak_expand_asel : forall G p L S U Ds,
+      weak_pth_mem G p L (dec_typ S U) ->
+      weak_expand G U Ds ->
+      weak_expand G (typ_asel (pth_var (avar_f p)) L) Ds (* TODO allow any path *)
+  | weak_expand_csel : forall G p K U Ds,
+      weak_pth_mem G p K (dec_cyp U) ->
+      weak_expand G (cyp2typ U) Ds ->
+      weak_expand G (typ_csel (pth_var (avar_f p)) K) Ds (* TODO allow any path *)
+  | weak_expand_and : forall G T1 Ds1 T2 Ds2,
+      weak_expand G T1 Ds1 ->
+      weak_expand G T2 Ds2 ->
+      weak_expand G (typ_and T1 T2) (decs_intersect Ds1 Ds2)
+  | weak_expand_or : forall G T1 Ds1 T2 Ds2,
+      weak_expand G T1 Ds1 ->
+      weak_expand G T2 Ds2 ->
+      weak_expand G (typ_or T1 T2) (decs_union Ds1 Ds2)
+  | weak_expand_top : forall G,
+      weak_expand G typ_top empty
+
+(* Well-formed types *)
+with wf_typ : ctx -> typ -> Prop :=
+  | wf_typ_bot : forall G,
+      wf_typ G typ_bot
+  | wf_typ_top : forall G,
+      wf_typ G typ_top
+  | wf_typ_asel : forall G p L S U,
+      strg_pth_mem G p L (dec_typ S U) ->
+      (* note: recursive wf checking of bounds *)
+      wf_typ G S ->
+      wf_typ G U ->
+      wf_typ G (typ_asel (pth_var (avar_f p)) L) (* TODO allow any paths *)
+  | wf_typ_csel : forall G p K U,
+      strg_pth_mem G p K (dec_cyp U) ->
+      (* note: no recursive wf checking of U *)
+      wf_typ G (typ_csel (pth_var (avar_f p)) K) (* TODO allow any paths *)
+  | wf_typ_rfn : forall G z T Ds,
+      wf_typ G T ->
+      z # G ->
+      EnvForall (wf_dec (G & z ~ T)) (open_decs Ds z) ->
+      wf_typ G (typ_rfn T Ds)
+  | wf_typ_and : forall G T1 T2,
+      wf_typ G T1 ->
+      wf_typ G T2 ->
+      wf_typ G (typ_and T1 T2)
+  | wf_typ_or : forall G T1 T2,
+      wf_typ G T1 ->
+      wf_typ G T2 ->
+      wf_typ G (typ_or T1 T2)
+
+(* Well-formed declarations *)
+with wf_dec : ctx -> dec -> Prop :=
+  | wf_dec_typ : forall G S U,
+      wf_typ G S ->
+      wf_typ G U ->
+      wf_dec G (dec_typ S U)
+  | wf_dec_cyp : forall G U,
+      wf_typ G (cyp2typ U) ->
+      wf_dec G (dec_cyp U)
+  | wf_dec_fld : forall G T,
+      wf_typ G T ->
+      wf_dec G (dec_fld T)
+  | wf_dec_mtd : forall G S U,
+      wf_typ G S ->
+      wf_typ G U ->
+      wf_dec G (dec_mtd S U)
+
+(* Declaration subtyping *)
+with sub_dec : ctx -> dec -> dec -> Prop :=
+  | sub_dec_typ : forall G S1 U1 S2 U2,
+      sub_typ G S2 S1 ->
+      sub_typ G U1 U2 ->
+      sub_dec G (dec_typ S1 U1) (dec_typ S2 U2)
+  | sub_dec_cyp : forall G U,
+      sub_dec G (dec_cyp U) (dec_cyp U)
+  | sub_dec_fld : forall G T1 T2,
+      sub_typ G T1 T2 ->
+      sub_dec G (dec_fld T1) (dec_fld T2)
+  | sub_dec_mtd : forall G S1 T1 S2 T2,
+      sub_typ G S2 S2 ->
+      sub_typ G T1 T2 ->
+      sub_dec G (dec_mtd S1 T1) (dec_mtd S2 T2)  
+
+with sub_decs : ctx -> env dec -> env dec -> Prop :=
+  (* TODO, lhs can contain more decs and in different order ... *)
+
+(* Subtyping *)
 with sub_typ : ctx -> typ -> typ -> Prop :=
+  | sub_typ_refl : forall G T,
+      sub_typ G T T
+  | sub_typ_top : forall G T,
+      sub_typ G T typ_top
+  | sub_typ_bot : forall G T,
+      sub_typ G typ_bot T
+  | sub_typ_rfn_l : forall G T Ds S,
+      sub_typ G T S ->
+      sub_typ G (typ_rfn T Ds) S
+  | sub_typ_rfn_r : forall G z S T DsS DsT,
+      sub_typ G S T ->
+      weak_expand G S DsS ->
+      z # G ->
+      sub_decs (G & z ~ T) (open_decs DsS z) (open_decs DsT z) ->
+      sub_typ G S (typ_rfn T DsT)
+  | sub_typ_asel_l : forall G p L S U T,
+      weak_pth_mem G p L (dec_typ S U) ->
+      sub_typ G U T ->
+      sub_typ G (typ_asel (pth_var (avar_f p)) L) T (* TODO allow any path *)
+  | sub_typ_asel_r : forall G p L S U T,
+      weak_pth_mem G p L (dec_typ S U) ->
+      sub_typ G T S ->
+      sub_typ G T (typ_asel (pth_var (avar_f p)) L) (* TODO allow any path *)
+  | sub_typ_csel : forall G p K U T,
+      weak_pth_mem G p K (dec_cyp U) ->
+      sub_typ G (cyp2typ U) T ->
+      sub_typ G (typ_csel (pth_var (avar_f p)) K) T (* TODO allow any path *)
+  | sub_typ_and : forall G S T1 T2,
+      sub_typ G S T1 ->
+      sub_typ G S T2 ->
+      sub_typ G S (typ_and T1 T2)
+  | sub_typ_and_l : forall G T1 T2 S,
+      sub_typ G T1 S ->
+      sub_typ G (typ_and T1 T2) S
+  | sub_typ_and_r : forall G T1 T2 S,
+      sub_typ G T2 S ->
+      sub_typ G (typ_and T1 T2) S
+  | sub_typ_or : forall G T1 T2 S,
+      sub_typ G T1 S ->
+      sub_typ G T2 S ->
+      sub_typ G (typ_or T1 T2) S
+  | sub_typ_or_l : forall G S T1 T2,
+      sub_typ G S T1 ->
+      sub_typ G S (typ_or T1 T2)
+  | sub_typ_or_r : forall G S T1 T2,
+      sub_typ G S T2 ->
+      sub_typ G S (typ_or T1 T2)
 .
