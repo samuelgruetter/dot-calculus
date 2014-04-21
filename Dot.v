@@ -435,6 +435,10 @@ Definition decs_union(D1 D2 D3: env dec): Prop :=
 (* declaration D (taken from { z => Ds }) does not contain z *)
 Definition dec_no_selfref(D: dec): Prop := forall (v: var), open_dec D v = D.
 
+(* sub-declarations *)
+Definition sub_decs(sub_dec: dec -> dec -> Prop)(D1 D2: env dec): Prop :=
+  forall l d2, binds l d2 D2 -> (exists d1, binds l d1 D1 /\ sub_dec d1 d2).
+
 (*
    ?question?:
    for now, just using # instead of cofinite quantification...
@@ -664,9 +668,6 @@ with sub_dec : ctx -> dec -> dec -> Prop :=
       sub_typ G T1 T2 ->
       sub_dec G (dec_mtd S1 T1) (dec_mtd S2 T2)  
 
-with sub_decs : ctx -> env dec -> env dec -> Prop :=
-  (* TODO, lhs can contain more decs and in different order ... *)
-
 (* Subtyping *)
 with sub_typ : ctx -> typ -> typ -> Prop :=
   | sub_typ_refl : forall G T,
@@ -682,7 +683,7 @@ with sub_typ : ctx -> typ -> typ -> Prop :=
       sub_typ G S T ->
       weak_expand G S DsS ->
       z # G ->
-      sub_decs (G & z ~ T) (open_decs DsS z) (open_decs DsT z) ->
+      sub_decs (sub_dec (G & z ~ T)) (open_decs DsS z) (open_decs DsT z) ->
       sub_typ G S (typ_rfn T DsT)
   | sub_typ_asel_l : forall G p L S U T,
       weak_pth_mem G p L (dec_typ S U) ->
