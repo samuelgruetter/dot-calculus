@@ -1,0 +1,48 @@
+
+
+Subtyping with an explicit transitivity rule becomes much simpler, because we needn't "bake" transitivity into all other rules marked with (*).
+
+Subtyping: G |- S <: T
+======================
+
+                             G |- T <: T
+
+                            G |- T <: Top
+
+                            G |- Bot <: T
+
+                     G |- S <: T     G |- T <: U
+                     ---------------------------
+                            G |- S <: U
+
+          G |- S <: T    G |- S <:z Ds    G, z: T |- Ds <: D
+          --------------------------------------------------
+                        G |- S <: T { z => D }
+
+                        G |- T { z => D } <: T                      (*)
+
+                         G |- p has L: S..U
+                         ------------------                         (*)
+                            G |- p.L <: U
+
+                          G |- p has L: S..U
+                          ------------------                        (*)
+                            G |- T <: p.L
+
+                           G |- p has K: U
+                           ---------------                          (*)
+                            G |- p.K <: U
+
+                     G |- S <: T1    G |- S <: T2
+                     ----------------------------
+                          G |- S <: T1 & T2
+
+                          G |- T1 & T2 <: Ti                        (*)
+
+                          G |- Ti <: T1 | T2                        (*)
+
+                     G |- T1 <: S    G |- T2 <: S
+                     ----------------------------
+                          G |- T1 | T2 <: S
+
+
