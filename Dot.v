@@ -323,9 +323,114 @@ with fv_def (d: def) { struct d } : vars :=
 
 Definition ctx := env typ.
 
-Fixpoint decs_intersect(D1 D2: env dec): env dec := D1. (* TODO *)
+(* We want to use (env dec) for list of declarations
+   => keys of declaration lists are label (=var)
+   => no way to tell (get myLabel myEnv) what kind of declaration we want
+   => all 4 kinds of declarations share the same namespace for their labels
+   => there are invalid intersections
+   => declaration intersection must be implemented as
+      - functions returning option, or
+      - Props
+      Question: Which of these two is better?
+      Question: Or should we choose a different data structure than (env dec),
+                which also rejects duplicate names?
+*)
 
-Fixpoint decs_union(D1 D2: env dec): env dec := D1. (* TODO *)
+(*
+(* declaration intersection/union with functions returning option: not so nice *)
+
+(* intersect two declarations if they're of the same kind, otherwise return None *)
+Definition dec_dec_intersect(d1: dec)(d2: dec): option dec := 
+  match d1 with
+  | dec_typ Lo1 Hi1 => match d2 with
+    | dec_typ Lo2 Hi2 => Some (dec_typ (typ_or Lo1 Lo2) (typ_and Hi1 Hi2))
+    | _ => None
+    end
+  | dec_cyp U1 => match d2 with
+    | dec_cyp U2 => Some(dec_cyp (cyp_and U1 U2))
+    | _ => None
+    end
+  | dec_fld T1 => match d2 with
+    | dec_fld T2 => Some(dec_fld (typ_and T1 T2))
+    | _ => None
+    end
+  | dec_mtd S1 U1 => match d2 with
+    | dec_mtd S2 U2 => Some(dec_mtd (typ_or S1 S2) (typ_and U1 U2))
+    | _ => None
+    end
+  end.
+
+(* union two declarations if possible, otherwise return None *)
+Definition dec_dec_union(d1: dec)(d2: dec): option dec := 
+  match d1 with
+  | dec_typ Lo1 Hi1 => match d2 with
+    | dec_typ Lo2 Hi2 => Some (dec_typ (typ_and Lo1 Lo2) (typ_or Hi1 Hi2))
+    | _ => None
+    end
+  | dec_cyp U1 => None (* cyp has no union *)
+  | dec_fld T1 => match d2 with
+    | dec_fld T2 => Some(dec_fld (typ_or T1 T2))
+    | _ => None
+    end
+  | dec_mtd S1 U1 => match d2 with
+    | dec_mtd S2 U2 => Some(dec_mtd (typ_and S1 S2) (typ_or U1 U2))
+    | _ => None
+    end
+  end.
+
+(* intersect one dec with a set of decs *)
+Definition decs_dec_intersect(D: env dec)(l: label)(d: dec): option (env dec) := 
+  match get l D with
+  | Some d' => match dec_dec_intersect d d' with
+    | Some d'' => Some(D & l ~ d'') (* shadows previous binding for l *)
+    | None => None (* d and d' are of different kinds *)
+  end
+  | None => Some D (* no change *)
+end.
+*)
+
+(* declaration intersection/union using Props *)
+
+Inductive dec_dec_intersect: dec -> dec -> dec -> Prop :=
+  | dec_dec_intersect_typ : forall Lo1 Hi1 Lo2 Hi2,
+      dec_dec_intersect (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2)
+                        (dec_typ (typ_or Lo1 Lo2) (typ_and Hi1 Hi2))
+  | dec_dec_intersect_cyp : forall U1 U2,
+      dec_dec_intersect (dec_cyp U1) (dec_cyp U2)
+                        (dec_cyp (cyp_and U1 U2))
+  | dec_dec_intersect_fld : forall T1 T2,
+      dec_dec_intersect (dec_fld T1) (dec_fld T2)
+                        (dec_fld (typ_and T1 T2))
+  | dec_dec_intersect_mtd : forall S1 U1 S2 U2,
+      dec_dec_intersect (dec_mtd S1 U1) (dec_mtd S2 U2)
+                        (dec_mtd (typ_or S1 S2) (typ_and U1 U2))
+.
+
+Inductive dec_dec_union: dec -> dec -> dec -> Prop :=
+  | dec_dec_union_typ : forall Lo1 Hi1 Lo2 Hi2,
+      dec_dec_union (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2)
+                    (dec_typ (typ_and Lo1 Lo2) (typ_or Hi1 Hi2))
+  (* note: no case for cyp *)
+  | dec_dec_union_fld : forall T1 T2,
+      dec_dec_union (dec_fld T1) (dec_fld T2)
+                    (dec_fld (typ_or T1 T2))
+  | dec_dec_union_mtd : forall S1 U1 S2 U2,
+      dec_dec_union (dec_mtd S1 U1) (dec_mtd S2 U2)
+                    (dec_mtd (typ_and S1 S2) (typ_or U1 U2))
+.
+
+(* TODO there are many ways to express this, is this the way we want it for the proofs? *)
+Definition decs_intersect(D1 D2 D3: env dec): Prop :=
+    dom D3 = (union (dom D1) (dom D2))
+/\ (forall l d1 d2 d3, binds l d1 D1 /\ binds l d2 D2 /\ dec_dec_intersect d1 d2 d3
+                      -> binds l d3 D3)
+/\ (forall l d, binds l d D1 /\ l # D2 -> binds l d D3)
+/\ (forall l d, l # D1 /\ binds l d D2 -> binds l d D3).
+
+Definition decs_union(D1 D2 D3: env dec): Prop :=
+    dom D3 = (inter (dom D1) (dom D2))
+/\ (forall l d1 d2 d3, binds l d1 D1 /\ binds l d2 D2 /\ dec_dec_union d1 d2 d3
+                      -> binds l d3 D3).
 
 (* declaration D (taken from { z => Ds }) does not contain z *)
 Definition dec_no_selfref(D: dec): Prop := forall (v: var), open_dec D v = D.
@@ -442,9 +547,10 @@ with imp_dec : ctx -> dec -> Prop :=
 
 (* Strong expansion *)
 with strg_expand : ctx -> typ -> env dec -> Prop :=
-  | strg_expand_rfn : forall G T Ds1 Ds2,
+  | strg_expand_rfn : forall G T Ds1 Ds2 Ds3,
       strg_expand G T Ds1 ->
-      strg_expand G (typ_rfn T Ds2) (decs_intersect Ds1 Ds2)
+      decs_intersect Ds1 Ds2 Ds3 ->
+      strg_expand G (typ_rfn T Ds2) Ds3
   | strg_expand_asel : forall G p L S U Ds,
       strg_pth_mem G p L (dec_typ S U) ->
       strg_expand G U Ds ->
@@ -455,22 +561,25 @@ with strg_expand : ctx -> typ -> env dec -> Prop :=
       strg_expand G (cyp2typ U) Ds ->
       (* TODO replace (path_var (avar_f p)) by just p *)
       strg_expand G (typ_csel (pth_var (avar_f p)) K) Ds
-  | strg_expand_and : forall G T1 Ds1 T2 Ds2,
+  | strg_expand_and : forall G T1 Ds1 T2 Ds2 Ds3,
       strg_expand G T1 Ds1 ->
       strg_expand G T2 Ds2 ->
-      strg_expand G (typ_and T1 T2) (decs_intersect Ds1 Ds2)
-  | strg_expand_or : forall G T1 Ds1 T2 Ds2,
+      decs_intersect Ds1 Ds2 Ds3 ->
+      strg_expand G (typ_and T1 T2) Ds3
+  | strg_expand_or : forall G T1 Ds1 T2 Ds2 Ds3,
       strg_expand G T1 Ds1 ->
       strg_expand G T2 Ds2 ->
-      strg_expand G (typ_or T1 T2) (decs_union Ds1 Ds2)
+      decs_union Ds1 Ds2 Ds3 ->
+      strg_expand G (typ_or T1 T2) Ds3
   | strg_expand_top : forall G,
       strg_expand G typ_top empty
 
 (* Weak expansion (like strong expansion, but uses weak path membership) *)
 with weak_expand : ctx -> typ -> env dec -> Prop :=
-  | weak_expand_rfn : forall G T Ds1 Ds2,
+  | weak_expand_rfn : forall G T Ds1 Ds2 Ds3,
       weak_expand G T Ds1 ->
-      weak_expand G (typ_rfn T Ds2) (decs_intersect Ds1 Ds2)
+      decs_intersect Ds1 Ds2 Ds3 ->
+      weak_expand G (typ_rfn T Ds2) Ds3
   | weak_expand_asel : forall G p L S U Ds,
       weak_pth_mem G p L (dec_typ S U) ->
       weak_expand G U Ds ->
@@ -479,14 +588,16 @@ with weak_expand : ctx -> typ -> env dec -> Prop :=
       weak_pth_mem G p K (dec_cyp U) ->
       weak_expand G (cyp2typ U) Ds ->
       weak_expand G (typ_csel (pth_var (avar_f p)) K) Ds (* TODO allow any path *)
-  | weak_expand_and : forall G T1 Ds1 T2 Ds2,
+  | weak_expand_and : forall G T1 Ds1 T2 Ds2 Ds3,
       weak_expand G T1 Ds1 ->
       weak_expand G T2 Ds2 ->
-      weak_expand G (typ_and T1 T2) (decs_intersect Ds1 Ds2)
-  | weak_expand_or : forall G T1 Ds1 T2 Ds2,
+      decs_intersect Ds1 Ds2 Ds3 -> 
+      weak_expand G (typ_and T1 T2) Ds3
+  | weak_expand_or : forall G T1 Ds1 T2 Ds2 Ds3,
       weak_expand G T1 Ds1 ->
       weak_expand G T2 Ds2 ->
-      weak_expand G (typ_or T1 T2) (decs_union Ds1 Ds2)
+      decs_union Ds1 Ds2 Ds3 -> 
+      weak_expand G (typ_or T1 T2) Ds3
   | weak_expand_top : forall G,
       weak_expand G typ_top empty
 
