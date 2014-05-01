@@ -248,6 +248,7 @@ Inductive red : sto -> trm -> sto -> trm -> Prop :=
       red s (trm_sel o l) s' (trm_sel o' l)
 .
 
+
 (** Infrastructure **)
 
 Fixpoint pth2trm (p: pth) { struct p } : trm :=
@@ -718,3 +719,102 @@ with sub_typ : ctx -> typ -> typ -> Prop :=
       sub_typ G S T2 ->
       sub_typ G S (typ_or T1 T2)
 .
+
+
+Ltac gather_vars :=
+  let A := gather_vars_with (fun x : vars => x) in
+  let B := gather_vars_with (fun x : var => \{x}) in
+  let C := gather_vars_with (fun x : ctx => dom x) in
+  let D := gather_vars_with (fun x : trm => fv_trm x) in
+  let E := gather_vars_with (fun x : typ => fv_typ x) in
+  constr:(A \u B \u C \u D \u E).
+
+Ltac pick_fresh x :=
+  let L := gather_vars in (pick_fresh_gen L x).
+
+Definition trm_example_1(l : label) := (trm_new
+  (cyp_rfn cyp_top (l ~ (dec_fld typ_top)))
+  (l ~ (def_fld (avar_b 0)))
+  (trm_sel (trm_var (avar_b 0)) l)
+).
+
+
+
+
+Fact ex_1: exists l, 
+  typing_trm nil (trm_example_1 l) (typ_rfn typ_top (l ~ (dec_fld typ_top))).
+Proof.
+  pick_fresh l.
+  exists l.
+  set (Ds := (l ~ (dec_fld typ_top))).
+  set (c  := (cyp_rfn cyp_top Ds)).
+  set (Tc := (typ_rfn typ_top Ds)).
+
+  assert (Hse: strg_expand nil Tc Ds). (* used several times *)
+  apply strg_expand_rfn with (Ds1 := empty) (Ds2 := Ds) (Ds3 := Ds).
+  apply strg_expand_top.
+  (* proving decs_intersect will need some automation, or a better definition *)
+  unfold decs_intersect.
+  split.
+  rewrite -> dom_empty.
+  rewrite -> union_empty_l.
+  reflexivity.
+  split.
+  intros.
+  destruct H as [H _].
+  unfold binds in H.
+  apply get_some_inv in H.
+  rewrite -> dom_empty in H.
+  apply notin_empty in H.
+  contradiction.
+  split.
+  intros.
+  destruct H as [H _].
+  unfold binds in H.
+  apply get_some_inv in H.
+  rewrite -> dom_empty in H.
+  apply notin_empty in H.
+  contradiction.
+  intros.
+  destruct H as [_ H].
+  assumption.
+  (* end assert Hse *)
+
+  pick_fresh x.  
+  apply typing_trm_new with (x := x) (Tc := Tc) (Ds := Ds).
+  reflexivity.
+  apply imp_typ_typ with (Ds := Ds).
+  pick_fresh z.
+  apply wf_typ_rfn with (z := z).
+  apply wf_typ_top.
+  skip. (* how can I solve "z # nil" ??? *)
+  skip. (* how to prove EnvForall by proving it for each entry in list? *)
+  assumption.
+  unfold EnvForall.
+  skip. (* how to deal with Forall ?? *)
+  assumption.
+  skip. (* how can I solve "l # nil" ??? *)
+  
+  apply (typing_defs_all).
+  skip. (* TODO somehow apply List.Forall2_cons *)
+  unfold open_trm.
+  unfold open_rec_trm.
+  unfold open_rec_avar.
+  case_if.
+  apply typing_trm_sel.
+  apply weak_trm_mem_trm with (T := Tc) (Ds := Ds).
+  apply typing_trm_var.
+  rewrite <- empty_def.
+  rewrite -> concat_empty_l.
+  apply binds_single_eq.
+
+  apply weak_expand_rfn.
+
+
+
+(* "old" way of getting a label: 
+  assert (Inhab label) by apply var_inhab.
+  destruct H as [[l _]].
+  exists l.
+*)
+
