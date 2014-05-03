@@ -88,15 +88,17 @@ Inductive mode : Type := notrans | oktrans.
 
 Inductive subtyp : mode -> ctx -> typ -> typ -> Prop :=
   (* why is there no reflexivity in fsub-mini1h.elf ? *)
+  (* There's a separate rsdc judgment (reflexive sub-declaration) *)
   | subtyp_refl : forall G T,
       subtyp notrans G T T
   | subtyp_top : forall G T,
       subtyp notrans G T typ_top
   | subtyp_bot : forall G T,
       subtyp notrans G typ_bot T
-  | subtyp_bind : forall G z l d1 d2,
-      z # G ->
-      subdec oktrans (G & (z ~ (typ_bind l d1))) (open_dec z d1) (open_dec z d2) ->
+  | subtyp_bind : forall L G l d1 d2,
+      (forall z, z \notin L ->
+        subdec oktrans (G & (z ~ (typ_bind l (open_dec z d1)))) 
+                       (open_dec z d1) (open_dec z d2)) ->
       subtyp notrans G (typ_bind l d1) (typ_bind l d2)
   | subtyp_asel_l : forall G p L S U T,
       has G p L (dec_typ S U) ->
@@ -202,6 +204,7 @@ Ltac gather_vars :=
 Ltac pick_fresh x :=
   let L := gather_vars in (pick_fresh_gen L x).
 
+(* not needed
 Lemma notin_empty: forall z A, z # (@empty A).
 Proof.
   intros.
@@ -210,7 +213,7 @@ Proof.
   rewrite -> in_empty.
   rewrite -> not_False.
   apply I.
-Qed.
+Qed. *)
 
 
 (* ... examples ... *)
@@ -227,14 +230,139 @@ Proof.
   pick_fresh l1.
   pick_fresh l2.
   exists l1 l2.
-  pick_fresh z.
-  apply (@subtyp_bind empty z).
-  apply notin_empty.
+  apply (@subtyp_bind \{} empty).
+  intros.
   apply subdec_fld.
   apply subtyp_mode.
   apply subtyp_top.
 Qed.
 
 
+(* ... transitivity in oktrans mode (trivial) ... *)
+
+Lemma subtyp_trans_oktrans: forall G T1 T2 T3,
+  subtyp oktrans G T1 T2 -> subtyp oktrans G T2 T3 -> subtyp oktrans G T1 T3.
+Proof.
+  introv H12 H23.
+  apply (subtyp_trans H12 H23).
+Qed.
+
+Lemma subdec_trans_oktrans: forall G d1 d2 d3,
+  subdec oktrans G d1 d2 -> subdec oktrans G d2 d3 -> subdec oktrans G d1 d3.
+Proof.
+  introv H12 H23.
+  destruct d2 as [Lo2 Hi2 | T2].
+  (* case typ *)
+  inversion H12 as [? ? Lo1 Hi1 ?   ?   HLo1Hi1 HLo2Hi2 HLo2Lo1 HHi1Hi2 | ]; subst.
+  inversion H23 as [? ? ?   ?   Lo3 Hi3 ?       HLo3Hi3 HLo3Lo2 HHi2Hi3 | ]; subst.
+  apply (subdec_typ HLo1Hi1 HLo3Hi3
+    (subtyp_trans_oktrans HLo3Lo2 HLo2Lo1)
+    (subtyp_trans_oktrans HHi1Hi2 HHi2Hi3)
+  ).
+  (* case fld *)
+  inversion H12 as [ | ? ? T1 ? HT12 ]; subst.
+  inversion H23 as [ | ? ? ? T3 HT23 ]; subst.
+  apply subdec_fld.
+  apply (subtyp_trans HT12 HT23).
+Qed.
+
+
+(* ... helper lemmas ... *)
+
+(* Lemma invert_subtyp_bot: forall m G T, subtyp m G T typ_bot -> T = typ_bot.
+   Does not hold because T could be a p.L with lower and upper bound bottom. *)
+
+(*
+Lemma invert_subtyp_bot: forall m G T, subtyp m G T typ_bot -> T = typ_bot.
+
+Proof.
+  intros.
+  inversion H; subst.
+  trivial.
+  trivial.
+  inversion H; subst.
+
+*)
+
+
+(* ... weakening lemmas ... *)
+
+Lemma subdec_weaken_last: forall G z l d1 d2 dA dB,
+  subdec oktrans (G & z ~ typ_bind l d2) dA dB ->
+  subdec oktrans (G & z ~ typ_bind l d1) d1 d2 ->
+  subdec oktrans (G & z ~ typ_bind l d1) dA dB.
+Proof.
+  (* TODO ;-) *)
+Admitted.
+
+
+(* ... transitivity in notrans mode, but no p.L in middle ... *)
+
+Lemma subtyp_trans_notrans: forall G T1 T2 T3,
+  notsel T2 -> subtyp notrans G T1 T2 -> subtyp notrans G T2 T3 -> subtyp notrans G T1 T3.
+Proof.
+  introv Hnotsel H12 H23.
+
+  inversion Hnotsel (*as [ | | l d2]*); subst.
+  (* case top *)
+  skip.
+  (* case bot *)
+  skip. 
+  (* case bind *)
+  inversion H12; inversion H23; subst; (
+    assumption ||
+    apply subtyp_refl ||
+    apply subtyp_top ||
+    apply subtyp_bot ||
+    idtac
+  ).
+
+  (* bind <: bind <: bind *)
+  apply (@subtyp_bind (L \u L0)).
+  intros.
+  assert (HzL: z \notin L) by notin_solve.
+  assert (HzL0: z \notin L0) by notin_solve.
+  specialize (H3 z HzL).
+  specialize (H7 z HzL0).
+  assert (H7': subdec oktrans (G & z ~ typ_bind l (open_dec z (*->*)d1(*<-*))) 
+                              (open_dec z d) (open_dec z d3)).
+  apply (subdec_weaken_last H7 H3).
+  apply (subdec_trans_oktrans H3 H7').
+
+  (* bind <: bind <: sel  *)
+  assert (H1S: subtyp oktrans G (typ_bind l d1) S).
+  apply (subtyp_trans_oktrans (subtyp_mode H12) H5).
+  apply (subtyp_asel_r H4 H1S).
+
+  (* sel  <: bind <: bind *)
+  assert (HU2: subtyp oktrans G U (typ_bind l d2)).
+  apply (subtyp_trans_oktrans H0 (subtyp_mode H23)).
+  apply (subtyp_asel_l H HU2). 
+
+  (* sel  <: bind <: sel  *)
+  assert (H1S0: subtyp oktrans G (typ_asel p L) S0).
+  apply (subtyp_trans_oktrans (subtyp_mode H12) H5).
+  apply (subtyp_asel_r H1 H1S0).
+Qed.
+
+(* garbage 
+  match goal with 
+  | [ H : z \notin ?theL |- _ ] => match H with 
+      | Fr => set (L2 := theL)
+      end
+  end.
+*)
+
+
+(*
+H3 :  subdec oktrans (G & z ~ typ_bind l d1) (open_dec z d1) (open_dec z d)
+
+H7' : subdec oktrans (G & z ~ typ_bind l d1) (open_dec z d) (open_dec z d3)
+
+ ^
+ |
+
+H7  : subdec oktrans (G & z ~ typ_bind l d ) (open_dec z d) (open_dec z d3)
+*)
 
 
