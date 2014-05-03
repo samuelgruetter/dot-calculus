@@ -186,3 +186,55 @@ with fv_dec (d: dec) { struct d } : vars :=
   | dec_fld t => fv_typ t
   end.
 
+
+(* ... infrastructure ... *)
+
+Ltac gather_vars :=
+  let A := gather_vars_with (fun x : vars => x        ) in
+  let B := gather_vars_with (fun x : var  => \{ x }   ) in
+  let C := gather_vars_with (fun x : ctx  => dom x    ) in
+  let D := gather_vars_with (fun x : avar => fv_avar x) in
+  let E := gather_vars_with (fun x : pth  => fv_pth  x) in
+  let F := gather_vars_with (fun x : dec  => fv_dec  x) in
+  let G := gather_vars_with (fun x : typ  => fv_typ  x) in
+  constr:(A \u B \u C \u D \u E \u F \u G).
+
+Ltac pick_fresh x :=
+  let L := gather_vars in (pick_fresh_gen L x).
+
+Lemma notin_empty: forall z A, z # (@empty A).
+Proof.
+  intros.
+  unfold notin.
+  rewrite -> dom_empty.
+  rewrite -> in_empty.
+  rewrite -> not_False.
+  apply I.
+Qed.
+
+
+(* ... examples ... *)
+
+(*    { l1: { l2: Top }} <: { l1: Top }     *)
+Definition subtyp_example_1(l1 l2: label): Prop :=
+  subtyp notrans empty
+    (typ_bind l1 (dec_fld (typ_bind l2 (dec_fld typ_top))))
+    (typ_bind l1 (dec_fld typ_top)).
+
+Fact subtyp_example_1_proof: exists l1 l2, subtyp_example_1 l1 l2.
+Proof.
+  unfold subtyp_example_1.
+  pick_fresh l1.
+  pick_fresh l2.
+  exists l1 l2.
+  pick_fresh z.
+  apply (@subtyp_bind empty z).
+  apply notin_empty.
+  apply subdec_fld.
+  apply subtyp_mode.
+  apply subtyp_top.
+Qed.
+
+
+
+
