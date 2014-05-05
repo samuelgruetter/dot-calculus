@@ -106,6 +106,7 @@ Inductive subtyp : mode -> ctx -> typ -> typ -> Prop :=
       subtyp notrans G (typ_asel p L) T
   | subtyp_asel_r : forall G p L S U T,
       has G p L (dec_typ S U) ->
+      subtyp oktrans G S U -> (* <--- makes proofs a lot easier!! *)
       subtyp oktrans G T S ->
       subtyp notrans G T (typ_asel p L)
   | subtyp_mode : forall G T1 T2,
@@ -269,6 +270,18 @@ Qed.
 
 (* ... helper lemmas ... *)
 
+Lemma has_unique: forall G p X d1 d2, 
+  has G p X d1 -> has G p X d2 -> d1 = d2.
+Proof.
+  introv H1 H2.
+  inversion H1. inversion H2. subst.
+  injection H8.
+  intro; subst.
+  assert (typ_bind X d1 = typ_bind X d2) by apply (binds_func H H6).
+  injection H0.
+  trivial.
+Qed.
+
 (* Lemma invert_subtyp_bot: forall m G T, subtyp m G T typ_bot -> T = typ_bot.
    Does not hold because T could be a p.L with lower and upper bound bottom. *)
 
@@ -331,8 +344,8 @@ Proof.
 
   (* bind <: bind <: sel  *)
   assert (H1S: subtyp oktrans G (typ_bind l d1) S).
-  apply (subtyp_trans_oktrans (subtyp_mode H12) H5).
-  apply (subtyp_asel_r H4 H1S).
+  apply (subtyp_trans_oktrans (subtyp_mode H12) H6).
+  apply (subtyp_asel_r H4 H5 H1S).
 
   (* sel  <: bind <: bind *)
   assert (HU2: subtyp oktrans G U (typ_bind l d2)).
@@ -341,17 +354,210 @@ Proof.
 
   (* sel  <: bind <: sel  *)
   assert (H1S0: subtyp oktrans G (typ_asel p L) S0).
-  apply (subtyp_trans_oktrans (subtyp_mode H12) H5).
-  apply (subtyp_asel_r H1 H1S0).
+  apply (subtyp_trans_oktrans (subtyp_mode H12) H6).
+  apply (subtyp_asel_r H1 H5 H1S0).
 Qed.
 
+(*
+(notransl G A B) means that there exists a notrans-subtyping chain/list
+    A <: T1 <: T2 <: ... <: TN <: B
+where no Ti is a p.L
+*)
+Inductive notransl: ctx -> typ -> typ -> Prop :=
+  | notransl_nil : forall G A B,
+      (* could also just have reflexivity here, but having a subtyp makes 
+      top/bot cases easier *)
+      subtyp notrans G A B ->
+      notransl G A B
+  | notransl_cons : forall G A T1 B,
+      subtyp notrans G A T1 ->
+      notsel T1 ->
+      notransl G T1 B ->
+      notransl G A B.
+
+(* 
+(follow_ub G p1.X1 T) means that there exists a chain
+  (p1.X1: _ .. p2.X2), (p2.X2: _ .. p3.X3), ... (pN.XN: _ .. T)
+which takes us from p1.X1 to T
+*)
+Inductive follow_ub : ctx -> typ -> typ -> Prop :=
+  | follow_ub_nil : forall G T,
+      follow_ub G T T
+  | follow_ub_cons : forall G p X Lo Hi T,
+      has G p X (dec_typ Lo Hi) ->
+      follow_ub G Hi T ->
+      follow_ub G (typ_asel p X) T.
+
+(*
+(follow_lb G T pN.XN) means that there exists a chain
+  (p1.X1: T .. _), (p2.X2: p1.X1 .. _), (p3.X3: p2.X2 .. _),  (pN.XN: pN-1.XN-1 .. _)
+which takes us from T to pN.XN
+*)
+Inductive follow_lb: ctx -> typ -> typ -> Prop :=
+  | follow_lb_nil : forall G T,
+      follow_lb G T T
+  | follow_lb_cons : forall G p X Lo Hi U,
+      has G p X (dec_typ Lo Hi) ->
+      follow_lb G (typ_asel p X) U ->
+      follow_lb G Lo U.
+
+Lemma follow_ub_top: forall G T, follow_ub G typ_top T -> T = typ_top.
+Proof.
+  intros.
+  inversion H.
+  trivial.
+Qed.
+
+(*
+Require Import Coq.Program.Equality.
+
+Lemma follow_ub_bot: forall G T,
+  follow_ub G T typ_bot -> T = typ_bot.
+does not hold (can have a p.X:bot..bot, and follow_ub_nil bot) *)
+
+(*
+Lemma follow_ub_sel_sel: forall G p1 X1 T,
+  follow_ub G (typ_asel p1 X1) T -> exists p2 X2, T = (typ_asel p2 X2).
+Proof.
+  intros.
+  dependent induction H.
+  exists p1 X1.
+  trivial.
+  specialize (IHfollow_ub p1 X1).
+  induction H.
+  skip.
+  assumption.
+*)
+(* not needed
+Lemma follow_ub_bot: forall G T, follow_ub G typ_bot T -> T = typ_bot.
+Proof.
+  intros.
+  inversion H.
+  trivial.
+Qed.*)
+
+(* linearize a derivation that uses transitivity *)
+
+Definition chain (G: ctx) (A D: typ): Prop :=
+   (exists B C, follow_ub G A B /\ notransl G B C /\ follow_lb G C D)
+(*\/ (A = typ_top /\ subtyp notrans G A D)
+\/ (D = typ_bot /\ subtyp notrans G A D)*).
+
+(* prepend an oktrans to chain ("utrans0*") *)
+Lemma prepend_chain: forall G A1 A2 D,
+  subtyp oktrans G A1 A2 ->
+  chain G A2 D ->
+  chain G A1 D.
+Proof.
+  introv Hokt Hch.
+  unfold chain in *.
+  induction Hokt.
+  (* case refl *)
+  assumption.
+  (* case top *)
+  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+  exists T C.
+  split. apply follow_ub_nil.
+  apply follow_ub_top in Hch1. subst.
+  split. apply (notransl_cons (subtyp_top G T) notsel_top Hch2).
+  apply Hch3.
+  (* case bot *)
+  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+  exists typ_bot C.
+  split. apply follow_ub_nil.
+  split. apply (notransl_nil (subtyp_bot G C)).
+  apply Hch3.
+  (* case bind *) (***** TODO *)
+  skip. (* need a better induction scheme which also generates IH for the
+     subtyp proofs wrapped inside the subdec proof *)
+  (* case asel_l *)
+  set (IH := (IHHokt Hch)).
+  destruct IH as [B [C [IH1 [IH2 IH3]]]].
+  exists B C.
+  split.
+  apply (follow_ub_cons H IH1).
+  split; assumption.
+  (* case asel_r *)
+  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+  apply IHHokt2.
+  clear IHHokt2.
+  inversion Hch1; subst.
+    (* case follow_ub_nil *)  
+    inversion Hch3; subst.
+      (* case follow_lb_nil *)
+      skip. (***** TODO *)
+    skip.   (***** TODO *)
+    (* case follow_ub_cons *)
+    assert (dec_typ Lo Hi = dec_typ S U) by apply (has_unique H3 H).
+    injection H0; intros; subst.
+    apply IHHokt1.
+    clear IHHokt1.
+    exists B C.
+    split. assumption. split. assumption. assumption.
+  (* case mode *)
+  apply (IHHokt Hch).
+  (* case trans *)
+  apply (IHHokt1 (IHHokt2 Hch)).
+Qed.
+
+
+
+
 (* garbage 
-  match goal with 
+
+
+
+(*  
+(stlist G T1 B) means that there exists a notrans-subtyping chain
+    T1 <: T2 <: ... <: TN <: B
+where no Ti is a p.L
+*)
+Inductive stlist: ctx -> typ -> typ -> Prop :=
+  | stlist_nil : forall G T1 B,
+      notsel T1 ->
+      subtyp notrans G T1 B ->
+      stlist G T1 B
+  | stlist_cons : forall G T1 T2 B,
+      notsel T1 ->
+      subtyp notrans G T1 T2 ->
+      stlist G T2 B ->
+      stlist G T1 B.
+
+(*
+(notsel_ub G p.X T) means that by repeatedly taking upper bound of p.X, we finally
+reach a T which is not a sel.
+*)
+Inductive notsel_ub: ctx -> p -> label -> typ -> Prop :=
+  | notsel_ub_nil : forall G p X Lo T,
+      has G p X (dec_typ Lo T) ->
+      notsel T ->
+      notsel_ub G p X T
+  | 
+
+
+(*  
+(st_list N G A B) means that there exists a notrans-subtyping chain
+    A <: T1 <: T2 <: ... <: TN <: B
+where no Ti is a p.L
+*)
+Inductive stlist: nat -> ctx -> typ -> typ -> Prop :=
+  | stlist_nil : forall G A B,
+      subtyp notrans G A B ->
+      stlist O G A B
+  | stlist_cons : forall N G A T1 B,
+      subtyp notrans G A T1 ->
+      notsel T1 ->
+      stlist N G T1 B ->
+      stlist (S N) G A B.
+
+
+  
+match goal with 
   | [ H : z \notin ?theL |- _ ] => match H with 
       | Fr => set (L2 := theL)
       end
   end.
-*)
+
 
 
 (*
@@ -365,4 +571,57 @@ H7' : subdec oktrans (G & z ~ typ_bind l d1) (open_dec z d) (open_dec z d3)
 H7  : subdec oktrans (G & z ~ typ_bind l d ) (open_dec z d) (open_dec z d3)
 *)
 
+
+(*  
+(st_list N G T0 TN+1) means that there exists a notrans-subtyping chain
+    T0 <: T1 <: T2 <: ... <: TN <: TN+1
+where no Ti is a p.L
+*)    
+Inductive stlist: nat -> ctx -> typ -> typ -> Prop :=
+  | stlist_nil : forall G T0 T1,
+      notsel T0 ->
+      notsel T1 ->
+      subtyp notrans G T0 T1 ->
+      stlist O G T0 T1
+  | stlist_cons : forall N G T0 T1 TNp2,
+      notsel T0 ->
+      subtyp notrans G T0 T1 ->
+      stlist N G T1 TNp2 ->
+      stlist (S N) G T0 TNp2.
+*)
+
+(*
+
+.... follow_ub/lb versions which cannot be of size 0 ....
+
+(* 
+(follow_ub G p1 X1 T) means that there exists a chain
+  (p1.X1: _ .. p2.X2), (p2.X2: _ .. p3.X3), ... (pN.XN: _ .. T)
+which takes us from p1.X1 to T
+*)
+Inductive follow_ub : ctx -> pth -> label -> typ -> Prop :=
+  | follow_ub_nil : forall G p X Lo T,
+      has G p X (dec_typ Lo T) ->
+      follow_ub G p X T
+  | follow_ub_cons : forall G p1 X1 Lo1 p2 X2 T,
+      has G p1 X1 (dec_typ Lo1 (typ_asel p2 X2)) ->
+      follow_ub G p2 X2 T ->
+      follow_ub G p1 X1 T.
+
+(*
+(follow_lb G T pN XN) means that there exists a chain
+  (p1.X1: T .. _), (p2.X2: p1.X1 .. _), (p3.X3: p2.X2 .. _),  (pN.XN: pN-1.XN-1 .. _)
+which takes us from T to pN.XN
+*)
+Inductive follow_lb: ctx -> typ -> pth -> label -> Prop :=
+  | follow_lb_nil : forall G p X T Hi,
+      has G p X (dec_typ T Hi) ->
+      follow_lb G T p X
+  | follow_lb_cons : forall G T p1 X1 Hi pN XN,
+      has G p1 X1 (dec_typ T Hi) ->
+      follow_lb G (typ_asel p1 X1) pN XN ->
+      follow_lb G T pN XN.
+
+
+*)
 
