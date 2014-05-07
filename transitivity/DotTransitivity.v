@@ -877,12 +877,67 @@ Lemma prepend_chain: forall G A1 A2 D,
   chain G A2 D ->
   chain G A1 D.
 Proof.
+  fix 5.
   introv Hokt Hch.
+  unfold chain in *.
+  inversion Hokt; inversion H; subst.
+  (* case refl *)
+  assumption.
+  (* case top *)
+  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+  exists A1 C.
+  split. apply follow_ub_nil.
+  apply follow_ub_top in Hch1. subst.
+  split. apply (notransl_cons (subtyp_top G A1) notsel_top Hch2).
+  apply Hch3.
+  (* case bot *)
+  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+  exists typ_bot C.
+  split. apply follow_ub_nil.
+  split. apply (notransl_nil (subtyp_bot G C)).
+  apply Hch3.
+  (* case bind *) (***** TODO *)
+  skip. (* need a better induction scheme which also generates IH for the
+     subtyp proofs wrapped inside the subdec proof *)
+  (* case asel_l *)
+  set (IH := (prepend_chain G U A2 D H4 Hch)).
+  destruct IH as [B [C [IH1 [IH2 IH3]]]].
+  exists B C.
+  split. 
+  apply (follow_ub_cons H0 IH1).
+  split; assumption.
+  (* case asel_r *)
+  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+  inversion Hch1; subst.
+    (* case follow_ub_nil *)  
+    inversion Hch3; subst.
+      (* case follow_lb_nil *)
+      skip.
+      (* case follow_ub_cons *)
+      skip.
+    (* case follow_ub_cons *)
+    apply (prepend_chain G A1 S D H5).
+    apply (prepend_chain G S U D H4).
+    assert (HdecEq: dec_typ Lo Hi = dec_typ S U) by apply (has_unique H6 H0).
+    injection HdecEq; intros; subst.
+    exists B C.
+    split. assumption. split. assumption. assumption.
+  (* case mode *)
+  apply (prepend_chain G _ _ _ H (prepend_chain G _ _ _ H0 Hch)).
+  (* case trans *)
+  apply (prepend_chain G _ _ _ H (prepend_chain G _ _ _ H0 Hch)).
+Qed.
 
+
+(* garbage 
+
+
+  (* cannot express dependency between A2 (in subtyp on which we do induction)
+     and A2 in head of chain *)
   apply subtyp_mut with 
-    (P := fun (m0: mode) (G': ctx) (A1' A2': typ) (st: subtyp m0 G' A1' A2') 
-          => True (*chain G A1' D*))
-    (P0:= fun (m0: mode) (G': ctx) (d1 d2: dec) (sd: subdec m0 G' d1 d2) 
+    (P := fun (m': mode) (G': ctx) (A1' A2': typ) (st: subtyp m' G' A1' A2') 
+          => chain G' A1' D)
+    (P0:= fun (m': mode) (G': ctx) (d1' d2': dec) (sd: subdec m' G' d1' d2') 
           => True)
     (m := oktrans)
     (c := G)
@@ -903,61 +958,6 @@ Proof.
   unfold chain in *.
   induction Hokt.
   *)
-
-  (* case refl *)
-  assumption.
-  (* case top *)
-  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
-  exists T C.
-  split. apply follow_ub_nil.
-  apply follow_ub_top in Hch1. subst.
-  split. apply (notransl_cons (subtyp_top G T) notsel_top Hch2).
-  apply Hch3.
-  (* case bot *)
-  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
-  exists typ_bot C.
-  split. apply follow_ub_nil.
-  split. apply (notransl_nil (subtyp_bot G C)).
-  apply Hch3.
-  (* case bind *) (***** TODO *)
-  skip. (* need a better induction scheme which also generates IH for the
-     subtyp proofs wrapped inside the subdec proof *)
-  (* case asel_l *)
-  set (IH := (IHHokt Hch)).
-  destruct IH as [B [C [IH1 [IH2 IH3]]]].
-  exists B C.
-  split.
-  apply (follow_ub_cons H IH1).
-  split; assumption.
-  (* case asel_r *)
-  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
-  inversion Hch1; subst.
-    (* case follow_ub_nil *)  
-    inversion Hch3; subst.
-      (* case follow_lb_nil *)
-      skip.
-      (* case follow_ub_cons *)
-      skip.
-    (* case follow_ub_cons *)
-    apply IHHokt2.
-    clear IHHokt2.
-    assert (dec_typ Lo Hi = dec_typ S U) by apply (has_unique H3 H).
-    injection H0; intros; subst.
-    apply IHHokt1.
-    clear IHHokt1.
-    exists B C.
-    split. assumption. split. assumption. assumption.
-  (* case mode *)
-  apply (IHHokt Hch).
-  (* case trans *)
-  apply (IHHokt1 (IHHokt2 Hch)).
-Qed.
-
-
-
-
-(* garbage 
-
 
 
 (*  
