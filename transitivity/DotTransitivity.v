@@ -728,6 +728,14 @@ Proof.
   trivial.
 Qed.
 
+Lemma follow_ub_bind: forall G l d T, 
+  follow_ub G (typ_bind l d) T -> T = (typ_bind l d).
+Proof.
+  intros.
+  inversion H.
+  trivial.
+Qed.
+
 (*
 Require Import Coq.Program.Equality.
 
@@ -870,6 +878,37 @@ Proof.
   apply (stsize_asel_l h H).
 Qed.
 
+Lemma notransl_head: forall G A C,
+  notransl G A C ->
+  (exists B, notsel B /\ subtyp notrans G A B /\ notransl G B C) \/
+  (subtyp notrans G A C).
+Proof.
+  introv Hn.
+  inversion Hn; subst.
+  (* case notransl_nil *)
+  right. assumption.
+  (* case notransl_cons *)
+  left.
+  exists T1. auto.
+Qed.
+
+(*
+Lemma notransl_asel_head: forall G p L C S U, 
+  notransl G (typ_asel p L) C ->
+  has G p L (dec_typ S U) ->
+  (notransl G U C \/ C = (typ_asel p L)).
+Proof.
+  introv Hn Hh.
+  inversion Hn; subst.
+  (* case notransl_nil *)
+  inversion H; subst.
+  right. trivial.
+  left. apply (notransl_nil (subtyp_top _ _)).
+  skip.
+  skip.
+  (* case notransl_cons *)
+  inversion H; subst.
+*)  
 
 (* prepend an oktrans to chain ("utrans0*") *)
 Lemma prepend_chain: forall G A1 A2 D,
@@ -896,9 +935,13 @@ Proof.
   split. apply follow_ub_nil.
   split. apply (notransl_nil (subtyp_bot G C)).
   apply Hch3.
-  (* case bind *) (***** TODO *)
-  skip. (* need a better induction scheme which also generates IH for the
-     subtyp proofs wrapped inside the subdec proof *)
+  (* case bind *)
+  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+  assert (B = typ_bind l d2) by apply (follow_ub_bind Hch1); subst.
+  exists (typ_bind l d1) C.
+  split. apply follow_ub_nil.
+  split. apply (notransl_cons H (notsel_bind _ _) Hch2).
+  assumption.
   (* case asel_l *)
   set (IH := (prepend_chain G U A2 D H4 Hch)).
   destruct IH as [B [C [IH1 [IH2 IH3]]]].
@@ -907,13 +950,19 @@ Proof.
   apply (follow_ub_cons H0 IH1).
   split; assumption.
   (* case asel_r *)
-  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+  set (Hch' := Hch).
+  destruct Hch' as [B [C [Hch1 [Hch2 Hch3]]]].
   inversion Hch1; subst.
-    (* case follow_ub_nil *)  
+    (* case follow_ub_nil *)
+    inversion Hch2; subst.
+
+  
     inversion Hch3; subst.
       (* case follow_lb_nil *)
+      inversion Hch2; subst.
+
       skip.
-      (* case follow_ub_cons *)
+      (* case follow_lb_cons *)
       skip.
     (* case follow_ub_cons *)
     apply (prepend_chain G A1 S D H5).
