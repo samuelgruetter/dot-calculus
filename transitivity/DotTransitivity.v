@@ -133,6 +133,9 @@ with subdec : mode -> ctx -> dec -> dec -> Prop :=
 Scheme subtyp_mut := Induction for subtyp Sort Prop
 with subdec_mut := Induction for subdec Sort Prop.
 
+Hint Constructors subtyp.
+Hint Constructors subdec.
+
 (*
 Lemma invert_subdec: forall m G d1 d2,
    subdec m G d1 d2 -> (
@@ -406,6 +409,9 @@ Inductive follow_lb: ctx -> typ -> typ -> Prop :=
       follow_lb G (typ_asel p X) U ->
       follow_lb G Lo U.
 
+Hint Constructors follow_ub.
+Hint Constructors follow_lb.
+
 Lemma follow_ub_top: forall G T, follow_ub G typ_top T -> T = typ_top.
 Proof.
   intros.
@@ -525,43 +531,13 @@ Proof.
   (* case asel_r *)
   inversion Hch1; subst.
     (* case follow_ub_nil *)
-    skip.
-
-    (* inverting Hch2 not a good idea because `subtyp oktrans` it contains are 
-       not < Hokt => cannot apply IH *
-    inversion Hch2; subst.
-      (* case subtyp_refl *)
-      exists A1 (typ_asel p L).
-      split. apply follow_ub_nil. 
-      split; assumption.
-      (* case subtyp_top *)
+    destruct Hch4 as [[Hch41 Hch42] | [Hch4 | Hch4]].
+      inversion Hch41.
+      discriminate Hch4.
+      subst.
       exists A1 typ_top.
-      split. apply follow_ub_nil.
-      split. apply subtyp_top. assumption. 
-      (* case subtyp_asel_l *)
-      assert (HdecEq: dec_typ S0 U0 = dec_typ S U) by apply (has_unique H3 H0).
-      injection HdecEq; intros; subst.
-      apply (prepend_chain G A1 S D H5).
-      apply (prepend_chain G S U D H4).
-      apply (prepend_chain G U C D H7). Guarded.
-      (* case subtyp_asel_r *)
-      skip.
-
-   destruct (notransl_head Hch2) as [[M [Hn [Hs Hch2']]] | Hs].
-      (* case notransl_cons *)
-      inversion Hs; subst.
-      (* case notransl_nil *)
-
-    (*inversion Hch2; subst.*)
-
-  
-    inversion Hch3; subst.
-      (* case follow_lb_nil *)
-      (*inversion Hch2; subst.*)
-
-      skip.
-      (* case follow_lb_cons *)
-      skip.*)
+      assert (notsel A1 /\ notsel typ_top \/ A1 = typ_bot \/ typ_top = typ_top) by auto.
+      auto.
     (* case follow_ub_cons *)
     apply (prepend_chain G A1 S D H5).
     apply (prepend_chain G S U D H4).
