@@ -366,7 +366,7 @@ Qed.
 (notransl G A B) means that there exists a notrans-subtyping chain/list
     A <: T1 <: T2 <: ... <: TN <: B
 where no Ti is a p.L
-*)
+)
 Inductive notransl: ctx -> typ -> typ -> Prop :=
   | notransl_nil : forall G A B,
       (* could also just have reflexivity here, but having a subtyp makes 
@@ -378,6 +378,7 @@ Inductive notransl: ctx -> typ -> typ -> Prop :=
       notsel T1 ->
       notransl G T1 B ->
       notransl G A B.
+*)
 
 (* 
 (follow_ub G p1.X1 T) means that there exists a chain
@@ -429,10 +430,9 @@ does not hold (can have a p.X:bot..bot, and follow_ub_nil bot)
 (* linearize a derivation that uses transitivity *)
 
 Definition chain (G: ctx) (A D: typ): Prop :=
-   (exists B C, follow_ub G A B /\ notransl G B C /\ follow_lb G C D)
-(*\/ (A = typ_top /\ subtyp notrans G A D)
-\/ (D = typ_bot /\ subtyp notrans G A D)*).
+   (exists B C, follow_ub G A B /\ subtyp notrans G B C /\ follow_lb G C D).
 
+(*
 Lemma notransl_head: forall G A C,
   notransl G A C ->
   (exists B, notsel B /\ subtyp notrans G A B /\ notransl G B C) \/
@@ -446,7 +446,7 @@ Proof.
   left.
   exists T1. auto.
 Qed.
-
+*)
 (*
 Lemma notransl_asel_head: forall G p L C S U, 
   notransl G (typ_asel p L) C ->
@@ -482,20 +482,20 @@ Proof.
   exists A1 C.
   split. apply follow_ub_nil.
   apply follow_ub_top in Hch1. subst.
-  split. apply (notransl_cons (subtyp_top G A1) notsel_top Hch2).
+  split. apply (subtyp_trans_notrans notsel_top H Hch2).
   apply Hch3.
   (* case bot *)
   destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
   exists typ_bot C.
   split. apply follow_ub_nil.
-  split. apply (notransl_nil (subtyp_bot G C)).
+  split. apply (subtyp_bot G C).
   apply Hch3.
   (* case bind *)
   destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
   assert (B = typ_bind l d2) by apply (follow_ub_bind Hch1); subst.
   exists (typ_bind l d1) C.
   split. apply follow_ub_nil.
-  split. apply (notransl_cons H (notsel_bind _ _) Hch2).
+  split. apply (subtyp_trans_notrans (notsel_bind _ _) H Hch2).
   assumption.
   (* case asel_l *)
   set (IH := (prepend_chain G U A2 D H4 Hch)).
@@ -504,11 +504,16 @@ Proof.
   split. 
   apply (follow_ub_cons H0 IH1).
   split; assumption.
-  (* case asel_r *)
+  (* case asel_r *) skip. (*
   set (Hch' := Hch).
   destruct Hch' as [B [C [Hch1 [Hch2 Hch3]]]].
   inversion Hch1; subst.
     (* case follow_ub_nil *)
+    destruct (notransl_head Hch2) as [[M [Hn [Hs Hch2']]] | Hs].
+      (* case notransl_cons *)
+      inversion Hs; subst.
+      (* case notransl_nil *)
+
     (*inversion Hch2; subst.*)
 
   
@@ -525,7 +530,7 @@ Proof.
     assert (HdecEq: dec_typ Lo Hi = dec_typ S U) by apply (has_unique H6 H0).
     injection HdecEq; intros; subst.
     exists B C.
-    split. assumption. split. assumption. assumption.
+    split. assumption. split. assumption. assumption.*)
   (* case mode *)
   apply (prepend_chain G _ _ _ H (prepend_chain G _ _ _ H0 Hch)).
   (* case trans *)
