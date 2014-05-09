@@ -133,6 +133,9 @@ with subdec : mode -> ctx -> dec -> dec -> Prop :=
 Scheme subtyp_mut := Induction for subtyp Sort Prop
 with subdec_mut := Induction for subdec Sort Prop.
 
+Hint Constructors subtyp.
+Hint Constructors subdec.
+
 (*
 Lemma invert_subdec: forall m G d1 d2,
    subdec m G d1 d2 -> (
@@ -406,6 +409,17 @@ Inductive follow_lb: ctx -> typ -> typ -> Prop :=
       follow_lb G (typ_asel p X) U ->
       follow_lb G Lo U.
 
+Hint Constructors follow_ub.
+Hint Constructors follow_lb.
+
+(*
+Lemma follow_lb_sel: forall G T U,
+  notsel T -> follow_lb G T U -> T = U.
+Proof.
+  introv Hn Hf.
+  induction Hf. trivial.
+*)
+
 Lemma follow_ub_top: forall G T, follow_ub G typ_top T -> T = typ_top.
 Proof.
   intros.
@@ -425,6 +439,20 @@ Qed.
 Lemma follow_ub_bot: forall G T,
   follow_ub G T typ_bot -> T = typ_bot.
 does not hold (can have a p.X:bot..bot, and follow_ub_nil bot) 
+*)
+
+(*
+Inductive st_middle: ctx -> typ -> typ -> Prop :=
+  | st_middle_0: forall G T,
+      st_middle G T T
+  | st_middle_1: forall G T1 T2,
+      notsel T1 ->
+      subtyp notrans G T1 T2 ->
+      st_middle G T1 T2.
+*)
+(*
+Definition st_middle (G: ctx) (B C: typ): Prop :=
+  B = C \/ B = typ_bot \/ C = typ_top \/ (notsel B /\ subtyp notrans G B C).
 *)
 
 (* linearize a derivation that uses transitivity *)
@@ -504,33 +532,67 @@ Proof.
   split. 
   apply (follow_ub_cons H0 IH1).
   split; assumption.
-  (* case asel_r *) skip. (*
+  (* case asel_r *) 
   set (Hch' := Hch).
   destruct Hch' as [B [C [Hch1 [Hch2 Hch3]]]].
   inversion Hch1; subst.
     (* case follow_ub_nil *)
-    destruct (notransl_head Hch2) as [[M [Hn [Hs Hch2']]] | Hs].
-      (* case notransl_cons *)
-      inversion Hs; subst.
-      (* case notransl_nil *)
-
-    (*inversion Hch2; subst.*)
-
-  
+    (* try to make a follow_lb_cons *)
+    (* A2 = p.L, problem: need to have p.L = start of follow_lb list, no 
+       subtyp notrans stuff in middle *)
+    (* "valid middles":
+          B=C
+          subtyp notrans G B_notsel C
+          --> doesn't work too well either
+          --> chain1, chain2, chain3 approach
+    *)
+    skip.
+    (*
+    destruct C as [| | l d | pC LC].
+      (* case top *)
+      exists A1 typ_top. auto.
+      (* case bot *)
+      (* inversion Hch2; inversion H7; subst.*)
+      skip.
+      (* case bind *)
+      skip.
+      (* case asel *)
+      inversion Hch3; subst.
+        (* case follow_lb_nil *)
+        skip.
+        (* case follow_lb_cons *)
+    skip. skip. skip. skip.
+    *)
+    (*
     inversion Hch3; subst.
-      (* case follow_lb_nil *)
-      (*inversion Hch2; subst.*)
-
+    (* case nil *)
+    exists S D.
+    assert (subtyp notrans G S D).
+    apply (subtyp_asel
+    
+    (* case cons *)
+    exists S S.
+    *)
+    (*
+    inversion Hch2; subst.
+      (* case refl *)
+      apply (prepend_chain G A1 S D H5).
+      exists S S.
+      assert (follow_lb G S D). apply (follow_lb_cons H0 Hch3). auto.
+      (* case top *)
       skip.
-      (* case follow_lb_cons *)
+      (* case asel_l *)
       skip.
+      (* case asel_r *)
+      skip.
+    *)
     (* case follow_ub_cons *)
     apply (prepend_chain G A1 S D H5).
     apply (prepend_chain G S U D H4).
     assert (HdecEq: dec_typ Lo Hi = dec_typ S U) by apply (has_unique H6 H0).
     injection HdecEq; intros; subst.
     exists B C.
-    split. assumption. split. assumption. assumption.*)
+    split. assumption. split. assumption. assumption.
   (* case mode *)
   apply (prepend_chain G _ _ _ H (prepend_chain G _ _ _ H0 Hch)).
   (* case trans *)
