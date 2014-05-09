@@ -133,9 +133,6 @@ with subdec : mode -> ctx -> dec -> dec -> Prop :=
 Scheme subtyp_mut := Induction for subtyp Sort Prop
 with subdec_mut := Induction for subdec Sort Prop.
 
-Hint Constructors subtyp.
-Hint Constructors subdec.
-
 (*
 Lemma invert_subdec: forall m G d1 d2,
    subdec m G d1 d2 -> (
@@ -409,9 +406,6 @@ Inductive follow_lb: ctx -> typ -> typ -> Prop :=
       follow_lb G (typ_asel p X) U ->
       follow_lb G Lo U.
 
-Hint Constructors follow_ub.
-Hint Constructors follow_lb.
-
 Lemma follow_ub_top: forall G T, follow_ub G typ_top T -> T = typ_top.
 Proof.
   intros.
@@ -435,11 +429,8 @@ does not hold (can have a p.X:bot..bot, and follow_ub_nil bot)
 
 (* linearize a derivation that uses transitivity *)
 
-Definition chain (G: ctx) (A D: typ): Prop := exists B C, 
-  follow_ub G A B /\
-  subtyp notrans G B C /\
-  follow_lb G C D /\
-  ((notsel B /\ notsel C) \/ B = typ_bot \/ C = typ_top).
+Definition chain (G: ctx) (A D: typ): Prop :=
+   (exists B C, follow_ub G A B /\ subtyp notrans G B C /\ follow_lb G C D).
 
 (*
 Lemma notransl_head: forall G A C,
@@ -474,14 +465,6 @@ Proof.
   inversion H; subst.
 *)  
 
-Lemma top_sub_notsel: forall G C, 
-  subtyp notrans G typ_top C -> notsel C -> C = typ_top.
-Proof.
-  introv Hs Hn.
-  inversion Hs; subst; trivial.
-  inversion Hn.
-Qed.
-
 (* prepend an oktrans to chain ("utrans0*") *)
 Lemma prepend_chain: forall G A1 A2 D,
   subtyp oktrans G A1 A2 ->
@@ -491,60 +474,63 @@ Proof.
   fix 5.
   introv Hokt Hch.
   unfold chain in *.
-  inversion Hokt; inversion H; set (Hch' := Hch); 
-     destruct Hch' as [B [C [Hch1 [Hch2 [Hch3 Hch4]]]]]; subst.
+  inversion Hokt; inversion H; subst.
   (* case refl *)
   assumption.
   (* case top *)
-  apply follow_ub_top in Hch1; subst.
-  exists A1 typ_top.
+  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+  exists A1 C.
   split. apply follow_ub_nil.
-  split. assumption.
-  assert (HCTop: C = typ_top). apply (top_sub_notsel Hch2).
-  destruct Hch4 as [[Hch41 Hch42] | [Hch4 | Hch4]].
-  assumption. discriminate Hch4. subst. apply notsel_top.
-  subst. auto.
+  apply follow_ub_top in Hch1. subst.
+  split. apply (subtyp_trans_notrans notsel_top H Hch2).
+  apply Hch3.
   (* case bot *)
+  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
   exists typ_bot C.
   split. apply follow_ub_nil.
   split. apply (subtyp_bot G C).
-  split. assumption. auto.
+  apply Hch3.
   (* case bind *)
+  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
   assert (B = typ_bind l d2) by apply (follow_ub_bind Hch1); subst.
   exists (typ_bind l d1) C.
   split. apply follow_ub_nil.
   split. apply (subtyp_trans_notrans (notsel_bind _ _) H Hch2).
-  split. assumption.
-  left. split. apply notsel_bind.
-  destruct Hch4 as [[Hch41 Hch42] | [Hch4 | Hch4]].
-    assumption.
-    discriminate Hch4.
-    subst. apply notsel_top.
+  assumption.
   (* case asel_l *)
   set (IH := (prepend_chain G U A2 D H4 Hch)).
-  clear Hch1 Hch2 Hch3 Hch4 B C.
   destruct IH as [B [C [IH1 [IH2 IH3]]]].
   exists B C.
   split. 
   apply (follow_ub_cons H0 IH1).
   split; assumption.
-  (* case asel_r *)
+  (* case asel_r *) skip. (*
+  set (Hch' := Hch).
+  destruct Hch' as [B [C [Hch1 [Hch2 Hch3]]]].
   inversion Hch1; subst.
     (* case follow_ub_nil *)
-    destruct Hch4 as [[Hch41 Hch42] | [Hch4 | Hch4]].
-      inversion Hch41.
-      discriminate Hch4.
-      subst.
-      exists A1 typ_top.
-      assert (notsel A1 /\ notsel typ_top \/ A1 = typ_bot \/ typ_top = typ_top) by auto.
-      auto.
+    destruct (notransl_head Hch2) as [[M [Hn [Hs Hch2']]] | Hs].
+      (* case notransl_cons *)
+      inversion Hs; subst.
+      (* case notransl_nil *)
+
+    (*inversion Hch2; subst.*)
+
+  
+    inversion Hch3; subst.
+      (* case follow_lb_nil *)
+      (*inversion Hch2; subst.*)
+
+      skip.
+      (* case follow_lb_cons *)
+      skip.
     (* case follow_ub_cons *)
     apply (prepend_chain G A1 S D H5).
     apply (prepend_chain G S U D H4).
     assert (HdecEq: dec_typ Lo Hi = dec_typ S U) by apply (has_unique H6 H0).
     injection HdecEq; intros; subst.
     exists B C.
-    split. assumption. split. assumption. split. assumption. assumption.
+    split. assumption. split. assumption. assumption.*)
   (* case mode *)
   apply (prepend_chain G _ _ _ H (prepend_chain G _ _ _ H0 Hch)).
   (* case trans *)
