@@ -133,6 +133,8 @@ with subdec : mode -> ctx -> dec -> dec -> Prop :=
 Scheme subtyp_mut := Induction for subtyp Sort Prop
 with subdec_mut := Induction for subdec Sort Prop.
 
+Combined Scheme subtyp_subdec_mutind from subtyp_mut, subdec_mut.
+
 Hint Constructors subtyp.
 Hint Constructors subdec.
 
@@ -307,13 +309,59 @@ Qed.
 
 (* ... weakening lemmas ... *)
 
+
+(*Lemma weaken_last: 
+   (forall G z l d1 d2 TA TB,
+     subtyp oktrans (G & z ~ typ_bind l d2) TA TB ->
+     subdec oktrans (G & z ~ typ_bind l d1) d1 d2 ->
+     subtyp oktrans (G & z ~ typ_bind l d1) TA TB)
+/\ (forall G z l d1 d2 dA dB,
+     subdec oktrans (G & z ~ typ_bind l d2) dA dB ->
+     subdec oktrans (G & z ~ typ_bind l d1) d1 d2 ->
+     subdec oktrans (G & z ~ typ_bind l d1) dA dB).*)
+
+
 Lemma subdec_weaken_last: forall G z l d1 d2 dA dB,
   subdec oktrans (G & z ~ typ_bind l d2) dA dB ->
   subdec oktrans (G & z ~ typ_bind l d1) d1 d2 ->
   subdec oktrans (G & z ~ typ_bind l d1) dA dB.
 Proof.
-  (* TODO ;-) *)
-Admitted.
+  fix IHsd 8 with
+   (IHst G z l d1 d2 TA TB (Hst: subtyp oktrans (G & z ~ typ_bind l d2) TA TB) {struct Hst}:
+     subdec oktrans (G & z ~ typ_bind l d1) d1 d2 ->
+     subtyp oktrans (G & z ~ typ_bind l d1) TA TB);
+  introv Hsub HG; inversion Hsub; subst.
+
+  (* subdec *)
+  (* case subdec_typ *)
+  apply (subdec_typ (IHst _ _ _ _ _ _ _ H  HG) 
+                    (IHst _ _ _ _ _ _ _ H0 HG)
+                    (IHst _ _ _ _ _ _ _ H1 HG)
+                    (IHst _ _ _ _ _ _ _ H2 HG)).
+  (* case subdec_fld *)
+  apply (subdec_fld (IHst _ _ _ _ _ _ _ H HG)).
+
+  (* subtyp *)
+  inversion H; subst.
+  (* case refl *)
+  apply (subtyp_mode (subtyp_refl _ _)).
+  (* case top *)
+  apply (subtyp_mode (subtyp_top _ _)).
+  (* case bot *)
+  apply (subtyp_mode (subtyp_bot _ _)).
+  (* case bind *)
+  assert (Hb: forall z0 : var, z0 \notin L ->
+     subdec oktrans (G & z ~ typ_bind l (*>*)d1(*<*) & z0 ~ typ_bind l0 (open_dec z0 d0))
+       (open_dec z0 d0) (open_dec z0 d3)).
+  skip.
+  apply (subtyp_mode (subtyp_bind _ _ Hb)).
+  (* case asel_l *)
+  skip. (* need weaken_has *)
+  (* case asel_r *)
+  skip.
+  (* case trans *)
+  skip.
+Qed.
 
 
 (* ... transitivity in notrans mode, but no p.L in middle ... *)
@@ -598,3 +646,22 @@ Proof.
   (* case trans *)
   apply (prepend_chain G _ _ _ H (prepend_chain G _ _ _ H0 Hch)).
 Qed.
+
+
+
+  (* subtyp cases: *)
+  (* case refl *)
+  skip.
+  (* case top *)
+  skip.
+  (* case bot *)
+  skip.
+  (* case bind *)
+  skip.
+  (* case asel_l *)
+  skip.
+  (* case asel_r *)
+  skip.
+  (* case trans *)
+  skip.
+
