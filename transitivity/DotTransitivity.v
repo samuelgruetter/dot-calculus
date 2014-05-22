@@ -95,8 +95,13 @@ Inductive subtyp : mode -> ctx -> typ -> typ -> Prop :=
       subtyp notrans G T typ_top
   | subtyp_bot : forall G T,
       subtyp notrans G typ_bot T
-  | subtyp_bind : forall L G l d1 d2,
+(*| subtyp_bind : forall L G l d1 d2,
       (forall z, z \notin L ->
+        subdec oktrans (G & (z ~ (typ_bind l (open_dec z d1)))) 
+                       (open_dec z d1) (open_dec z d2)) ->
+      subtyp notrans G (typ_bind l d1) (typ_bind l d2) *)
+  | subtyp_bind : forall G l d1 d2,
+      (forall z,    ok (G & (z ~ (typ_bind l (open_dec z d1)))) ->
         subdec oktrans (G & (z ~ (typ_bind l (open_dec z d1)))) 
                        (open_dec z d1) (open_dec z d2)) ->
       subtyp notrans G (typ_bind l d1) (typ_bind l d2)
@@ -253,7 +258,7 @@ Proof.
   pick_fresh l1.
   pick_fresh l2.
   exists l1 l2.
-  apply (@subtyp_bind \{} empty).
+  apply (@subtyp_bind empty).
   intros.
   apply subdec_fld.
   apply subtyp_mode.
@@ -354,17 +359,79 @@ Qed.
 
 Print Assumptions narrow_has.
 
-(*Lemma weaken_last: 
-   (forall G z l d1 d2 TA TB,
-     subtyp oktrans (G & z ~ typ_bind l d2) TA TB ->
-     subdec oktrans (G & z ~ typ_bind l d1) d1 d2 ->
-     subtyp oktrans (G & z ~ typ_bind l d1) TA TB)
-/\ (forall G z l d1 d2 dA dB,
-     subdec oktrans (G & z ~ typ_bind l d2) dA dB ->
-     subdec oktrans (G & z ~ typ_bind l d1) d1 d2 ->
-     subdec oktrans (G & z ~ typ_bind l d1) dA dB).*)
+Lemma subdec_narrow: forall G1 G2 z l d1 d2 dA dB,
+  ok             (G1 & z ~ typ_bind l d2 & G2) ->
+  subdec oktrans (G1 & z ~ typ_bind l d2 & G2) dA dB ->
+  subdec oktrans (G1 & z ~ typ_bind l d1     ) d1 d2 ->
+  subdec oktrans (G1 & z ~ typ_bind l d1 & G2) dA dB.
+Proof.
+  fix IHsd 10 with
+   (IHst G1 G2 z l d1 d2 TA TB 
+     (Hok: ok             (G1 & z ~ typ_bind l d2 & G2))
+     (Hst: subtyp oktrans (G1 & z ~ typ_bind l d2 & G2) TA TB) {struct Hst}:
+     subdec oktrans (G1 & z ~ typ_bind l d1     ) d1 d2 ->
+     subtyp oktrans (G1 & z ~ typ_bind l d1 & G2) TA TB);
+  introv Hokd2 Hsub HG; inversion Hsub; subst.
+
+  (* subdec *)
+  (* case subdec_typ *)
+  apply (subdec_typ (IHst _ _ _ _ _ _ _ _ Hokd2 H  HG) 
+                    (IHst _ _ _ _ _ _ _ _ Hokd2 H0 HG)
+                    (IHst _ _ _ _ _ _ _ _ Hokd2 H1 HG)
+                    (IHst _ _ _ _ _ _ _ _ Hokd2 H2 HG)).
+  (* case subdec_fld *)
+  apply (subdec_fld (IHst _ _ _ _ _ _ _ _ Hokd2 H HG)).
+
+  (* subtyp *)
+  inversion H; subst.
+  (* case refl *)
+  apply (subtyp_mode (subtyp_refl _ _)).
+  (* case top *)
+  apply (subtyp_mode (subtyp_top _ _)).
+  (* case bot *)
+  apply (subtyp_mode (subtyp_bot _ _)).
+  (* case bind *)
+Admitted. (*
+  assert (Hb: forall z0 : var, z0 \notin L ->
+     subdec oktrans 
+       (G1 & z ~ typ_bind l (*>*)d1(*<*) & G2 & z0 ~ typ_bind l0 (open_dec z0 d0))
+       (open_dec z0 d0) (open_dec z0 d3)).
+  introv Hnotin.
+  set (Hsd := (H0 z0 Hnotin)).
+  rewrite <- concat_assoc in Hsd.
+  rewrite <- concat_assoc.
+  assert (Hok': ok (G1 & z ~ typ_bind l d2 & (G2 & z0 ~ typ_bind l0 (open_dec z0 d0)))).
+  skip.
+  apply (IHsd _ _ _ _ _ _ _ _ Hok' Hsd HG).
+  apply (subtyp_mode (subtyp_bind _ _ Hb)).
 
 
+  (* case asel_l *)
+  set (H1w := (IHst _ _ _ _ _ _ _ _ Hokd2 H1 HG)).
+  destruct (narrow_has Hokd2 H0 HG) as [dA [[Heq | Hsd] Hhas]].
+    (* case = *)
+    subst.
+    apply (subtyp_mode (subtyp_asel_l Hhas H1w)).
+    (* case subdec *)
+    inversion Hsd; subst.
+    apply (subtyp_mode (subtyp_asel_l Hhas (subtyp_trans H10 H1w))).
+  (* case asel_r *)
+  set (H1w := (IHst _ _ _ _ _ _ _ _ H1 HG)).
+  set (H2w := (IHst _ _ _ _ _ _ _ _ H2 HG)).
+  destruct (narrow_has Hokd2 H0 HG) as [dA [[Heq | Hsd] Hhas]].
+    (* case = *)
+    subst.
+    apply (subtyp_mode (subtyp_asel_r Hhas H1w H2w)).
+    (* case subdec *)
+    inversion Hsd; subst.
+    apply (subtyp_trans H2w (subtyp_mode (subtyp_asel_r Hhas H5 H10))).
+  (* case trans *)
+  set (Hw := (IHst _ _ _ _ _ _ _ _ H HG)).
+  set (H0w := (IHst _ _ _ _ _ _ _ _ H0 HG)).
+  apply (subtyp_trans Hw H0w).
+Qed.*)
+
+(*
 Lemma subdec_weaken_last: forall G z l d1 d2 dA dB,
   subdec oktrans (G & z ~ typ_bind l d2) dA dB ->
   subdec oktrans (G & z ~ typ_bind l d1) d1 d2 ->
@@ -428,13 +495,62 @@ Proof.
 Qed.
 
 Print Assumptions subdec_weaken_last.
+*)
+
+
+(*
+Lemma env_eq would be useful to get (G & empty = G), so that the environment in
+the weakening lemma could be transformed from (G1 & z ~ ... & empty) to (G1 & z ~ ...).
+But as the Lemma bad shows, this would lead to contradictions, because env maintains
+an order on its elements.
+Maybe use fset instead? Because it has 
+
+Lemma fset_extens_eq : forall E F,
+  (forall x, x \in E = x \in F) -> E = F.
+*)
+
+Lemma env_eq : forall A G1 G2,
+  (forall k v, @binds A k v G1 <-> @binds A k v G2) -> G1 = G2.
+Proof.
+Admitted.
+
+Lemma bad: forall (z1 z2: var)(l: label)(d: dec), z1 <> z2 -> False.
+Proof.
+  intros.
+  set (G1 := z1 ~ (typ_bind l d)).
+  set (G2 := z2 ~ (typ_bind l d)).
+  assert (H1: forall k v, binds k v (G2 & G1) <-> binds k v (G1 & G2)).
+  skip. (* because trivial *)
+  set (H2 := env_eq H1).
+  unfold G1 in H2. unfold G2 in H2.
+  rewrite <- cons_to_push in H2.
+  rewrite <- cons_to_push in H2.
+  inversion H2.
+  absurd (z1 = z2); assumption.
+Qed.
+
+
+
+Lemma subdec_narrow_last: forall G z l d1 d2 dA dB,
+  ok             (G & z ~ typ_bind l d2) ->
+  subdec oktrans (G & z ~ typ_bind l d2) dA dB ->
+  subdec oktrans (G & z ~ typ_bind l d1) d1 d2 ->
+  subdec oktrans (G & z ~ typ_bind l d1) dA dB.
+Proof.
+  introv Hok HAB H12.
+  (* Now add `& empty` to all the environments we got --> How ? *)
+  assert (Hok': ok ((G & z ~ typ_bind l d2) & empty)).
+  skip.
+Admitted.
+
 
 (* ... transitivity in notrans mode, but no p.L in middle ... *)
 
 Lemma subtyp_trans_notrans: forall G T1 T2 T3,
-  notsel T2 -> subtyp notrans G T1 T2 -> subtyp notrans G T2 T3 -> subtyp notrans G T1 T3.
+  ok G -> notsel T2 -> subtyp notrans G T1 T2 -> subtyp notrans G T2 T3 -> 
+  subtyp notrans G T1 T3.
 Proof.
-  introv Hnotsel H12 H23.
+  introv Hok Hnotsel H12 H23.
 
   inversion Hnotsel (*as [ | | l d2]*); subst.
   (* case top *)
@@ -451,15 +567,15 @@ Proof.
   ).
 
   (* bind <: bind <: bind *)
-  apply (@subtyp_bind (L \u L0)).
-  intros.
-  assert (HzL: z \notin L) by notin_solve.
-  assert (HzL0: z \notin L0) by notin_solve.
-  specialize (H3 z HzL).
-  specialize (H7 z HzL0).
+  apply subtyp_bind.
+  introv Hok'.
+  specialize (H3 z Hok').
+  assert (Hok'': ok (G & z ~ typ_bind l (open_dec z d))).
+  skip.
+  specialize (H7 z Hok'').
   assert (H7': subdec oktrans (G & z ~ typ_bind l (open_dec z (*->*)d1(*<-*))) 
                               (open_dec z d) (open_dec z d3)).
-  apply (subdec_weaken_last H7 H3).
+  apply (subdec_narrow_last Hok'' H7 H3).
   apply (subdec_trans_oktrans H3 H7').
 
   (* bind <: bind <: sel  *)
@@ -608,12 +724,13 @@ Proof.
 
 (* prepend an oktrans to chain ("utrans0*") *)
 Lemma prepend_chain: forall G A1 A2 D,
+  ok G ->
   subtyp oktrans G A1 A2 ->
   chain G A2 D ->
   chain G A1 D.
 Proof.
-  fix 5.
-  introv Hokt Hch.
+  fix 6.
+  introv Hok Hokt Hch.
   unfold chain in *.
   inversion Hokt; inversion H; subst.
   (* case refl *)
@@ -623,7 +740,7 @@ Proof.
   exists A1 C.
   split. apply follow_ub_nil.
   apply follow_ub_top in Hch1. subst.
-  split. apply (subtyp_trans_notrans notsel_top H Hch2).
+  split. apply (subtyp_trans_notrans Hok notsel_top H Hch2).
   apply Hch3.
   (* case bot *)
   destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
@@ -636,10 +753,10 @@ Proof.
   assert (B = typ_bind l d2) by apply (follow_ub_bind Hch1); subst.
   exists (typ_bind l d1) C.
   split. apply follow_ub_nil.
-  split. apply (subtyp_trans_notrans (notsel_bind _ _) H Hch2).
+  split. apply (subtyp_trans_notrans Hok (notsel_bind _ _) H Hch2).
   assumption.
   (* case asel_l *)
-  set (IH := (prepend_chain G U A2 D H4 Hch)).
+  set (IH := (prepend_chain G U A2 D Hok H4 Hch)).
   destruct IH as [B [C [IH1 [IH2 IH3]]]].
   exists B C.
   split. 
@@ -700,16 +817,16 @@ Proof.
       skip.
     *)
     (* case follow_ub_cons *)
-    apply (prepend_chain G A1 S D H5).
-    apply (prepend_chain G S U D H4).
+    apply (prepend_chain G A1 S D Hok H5).
+    apply (prepend_chain G S U D Hok H4).
     assert (HdecEq: dec_typ Lo Hi = dec_typ S U) by apply (has_unique H6 H0).
     injection HdecEq; intros; subst.
     exists B C.
     split. assumption. split. assumption. assumption.
   (* case mode *)
-  apply (prepend_chain G _ _ _ H (prepend_chain G _ _ _ H0 Hch)).
+  apply (prepend_chain G _ _ _ Hok H (prepend_chain G _ _ _ Hok H0 Hch)).
   (* case trans *)
-  apply (prepend_chain G _ _ _ H (prepend_chain G _ _ _ H0 Hch)).
+  apply (prepend_chain G _ _ _ Hok H (prepend_chain G _ _ _ Hok H0 Hch)).
 Qed.
 
 Print Assumptions prepend_chain.
