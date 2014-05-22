@@ -391,21 +391,20 @@ Proof.
   (* case bot *)
   apply (subtyp_mode (subtyp_bot _ _)).
   (* case bind *)
-Admitted. (*
-  assert (Hb: forall z0 : var, z0 \notin L ->
-     subdec oktrans 
-       (G1 & z ~ typ_bind l (*>*)d1(*<*) & G2 & z0 ~ typ_bind l0 (open_dec z0 d0))
+  assert (Hb: forall z0 : var,
+     ok (G1 & z ~ typ_bind l d1 & G2 & z0 ~ typ_bind l0 (open_dec z0 d0)) ->
+     subdec oktrans
+       (G1 & z ~ typ_bind l d1 & G2 & z0 ~ typ_bind l0 (open_dec z0 d0))
        (open_dec z0 d0) (open_dec z0 d3)).
-  introv Hnotin.
-  set (Hsd := (H0 z0 Hnotin)).
-  rewrite <- concat_assoc in Hsd.
+  introv Hok.
+  rewrite <- concat_assoc in Hok.
+  specialize (H0 z0).
+  rewrite <- concat_assoc in H0.
+  set (Hok' := (ok_middle_change (typ_bind l d2) Hok)).
+  set (Hsd := (H0 Hok')).
   rewrite <- concat_assoc.
-  assert (Hok': ok (G1 & z ~ typ_bind l d2 & (G2 & z0 ~ typ_bind l0 (open_dec z0 d0)))).
-  skip.
   apply (IHsd _ _ _ _ _ _ _ _ Hok' Hsd HG).
   apply (subtyp_mode (subtyp_bind _ _ Hb)).
-
-
   (* case asel_l *)
   set (H1w := (IHst _ _ _ _ _ _ _ _ Hokd2 H1 HG)).
   destruct (narrow_has Hokd2 H0 HG) as [dA [[Heq | Hsd] Hhas]].
@@ -414,120 +413,28 @@ Admitted. (*
     apply (subtyp_mode (subtyp_asel_l Hhas H1w)).
     (* case subdec *)
     inversion Hsd; subst.
-    apply (subtyp_mode (subtyp_asel_l Hhas (subtyp_trans H10 H1w))).
+    assert (H10' : subtyp oktrans (G1 & z ~ typ_bind l d1 & G2) Hi1 U).
+    skip.
+    apply (subtyp_mode (subtyp_asel_l Hhas (subtyp_trans H10' H1w))).
   (* case asel_r *)
-  set (H1w := (IHst _ _ _ _ _ _ _ _ H1 HG)).
-  set (H2w := (IHst _ _ _ _ _ _ _ _ H2 HG)).
+  set (H1w := (IHst _ _ _ _ _ _ _ _ Hokd2 H1 HG)).
+  set (H2w := (IHst _ _ _ _ _ _ _ _ Hokd2 H2 HG)).
   destruct (narrow_has Hokd2 H0 HG) as [dA [[Heq | Hsd] Hhas]].
     (* case = *)
     subst.
     apply (subtyp_mode (subtyp_asel_r Hhas H1w H2w)).
     (* case subdec *)
     inversion Hsd; subst.
-    apply (subtyp_trans H2w (subtyp_mode (subtyp_asel_r Hhas H5 H10))).
+    assert (H10' : subtyp oktrans (G1 & z ~ typ_bind l d1 & G2) S Lo1).
+    skip.
+    assert (H5' : subtyp oktrans (G1 & z ~ typ_bind l d1 & G2) Lo1 Hi1).
+    skip.
+    apply (subtyp_trans H2w (subtyp_mode (subtyp_asel_r Hhas H5' H10'))).
   (* case trans *)
-  set (Hw := (IHst _ _ _ _ _ _ _ _ H HG)).
-  set (H0w := (IHst _ _ _ _ _ _ _ _ H0 HG)).
-  apply (subtyp_trans Hw H0w).
-Qed.*)
-
-(*
-Lemma subdec_weaken_last: forall G z l d1 d2 dA dB,
-  subdec oktrans (G & z ~ typ_bind l d2) dA dB ->
-  subdec oktrans (G & z ~ typ_bind l d1) d1 d2 ->
-  subdec oktrans (G & z ~ typ_bind l d1) dA dB.
-Proof.
-  fix IHsd 8 with
-   (IHst G z l d1 d2 TA TB (Hst: subtyp oktrans (G & z ~ typ_bind l d2) TA TB) {struct Hst}:
-     subdec oktrans (G & z ~ typ_bind l d1) d1 d2 ->
-     subtyp oktrans (G & z ~ typ_bind l d1) TA TB);
-  introv Hsub HG; inversion Hsub; subst.
-
-  (* subdec *)
-  (* case subdec_typ *)
-  apply (subdec_typ (IHst _ _ _ _ _ _ _ H  HG) 
-                    (IHst _ _ _ _ _ _ _ H0 HG)
-                    (IHst _ _ _ _ _ _ _ H1 HG)
-                    (IHst _ _ _ _ _ _ _ H2 HG)).
-  (* case subdec_fld *)
-  apply (subdec_fld (IHst _ _ _ _ _ _ _ H HG)).
-
-  (* subtyp *)
-  inversion H; subst.
-  (* case refl *)
-  apply (subtyp_mode (subtyp_refl _ _)).
-  (* case top *)
-  apply (subtyp_mode (subtyp_top _ _)).
-  (* case bot *)
-  apply (subtyp_mode (subtyp_bot _ _)).
-  (* case bind *)
-  assert (Hb: forall z0 : var, z0 \notin L ->
-     subdec oktrans (G & z ~ typ_bind l (*>*)d1(*<*) & z0 ~ typ_bind l0 (open_dec z0 d0))
-       (open_dec z0 d0) (open_dec z0 d3)).
-  introv Hnotin.
-  set (Hsd := (H0 z0 Hnotin)).
-  (* --> need narrowing in middle of environment *)
-  skip.
-  apply (subtyp_mode (subtyp_bind _ _ Hb)).
-  (* case asel_l *)
-  set (H1w := (IHst _ _ _ _ _ _ _ H1 HG)).
-  destruct (weaken_has H0 HG) as [dA [[Heq | Hsd] Hhas]].
-    (* case = *)
-    subst.
-    apply (subtyp_mode (subtyp_asel_l Hhas H1w)).
-    (* case subdec *)
-    inversion Hsd; subst.
-    apply (subtyp_mode (subtyp_asel_l Hhas (subtyp_trans H10 H1w))).
-  (* case asel_r *)
-  set (H1w := (IHst _ _ _ _ _ _ _ H1 HG)).
-  set (H2w := (IHst _ _ _ _ _ _ _ H2 HG)).
-  destruct (weaken_has H0 HG) as [dA [[Heq | Hsd] Hhas]].
-    (* case = *)
-    subst.
-    apply (subtyp_mode (subtyp_asel_r Hhas H1w H2w)).
-    (* case subdec *)
-    inversion Hsd; subst.
-    apply (subtyp_trans H2w (subtyp_mode (subtyp_asel_r Hhas H5 H10))).
-  (* case trans *)
-  set (Hw := (IHst _ _ _ _ _ _ _ H HG)).
-  set (H0w := (IHst _ _ _ _ _ _ _ H0 HG)).
+  set (Hw := (IHst _ _ _ _ _ _ _ _ Hokd2 H HG)).
+  set (H0w := (IHst _ _ _ _ _ _ _ _ Hokd2 H0 HG)).
   apply (subtyp_trans Hw H0w).
 Qed.
-
-Print Assumptions subdec_weaken_last.
-*)
-
-
-(*
-Lemma env_eq would be useful to get (G & empty = G), so that the environment in
-the weakening lemma could be transformed from (G1 & z ~ ... & empty) to (G1 & z ~ ...).
-But as the Lemma bad shows, this would lead to contradictions, because env maintains
-an order on its elements.
-Maybe use fset instead? Because it has 
-
-Lemma fset_extens_eq : forall E F,
-  (forall x, x \in E = x \in F) -> E = F.
-
-Lemma env_eq : forall A G1 G2,
-  (forall k v, @binds A k v G1 <-> @binds A k v G2) -> G1 = G2.
-Proof.
-Admitted.
-
-Lemma bad: forall (z1 z2: var)(l: label)(d: dec), z1 <> z2 -> False.
-Proof.
-  intros.
-  set (G1 := z1 ~ (typ_bind l d)).
-  set (G2 := z2 ~ (typ_bind l d)).
-  assert (H1: forall k v, binds k v (G2 & G1) <-> binds k v (G1 & G2)).
-  skip. (* because trivial *)
-  set (H2 := env_eq H1).
-  unfold G1 in H2. unfold G2 in H2.
-  rewrite <- cons_to_push in H2.
-  rewrite <- cons_to_push in H2.
-  inversion H2.
-  absurd (z1 = z2); assumption.
-Qed.
-*)
 
 Lemma env_add_empty: forall (P: ctx -> Prop) (G: ctx), P G -> P (G & empty).
 Proof.
@@ -860,3 +767,8 @@ Print Assumptions prepend_chain.
   skip.
   (* case trans *)
   skip.
+
+  assert (Hassoc: (z ~ typ_bind l d2 & (G2 & z0 ~ typ_bind l0 (open_dec z0 d0)))
+               =  (z ~ typ_bind l d2 &  G2 & z0 ~ typ_bind l0 (open_dec z0 d0) ))
+     by apply concat_assoc.
+
