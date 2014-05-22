@@ -389,6 +389,9 @@ Proof.
   assert (Hb: forall z0 : var, z0 \notin L ->
      subdec oktrans (G & z ~ typ_bind l (*>*)d1(*<*) & z0 ~ typ_bind l0 (open_dec z0 d0))
        (open_dec z0 d0) (open_dec z0 d3)).
+  introv Hnotin.
+  set (Hsd := (H0 z0 Hnotin)).
+  (* --> need narrowing in middle of environment *)
   skip.
   apply (subtyp_mode (subtyp_bind _ _ Hb)).
   (* case asel_l *)
@@ -718,13 +721,3 @@ Print Assumptions prepend_chain.
   skip.
   (* case trans *)
   skip.
-
-
-Lemma invert_subdec_typ: forall m G d1 Lo2 Hi2,
-  subdec m G d1 (dec_typ Lo2 Hi2) -> 
-  exists Lo1 Hi1, d1 = (dec_typ Lo1 Hi1) /\ subtyp m G Hi1 Hi2.
-Proof.
-  intros.
-  inversion H; subst.
-  exists Lo1 Hi1. split. trivial. assumption.
-Qed.
