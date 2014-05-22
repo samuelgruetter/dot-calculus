@@ -315,36 +315,44 @@ Definition rsubdec(G: ctx)(d1 d2: dec): Prop :=
 
 (* ... weakening lemmas ... *)
 
-Lemma weaken_has: forall G z l d1 d2 p L dB,
-  has            (G & z ~ typ_bind l d2) p L dB ->
-  subdec oktrans (G & z ~ typ_bind l d1) d1 d2 ->
+Lemma narrow_has: forall G1 G2 z l d1 d2 p L dB,
+  ok             (G1 & z ~ typ_bind l d2 & G2) ->
+  has            (G1 & z ~ typ_bind l d2 & G2) p L dB ->
+  subdec oktrans (G1 & z ~ typ_bind l d1     ) d1 d2 ->
   exists dA, 
-  rsubdec (G & z ~ typ_bind l d1) dA dB 
-      /\ has     (G & z ~ typ_bind l d1) p L dA.
+    rsubdec (G1 & z ~ typ_bind l d1     ) dA dB 
+    /\ has  (G1 & z ~ typ_bind l d1 & G2) p L dA.
 Proof.
-  introv Hhas Hsd.
-  inversion Hhas; inversion H; unfold rsubdec; subst.
-  rewrite -> (get_push x z (typ_bind l d2) G) in H5.
-  cases_if.
-  (* case hit *)
-  inversion H5; subst.
+  introv Hokd2 Hhas Hsd.
+  set (Hokd1 := (ok_middle_change (typ_bind l d1) Hokd2)).
+  inversion Hhas; unfold rsubdec; subst.
+  destruct (classicT (x = z)) as [Heq|Hne].
+  (* case x = z *)
+  subst.
+  set (Heq := (binds_middle_eq_inv H Hokd2)).
+  inversion Heq; subst.
   exists d1.
   split.
   right. apply Hsd.
   apply has_var.
-  apply binds_tail.
-  (* case miss *) (* remove binding for z from G and add new one *)
-  assert (HG: binds x (typ_bind L dB) G).
-  apply (binds_concat_left_inv H).
-  rewrite -> dom_single. notin_solve.
+  destruct (ok_middle_inv Hokd2) as [_ HzG2].
+  apply (binds_middle_eq  _ _ HzG2).  
+  (* case x <> z*)
+  assert (Hxz: x # z ~ typ_bind l d2).
+  unfold notin.
+  rewrite -> dom_single. 
+  rewrite -> in_singleton.
+  assumption.
+  assert (HG: binds x (typ_bind L dB) (G1 & G2)).
+  apply (binds_remove H Hxz).
   exists dB.
   split. left. trivial.  
-  assert (HGz: binds x (typ_bind L dB) (G & z ~ typ_bind l d1)).
-  apply (@binds_push_neq typ x z (typ_bind L dB) (typ_bind l d1) G HG H0).
+  assert (HGz: binds x (typ_bind L dB) (G1 & z ~ typ_bind l d1 & G2)).
+  apply (@binds_weaken typ x (typ_bind L dB) G1 (z ~ typ_bind l d1) G2 HG Hokd1).
   apply (has_var HGz).
 Qed.
 
-Print Assumptions weaken_has.
+Print Assumptions narrow_has.
 
 (*Lemma weaken_last: 
    (forall G z l d1 d2 TA TB,
