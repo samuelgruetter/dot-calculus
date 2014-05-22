@@ -507,7 +507,6 @@ Maybe use fset instead? Because it has
 
 Lemma fset_extens_eq : forall E F,
   (forall x, x \in E = x \in F) -> E = F.
-*)
 
 Lemma env_eq : forall A G1 G2,
   (forall k v, @binds A k v G1 <-> @binds A k v G2) -> G1 = G2.
@@ -528,8 +527,21 @@ Proof.
   inversion H2.
   absurd (z1 = z2); assumption.
 Qed.
+*)
 
+Lemma env_add_empty: forall (P: ctx -> Prop) (G: ctx), P G -> P (G & empty).
+Proof.
+  intros.
+  assert ((G & empty) = G) by apply concat_empty_r.
+  rewrite -> H0. assumption.
+Qed.  
 
+Lemma env_remove_empty: forall (P: ctx -> Prop) (G: ctx), P (G & empty) -> P G.
+Proof.
+  intros.
+  assert ((G & empty) = G) by apply concat_empty_r.
+  rewrite <- H0. assumption.
+Qed.
 
 Lemma subdec_narrow_last: forall G z l d1 d2 dA dB,
   ok             (G & z ~ typ_bind l d2) ->
@@ -538,11 +550,13 @@ Lemma subdec_narrow_last: forall G z l d1 d2 dA dB,
   subdec oktrans (G & z ~ typ_bind l d1) dA dB.
 Proof.
   introv Hok HAB H12.
-  (* Now add `& empty` to all the environments we got --> How ? *)
-  assert (Hok': ok ((G & z ~ typ_bind l d2) & empty)).
-  skip.
-Admitted.
-
+  apply (env_remove_empty (fun G0 => subdec oktrans G0 dA dB) (G & z ~ typ_bind l d1)).
+  apply subdec_narrow with (d2 := d2).
+  apply (env_add_empty (fun G0 => ok G0) (G & z ~ typ_bind l d2) Hok).
+  apply (env_add_empty (fun G0 => subdec oktrans G0 dA dB)
+                             (G & z ~ typ_bind l d2) HAB).
+  assumption.
+Qed.
 
 (* ... transitivity in notrans mode, but no p.L in middle ... *)
 
