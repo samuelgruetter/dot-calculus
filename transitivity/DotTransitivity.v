@@ -304,15 +304,11 @@ Proof.
   trivial.
 Qed.
 
-Lemma subdec_refl: forall m G d,
-  subdec m G d d.
-Proof.
-  intros.
-  destruct d as [Lo Hi | T].
-  apply subdec_typ.
+(* "reflexive subdec", just subdec+reflexivity *)
+Definition rsubdec(G: ctx)(d1 d2: dec): Prop :=
+  d1 = d2 \/ subdec oktrans G d1 d2.
 
-  (* TODO not true if Lo >: Hi !!! *)
-Abort.
+(* Lemma subdec_refl: forall m G d, subdec m G d d. (* not true if Lo >: Hi *) *)
 
 (* Lemma invert_subtyp_bot: forall m G T, subtyp m G T typ_bot -> T = typ_bot.
    Does not hold because T could be a p.L with lower and upper bound bottom. *)
@@ -323,18 +319,18 @@ Lemma weaken_has: forall G z l d1 d2 p L dB,
   has            (G & z ~ typ_bind l d2) p L dB ->
   subdec oktrans (G & z ~ typ_bind l d1) d1 d2 ->
   exists dA, 
-  subdec oktrans (G & z ~ typ_bind l d1) dA dB 
+  rsubdec (G & z ~ typ_bind l d1) dA dB 
       /\ has     (G & z ~ typ_bind l d1) p L dA.
 Proof.
   introv Hhas Hsd.
-  inversion Hhas; inversion H; subst.
+  inversion Hhas; inversion H; unfold rsubdec; subst.
   rewrite -> (get_push x z (typ_bind l d2) G) in H5.
   cases_if.
   (* case hit *)
   inversion H5; subst.
   exists d1.
   split.
-  apply Hsd.
+  right. apply Hsd.
   apply has_var.
   apply binds_tail.
   (* case miss *) (* remove binding for z from G and add new one *)
@@ -342,10 +338,13 @@ Proof.
   apply (binds_concat_left_inv H).
   rewrite -> dom_single. notin_solve.
   exists dB.
-  split.  
-  skip. (* here we need to know that bounds of dB are good! *)
-  skip. (* now add (z ~ typ_bind l d1) to G, but need to know that z # G *)
+  split. left. trivial.  
+  assert (HGz: binds x (typ_bind L dB) (G & z ~ typ_bind l d1)).
+  apply (@binds_push_neq typ x z (typ_bind L dB) (typ_bind l d1) G HG H0).
+  apply (has_var HGz).
 Qed.
+
+Print Assumptions weaken_has.
 
 (*Lemma weaken_last: 
    (forall G z l d1 d2 TA TB,
@@ -393,13 +392,31 @@ Proof.
   skip.
   apply (subtyp_mode (subtyp_bind _ _ Hb)).
   (* case asel_l *)
-  skip. (* need weaken_has *)
+  set (H1w := (IHst _ _ _ _ _ _ _ H1 HG)).
+  destruct (weaken_has H0 HG) as [dA [[Heq | Hsd] Hhas]].
+    (* case = *)
+    subst.
+    apply (subtyp_mode (subtyp_asel_l Hhas H1w)).
+    (* case subdec *)
+    inversion Hsd; subst.
+    apply (subtyp_mode (subtyp_asel_l Hhas (subtyp_trans H10 H1w))).
   (* case asel_r *)
-  skip.
+  set (H1w := (IHst _ _ _ _ _ _ _ H1 HG)).
+  set (H2w := (IHst _ _ _ _ _ _ _ H2 HG)).
+  destruct (weaken_has H0 HG) as [dA [[Heq | Hsd] Hhas]].
+    (* case = *)
+    subst.
+    apply (subtyp_mode (subtyp_asel_r Hhas H1w H2w)).
+    (* case subdec *)
+    inversion Hsd; subst.
+    apply (subtyp_trans H2w (subtyp_mode (subtyp_asel_r Hhas H5 H10))).
   (* case trans *)
-  skip.
+  set (Hw := (IHst _ _ _ _ _ _ _ H HG)).
+  set (H0w := (IHst _ _ _ _ _ _ _ H0 HG)).
+  apply (subtyp_trans Hw H0w).
 Qed.
 
+Print Assumptions subdec_weaken_last.
 
 (* ... transitivity in notrans mode, but no p.L in middle ... *)
 
@@ -684,7 +701,7 @@ Proof.
   apply (prepend_chain G _ _ _ H (prepend_chain G _ _ _ H0 Hch)).
 Qed.
 
-
+Print Assumptions prepend_chain.
 
   (* subtyp cases: *)
   (* case refl *)
@@ -702,3 +719,12 @@ Qed.
   (* case trans *)
   skip.
 
+
+Lemma invert_subdec_typ: forall m G d1 Lo2 Hi2,
+  subdec m G d1 (dec_typ Lo2 Hi2) -> 
+  exists Lo1 Hi1, d1 = (dec_typ Lo1 Hi1) /\ subtyp m G Hi1 Hi2.
+Proof.
+  intros.
+  inversion H; subst.
+  exists Lo1 Hi1. split. trivial. assumption.
+Qed.
