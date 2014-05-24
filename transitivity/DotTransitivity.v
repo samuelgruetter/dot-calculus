@@ -876,8 +876,21 @@ Proof.
   apply (prepend_chain G _ _ _ Hok H (prepend_chain G _ _ _ Hok H0 Hch)).
 Qed.
 
-Print Assumptions prepend_chain.
+Lemma oktrans_to_notrans: forall G T1 T3,
+  ok G -> subtyp oktrans G T1 T3 -> subtyp notrans G T1 T3.
+Proof.
+  introv Hok Hst.
+  inversion Hst; subst.
+  assumption.
+  set (Hch := (prepend_chain Hok H (prepend_chain Hok H0 (empty_chain _ _)))).
+  unfold chain in Hch.
+  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+  apply (chain1subtyp Hok Hch1 Hch2 Hch3).
+Qed.
 
+Print Assumptions oktrans_to_notrans.
+
+(*
   (* subtyp cases: *)
   (* case refl *)
   skip.
@@ -893,3 +906,4 @@ Print Assumptions prepend_chain.
   skip.
   (* case trans *)
   skip.
+*)
