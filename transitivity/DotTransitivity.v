@@ -709,12 +709,13 @@ Proof.
   right. exists p X. trivial.
 Qed.*)
 
+(* not needed because inversion is smart enough 
 Lemma follow_ub_top: forall G T, follow_ub G typ_top T -> T = typ_top.
 Proof.
   intros.
   inversion H.
   trivial.
-Qed.
+Qed. *)
 
 Lemma follow_ub_bind: forall G l d T, 
   follow_ub G (typ_bind l d) T -> T = (typ_bind l d).
@@ -742,13 +743,16 @@ Inductive st_middle: ctx -> typ -> typ -> Prop :=
 
 
 Definition st_middle (G: ctx) (B C: typ): Prop :=
-  B = C \/ (notsel B /\ notsel C /\ subtyp notrans G B C).
-
+  B = C \/ 
+  B = typ_bot \/
+  C = typ_top \/
+  (notsel B /\ True (*notsel C*) /\ subtyp notrans G B C).
 
 (* linearize a derivation that uses transitivity *)
 
 Definition chain (G: ctx) (A D: typ): Prop :=
    (exists B C, follow_ub G A B /\ st_middle G B C /\ follow_lb G C D).
+
 
 Lemma empty_chain: forall G T, chain G T T.
 Proof.
@@ -781,10 +785,12 @@ Proof.
   introv Hok Hst Hm Hflb.
   inversion Hm; subst.
   apply (chain3subtyp Hst Hflb).
-  destruct H as [H1 [H2 H3]].
+  unfold st_middle in H.
+  destruct H as [Heq | [Heq | [H1 [H2 H3]]]]; subst.
+  apply (subtyp_trans_notrans Hok notsel_bot Hst (subtyp_bot G D)).
+  apply (chain3subtyp (subtyp_top G B1) Hflb).
   apply (chain3subtyp (subtyp_trans_notrans Hok H1 Hst H3) Hflb).
 Qed.
-
 
 Lemma chain1subtyp: forall G A B C D,
   ok G ->
@@ -801,6 +807,35 @@ Proof.
   apply (IHHfub Hok Hm Hflb).
 Qed.
 
+Inductive imp: ctx -> typ -> Prop :=
+  | imp_top: forall G, imp G typ_top
+  | imp_bind: forall G l d,
+      imp G (typ_bind l d) (* <-- TODO ! *)
+  | imp_asel: forall G p L Lo Hi,
+      has G p L (dec_typ Lo Hi) ->
+      imp G Lo ->
+      imp G Hi ->
+      imp G (typ_asel p L).
+
+Lemma fub_to_notsel: forall G A1,
+  imp G A1 ->
+  exists A2, notsel A2 /\ follow_ub G A1 A2.
+Proof.
+  introv Himp.
+  induction Himp.
+  (* case typ_top *)
+  exists typ_top.
+  auto.
+  (* case typ_bind *)
+  exists (typ_bind l d).
+  auto.
+  (* case typ_asel *)
+  destruct IHHimp2 as [A2 [Hn Hf]].
+  exists A2.
+  split. assumption.
+  apply (follow_ub_cons H Hf).
+Qed.
+
 (* prepend an oktrans to chain ("utrans0*") *)
 Lemma prepend_chain: forall G A1 A2 D,
   ok G ->
@@ -815,35 +850,38 @@ Proof.
   (* case refl *)
   assumption.
   (* case top *)
-  (*
   destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
-  exists A1 C.
-  split. apply follow_ub_nil.
-  apply follow_ub_top in Hch1. subst.
-  split. apply (subtyp_trans_notrans Hok notsel_top H Hch2).
-  apply Hch3.
-  *)
+  inversion Hch1; subst.
+  (* destruct (subtyp_top_fub Hokt) as [A2 [Hn [Hub Hst]]]. *)
+  assert (Himp: imp G A1).
   skip.
+  destruct (fub_to_notsel Himp) as [A2 [Hn Hub]].
+  destruct Hch2 as [Hch2 | [Hch2 | [Hch2 | [Hch2a [Hch2b Hch2c]]]]]; subst.
+  exists A2 typ_top.
+  auto 10.
+  inversion Hch2. (* contradiction *)
+  exists A2 typ_top.
+  auto 10.
+  set (HA2C := (subtyp_trans_notrans Hok notsel_top (subtyp_top G A2) Hch2c)).
+  exists A2 C.
+  auto 10.
   (* case bot *)
-  (*
   destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
   exists typ_bot C.
-  split. apply follow_ub_nil.
-  split. apply (subtyp_bot G C).
-  apply Hch3.
-  *)
-  skip.
+  auto 10.
   (* case bind *)
   destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
   assert (B = typ_bind l d2) by apply (follow_ub_bind Hch1); subst.
   exists (typ_bind l d1) C.
-  destruct Hch2 as [Hch2 | [Hch2a [Hch2b Hch2c]]].
+  (* destruct Hch2 as [Hch2 | [Hch2a [Hch2b Hch2c]]].*)
+  destruct Hch2 as [Hch2 | [Hch2 | [Hch2 | [Hch2a [Hch2b Hch2c]]]]].
   subst.
-  split. auto.
-  split; auto.
+  auto 10. (* <- search depth *)
+  inversion Hch2. (* contradiction *)
+  subst.
+  auto 10.
   set (Hst := (subtyp_trans_notrans Hok (notsel_bind _ _) H Hch2c)).
-  split. auto.
-  split; auto.
+  auto 10.
   (* case asel_l *)
   set (IH := (prepend_chain G U A2 D Hok H4 Hch)).
   destruct IH as [B [C [IH1 [IH2 IH3]]]].
@@ -856,12 +894,17 @@ Proof.
   destruct Hch' as [B [C [Hch1 [Hch2 Hch3]]]].
   inversion Hch1; subst.
     (* case follow_ub_nil *)
-    destruct Hch2 as [Hch2 | [Hch2a [Hch2b Hch2c]]].
+    destruct Hch2 as [Hch2 | [Hch2 | [Hch2 | [Hch2a [Hch2b Hch2c]]]]].
     subst.
     apply (prepend_chain G A1 S D Hok H5).
     exists S S. 
     set (Hflb := (follow_lb_cons H0 H4 Hch3)).
     auto.
+    inversion Hch2. (* contradiction *)
+    subst.
+    apply (prepend_chain G A1 S D Hok H5).
+    exists S typ_top.
+    auto 10.
     inversion Hch2a. (* contradiction *)
     (* case follow_ub_cons *)
     apply (prepend_chain G A1 S D Hok H5).
@@ -905,5 +948,7 @@ Print Assumptions oktrans_to_notrans.
   (* case asel_r *)
   skip.
   (* case trans *)
+  skip.
+  (* case mode *)
   skip.
 *)
