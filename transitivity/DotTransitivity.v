@@ -144,21 +144,6 @@ Combined Scheme subtyp_subdec_mutind from subtyp_mut, subdec_mut.
 Hint Constructors subtyp.
 Hint Constructors subdec.
 
-(*
-Lemma invert_subdec: forall m G d1 d2,
-   subdec m G d1 d2 -> (
-   (exists Lo1 Hi1 Lo2 Hi2, d1 = (dec_typ Lo1 Hi1) /\ d2 = (dec_typ Lo2 Hi2) /\
-     subtyp m G Lo2 Lo1 /\ subtyp m G Hi1 Hi2)
-\/ (exists T1 T2, d1 = (dec_fld T1) /\ d2 = (dec_fld T2) /\
-     subtyp m G T1 T2)).
-Proof.
-  intros.
-  inversion H.
-  left. exists Lo1 Hi1 Lo2 Hi2. subst. auto.
-  right. exists T1 T2. subst. auto.
-Qed.
-*)
-
 (* ... free vars ... *)
 
 Inductive fvar : avar -> Prop :=
@@ -232,18 +217,6 @@ Ltac gather_vars :=
 
 Ltac pick_fresh x :=
   let L := gather_vars in (pick_fresh_gen L x).
-
-(* not needed
-Lemma notin_empty: forall z A, z # (@empty A).
-Proof.
-  intros.
-  unfold notin.
-  rewrite -> dom_empty.
-  rewrite -> in_empty.
-  rewrite -> not_False.
-  apply I.
-Qed. *)
-
 
 (* ... examples ... *)
 
@@ -616,24 +589,6 @@ Proof.
   apply (subtyp_asel_r H1 H5 H1S0).
 Qed.
 
-(*
-(notransl G A B) means that there exists a notrans-subtyping chain/list
-    A <: T1 <: T2 <: ... <: TN <: B
-where no Ti is a p.L
-)
-Inductive notransl: ctx -> typ -> typ -> Prop :=
-  | notransl_nil : forall G A B,
-      (* could also just have reflexivity here, but having a subtyp makes 
-      top/bot cases easier *)
-      subtyp notrans G A B ->
-      notransl G A B
-  | notransl_cons : forall G A T1 B,
-      subtyp notrans G A T1 ->
-      notsel T1 ->
-      notransl G T1 B ->
-      notransl G A B.
-*)
-
 (* 
 (follow_ub G p1.X1 T) means that there exists a chain
   (p1.X1: _ .. p2.X2), (p2.X2: _ .. p3.X3), ... (pN.XN: _ .. T)
@@ -685,37 +640,7 @@ Proof.
   auto.
 Qed.
 
-Lemma invert_follow_lb_OLD: forall G T1 T2,
-  follow_lb G T1 T2 -> 
-  T1 = T2 \/ exists p2 X2, (typ_asel p2 X2) = T2.
-Proof.
-  intros.
-  induction H.
-  auto.
-  destruct IHfollow_lb as [IH | IH].
-  subst.
-  right. exists p X. trivial.
-  right. assumption.
-Qed.
-
-(* not needed because inversion is smart enough
-Lemma invert_follow_ub: forall G T1 T2,
-  follow_ub G T1 T2 ->
-  T1 = T2 \/ exists p1 X1, (typ_asel p1 X1) = T1.
-Proof.
-  intros.
-  inversion H; subst.
-  auto.
-  right. exists p X. trivial.
-Qed.*)
-
-(* not needed because inversion is smart enough 
-Lemma follow_ub_top: forall G T, follow_ub G typ_top T -> T = typ_top.
-Proof.
-  intros.
-  inversion H.
-  trivial.
-Qed. *)
+(* Note: No need for a invert_follow_ub lemma because inversion is smart enough. *)
 
 Lemma follow_ub_bind: forall G l d T, 
   follow_ub G (typ_bind l d) T -> T = (typ_bind l d).
@@ -725,23 +650,6 @@ Proof.
   trivial.
 Qed.
 
-(*
-Lemma follow_ub_bot: forall G T,
-  follow_ub G T typ_bot -> T = typ_bot.
-does not hold (can have a p.X:bot..bot, and follow_ub_nil bot) 
-*)
-
-(*
-Inductive st_middle: ctx -> typ -> typ -> Prop :=
-  | st_middle_0: forall G T,
-      st_middle G T T
-  | st_middle_1: forall G T1 T2,
-      notsel T1 ->
-      subtyp notrans G T1 T2 ->
-      st_middle G T1 T2.
-*)
-
-
 Definition st_middle (G: ctx) (B C: typ): Prop :=
   B = C \/ (notsel B /\ subtyp notrans G B C).
 
@@ -750,7 +658,6 @@ Definition st_middle (G: ctx) (B C: typ): Prop :=
 Definition chain (G: ctx) (A D: typ): Prop :=
    (exists B C, follow_ub G A B /\ st_middle G B C /\ follow_lb G C D).
 
-
 Lemma empty_chain: forall G T, chain G T T.
 Proof.
   intros.
@@ -758,7 +665,6 @@ Proof.
   exists T T.
   auto.
 Qed.
-
 
 Lemma chain3subtyp: forall G C1 C2 D, 
   subtyp notrans G C1 C2 ->
@@ -847,16 +753,12 @@ Proof.
   (* case top *)
   destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
   inversion Hch1; subst.
-  (* destruct (subtyp_top_fub Hokt) as [A2 [Hn [Hub Hst]]]. *)
   assert (Himp: imp G A1).
   skip.
   destruct (fub_to_notsel Himp) as [A2 [Hn Hub]].
   destruct Hch2 as [Hch2 | [Hch2a Hch2c]]; subst.
   exists A2 typ_top.
   auto 10.
-(*  inversion Hch2. (* contradiction *)
-  exists A2 typ_top.
-  auto 10.*)
   set (HA2C := (subtyp_trans_notrans Hok notsel_top (subtyp_top G A2) Hch2c)).
   exists A2 C.
   auto 10.
@@ -868,13 +770,9 @@ Proof.
   destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
   assert (B = typ_bind l d2) by apply (follow_ub_bind Hch1); subst.
   exists (typ_bind l d1) C.
-  (* destruct Hch2 as [Hch2 | [Hch2a [Hch2b Hch2c]]].*)
   destruct Hch2 as [Hch2 | [Hch2a Hch2c]].
   subst.
   auto 10. (* <- search depth *)
-  (*inversion Hch2. (* contradiction *)
-  subst.
-  auto 10.*)
   set (Hst := (subtyp_trans_notrans Hok (notsel_bind _ _) H Hch2c)).
   auto 10.
   (* case asel_l *)
@@ -895,11 +793,6 @@ Proof.
     exists S S. 
     set (Hflb := (follow_lb_cons H0 H4 Hch3)).
     auto.
-(*    inversion Hch2. (* contradiction *)
-    subst.
-    apply (prepend_chain G A1 S D Hok H5).
-    exists S typ_top.
-    auto 10.*)
     inversion Hch2a. (* contradiction *)
     (* case follow_ub_cons *)
     apply (prepend_chain G A1 S D Hok H5).
@@ -927,6 +820,7 @@ Proof.
 Qed.
 
 Print Assumptions oktrans_to_notrans.
+(* skip_axiom still listed... *)
 
 (*
   (* subtyp cases: *)
