@@ -744,8 +744,8 @@ Inductive st_middle: ctx -> typ -> typ -> Prop :=
 
 Definition st_middle (G: ctx) (B C: typ): Prop :=
   B = C \/ 
-  B = typ_bot \/
-  C = typ_top \/
+(*  B = typ_bot \/
+  C = typ_top \/*)
   (notsel B /\ True (*notsel C*) /\ subtyp notrans G B C).
 
 (* linearize a derivation that uses transitivity *)
@@ -786,9 +786,9 @@ Proof.
   inversion Hm; subst.
   apply (chain3subtyp Hst Hflb).
   unfold st_middle in H.
-  destruct H as [Heq | [Heq | [H1 [H2 H3]]]]; subst.
-  apply (subtyp_trans_notrans Hok notsel_bot Hst (subtyp_bot G D)).
-  apply (chain3subtyp (subtyp_top G B1) Hflb).
+  destruct H as [(*Heq | [Heq | [*)H1 [H2 H3](*]]*)]; subst.
+  (*apply (subtyp_trans_notrans Hok notsel_bot Hst (subtyp_bot G D)).
+  apply (chain3subtyp (subtyp_top G B1) Hflb).*)
   apply (chain3subtyp (subtyp_trans_notrans Hok H1 Hst H3) Hflb).
 Qed.
 
@@ -856,12 +856,12 @@ Proof.
   assert (Himp: imp G A1).
   skip.
   destruct (fub_to_notsel Himp) as [A2 [Hn Hub]].
-  destruct Hch2 as [Hch2 | [Hch2 | [Hch2 | [Hch2a [Hch2b Hch2c]]]]]; subst.
+  destruct Hch2 as [Hch2 | (*[Hch2 | [Hch2 |*) [Hch2a [Hch2b Hch2c]]](*]]*); subst.
   exists A2 typ_top.
   auto 10.
-  inversion Hch2. (* contradiction *)
+(*  inversion Hch2. (* contradiction *)
   exists A2 typ_top.
-  auto 10.
+  auto 10.*)
   set (HA2C := (subtyp_trans_notrans Hok notsel_top (subtyp_top G A2) Hch2c)).
   exists A2 C.
   auto 10.
@@ -874,12 +874,12 @@ Proof.
   assert (B = typ_bind l d2) by apply (follow_ub_bind Hch1); subst.
   exists (typ_bind l d1) C.
   (* destruct Hch2 as [Hch2 | [Hch2a [Hch2b Hch2c]]].*)
-  destruct Hch2 as [Hch2 | [Hch2 | [Hch2 | [Hch2a [Hch2b Hch2c]]]]].
+  destruct Hch2 as [Hch2 | (*[Hch2 | [Hch2 |*) [Hch2a [Hch2b Hch2c]](*]]*)].
   subst.
   auto 10. (* <- search depth *)
-  inversion Hch2. (* contradiction *)
+  (*inversion Hch2. (* contradiction *)
   subst.
-  auto 10.
+  auto 10.*)
   set (Hst := (subtyp_trans_notrans Hok (notsel_bind _ _) H Hch2c)).
   auto 10.
   (* case asel_l *)
@@ -894,17 +894,17 @@ Proof.
   destruct Hch' as [B [C [Hch1 [Hch2 Hch3]]]].
   inversion Hch1; subst.
     (* case follow_ub_nil *)
-    destruct Hch2 as [Hch2 | [Hch2 | [Hch2 | [Hch2a [Hch2b Hch2c]]]]].
+    destruct Hch2 as [Hch2 | (*[Hch2 | [Hch2 |*) [Hch2a [Hch2b Hch2c]]](*]]*).
     subst.
     apply (prepend_chain G A1 S D Hok H5).
     exists S S. 
     set (Hflb := (follow_lb_cons H0 H4 Hch3)).
     auto.
-    inversion Hch2. (* contradiction *)
+(*    inversion Hch2. (* contradiction *)
     subst.
     apply (prepend_chain G A1 S D Hok H5).
     exists S typ_top.
-    auto 10.
+    auto 10.*)
     inversion Hch2a. (* contradiction *)
     (* case follow_ub_cons *)
     apply (prepend_chain G A1 S D Hok H5).
