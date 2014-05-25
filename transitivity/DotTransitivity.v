@@ -547,11 +547,17 @@ Lemma subtyp_trans_notrans: forall G T1 T2 T3,
 Proof.
   introv Hok Hnotsel H12 H23.
 
-  inversion Hnotsel (*as [ | | l d2]*); subst.
+  inversion Hnotsel; subst.
   (* case top *)
-  skip.
+  inversion H23; subst.
+  apply (subtyp_top G T1).
+  apply (subtyp_top G T1).
+  apply (subtyp_asel_r H H0 (subtyp_trans (subtyp_mode H12) H1)).
   (* case bot *)
-  skip. 
+  inversion H12; subst.
+  apply (subtyp_bot G T3).
+  apply (subtyp_bot G T3).
+  apply (subtyp_asel_l H (subtyp_trans H0 (subtyp_mode H23))).
   (* case bind *)
   inversion H12; inversion H23; subst; (
     assumption ||
@@ -566,7 +572,8 @@ Proof.
   introv Hok'.
   specialize (H3 z Hok').
   assert (Hok'': ok (G & z ~ typ_bind l (open_dec z d))).
-  skip.
+  destruct (ok_push_inv Hok') as [_ Hnotin].
+  apply ok_push; assumption.
   specialize (H7 z Hok'').
   assert (H7': subdec oktrans (G & z ~ typ_bind l (open_dec z (*->*)d1(*<-*))) 
                               (open_dec z d) (open_dec z d3)).
@@ -641,14 +648,6 @@ Proof.
 Qed.
 
 (* Note: No need for a invert_follow_ub lemma because inversion is smart enough. *)
-
-Lemma follow_ub_bind: forall G l d T, 
-  follow_ub G (typ_bind l d) T -> T = (typ_bind l d).
-Proof.
-  intros.
-  inversion H.
-  trivial.
-Qed.
 
 Definition st_middle (G: ctx) (B C: typ): Prop :=
   B = C \/
@@ -739,7 +738,7 @@ Proof.
   auto 10.
   (* case bind *)
   destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
-  assert (B = typ_bind l d2) by apply (follow_ub_bind Hch1); subst.
+  inversion Hch1; subst.
   exists (typ_bind l d1) C.
   destruct Hch2 as [Hch2 | [Hch2 | [Hch2a Hch2b]]].
   subst.
@@ -794,7 +793,6 @@ Proof.
 Qed.
 
 Print Assumptions oktrans_to_notrans.
-(* skip_axiom still listed... *)
 
 (*
   (* subtyp cases: *)
