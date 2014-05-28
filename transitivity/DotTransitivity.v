@@ -24,17 +24,20 @@ Inductive pth : Type :=
 Inductive typ : Type :=
   | typ_top  : typ
   | typ_bot  : typ
-  | typ_bind : label -> dec -> typ (* { z => one decl } *)
+  | typ_bind : env dec -> typ (* { z => decs } *)
   | typ_asel : pth -> label -> typ (* select on abstract type *)
 with dec : Type :=
   | dec_typ  : typ -> typ -> dec
   | dec_fld  : typ -> dec
 .
 
+(* mapping from label to dec *)
+Definition decs := env dec.
+
 Inductive notsel: typ -> Prop :=
   | notsel_top  : notsel typ_top
   | notsel_bot  : notsel typ_bot
-  | notsel_bind : forall l d, notsel (typ_bind l d).
+  | notsel_bind : forall ds, notsel (typ_bind ds).
 
 Hint Constructors notsel.
 
@@ -54,11 +57,35 @@ Fixpoint open_rec_pth (k: nat) (u: var) (p: pth) { struct p } : pth :=
 (*| pth_sel p l => pth_sel (open_rec_pth k u p) l *)
   end.
 
+
+(* map and env_map are the same, except that for env_map, we have a definition which
+   works in recursive definitions (decreasing measure...).
+   Note that map has map_def, but rhs of map_def doesn't work either *)
+Definition env_map {A B: Type} (f: A -> B) (E: env A): env B :=
+  List.map (fun p => (fst p, f (snd p))) E.
+
+Lemma env_map_is_map: forall A B (E: env A) (f: A -> B),
+  env_map f E = map f E.
+Proof.
+  intros.
+  rewrite -> map_def.
+  unfold env_map.
+  unfold env in *.
+  induction E.
+  (* case nil *)
+  auto.
+  (* case cons *)
+  rewrite -> LibList.map_cons.
+  simpl.
+  rewrite -> IHE.
+  trivial.
+Qed.
+
 Fixpoint open_rec_typ (k: nat) (u: var) (t: typ) { struct t } : typ :=
   match t with
   | typ_top => typ_top
   | typ_bot => typ_bot
-  | typ_bind l d => typ_bind l (open_rec_dec (S k) u d)
+  | typ_bind ds => typ_bind (env_map (open_rec_dec (S k) u) ds)
   | typ_asel p l => typ_asel (open_rec_pth k u p) l
   end
 with open_rec_dec (k: nat) (u: var) (d: dec) { struct d } : dec :=
@@ -80,8 +107,9 @@ Definition open_dec  u d := open_rec_dec  0 u d.
 Definition ctx := env typ.
 
 Inductive has : ctx -> pth -> label -> dec -> Prop :=
-  | has_var : forall G x l d,
-      binds x (typ_bind l d) G ->
+  | has_var : forall G x ds l d,
+      binds x (typ_bind ds) G ->
+      binds l d ds ->
       has G (pth_var (avar_f x)) l d.
 
 (* mode = "is transitivity at top level accepted?" *)
@@ -96,16 +124,11 @@ Inductive subtyp : mode -> ctx -> typ -> typ -> Prop :=
       subtyp notrans G T typ_top
   | subtyp_bot : forall G T,
       subtyp notrans G typ_bot T
-(*| subtyp_bind : forall L G l d1 d2,
-      (forall z, z \notin L ->
-        subdec oktrans (G & (z ~ (typ_bind l (open_dec z d1)))) 
-                       (open_dec z d1) (open_dec z d2)) ->
-      subtyp notrans G (typ_bind l d1) (typ_bind l d2) *)
-  | subtyp_bind : forall G l d1 d2,
-      (forall z,    ok (G & (z ~ (typ_bind l (open_dec z d1)))) ->
-        subdec oktrans (G & (z ~ (typ_bind l (open_dec z d1)))) 
-                       (open_dec z d1) (open_dec z d2)) ->
-      subtyp notrans G (typ_bind l d1) (typ_bind l d2)
+  | subtyp_bind : forall G ds1 ds2,
+      (forall z,     ok (G & (z ~ (typ_bind (map (open_dec z) ds1)))) ->
+        subdecs oktrans (G & (z ~ (typ_bind (map (open_dec z) ds1))))
+                        (map (open_dec z) ds1) (map (open_dec z) ds2)) ->
+      subtyp notrans G (typ_bind ds1) (typ_bind ds2)
   | subtyp_asel_l : forall G p L S U T,
       has G p L (dec_typ S U) ->
       subtyp oktrans G U T ->
@@ -134,7 +157,13 @@ with subdec : mode -> ctx -> dec -> dec -> Prop :=
       subdec m G (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2)
   | subdec_fld : forall m G T1 T2,
       subtyp m G T1 T2 ->
-      subdec m G (dec_fld T1) (dec_fld T2).
+      subdec m G (dec_fld T1) (dec_fld T2)
+with subdecs : mode -> ctx -> decs -> decs -> Prop :=
+  | subdecs_def : forall m G ds1 ds2,
+      (forall l d2, binds l d2 ds2 -> 
+         (exists d1, binds l d1 ds1 /\ subdec m G d1 d2)) ->
+      subdecs m G ds1 ds2
+.
 
 Scheme subtyp_mut := Induction for subtyp Sort Prop
 with subdec_mut := Induction for subdec Sort Prop.
@@ -158,13 +187,14 @@ Inductive path : pth -> Prop :=
       path p ->
       path (pth_sel p l)*).
 
+(*
 Inductive type : typ -> Prop :=
   | type_top : type (typ_top)
   | type_bot : type (typ_bot)
-  | type_rfn : forall L t l d,
+  | type_rfn : forall L t ds,
       type t ->
-      (forall x, x \notin L -> decl (open_dec x d)) ->
-      type (typ_bind l d)
+      (forall x, x \notin L -> decl (map (open_dec x) ds)) ->
+      type (typ_bind ds)
   | type_asel : forall p l,
       path p ->
       type (typ_asel p l)
@@ -176,6 +206,7 @@ with decl : dec -> Prop :=
   | decl_fld : forall t,
       type t ->
       decl (dec_fld t).
+*)
 
 Fixpoint fv_avar (a: avar) { struct a } : vars :=
   match a with
@@ -193,15 +224,15 @@ Fixpoint fv_typ (t: typ) { struct t } : vars :=
   match t with
   | typ_top => \{}
   | typ_bot => \{}
-  | typ_bind l d => fv_dec d
+  | typ_bind ds => fv_decs ds
   | typ_asel p l => fv_pth p
   end
 with fv_dec (d: dec) { struct d } : vars :=
   match d with
   | dec_typ ts tu => (fv_typ ts) \u (fv_typ tu)
   | dec_fld t => fv_typ t
-  end.
-
+  end
+with fv_decs (ds: decs) { struct ds } : vars := \{} (* TODO *).
 
 (* ... infrastructure ... *)
 
@@ -223,22 +254,29 @@ Ltac pick_fresh x :=
 (*    { l1: { l2: Top }} <: { l1: Top }     *)
 Definition subtyp_example_1(l1 l2: label): Prop :=
   subtyp notrans empty
-    (typ_bind l1 (dec_fld (typ_bind l2 (dec_fld typ_top))))
-    (typ_bind l1 (dec_fld typ_top)).
+    (typ_bind (l1 ~ (dec_fld (typ_bind (l2 ~ (dec_fld typ_top))))))
+    (typ_bind (l1 ~ (dec_fld typ_top))).
 
-Fact subtyp_example_1_proof: exists l1 l2, subtyp_example_1 l1 l2.
+Fact subtyp_example_1_proof: forall l1 l2, subtyp_example_1 l1 l2.
 Proof.
+  intros.
   unfold subtyp_example_1.
-  pick_fresh l1.
-  pick_fresh l2.
-  exists l1 l2.
   apply (@subtyp_bind empty).
   intros.
+  apply subdecs_def.
+  intros.
+  rewrite -> map_single in H0.
+  rewrite -> map_single.
+  destruct (binds_single_inv H0) as [Heq1 Heq2].
+  clear H0.
+  subst.
+  exists (open_dec z (dec_fld (typ_bind (l2 ~ dec_fld typ_top)))).
+  split.
+  apply binds_single_eq.
   apply subdec_fld.
   apply subtyp_mode.
-  apply subtyp_top.
+  apply (subtyp_top _ _).
 Qed.
-
 
 (* ... transitivity in oktrans mode (trivial) ... *)
 
@@ -276,11 +314,9 @@ Lemma has_unique: forall G p X d1 d2,
 Proof.
   introv H1 H2.
   inversion H1. inversion H2. subst.
-  injection H8.
-  intro; subst.
-  assert (typ_bind X d1 = typ_bind X d2) by apply (binds_func H H6).
-  injection H0.
-  trivial.
+  injection H10; intro; subst.
+  injection (binds_func H7 H); intro; subst.
+  apply (binds_func H0 H8).
 Qed.
 
 (* "reflexive subdec", just subdec+reflexivity *)
@@ -294,41 +330,43 @@ Definition rsubdec(G: ctx)(d1 d2: dec): Prop :=
 
 (* ... weakening lemmas ... *)
 
-Lemma narrow_has: forall G1 G2 z l d1 d2 p L dB,
-  ok             (G1 & z ~ typ_bind l d2 & G2) ->
-  has            (G1 & z ~ typ_bind l d2 & G2) p L dB ->
-  subdec oktrans (G1 & z ~ typ_bind l d1     ) d1 d2 ->
+Lemma narrow_has: forall G1 G2 z ds1 ds2 p L dB,
+  ok              (G1 & z ~ typ_bind ds2 & G2) ->
+  has             (G1 & z ~ typ_bind ds2 & G2) p L dB ->
+  subdecs oktrans (G1 & z ~ typ_bind ds1     ) ds1 ds2 ->
   exists dA, 
-    rsubdec (G1 & z ~ typ_bind l d1     ) dA dB 
-    /\ has  (G1 & z ~ typ_bind l d1 & G2) p L dA.
+    rsubdec (G1 & z ~ typ_bind ds1     ) dA dB 
+    /\ has  (G1 & z ~ typ_bind ds1 & G2) p L dA.
 Proof.
-  introv Hokd2 Hhas Hsd.
-  set (Hokd1 := (ok_middle_change (typ_bind l d1) Hokd2)).
+  introv Hokds2 Hhas Hsd.
+  set (Hokds1 := (ok_middle_change (typ_bind ds1) Hokds2)).
   inversion Hhas; unfold rsubdec; subst.
   destruct (classicT (x = z)) as [Heq|Hne].
   (* case x = z *)
   subst.
-  set (Heq := (binds_middle_eq_inv H Hokd2)).
-  inversion Heq; subst.
-  exists d1.
+  set (Heq := (binds_middle_eq_inv H Hokds2)).
+  inversion_clear Heq; subst.
+  inversion Hsd; subst.
+  destruct (ok_middle_inv Hokds2) as [_ HzG2].
+  injection (binds_middle_eq_inv H Hokds2); intro. subst.
+  destruct (H1 L dB H0) as [dA [Hb1 H1B]].
+  exists dA.
   split.
-  right. apply Hsd.
-  apply has_var.
-  destruct (ok_middle_inv Hokd2) as [_ HzG2].
-  apply (binds_middle_eq  _ _ HzG2).  
+  right. apply H1B.
+  apply (has_var (binds_middle_eq G1 (typ_bind ds1) HzG2) Hb1).
   (* case x <> z*)
-  assert (Hxz: x # z ~ typ_bind l d2).
+  assert (Hxz: x # z ~ typ_bind ds2).
   unfold notin.
   rewrite -> dom_single. 
   rewrite -> in_singleton.
   assumption.
-  assert (HG: binds x (typ_bind L dB) (G1 & G2)).
+  assert (HG: binds x (typ_bind ds) (G1 & G2)).
   apply (binds_remove H Hxz).
   exists dB.
   split. left. trivial.  
-  assert (HGz: binds x (typ_bind L dB) (G1 & z ~ typ_bind l d1 & G2)).
-  apply (@binds_weaken typ x (typ_bind L dB) G1 (z ~ typ_bind l d1) G2 HG Hokd1).
-  apply (has_var HGz).
+  assert (HGz: binds x (typ_bind ds) (G1 & z ~ typ_bind ds1 & G2)).
+  apply (@binds_weaken typ x (typ_bind ds) G1 (z ~ typ_bind ds1) G2 HG Hokds1).
+  apply (has_var HGz H0).
 Qed.
 
 Print Assumptions narrow_has.
