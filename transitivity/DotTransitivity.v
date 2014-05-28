@@ -794,6 +794,28 @@ Qed.
 
 Print Assumptions oktrans_to_notrans.
 
+Lemma invert_bind: forall G l1 d1 l2 d2,
+  ok G ->
+  subtyp oktrans G (typ_bind l1 d1) (typ_bind l2 d2) ->
+  forall z, z # G -> 
+    subdec oktrans (G & z ~ typ_bind l2 (open_dec z d1)) 
+      (open_dec z d1) (open_dec z d2).
+Proof.
+  introv Hok Hst12.
+  introv Hnotin.
+  apply (oktrans_to_notrans Hok) in Hst12.
+  inversion Hst12; subst.
+  (* case refl *)
+  destruct d2 as [Lo Hi|T].
+    (* case typ *)
+    (* need Lo <: Hi also in case of refl, and need that opening preserves <: *)
+    skip.
+    (* case fld *)
+    apply (subdec_fld (subtyp_mode (subtyp_refl _ _))).
+  (* case bind *)
+  apply (H3 z (ok_push (typ_bind l2 (open_dec z d1)) Hok Hnotin)).
+Qed.
+
 (*
   (* subtyp cases: *)
   (* case refl *)
