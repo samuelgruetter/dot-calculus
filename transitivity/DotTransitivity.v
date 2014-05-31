@@ -189,30 +189,74 @@ Lemma subdec_refl_allmodes: forall m G d, subdec m G d d.
 Proof.
 Abort.
 
+Lemma invert_subdecs_push: forall m G ds1 ds2 l d2,
+  subdecs m G ds1 (ds2 & l ~ d2) -> 
+    exists d1, binds l d1 ds1
+            /\ subdec m G d1 d2
+            /\ subdecs m G ds1 ds2.
+Proof.
+  intros.
+  inversion H. 
+  contradiction (empty_push_inv H4).
+  apply eq_push_inv in H0.
+  destruct H0 as [Heq1 [Heq2 Heq3]].
+  subst.
+  exists d1.
+  auto.
+Qed.
+
 (* Alternative definition of subdecs which is sometimes more useful *)
 Definition subdecs_alt (m: mode) (G: ctx) (ds1 ds2: decs): Prop :=
   forall l d2, binds l d2 ds2 -> 
                (exists d1, binds l d1 ds1 /\ subdec m G d1 d2).
 
-(* Alternative and primary definition are equivalent *)
-Lemma subdecs_eq: forall m G ds1 ds2, ok ds2 ->
-  (subdecs_alt m G ds1 ds2 <-> subdecs m G ds1 ds2).
+(* Primary subdecs definition implies alternative definition *)
+Lemma subdecs_to_subdecs_alt: forall m G ds1 ds2,
+  subdecs m G ds1 ds2 -> subdecs_alt m G ds1 ds2.
 Proof.
-  introv Hok.
   induction ds2.
   (* base case *)
   rewrite <- empty_def.
-  split; intros.
-  apply subdecs_empty.
+  intros.
   unfold subdecs_alt.
   intros.
   contradiction (binds_empty_inv H0).
   (* step *)
   destruct a as [l d2].
   rewrite -> cons_to_push in *.
+  intro Hsds.
+  apply invert_subdecs_push in Hsds.
+  destruct Hsds as [d1 [Hsds1 [Hsds2 Hsds3]]].
+  unfold subdecs_alt.
+  introv Hb.
+  destruct (classicT (l0 = l)) as [Heq|Hne].
+  (* case l0 = l *)
+  subst.
+  apply binds_push_eq_inv in Hb.
+  subst.
+  exists d1.
+  auto.
+  (* case l0 <> l *)
+  set (Hb' := binds_push_neq_inv Hb Hne).
+  set (IH' := IHds2 Hsds3).
+  unfold subdecs_alt in IH'.
+  apply (IH' l0 d0 Hb').
+Qed.
+
+(* Alternative subdecs implies and primary subdecs *)
+Lemma subdecs_alt_to_subdecs: forall m G ds1 ds2, ok ds2 ->
+  subdecs_alt m G ds1 ds2 -> subdecs m G ds1 ds2.
+Proof.
+  introv Hok.
+  induction ds2.
+  (* base case *)
+  rewrite <- empty_def.
+  intros.
+  apply subdecs_empty.
+  (* step *)
+  destruct a as [l d2].
+  rewrite -> cons_to_push in *.
   destruct (ok_push_inv Hok) as [Hok' _].
-  split.
-  (* -> *)
   unfold subdecs_alt.
   intro Halt.
   destruct (Halt l d2 (binds_push_eq _ _ _)) as [d1 [Hb1 Hsd]].
@@ -229,29 +273,22 @@ Proof.
   (* l0 <> l *)
   apply (binds_push_neq d2 Hb2 Hne).
   apply (Halt l0 d0 Hb0).
-  (* <- *)
-  intro Hsd.
-  inversion Hsd. 
-  contradiction (empty_push_inv H3).
-  apply eq_push_inv in H.
-  destruct H as [Heq1 [Heq2 Heq3]].
-  subst.
-  unfold subdecs_alt.
-  introv Hb.
-  destruct (classicT (l0 = l)) as [Heq|Hne].
-  (* case l0 = l *)
-  subst.
-  apply binds_push_eq_inv in Hb.
-  subst.
-  exists d1.
-  auto.
-  (* case l0 <> l *)
-  set (Hb' := binds_push_neq_inv Hb Hne).
-  destruct (IHds2 Hok') as [_ IH].
-  set (IH' := IH H5).
-  unfold subdecs_alt in IH'.
-  apply (IH' l0 d0 Hb').
 Qed.
+
+Lemma ok_single: forall A x (v: A), ok (x ~ v).
+Proof.
+  intros.
+  apply ok_concat_inv_r with (E := empty).
+  apply ok_push.
+  apply ok_empty.
+  apply get_none_inv.
+  apply get_empty.
+Qed.
+
+(******************************************************************
+
+(* Notion of free vars and locally closed types is not needed for *)
+(* now, but we will need it later.                                *)
 
 (* ... free vars ... *)
 
@@ -259,7 +296,6 @@ Inductive fvar : avar -> Prop :=
   | fvar_f : forall x,
       fvar (avar_f x).
 
-(*
 Fixpoint fv_avar (a: avar) { struct a } : vars :=
   match a with
   | avar_b i => \{}
@@ -285,7 +321,7 @@ with fv_dec (d: dec) { struct d } : vars :=
   | dec_fld t => fv_typ t
   end
 with fv_decs (ds: decs) { struct ds } : vars := \{} (* TODO *).
-*)
+
 
 (* path/type locally closed (no avar_b, only avar_f) *)
 
@@ -348,7 +384,6 @@ Qed.
 
 (* ... infrastructure ... *)
 
-(*
 Ltac gather_vars :=
   let A := gather_vars_with (fun x : vars => x        ) in
   let B := gather_vars_with (fun x : var  => \{ x }   ) in
@@ -361,17 +396,6 @@ Ltac gather_vars :=
 
 Ltac pick_fresh x :=
   let L := gather_vars in (pick_fresh_gen L x).
-*)
-
-Lemma ok_single: forall A x (v: A), ok (x ~ v).
-Proof.
-  intros.
-  apply ok_concat_inv_r with (E := empty).
-  apply ok_push.
-  apply ok_empty.
-  apply get_none_inv.
-  apply get_empty.
-Qed.
 
 (* ... examples ... *)
 
@@ -403,6 +427,16 @@ Proof.
   auto. auto.
 Qed.
 
+Lemma type_bind_ok: forall z ds, type (typ_bind ds) -> ok (map (open_dec z) ds).
+Proof.
+  intros.
+  inversion H; subst.
+  apply decls_to_ok.
+  apply (H1 z).
+Qed.
+
+******************************************************************)
+
 (*    { l1: { l2: Top }} <: { l1: Top }     *)
 Definition subtyp_example_1(l1 l2: label): Prop :=
   subtyp notrans empty
@@ -415,7 +449,7 @@ Proof.
   unfold subtyp_example_1.
   apply (@subtyp_bind empty).
   intros.
-  apply (subdecs_eq oktrans _ _);
+  refine (subdecs_alt_to_subdecs _ _);
   rewrite -> map_single in *.
   apply ok_single.
   unfold subdecs_alt.
@@ -540,8 +574,7 @@ Proof.
   intros.
   refine (narrow_has_alt _ H0 _).
   assumption.
-  assert (Hokds2: ok ds2). skip.
-  apply (subdecs_eq _ _ _ Hokds2).
+  apply subdecs_to_subdecs_alt.
   assumption.
 Qed.
 
@@ -853,32 +886,26 @@ Proof.
 Qed.
 
 Lemma subdecs_trans: forall G ds1 ds2 ds3,
-  ok ds1 -> ok ds2 -> ok ds3 ->
   subdecs oktrans G ds1 ds2 ->
   subdecs oktrans G ds2 ds3 ->
   subdecs oktrans G ds1 ds3.
 Proof.
-  introv Hok1 Hok2 Hok3 Hds12 Hds23.
-  apply (subdecs_eq _ _ _ Hok3).
-  rewrite <- (subdecs_eq _ _ _ Hok2) in Hds12.
-  rewrite <- (subdecs_eq _ _ _ Hok3) in Hds23.
-  unfold subdecs_alt in *. 
-  introv Hb3.
-  specialize (Hds23 l d2 Hb3).
-  destruct Hds23 as [d1 [Hb2 Hsd12]].
-  specialize (Hds12 l d1 Hb2).
-  destruct Hds12 as [d [Hb Hsd]].
-  exists d.
-  split. assumption.
-  apply (subdec_trans_oktrans Hsd Hsd12).
-Qed.
-
-Lemma type_bind_ok: forall z ds, type (typ_bind ds) -> ok (map (open_dec z) ds).
-Proof.
-  intros.
-  inversion H; subst.
-  apply decls_to_ok.
-  apply (H1 z).
+  introv H12 H23.
+  induction ds3.
+  (* base *)
+  rewrite <- empty_def in *.
+  apply subdecs_empty.
+  (* step *)
+  destruct a as [l d3].
+  rewrite -> cons_to_push in *.
+  apply invert_subdecs_push in H23.
+  destruct H23 as [d2 [H23a [H23b H23c]]].
+  specialize (IHds3 H23c).
+  apply subdecs_to_subdecs_alt in H12.
+  unfold subdecs_alt in H12.
+  specialize (H12 l d2 H23a).
+  destruct H12 as [d1 [H12a H12b]].
+  refine (subdecs_push H12a (subdec_trans_oktrans H12b H23b) IHds3).
 Qed.
 
 (* ... transitivity in notrans mode, but no p.L in middle ... *)
@@ -918,8 +945,7 @@ Proof.
   specialize (H0 z Hok').
   specialize (H4 z Hok'').
   set (H4' := subdecs_narrow_last Hok'' H4 H0). 
-  refine (subdecs_trans _ _ _ H0 H4').
-  skip. skip. skip.
+  apply (subdecs_trans H0 H4').
 
   (* bind <: bind <: sel  *)
   assert (H1S: subtyp oktrans G (typ_bind ds1) S).
