@@ -41,26 +41,10 @@ Inductive notsel: typ -> Prop :=
 
 Hint Constructors notsel.
 
-(* ... opening ...
-   replaces in some syntax a bound variable with dangling index (k) by a free variable x
-*)
-
-Fixpoint open_rec_avar (k: nat) (u: var) (a: avar) { struct a } : avar :=
-  match a with
-  | avar_b i => If k = i then avar_f u else avar_b i
-  | avar_f x => avar_f x
-  end.
-
-Fixpoint open_rec_pth (k: nat) (u: var) (p: pth) { struct p } : pth :=
-  match p with
-  | pth_var a => pth_var (open_rec_avar k u a)
-(*| pth_sel p l => pth_sel (open_rec_pth k u p) l *)
-  end.
-
-
 (* map and env_map are the same, except that for env_map, we have a definition which
    works in recursive definitions (decreasing measure...).
    Note that map has map_def, but rhs of map_def doesn't work either *)
+
 Definition env_map {A B: Type} (f: A -> B) (E: env A): env B :=
   List.map (fun p => (fst p, f (snd p))) E.
 
@@ -80,6 +64,22 @@ Proof.
   rewrite -> IHE.
   trivial.
 Qed.
+
+(* ... opening ...
+   replaces in some syntax a bound variable with dangling index (k) by a free variable x
+*)
+
+Fixpoint open_rec_avar (k: nat) (u: var) (a: avar) { struct a } : avar :=
+  match a with
+  | avar_b i => If k = i then avar_f u else avar_b i
+  | avar_f x => avar_f x
+  end.
+
+Fixpoint open_rec_pth (k: nat) (u: var) (p: pth) { struct p } : pth :=
+  match p with
+  | pth_var a => pth_var (open_rec_avar k u a)
+(*| pth_sel p l => pth_sel (open_rec_pth k u p) l *)
+  end.
 
 Fixpoint open_rec_typ (k: nat) (u: var) (t: typ) { struct t } : typ :=
   match t with
@@ -259,35 +259,7 @@ Inductive fvar : avar -> Prop :=
   | fvar_f : forall x,
       fvar (avar_f x).
 
-Inductive path : pth -> Prop :=
-  | path_var : forall a,
-      fvar a ->
-      path (pth_var a)
-(*| path_sel : forall p l,
-      path p ->
-      path (pth_sel p l)*).
-
 (*
-Inductive type : typ -> Prop :=
-  | type_top : type (typ_top)
-  | type_bot : type (typ_bot)
-  | type_rfn : forall L t ds,
-      type t ->
-      (forall x, x \notin L -> decl (map (open_dec x) ds)) ->
-      type (typ_bind ds)
-  | type_asel : forall p l,
-      path p ->
-      type (typ_asel p l)
-with decl : dec -> Prop :=
-  | decl_typ  : forall ts tu,
-      type ts ->
-      type tu ->
-      decl (dec_typ ts tu)
-  | decl_fld : forall t,
-      type t ->
-      decl (dec_fld t).
-*)
-
 Fixpoint fv_avar (a: avar) { struct a } : vars :=
   match a with
   | avar_b i => \{}
@@ -313,9 +285,70 @@ with fv_dec (d: dec) { struct d } : vars :=
   | dec_fld t => fv_typ t
   end
 with fv_decs (ds: decs) { struct ds } : vars := \{} (* TODO *).
+*)
+
+(* path/type locally closed (no avar_b, only avar_f) *)
+
+Inductive path : pth -> Prop :=
+  | path_var : forall a,
+      fvar a ->
+      path (pth_var a)
+(*| path_sel : forall p l,
+      path p ->
+      path (pth_sel p l)*).
+
+Inductive type : typ -> Prop :=
+  | type_top : type (typ_top)
+  | type_bot : type (typ_bot)
+  | type_bind : forall ds,
+      (forall x, decls (map (open_dec x) ds)) ->
+      type (typ_bind ds)
+(* Note: Above version of type_bind (without L) is stronger than below, but should be OK.
+  | type_bind : forall L ds,
+      (forall x, x \notin L -> decls (map (open_dec x) ds)) ->
+      type (typ_bind ds)
+*)
+  | type_asel : forall p l,
+      path p ->
+      type (typ_asel p l)
+with decl : dec -> Prop :=
+  | decl_typ  : forall ts tu,
+      type ts ->
+      type tu ->
+      decl (dec_typ ts tu)
+  | decl_fld : forall t,
+      type t ->
+      decl (dec_fld t)
+with decls : decs -> Prop :=
+  | decls_empty : 
+      decls (@empty dec)
+  | decls_push : forall ds l d,
+      decls ds ->
+      decl d ->
+      l # ds ->
+      decls (ds & l ~ d).
+
+Lemma decls_to_ok: forall ds, decls ds -> ok ds.
+Proof.
+  apply (env_ind (fun E => decls E -> ok E)).
+  (* base *)
+  intros.
+  auto.
+  (* step *)
+  intros.
+  inversion H0.
+  auto.
+  apply eq_push_inv in H1.
+  destruct H1 as [H1a [H1b H1c]].
+  subst.
+  apply ok_push.
+  apply H.
+  auto. auto. 
+Qed.
 
 (* ... infrastructure ... *)
 
+(*
 Ltac gather_vars :=
   let A := gather_vars_with (fun x : vars => x        ) in
   let B := gather_vars_with (fun x : var  => \{ x }   ) in
@@ -328,6 +361,7 @@ Ltac gather_vars :=
 
 Ltac pick_fresh x :=
   let L := gather_vars in (pick_fresh_gen L x).
+*)
 
 Lemma ok_single: forall A x (v: A), ok (x ~ v).
 Proof.
@@ -340,6 +374,34 @@ Proof.
 Qed.
 
 (* ... examples ... *)
+
+Fact type_test_1: forall l1 l2,
+  type (typ_bind (l1 ~ (dec_fld (typ_bind (l2 ~ (dec_fld typ_top)))))).
+Proof.
+  intros.
+  apply type_bind.
+  intros.
+  rewrite -> map_single.
+  rewrite <- concat_empty_l.
+  apply decls_push.
+  apply decls_empty.
+  unfold open_dec.
+  unfold open_rec_dec.
+  rewrite -> env_map_is_map.
+  rewrite -> map_single.
+  apply decl_fld.
+  apply type_bind.
+  intros.
+  rewrite -> map_single.
+  rewrite <- concat_empty_l.
+  apply decls_push.
+  apply decls_empty.
+  unfold open_dec.
+  unfold open_rec_dec.
+  apply decl_fld.
+  apply type_top.
+  auto. auto.
+Qed.
 
 (*    { l1: { l2: Top }} <: { l1: Top }     *)
 Definition subtyp_example_1(l1 l2: label): Prop :=
@@ -809,6 +871,14 @@ Proof.
   exists d.
   split. assumption.
   apply (subdec_trans_oktrans Hsd Hsd12).
+Qed.
+
+Lemma type_bind_ok: forall z ds, type (typ_bind ds) -> ok (map (open_dec z) ds).
+Proof.
+  intros.
+  inversion H; subst.
+  apply decls_to_ok.
+  apply (H1 z).
 Qed.
 
 (* ... transitivity in notrans mode, but no p.L in middle ... *)
