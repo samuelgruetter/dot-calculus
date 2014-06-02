@@ -466,6 +466,177 @@ Proof.
   apply (subtyp_top _ _).
 Qed.
 
+Fact subtyp_example_1_proof': forall l1 l2, subtyp_example_1 l1 l2.
+Proof.
+  intros.
+  unfold subtyp_example_1.
+
+  apply subtyp_bind.
+  intros.
+  rewrite -> map_single in *.
+  rewrite -> map_single in *.
+  rewrite <- concat_empty_l.
+  apply subdecs_push with (d1 := open_dec z (dec_fld (typ_bind (l2 ~ dec_fld typ_top)))).
+  apply binds_single_eq.
+  apply subdec_fld.
+  apply subtyp_mode.
+  apply subtyp_top.
+  apply subdecs_empty.
+Qed.
+
+Definition dec_typ_alias(T: typ) := dec_typ T T.
+
+(* Type in Scala:
+  {
+    type A = { val fa: Any }
+    type T <: {
+      type A = { val fa: Any }
+      val a: A
+    }
+  }
+*)
+Definition exampleT1(A T fa a: label) := typ_bind (
+  A ~ dec_typ_alias (typ_bind (fa ~ dec_fld typ_top)) &
+  T ~ dec_typ typ_bot (typ_bind (
+    A ~ dec_typ_alias (typ_bind (fa ~ dec_fld typ_top)) &
+    a ~ dec_fld (typ_asel (pth_var (avar_b 0)) A)
+  ))
+).
+
+(* Type in Scala:
+  {
+    type A = { val fa: Any }
+    type T <: {
+      val a: A
+    }
+  }
+*)
+Definition exampleT2(A T fa a: label) := typ_bind (
+  A ~ dec_typ_alias (typ_bind (fa ~ dec_fld typ_top)) &
+  T ~ dec_typ typ_bot (typ_bind (
+    a ~ dec_fld (typ_asel (pth_var (avar_b 1)) A)
+  ))
+).
+
+Fact subtyp_example_2: forall A T fa a, 
+  A <> a -> A <> T ->
+  subtyp notrans empty (exampleT1 A T fa a) (exampleT2 A T fa a).
+Proof.
+  intros.
+  unfold exampleT1.
+  unfold exampleT2.
+  apply subtyp_bind.
+  intros.
+  rewrite -> map_concat in *.
+  rewrite -> map_concat in *.
+  rewrite -> map_single in *.
+  rewrite -> map_single in *.
+  rewrite -> map_single in *.
+  apply subdecs_push with (d1 := open_dec z
+     (dec_typ typ_bot
+        (typ_bind
+           (A ~ dec_typ_alias (typ_bind (fa ~ dec_fld typ_top)) &
+            a ~ dec_fld (typ_asel (pth_var (avar_b 0)) A))))).
+  apply binds_push_eq.
+  unfold open_dec.
+  unfold open_rec_dec.
+  rewrite -> env_map_is_map.
+  rewrite -> env_map_is_map.
+  rewrite -> map_concat in *.
+  rewrite -> map_single in *.
+  rewrite -> map_single in *.
+  rewrite -> map_single in *.
+  simpl.
+  cases_if.
+  cases_if.
+  rewrite -> env_map_is_map.
+  rewrite -> env_map_is_map.
+  rewrite -> map_single in *.
+  rewrite -> map_single in *.
+  apply subdec_typ.
+  apply (subtyp_mode (subtyp_bot _ _)).
+  apply (subtyp_mode (subtyp_bot _ _)).
+  apply (subtyp_mode (subtyp_bot _ _)).
+  apply subtyp_mode.
+  apply subtyp_bind.
+  intros.
+  rewrite -> map_concat in *.
+  rewrite -> map_single in *.
+  rewrite -> map_single in *.
+  rewrite -> map_single in *.
+  rewrite <- concat_empty_l.
+  apply subdecs_push with (d1 := open_dec z0 (dec_fld (typ_asel (pth_var (avar_b 0)) A))).
+  apply binds_push_eq.
+  unfold open_dec.
+  unfold open_rec_dec.
+  rewrite -> env_map_is_map.
+  rewrite -> map_single in *.
+  unfold open_rec_pth.
+  unfold open_rec_avar.
+  cases_if.
+  apply subdec_fld.
+  apply subtyp_mode.
+  set (aliasA := (typ_bind (fa ~ dec_fld typ_top))).
+  apply subtyp_asel_l with (S := aliasA) (U := aliasA).
+  apply has_var with (ds := (A ~ dec_typ aliasA aliasA &
+                             a ~ dec_fld (typ_asel (pth_var (avar_f z0)) A))).
+  apply binds_push_eq.  
+  apply binds_push_neq.
+  apply binds_single_eq.
+  assumption.
+  apply subtyp_mode.
+  apply subtyp_asel_r with (S := aliasA) (U := aliasA).
+  assert (Hzz0: z0 <> z).
+  apply ok_push_inv in H3.
+  destruct H3 as [H3ok H3notin].
+  unfold notin in H3notin.
+  rewrite -> concat_empty_l in H3notin.
+  rewrite -> dom_single in H3notin.
+  rewrite -> in_singleton in H3notin.
+  assumption.
+  apply has_var with (ds := (
+    A ~ dec_typ aliasA aliasA &
+    T ~ dec_typ typ_bot
+        (typ_bind
+           (A ~ dec_typ aliasA aliasA &
+            a ~ dec_fld (typ_asel (pth_var (avar_b 0)) A))))).
+  apply binds_push_neq.
+  apply binds_push_eq.
+  apply (neq_sym Hzz0).
+  apply binds_push_neq.
+  apply binds_single_eq.
+  assumption.
+  apply subtyp_mode.
+  apply (subtyp_refl _ _).
+  apply subtyp_mode.
+  apply (subtyp_refl _ _).
+  apply subdecs_empty.
+  rewrite <- concat_empty_l.
+  apply subdecs_push with (d1 :=
+    open_dec z (dec_typ_alias (typ_bind (fa ~ dec_fld typ_top)))).
+  apply binds_push_neq.
+  apply binds_single_eq.
+  assumption.
+  unfold dec_typ_alias.
+  unfold open_dec.
+  unfold open_rec_dec.
+  rewrite -> env_map_is_map.
+  rewrite -> env_map_is_map.
+  rewrite -> map_single in *.
+  apply subdec_typ.
+  apply subtyp_mode.
+  apply (subtyp_refl _ _).
+  apply subtyp_mode.
+  apply (subtyp_refl _ _).
+  apply subtyp_mode.
+  apply (subtyp_refl _ _).
+  apply subtyp_mode.
+  apply (subtyp_refl _ _).
+  apply subdecs_empty.  
+Qed.
+
+Print Assumptions subtyp_example_2.
+
 (* ... transitivity in oktrans mode (trivial) ... *)
 
 Lemma subtyp_trans_oktrans: forall G T1 T2 T3,
@@ -493,7 +664,6 @@ Proof.
   apply subdec_fld.
   apply (subtyp_trans HT12 HT23).
 Qed.
-
 
 (* ... helper lemmas ... *)
 
