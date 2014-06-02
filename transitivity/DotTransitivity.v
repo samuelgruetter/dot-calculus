@@ -637,6 +637,34 @@ Qed.
 
 Print Assumptions subtyp_example_2.
 
+Fact subtyp_example_2': forall A T fa a, 
+  A <> a -> A <> T ->
+  subtyp notrans empty (exampleT1 A T fa a) (exampleT2 A T fa a).
+Proof.
+  intros.
+  unfold exampleT1.
+  unfold exampleT2.
+  apply subtyp_bind.
+  intros.
+  rewrite -> map_concat in *.
+  rewrite -> map_concat in *.
+  rewrite -> map_single in *.
+  rewrite -> map_single in *.
+  rewrite -> map_single in *.
+  apply subdecs_alt_to_subdecs.
+  apply ok_push.
+  apply ok_single.
+  unfold notin.
+  rewrite -> dom_single.
+  apply notin_singleton.
+  apply neq_sym. 
+  assumption.
+  unfold subdecs_alt.
+  intros.
+  (* now again must find d1 (same as `apply subdecs_push with (d1 := ...` above)
+     --> subdecs_alt doesn't make automation easier. *)
+Abort.
+
 (* ... transitivity in oktrans mode (trivial) ... *)
 
 Lemma subtyp_trans_oktrans: forall G T1 T2 T3,
