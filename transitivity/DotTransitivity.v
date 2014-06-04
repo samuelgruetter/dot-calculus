@@ -129,6 +129,15 @@ Inductive subtyp : mode -> ctx -> typ -> typ -> Prop :=
         subdecs oktrans (G & (z ~ (typ_bind (map (open_dec z) ds1))))
                         (map (open_dec z) ds1) (map (open_dec z) ds2)) ->
       subtyp notrans G (typ_bind ds1) (typ_bind ds2)
+(* Alternative which does not open the type it puts into the environment.
+   TODO use this one.
+  | subtyp_bind : forall (G: ctx) (ds1: decs) (ds2: decs),
+      (forall z, z # G ->
+        subdecs oktrans (G & (z ~ (typ_bind ds1)))
+                        (map (open_dec z) ds1)
+                        (map (open_dec z) ds2)) ->
+      subtyp notrans G (typ_bind ds1) (typ_bind ds2)
+*)
   | subtyp_asel_l : forall G p L S U T,
       has G p L (dec_typ S U) ->
       subtyp oktrans G U T ->
