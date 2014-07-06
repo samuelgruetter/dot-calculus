@@ -1,11 +1,13 @@
 
-Require (*Export*) List.
+Require Export List.
 Require Export Arith.Peano_dec.
 
 (* List notation with head on the right *)
 Notation "E '&' F" := (app F E) (at level 31, left associativity).
 Notation " E  ;; x " := (cons x E) (at level 29, left associativity).
+
 (* Testing the list notations: *)
+Module ListNotationTests.
 Definition head(l: list nat) := match l with
 | nil => 777
 | cons x xs => x
@@ -16,6 +18,7 @@ Eval compute in head ((nil ;; 1 ;; 2 ;; 3) & (nil ;; 4 ;; 5)).
 Eval compute in nil ;; 1 ;; 2 & nil ;; 3 ;; 4 & nil ;; 5 ;; 6. 
 (* Unset Printing Notations. (* or by CoqIDE menu *) *)
 Check (nil ;; 0 & nil ;; 0 ;; 0 & nil ;; 0 ;; 0 ;; 0).
+End ListNotationTests.
 
 Definition var := nat.
 
@@ -65,6 +68,40 @@ Definition trm_app(func arg: trm) := trm_call func 0 arg.
 Definition trm_let(T: typ)(rhs body: trm) := trm_app (trm_fun T body) rhs.
 Definition trm_upcast(T: typ)(e: trm) := trm_app (trm_fun T (trm_var (avar_b 0))) e.
 Definition typ_arrow(T1 T2: typ) := typ_rcd (nil ;; ndec_mtd 0 T1 T2).
+
+(* ... opening ...
+   replaces in some syntax a bound variable with dangling index (k) by a free variable x
+*)
+
+Fixpoint open_rec_avar (k: nat) (u: var) (a: avar) { struct a } : avar :=
+  match a with
+  | avar_b i => if eq_nat_dec k i then avar_f u else avar_b i
+  | avar_f x => avar_f x
+  end.
+
+(* The only binders are trm_new and (n)ini_mtd, which cannot be inside a typ or
+   inside a dec, so we don't need opening for typ and dec *)
+
+Fixpoint open_rec_trm (k: nat) (u: var) (t: trm) { struct t } : trm :=
+  match t with
+  | trm_var  a     => trm_var (open_rec_avar k u a)
+  | trm_new  is e  => trm_new (map (open_rec_nini (S k) u) is) (open_rec_trm (S k) u e)
+  | trm_sel  e n   => trm_sel (open_rec_trm k u e) n
+  | trm_call o m a => trm_call (open_rec_trm k u o) m (open_rec_trm k u a)
+  end
+with open_rec_nini (k: nat) (u: var) (i: nini) { struct i } : nini :=
+  match i with
+  | nini_fld n a   => nini_fld n (open_rec_avar k u a)
+  | nini_mtd n T e => nini_mtd n T (open_rec_trm (S k) u e)
+  end.
+
+Definition open_avar u a := open_rec_avar 0 u a.
+Definition open_trm  u e := open_rec_trm  0 u e.
+Definition open_nini u i := open_rec_nini 0 u i.
+
+Inductive fvar : avar -> Prop :=
+  | fvar_f : forall x,
+      fvar (avar_f x).
 
 (* 
 Environment requirements:
@@ -641,39 +678,6 @@ Qed.
 
 End IntersectionPreviewImpl.
 
-(* ... opening ...
-   replaces in some syntax a bound variable with dangling index (k) by a free variable x
-*)
-
-Fixpoint open_rec_avar (k: nat) (u: var) (a: avar) { struct a } : avar :=
-  match a with
-  | avar_b i => if eq_nat_dec k i then avar_f u else avar_b i
-  | avar_f x => avar_f x
-  end.
-
-(* The only binders are trm_new and (n)ini_mtd, which cannot be inside a typ or
-   inside a dec, so we don't need opening for typ and dec *)
-
-Fixpoint open_rec_trm (k: nat) (u: var) (t: trm) { struct t } : trm :=
-  match t with
-  | trm_var  a     => trm_var (open_rec_avar k u a)
-  | trm_new  is e  => trm_new (inis.map (open_rec_nini (S k) u) is) (open_rec_trm (S k) u e)
-  | trm_sel  e n   => trm_sel (open_rec_trm k u e) n
-  | trm_call o m a => trm_call (open_rec_trm k u o) m (open_rec_trm k u a)
-  end
-with open_rec_nini (k: nat) (u: var) (i: nini) { struct i } : nini :=
-  match i with
-  | nini_fld n a   => nini_fld n (open_rec_avar k u a)
-  | nini_mtd n T e => nini_mtd n T (open_rec_trm (S k) u e)
-  end.
-
-Definition open_avar u a := open_rec_avar 0 u a.
-Definition open_trm  u e := open_rec_trm  0 u e.
-Definition open_nini u i := open_rec_nini 0 u i.
-
-Inductive fvar : avar -> Prop :=
-  | fvar_f : forall x,
-      fvar (avar_f x).
 
 (** Operational Semantics **)
 (* Note: Terms given by user are closed, so they only contain avar_b, no avar_f.
@@ -708,6 +712,51 @@ Inductive red : venv.t -> trm -> venv.t -> trm -> Prop :=
       red s o s' o' ->
       red s  (trm_sel o  l)
           s' (trm_sel o' l).
+
+(* Term typing *)
+Inductive has : tenv.t -> trm -> label -> dec -> Prop :=
+  | has_dec : forall G e l d ds,
+      typing_trm G e (typ_rcd ds) ->
+      decs.binds l d ds ->
+      has G e l d
+with typing_trm : tenv.t -> trm -> typ -> Prop :=
+  | typing_trm_var : forall G x T,
+      tenv.binds x T G ->
+      typing_trm G (trm_var (avar_f x)) T
+  | typing_trm_sel : forall G e l T,
+      has G e (label_fld l) (dec_fld T) ->
+      typing_trm G (trm_sel e l) T
+  | typing_trm_call : forall G t m U V u,
+      has G t (label_mtd m) (dec_mtd U V) ->
+      typing_trm G u U ->
+      typing_trm G (trm_call t m u) V
+  | typing_trm_new : forall G nis ds t T,
+      typing_inis G nis ds -> (* no self reference yet, no recursion *)
+      (forall x, tenv.unbound x G ->
+                 typing_trm (G ;; (x, typ_rcd ds)) (open_trm x t) T) ->
+      typing_trm G (trm_new nis t) T
+with typing_ini : tenv.t -> nini -> ndec -> Prop :=
+  | typing_ini_fld : forall G l v T,
+      typing_trm G (trm_var v) T ->
+      typing_ini G (nini_fld l v) (ndec_fld l T)
+  | typing_ini_mtd : forall G m S T t,
+      (forall x, tenv.unbound x G ->
+                 typing_trm (G ;; (x, S)) (open_trm x t) T) ->
+      typing_ini G (nini_mtd m S t) (ndec_mtd m S T)
+with typing_inis : tenv.t -> inis.t -> decs.t -> Prop :=
+  | typing_inis_nil : forall G,
+      typing_inis G nil nil
+  | typing_inis_cons : forall G is i ds d,
+      typing_inis G is ds ->
+      typing_ini G i d ->
+      typing_inis G (is ;; i) (ds ;; d).
+
+Scheme has_mut         := Induction for has         Sort Prop
+with   typing_trm_mut  := Induction for typing_trm  Sort Prop
+with   typing_ini_mut  := Induction for typing_ini  Sort Prop
+with   typing_inis_mut := Induction for typing_inis Sort Prop.
+
+Combined Scheme typing_mutind from has_mut, typing_trm_mut, typing_ini_mut, typing_inis_mut.
 
 
 (* garbage .............. *)
