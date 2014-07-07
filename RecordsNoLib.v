@@ -1,6 +1,9 @@
 
 Require Export List.
 Require Export Arith.Peano_dec.
+Require Export Program.Syntax. (* eg for multiple exists tactic *)
+Set Implicit Arguments.
+
 
 (* List notation with head on the right *)
 Notation "E '&' F" := (app F E) (at level 31, left associativity).
@@ -160,7 +163,7 @@ Lemma concat_cons_assoc: forall (E1: t) (E2: t) (b: B), E1 & (E2 ;; b) = (E1 & E
 Proof.
   intros. simpl. reflexivity.
 Qed.
-Lemma binds_unbound_inv: forall E b, unbound (key b) (E ;; b) -> False.
+Lemma binds_unbound_head_inv: forall E b, unbound (key b) (E ;; b) -> False.
 Proof.
   intros. unfold unbound in H. simpl in H. destruct (eq_key_dec (key b) (key b)).
   + discriminate H.
@@ -209,7 +212,7 @@ Proof.
   + simpl. assumption.
   + simpl. unfold unbound, get. fold get. rewrite -> (H a).
     destruct (eq_key_dec k (key a)).
-    - exfalso. rewrite -> e in H0. apply (binds_unbound_inv E a H0).
+    - exfalso. rewrite -> e in H0. apply (@binds_unbound_head_inv E a H0).
     - unfold unbound in IHE. apply IHE. apply unbound_cons_inv in H0.
       unfold unbound in H0. assumption.
 Qed.
@@ -233,7 +236,7 @@ Proof.
   + simpl in H. assumption.
   + rewrite -> concat_cons_assoc in H. unfold binds, get in H. fold get in H.
     destruct (eq_key_dec k (key a)).
-    - exfalso. rewrite -> e in H0. apply (binds_unbound_inv E2 a H0).
+    - exfalso. rewrite -> e in H0. apply (@binds_unbound_head_inv E2 a H0).
     - apply IHE2. unfold binds. assumption. apply (@unbound_cons_inv E2 k a H0).
 Qed.
 Lemma binds_concat_left : forall k v E1 E2,
@@ -245,8 +248,26 @@ Proof.
   + simpl. assumption.
   + rewrite -> concat_cons_assoc. unfold binds, get. fold get.
     destruct (eq_key_dec k (key a)).
-    - exfalso. rewrite -> e in H0. apply (binds_unbound_inv E2 a H0).
+    - exfalso. rewrite -> e in H0. apply (@binds_unbound_head_inv E2 a H0).
     - unfold binds in IHE2. apply IHE2. apply (@unbound_cons_inv E2 k a H0).
+Qed.
+Lemma binds_unbound_inv : forall k v E,
+  binds k v E -> unbound k E -> False.
+Proof.
+  intros. induction E.
+  + inv H.
+  + unfold binds, get in H. fold get in H. destruct (eq_key_dec k (key a)).
+    - subst. apply (binds_unbound_head_inv H0).
+    - apply IHE. unfold binds. assumption. apply (unbound_cons_inv H0).
+Qed.
+Lemma binds_unique : forall k v1 v2 E,
+  binds k v1 E -> binds k v2 E -> v1 = v2.
+Proof.
+  intros. induction E.
+  + inv H.
+  + unfold binds, get in *. fold get in *. destruct (eq_key_dec k (key a)).
+    - inv H. inv H0. reflexivity.
+    - inv H. inv H0. apply IHE; assumption.
 Qed.
 End Env.
 
@@ -477,7 +498,7 @@ Proof.
         assert (Hkeq: (decs.key (ndec_fld n t0)) = (decs.key (ndec_fld n t)))
           by reflexivity.
         rewrite -> Hkeq in H.
-        exfalso. apply (decs.binds_unbound_inv _ _ H).
+        exfalso. apply (decs.binds_unbound_head_inv H).
       * fold refine_dec. apply IHds2.
         inv H. unfold decsParams.eq_key_dec in H1. 
         destruct (eq_label_dec (label_fld n0) (label_fld n)).
@@ -492,7 +513,7 @@ Proof.
         assert (Hkeq: (decs.key (ndec_mtd n t1 t2)) = (decs.key (ndec_mtd n t t0)))
           by reflexivity.
         rewrite -> Hkeq in H.
-        exfalso. apply (decs.binds_unbound_inv _ _ H).
+        exfalso. apply (decs.binds_unbound_head_inv H).
       * fold refine_dec. apply IHds2.
         inv H. unfold decsParams.eq_key_dec in H1. 
         destruct (eq_label_dec (label_mtd n0) (label_mtd n)).
@@ -517,7 +538,7 @@ Proof.
     subst. apply (refine_dec_spec_label nd ds2).
   rewrite -> Hk.
   assert (Hv: (decs.value nd) = decs.value (f nd)).
-    subst. symmetry. apply (refine_dec_spec_unbound _ _ H0).
+    subst. symmetry. apply (refine_dec_spec_unbound _ H0).
   rewrite -> Hv.
   apply decs.binds_map. 
     intro. rewrite -> Heqf. symmetry. apply refine_dec_spec_label.
@@ -529,7 +550,7 @@ Lemma refine_decs_spec_unbound_preserved: forall l ds1 ds2,
   decs.unbound l (refine_decs ds1 ds2).
 Proof.
   intros. unfold refine_decs. remember (fun d1 : decsParams.B => refine_dec d1 ds2) as f.
-  refine (decs.unbound_map l f ds1 _ H).
+  refine (@decs.unbound_map l f ds1 _ H).
   subst. intro. symmetry. apply refine_dec_spec_label.
 Qed.
 
@@ -714,42 +735,50 @@ Inductive red : venv.t -> trm -> venv.t -> trm -> Prop :=
           s' (trm_sel o' l).
 
 (* Term typing *)
-Inductive has : tenv.t -> trm -> label -> dec -> Prop :=
-  | has_dec : forall G e l d ds,
-      typing_trm G e (typ_rcd ds) ->
+Inductive has : tenv.t -> venv.t -> trm -> label -> dec -> Prop :=
+  | has_dec : forall G s e l d ds,
+      typing_trm G s e (typ_rcd ds) ->
       decs.binds l d ds ->
-      has G e l d
-with typing_trm : tenv.t -> trm -> typ -> Prop :=
-  | typing_trm_var : forall G x T,
+      has G s e l d
+with typing_trm : tenv.t -> venv.t -> trm -> typ -> Prop :=
+  | typing_trm_var_g : forall G s x T,
       tenv.binds x T G ->
-      typing_trm G (trm_var (avar_f x)) T
-  | typing_trm_sel : forall G e l T,
-      has G e (label_fld l) (dec_fld T) ->
-      typing_trm G (trm_sel e l) T
-  | typing_trm_call : forall G t m U V u,
-      has G t (label_mtd m) (dec_mtd U V) ->
-      typing_trm G u U ->
-      typing_trm G (trm_call t m u) V
-  | typing_trm_new : forall G nis ds t T,
-      typing_inis G nis ds -> (* no self reference yet, no recursion *)
+      venv.unbound x s ->
+      typing_trm G s (trm_var (avar_f x)) T
+  | typing_trm_var_s : forall G s x is ds,
+      tenv.unbound x G ->
+      venv.binds x is s ->
+      typing_inis nil s is ds -> 
+      typing_trm G s (trm_var (avar_f x)) (typ_rcd ds)
+  | typing_trm_sel : forall G s e l T,
+      has G s e (label_fld l) (dec_fld T) ->
+      typing_trm G s (trm_sel e l) T
+  | typing_trm_call : forall G s t m U V u,
+      has G s t (label_mtd m) (dec_mtd U V) ->
+      typing_trm G s u U ->
+      typing_trm G s (trm_call t m u) V
+  | typing_trm_new : forall G s nis ds t T,
+      typing_inis G s nis ds -> (* no self reference yet, no recursion *)
       (forall x, tenv.unbound x G ->
-                 typing_trm (G ;; (x, typ_rcd ds)) (open_trm x t) T) ->
-      typing_trm G (trm_new nis t) T
-with typing_ini : tenv.t -> nini -> ndec -> Prop :=
-  | typing_ini_fld : forall G l v T,
-      typing_trm G (trm_var v) T ->
-      typing_ini G (nini_fld l v) (ndec_fld l T)
-  | typing_ini_mtd : forall G m S T t,
+                 venv.unbound x s ->
+                 typing_trm (G ;; (x, typ_rcd ds)) s (open_trm x t) T) ->
+      typing_trm G s (trm_new nis t) T
+with typing_ini : tenv.t -> venv.t -> nini -> ndec -> Prop :=
+  | typing_ini_fld : forall G s l v T,
+      typing_trm G s (trm_var v) T ->
+      typing_ini G s (nini_fld l v) (ndec_fld l T)
+  | typing_ini_mtd : forall G s m S T t,
       (forall x, tenv.unbound x G ->
-                 typing_trm (G ;; (x, S)) (open_trm x t) T) ->
-      typing_ini G (nini_mtd m S t) (ndec_mtd m S T)
-with typing_inis : tenv.t -> inis.t -> decs.t -> Prop :=
-  | typing_inis_nil : forall G,
-      typing_inis G nil nil
-  | typing_inis_cons : forall G is i ds d,
-      typing_inis G is ds ->
-      typing_ini G i d ->
-      typing_inis G (is ;; i) (ds ;; d).
+                 venv.unbound x s ->
+                 typing_trm (G ;; (x, S)) s (open_trm x t) T) ->
+      typing_ini G s (nini_mtd m S t) (ndec_mtd m S T)
+with typing_inis : tenv.t -> venv.t -> inis.t -> decs.t -> Prop :=
+  | typing_inis_nil : forall G s,
+      typing_inis G s nil nil
+  | typing_inis_cons : forall G s is i ds d,
+      typing_inis G s is ds ->
+      typing_ini  G s i d ->
+      typing_inis G s (is ;; i) (ds ;; d).
 
 Scheme has_mut         := Induction for has         Sort Prop
 with   typing_trm_mut  := Induction for typing_trm  Sort Prop
@@ -758,8 +787,157 @@ with   typing_inis_mut := Induction for typing_inis Sort Prop.
 
 Combined Scheme typing_mutind from has_mut, typing_trm_mut, typing_ini_mut, typing_inis_mut.
 
+Lemma invert_has: forall G s e l d,
+  has G s e l d ->
+  exists ds, typing_trm G s e (typ_rcd ds) /\ decs.binds l d ds.
+Proof.
+  intros. inv H. eauto.
+Qed.
+
+Lemma invert_typing_var_s: forall G s x is ds,
+  typing_trm G s (trm_var (avar_f x)) (typ_rcd ds) ->
+  venv.binds x is s ->
+  typing_inis nil s is ds.
+Proof.
+  intros G s x is ds Hty Hbv.
+  inversion Hty; subst.
+  (* typing_var_g *)
+  + exfalso. apply (@venv.binds_unbound_inv x is s); assumption.
+  (* typing_var_s *)
+  + assert (is0 = is) by apply (venv.binds_unique H4 Hbv). subst. assumption.
+Qed.
+
+Lemma invert_typing_ini_key: forall G s i d, 
+  typing_ini G s i d -> inis.key i = decs.key d.
+Proof.
+  intros. inv H; reflexivity.
+Qed.
+
+Lemma invert_typing_ini_cases: forall G s i d, 
+  typing_ini G s i d ->
+  (exists l x T, i = (nini_fld l x) /\ d = (ndec_fld l T)) \/
+  (exists m e T U, i = (nini_mtd m T e) /\ d = (ndec_mtd m T U)).
+Proof.
+  intros. inv H.
+  + left. exists l v T. split; reflexivity.
+  + right. exists m t S T. split; reflexivity.
+Qed.
+
+Lemma invert_typing_ini: forall G s i d, 
+  typing_ini G s i d ->
+  exists k iv dv, inis.key i = k /\ inis.value i = iv /\ 
+                  decs.key d = k /\ decs.value d = dv.
+Proof.
+  intros. destruct (invert_typing_ini_cases H)
+    as [[l [x [T [Heq1 Heq2]]]] | [m [e [T [U [Heq1 Heq2]]]]]].
+  + exists (label_fld l) (ini_fld x) (dec_fld T). subst. auto.
+  + exists (label_mtd m) (ini_mtd T e) (dec_mtd T U). subst. auto.
+Qed.
+
+Lemma decs_binds_to_inis_binds: forall d is ds s,
+  typing_inis nil s is ds ->
+  decs.binds (decs.key d) (decs.value d) ds ->
+  exists i, decs.key d = inis.key i /\ inis.binds (inis.key i) (inis.value i) is.
+Proof.
+Admitted.
+
+Lemma decs_binds_to_inis_binds_fld: forall l T is ds s,
+  typing_inis nil s is ds ->
+  decs.binds (label_fld l) (dec_fld T) ds ->
+  exists x, inis.binds (label_fld l) (ini_fld x) is.
+Proof.
+  intros. remember (ndec_fld l T) as d. 
+  assert (HeqKey: (decs.key d) = (label_fld l)).
+    subst. reflexivity.
+  assert (HeqVal: (decs.value d) = (dec_fld T)).
+    subst. reflexivity.
+  rewrite <- HeqKey in *. rewrite <- HeqVal in *.
+  destruct (decs_binds_to_inis_binds _ H H0) as [i [Heq Hbi]].
+  rewrite -> HeqKey in *.
+  rewrite <- Heq in *.
+  apply inis.binds_binding_inv in Hbi.
+  destruct Hbi as [i' [Heq1 Heq2]].
+  inversion i.
+  subst.
+  
+
+Lemma decs_binds_to_inis_binds_fld: forall l T is ds s,
+  typing_inis nil s is ds ->
+  decs.binds (label_fld l) (dec_fld T) ds ->
+  exists x, inis.binds (label_fld l) (ini_fld x) is.
+Proof.
+  intros l T is. induction is; intros ds s Hty Hbd. 
+  + inv Hty. inv Hbd.
+  + inv Hty. destruct (invert_typing_ini_cases H5)
+    as [[k [x [S [Heq1 Heq2]]]] | [k [e [S [U [Heq1 Heq2]]]]]]; subst.
+    - unfold inis.binds, inis.get; fold inis.get. 
+        unfold inisParams.eq_key_dec. simpl.
+      unfold decs.binds, decs.get in Hbd; fold decs.get in Hbd. 
+        unfold decsParams.eq_key_dec in Hbd. simpl in Hbd.
+      destruct (eq_label_dec (label_fld l) (label_fld k)).
+      * exists x. reflexivity.
+      * unfold decs.binds in IHis. apply IHis with ds0 s; assumption.
+    - unfold inis.binds, inis.get; fold inis.get. 
+        unfold inisParams.eq_key_dec. simpl.
+      unfold decs.binds, decs.get in Hbd; fold decs.get in Hbd. 
+        unfold decsParams.eq_key_dec in Hbd. simpl in Hbd.
+      destruct (eq_label_dec (label_fld l) (label_fld k)).
+      * exists . reflexivity.
+      * unfold decs.binds in IHis. apply IHis with ds0 s; assumption.
+
+
+ destruct (invert_typing_ini H5) as [k [iv [dv [Hik [Hiv [Hdk Hdv]]]]]].
+    subst.
+
+
+
+    assert (HeqKey: inis.key a = decs.key d) by apply (invert_typing_ini_key H5).
+    unfold decs.binds, decs.get in Hbd. fold decs.get in Hbd.
+    destruct (decsParams.eq_key_dec (label_fld l) (decs.key d)).
+    - inv Hbd. exists (inis.key a).
+*)
+
+Definition progress_for(s: venv.t)(e: trm) :=
+  (* can step *)
+  (exists s' e', red s e s' e') \/
+  (* or is a value *)
+  (exists x is, e = (trm_var (avar_f x)) /\ venv.binds x is s).
+
+
+Theorem progress: forall G s e T,
+  typing_trm G s e T -> progress_for s e.
+Proof.
+  Definition P_has :=         fun G s e l d (Hhas: has G s e l d)   => progress_for s e.
+  Definition P_typing_trm :=  fun G s e T (Hty: typing_trm G s e T) => progress_for s e.
+  Definition P_typing_ini :=  fun G s i d (Htyp: typing_ini G s i d)      => True.
+  Definition P_typing_inis := fun G s is ds (Htyp: typing_inis G s is ds) => True.
+  apply (typing_trm_mut P_has P_typing_trm P_typing_ini P_typing_inis);
+    intros;
+    try apply I;
+    unfold P_has, P_typing_trm, P_typing_ini, P_typing_inis, progress_for in *.
+  (* case has_dec *)
+  + assumption. 
+  (* case typing_trm_var_g *)
+  + (* how to step a var in Gamma ?? *) admit.
+  (* case typing_trm_var_s *)
+  + right. exists x is. split. reflexivity. assumption.
+  (* case typing_trm_sel *)
+  + left. destruct H as [IH | IH].
+    (* receiver is an expression *)
+    - destruct IH as [s' [e' IH]]. do 2 eexists. apply (red_sel1 l IH). 
+    (* receiver is a var *)
+    - destruct IH as [x [is [Heq Hbv]]]. subst. do 2 eexists.
+      destruct (invert_has h) as [ds [Hty Hbd]].
+stop
+      eapply (red_sel Hbv).
+      Check (invert_typing_var_s Hty Hbv).
+      Check (red_sel Hbv).
+  (* case typing_trm_call *)
+  (* case typing_trm_new *)
+
 
 (* garbage .............. *)
+
 
 
 (*
