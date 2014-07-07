@@ -2,8 +2,11 @@
 Require Export List.
 Require Export Arith.Peano_dec.
 Require Export Program.Syntax. (* eg for multiple exists tactic *)
-Set Implicit Arguments.
+Require Import Numbers.Natural.Peano.NPeano.
+Require Import Arith.Compare_dec.
+Require Import Omega.
 
+Set Implicit Arguments.
 
 (* List notation with head on the right *)
 Notation "E '&' F" := (app F E) (at level 31, left associativity).
@@ -149,10 +152,9 @@ Fixpoint get(k: K)(E: t): option V := match E with
   end.
 Definition binds(k: K)(v: V)(E: t): Prop := (get k E = Some v).
 Definition unbound(k: K)(E: t): Prop := (get k E = None).
-Lemma binds_empty_inv : forall k v, binds k v nil -> False.
-Proof.
-  intros. unfold binds, get in H. discriminate H.
-Qed.
+Ltac empty_binds_contradiction := match goal with
+| H: binds _ _ [] |- _ => inversion H
+end.
 Lemma map_head: forall (E: t) (b: B) (f: B -> B), map f (E ;; b) = (map f E) ;; (f b).
 Proof.
   intros. destruct E as [|a E].
@@ -185,7 +187,7 @@ Qed.
 Lemma binds_binding_inv: forall k v E, binds k v E -> exists b, key b = k /\ value b = v.
 Proof.
   intros k v E. induction E; intros.
-  + exfalso. apply (@binds_empty_inv _ _ H).
+  + empty_binds_contradiction.
   + unfold binds, get in H. fold get in H. destruct (eq_key_dec k (key a)).
     - inversion H. rewrite -> H1. exists a. symmetry in e. split; assumption.
     - unfold binds in IHE. apply IHE. assumption.
@@ -196,7 +198,7 @@ Lemma binds_map: forall b (f : B -> B) E,
   binds (key (f b)) (value (f b)) (map f E).
 Proof.
   intros. induction E.
-  + exfalso. apply (@binds_empty_inv _ _ H0).
+  + empty_binds_contradiction.
   + simpl. unfold binds, get. rewrite -> (H a). rewrite -> (H b).
     unfold binds, get in H0. destruct (eq_key_dec (key b) (key a)).
     - inv H0. do 3 f_equal. symmetry in e. apply key_val_eq_eq; assumption.
@@ -221,7 +223,7 @@ Lemma binds_concat_right : forall k v E1 E2,
   binds k v (E1 & E2).
 Proof.
   intros. induction E2.
-  + exfalso. apply (@binds_empty_inv _ _ H).
+  + empty_binds_contradiction.
   + rewrite -> concat_cons_assoc. unfold binds, get. unfold binds, get in H.
     destruct (eq_key_dec k (key a)).
     - assumption.
@@ -268,6 +270,20 @@ Proof.
   + unfold binds, get in *. fold get in *. destruct (eq_key_dec k (key a)).
     - inv H. inv H0. reflexivity.
     - inv H. inv H0. apply IHE; assumption.
+Qed.
+Lemma build_unbound: forall k E, (forall k' v, binds k' v E -> k' <> k) -> unbound k E.
+Proof.
+  intros. induction E.
+  + unfold unbound, get. reflexivity.
+  + unfold unbound, get. fold get. destruct (eq_key_dec k (key a)) eqn: Hdestr.
+    - specialize (H k (value a)). 
+      unfold binds, get in H. rewrite -> Hdestr in H. specialize (H eq_refl).
+      contradiction H. reflexivity.
+    - unfold unbound in IHE. apply IHE. clear IHE. clear Hdestr.
+      intros. destruct (eq_key_dec k' (key a)) eqn: Hdestr.
+      * rewrite <- e in n. intro. symmetry in H1. contradiction H1.
+      * apply H with v. unfold binds, get. fold get.
+        rewrite -> Hdestr. unfold binds in H0. assumption.
 Qed.
 End Env.
 
@@ -428,7 +444,7 @@ Lemma refine_dec_spec_fld: forall ds2 n T1 T2,
   (refine_dec (ndec_fld n T1) ds2) = (ndec_fld n (t_and T1 T2)).
 Proof. 
   intro ds2. induction ds2; intros.
-  + apply decs.binds_empty_inv in H. contradiction H.
+  + decs.empty_binds_contradiction.
   + unfold decs.binds in H. unfold decs.get in H. unfold decs.key, decsParams.key in H.
     destruct_matchee.
     - inv H. unfold decs.value, decsParams.value in H1. destruct a eqn: Heqa.
@@ -449,7 +465,7 @@ Lemma refine_dec_spec_mtd: forall ds2 n T1 S1 T2 S2,
   (refine_dec (ndec_mtd n T1 S1) ds2) = (ndec_mtd n (t_or T1 T2) (t_and S1 S2)).
 Proof. 
   intro ds2. induction ds2; intros.
-  + apply decs.binds_empty_inv in H. contradiction H.
+  + decs.empty_binds_contradiction.
   + unfold decs.binds in H. unfold decs.get in H. unfold decs.key, decsParams.key in H.
     destruct_matchee.
     - inv H. unfold decs.value, decsParams.value in H1. destruct a eqn: Heqa.
@@ -560,7 +576,7 @@ Lemma refine_decs_spec_fld: forall n ds1 ds2 T1 T2,
   decs.binds (label_fld n) (dec_fld (t_and T1 T2)) (refine_decs ds1 ds2).
 Proof.
   intros n ds1 ds2 T1 T2 H. induction ds1; intros.
-  + apply decs.binds_empty_inv in H. contradiction H.
+  + decs.empty_binds_contradiction.
   + unfold decs.binds, decs.get in H. destruct a eqn: Heqa.
     - fold decs.get in H. unfold decs.key, decsParams.key in H.
       destruct (decsParams.eq_key_dec (label_fld n) (label_fld n0)).
@@ -611,7 +627,7 @@ Lemma refine_decs_spec_mtd: forall n ds1 ds2 T1 S1 T2 S2,
   decs.binds (label_mtd n) (dec_mtd (t_or T1 T2) (t_and S1 S2)) (refine_decs ds1 ds2).
 Proof.
   intros n ds1 ds2 T1 S1 T2 S2 H. induction ds1; intros.
-  + apply decs.binds_empty_inv in H. contradiction H.
+  + decs.empty_binds_contradiction.
   + unfold decs.binds, decs.get in H. destruct a eqn: Heqa.
     - fold decs.get in H. unfold decs.key, decsParams.key in H.
       destruct (decsParams.eq_key_dec (label_mtd n) (label_mtd n0)).
@@ -834,68 +850,78 @@ Proof.
   + exists (label_mtd m) (ini_mtd T e) (dec_mtd T U). subst. auto.
 Qed.
 
-Lemma decs_binds_to_inis_binds: forall d is ds s,
-  typing_inis nil s is ds ->
-  decs.binds (decs.key d) (decs.value d) ds ->
-  exists i, decs.key d = inis.key i /\ inis.binds (inis.key i) (inis.value i) is.
+Lemma venv_gen_gt : forall s, exists x, forall y i, venv.binds y i s -> y < x.
 Proof.
-Admitted.
+  intros. induction s.
+  + exists 0. intros. venv.empty_binds_contradiction.
+  + destruct IHs as [x IH].
+    destruct (le_lt_dec x (venv.key a)) as [Hc | Hc].
+    - exists (S (venv.key a)). intros.
+      unfold venv.binds, venv.get in H. fold venv.get in H. 
+      unfold venvParams.eq_key_dec in H.
+      destruct (eq_nat_dec y (venv.key a)).
+      * omega.
+      * unfold venv.binds in IH. specialize (IH y i H). omega.
+    - exists x. intros.
+      unfold venv.binds, venv.get in H. fold venv.get in H. 
+      unfold venvParams.eq_key_dec in H.
+      destruct (eq_nat_dec y (venv.key a)).
+      * omega.
+      * apply (IH y i). unfold venv.binds. assumption.
+Qed.
 
-Lemma decs_binds_to_inis_binds_fld: forall l T is ds s,
-  typing_inis nil s is ds ->
-  decs.binds (label_fld l) (dec_fld T) ds ->
-  exists x, inis.binds (label_fld l) (ini_fld x) is.
+Lemma venv_gen_fresh : forall s, exists x, venv.unbound x s.
 Proof.
-  intros. remember (ndec_fld l T) as d. 
-  assert (HeqKey: (decs.key d) = (label_fld l)).
-    subst. reflexivity.
-  assert (HeqVal: (decs.value d) = (dec_fld T)).
-    subst. reflexivity.
-  rewrite <- HeqKey in *. rewrite <- HeqVal in *.
-  destruct (decs_binds_to_inis_binds _ H H0) as [i [Heq Hbi]].
-  rewrite -> HeqKey in *.
-  rewrite <- Heq in *.
-  apply inis.binds_binding_inv in Hbi.
-  destruct Hbi as [i' [Heq1 Heq2]].
-  inversion i.
-  subst.
-  
+  intros. destruct (venv_gen_gt s) as [x H]. exists x.
+  apply venv.build_unbound. intros. specialize (H k' v H0). omega.
+Qed.
 
-Lemma decs_binds_to_inis_binds_fld: forall l T is ds s,
+Lemma decs_binds_to_inis_binds: forall l d is ds s,
   typing_inis nil s is ds ->
-  decs.binds (label_fld l) (dec_fld T) ds ->
-  exists x, inis.binds (label_fld l) (ini_fld x) is.
+  decs.binds l d ds ->
+  exists i, inis.binds l i is.
 Proof.
-  intros l T is. induction is; intros ds s Hty Hbd. 
-  + inv Hty. inv Hbd.
-  + inv Hty. destruct (invert_typing_ini_cases H5)
-    as [[k [x [S [Heq1 Heq2]]]] | [k [e [S [U [Heq1 Heq2]]]]]]; subst.
-    - unfold inis.binds, inis.get; fold inis.get. 
-        unfold inisParams.eq_key_dec. simpl.
-      unfold decs.binds, decs.get in Hbd; fold decs.get in Hbd. 
-        unfold decsParams.eq_key_dec in Hbd. simpl in Hbd.
-      destruct (eq_label_dec (label_fld l) (label_fld k)).
-      * exists x. reflexivity.
-      * unfold decs.binds in IHis. apply IHis with ds0 s; assumption.
-    - unfold inis.binds, inis.get; fold inis.get. 
-        unfold inisParams.eq_key_dec. simpl.
-      unfold decs.binds, decs.get in Hbd; fold decs.get in Hbd. 
-        unfold decsParams.eq_key_dec in Hbd. simpl in Hbd.
-      destruct (eq_label_dec (label_fld l) (label_fld k)).
-      * exists . reflexivity.
-      * unfold decs.binds in IHis. apply IHis with ds0 s; assumption.
+  intros l d is ds s Hty Hbi. induction Hty.
+  + decs.empty_binds_contradiction.
+  + unfold inis.binds, inis.get. fold inis.get. unfold inisParams.eq_key_dec.
+    destruct (eq_label_dec l (inis.key i)).
+    - subst. exists (inis.value i). reflexivity.
+    - destruct (invert_typing_ini H) as [k [iv [dv [Hik [Hiv [Hdk Hdv]]]]]]. subst.
+      unfold decs.binds, decs.get in Hbi. fold decs.get in Hbi.
+      destruct (decsParams.eq_key_dec l (decs.key d0)).
+      * rewrite <- Hdk in n. contradiction e.
+      * unfold inis.binds in IHHty. apply IHHty. unfold decs.binds. assumption.
+Qed.
 
+Lemma inis_binds_fld_sync_val: forall n v is,
+  inis.binds (label_fld n) v is -> exists x, v = (ini_fld x).
+Proof.
+  intros. induction is.
+  + inis.empty_binds_contradiction.
+  + unfold inis.binds, inis.get in H. fold inis.get in H. destruct a;
+    simpl in H; unfold inisParams.eq_key_dec in H.
+    - destruct (eq_label_dec (label_fld n) (label_fld n0)).
+      * inv H. exists a. reflexivity.
+      * apply IHis. unfold inis.binds. assumption.
+    - destruct (eq_label_dec (label_fld n) (label_mtd n0)).
+      * inv e. (* contradiction *)
+      * apply IHis. unfold inis.binds. assumption.
+Qed.
 
- destruct (invert_typing_ini H5) as [k [iv [dv [Hik [Hiv [Hdk Hdv]]]]]].
-    subst.
-
-
-
-    assert (HeqKey: inis.key a = decs.key d) by apply (invert_typing_ini_key H5).
-    unfold decs.binds, decs.get in Hbd. fold decs.get in Hbd.
-    destruct (decsParams.eq_key_dec (label_fld l) (decs.key d)).
-    - inv Hbd. exists (inis.key a).
-*)
+Lemma inis_binds_mtd_sync_val: forall n v is,
+  inis.binds (label_mtd n) v is -> exists T e, v = (ini_mtd T e).
+Proof.
+  intros. induction is.
+  + inis.empty_binds_contradiction.
+  + unfold inis.binds, inis.get in H. fold inis.get in H. destruct a;
+    simpl in H; unfold inisParams.eq_key_dec in H.
+    - destruct (eq_label_dec (label_mtd n) (label_fld n0)).
+      * inv e. (* contradiction *)
+      * apply IHis. unfold inis.binds. assumption.
+    - destruct (eq_label_dec (label_mtd n) (label_mtd n0)).
+      * inv H. exists t t0. reflexivity.
+      * apply IHis. unfold inis.binds. assumption.
+Qed.
 
 Definition progress_for(s: venv.t)(e: trm) :=
   (* can step *)
@@ -903,22 +929,37 @@ Definition progress_for(s: venv.t)(e: trm) :=
   (* or is a value *)
   (exists x is, e = (trm_var (avar_f x)) /\ venv.binds x is s).
 
+Ltac auto_specialize :=
+  repeat match goal with
+  | Impl: ?Cond -> _ |- _ => let HC := fresh in 
+                             assert (HC: Cond) by auto; specialize (Impl HC); clear HC
+  end.
 
-Theorem progress: forall G s e T,
-  typing_trm G s e T -> progress_for s e.
+Ltac rewrite_with EqT := match goal with
+| H: EqT |- _ => rewrite H in *; clear H
+end.
+
+Lemma progress_proof: forall G s e T,
+  typing_trm G s e T -> G = nil -> progress_for s e.
 Proof.
-  Definition P_has :=         fun G s e l d (Hhas: has G s e l d)   => progress_for s e.
-  Definition P_typing_trm :=  fun G s e T (Hty: typing_trm G s e T) => progress_for s e.
-  Definition P_typing_ini :=  fun G s i d (Htyp: typing_ini G s i d)      => True.
-  Definition P_typing_inis := fun G s is ds (Htyp: typing_inis G s is ds) => True.
+  Definition P_has :=         fun G s e l d (Hhas: has G s e l d)   
+                              => G = nil -> progress_for s e.
+  Definition P_typing_trm :=  fun G s e T (Hty: typing_trm G s e T)
+                              => G = nil -> progress_for s e.
+  Definition P_typing_ini :=  fun G s i d (Htyp: typing_ini G s i d)
+                              => G = nil -> True.
+  Definition P_typing_inis := fun G s is ds (Htyp: typing_inis G s is ds)
+                              => G = nil -> True.
   apply (typing_trm_mut P_has P_typing_trm P_typing_ini P_typing_inis);
+    unfold P_has, P_typing_trm, P_typing_ini, P_typing_inis, progress_for;
     intros;
     try apply I;
-    unfold P_has, P_typing_trm, P_typing_ini, P_typing_inis, progress_for in *.
+    rewrite_with (G = []);
+    auto_specialize.
   (* case has_dec *)
   + assumption. 
   (* case typing_trm_var_g *)
-  + (* how to step a var in Gamma ?? *) admit.
+  + tenv.empty_binds_contradiction.
   (* case typing_trm_var_s *)
   + right. exists x is. split. reflexivity. assumption.
   (* case typing_trm_sel *)
@@ -926,15 +967,52 @@ Proof.
     (* receiver is an expression *)
     - destruct IH as [s' [e' IH]]. do 2 eexists. apply (red_sel1 l IH). 
     (* receiver is a var *)
-    - destruct IH as [x [is [Heq Hbv]]]. subst. do 2 eexists.
+    - destruct IH as [x [is [Heq Hbv]]]. subst.
       destruct (invert_has h) as [ds [Hty Hbd]].
-stop
-      eapply (red_sel Hbv).
-      Check (invert_typing_var_s Hty Hbv).
-      Check (red_sel Hbv).
+      inv Hty.
+      (* receiver var is in empty Gamma *)
+      * tenv.empty_binds_contradiction.
+      (* receiver var is in s *)
+      * rewrite -> (venv.binds_unique H4 Hbv) in *. clear H4. clear is0.
+        destruct (decs_binds_to_inis_binds H5 Hbd) as [i Hbl].
+        destruct (inis_binds_fld_sync_val Hbl) as [y Hieq]. subst.
+        exists s (trm_var y).
+        apply (red_sel Hbv Hbl).
   (* case typing_trm_call *)
+  + left. destruct H as [IHrec | IHrec].
+    (* case receiver is an expression *)
+    - destruct IHrec as [s' [e' IHrec]]. do 2 eexists. apply (red_call1 m _ IHrec).
+    (* case receiver is  a var *)
+    - destruct IHrec as [x [is [Heqx Hbv]]]. subst.
+      destruct H0 as [IHarg | IHarg].
+      (* arg is an expression *)
+      * destruct IHarg as [s' [e' IHarg]]. do 2 eexists. apply (red_call2 x m IHarg).
+      (* arg is a var *)
+      * destruct IHarg as [y [is' [Heqy Hbv']]]. subst. 
+        destruct (invert_has h) as [ds [Hty Hbd]].
+        inv Hty.
+        (* receiver var is in empty Gamma *)
+          tenv.empty_binds_contradiction.
+        (* receiver var is in s *)
+          rewrite -> (venv.binds_unique H4 Hbv) in *. clear H4. clear is0.
+          destruct (decs_binds_to_inis_binds H5 Hbd) as [i Hbl].
+          destruct (inis_binds_mtd_sync_val Hbl) as [U' [e Hieq]]. subst.
+          exists s (open_trm y e).
+          apply (red_call y Hbv Hbl).
   (* case typing_trm_new *)
+  + left. clear H. clear H0.
+    destruct (venv_gen_fresh s) as [x Hxub].
+    exists (s ;; (x, nis)) (open_trm x t).
+    apply red_new. assumption.
+Qed.
 
+Theorem progress: forall s e T,
+  typing_trm nil s e T -> progress_for s e.
+Proof.
+  intros. apply (progress_proof H eq_refl). 
+Qed.
+
+Print Assumptions progress.
 
 (* garbage .............. *)
 
