@@ -145,7 +145,6 @@ Import params.
 Definition key := key.
 Definition value := value.
 Definition t := list B.
-Definition map: (B -> B) -> t -> t := (@List.map B B).
 Fixpoint get(k: K)(E: t): option V := match E with
   | nil => None
   | bs ;; b => if eq_key_dec k (key b) then Some (value b) else get k bs
@@ -538,18 +537,18 @@ Proof.
 Qed.
 
 Definition refine_decs(ds1: decs.t)(ds2: decs.t): decs.t := 
-  decs.map (fun d1 => refine_dec d1 ds2) ds1.
+  map (fun d1 => refine_dec d1 ds2) ds1.
 
 Lemma refine_decs_spec_unbound: forall l d ds1 ds2,
   decs.binds   l d ds1 ->
   decs.unbound l ds2 ->
   decs.binds   l d (refine_decs ds1 ds2).
 Proof.
-  intros. unfold refine_decs. unfold decs.map.  
+  intros. unfold refine_decs.
   assert (Hex: exists nd, decs.key nd = l /\ decs.value nd = d).
     apply (@decs.binds_binding_inv l d ds1 H).
   destruct Hex as [nd [Hl Hd]]. subst.
-  remember (fun d1 : decsParams.B => refine_dec d1 ds2) as f.
+  remember (fun d1 => refine_dec d1 ds2) as f.
   assert (Hk: (decs.key nd) = decs.key (f nd)).
     subst. apply (refine_dec_spec_label nd ds2).
   rewrite -> Hk.
@@ -565,7 +564,7 @@ Lemma refine_decs_spec_unbound_preserved: forall l ds1 ds2,
   decs.unbound l ds1 ->
   decs.unbound l (refine_decs ds1 ds2).
 Proof.
-  intros. unfold refine_decs. remember (fun d1 : decsParams.B => refine_dec d1 ds2) as f.
+  intros. unfold refine_decs. remember (fun d1 => refine_dec d1 ds2) as f.
   refine (@decs.unbound_map l f ds1 _ H).
   subst. intro. symmetry. apply refine_dec_spec_label.
 Qed.
