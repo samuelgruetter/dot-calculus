@@ -164,12 +164,23 @@ Ltac destruct_key_if := match goal with
 | H:   context[if eq_key_dec ?k1 ?k2 then _ else _] |- _ => destruct (eq_key_dec k1 k2)
 |   |- context[if eq_key_dec ?k1 ?k2 then _ else _]      => destruct (eq_key_dec k1 k2)
 end.
+Ltac compare_keys := match goal with
+| _ :  context[binds _ _ (?E ;; ?b)] |- _ => unfoldg binds;   destruct_key_if
+|   |- context[binds _ _ (?E ;; ?b)]      => unfoldg binds;   destruct_key_if
+| _ :  context[unbound _ (?E ;; ?b)] |- _ => unfoldg unbound; destruct_key_if
+|   |- context[unbound _ (?E ;; ?b)]      => unfoldg unbound; destruct_key_if
+end. (* We don't just put destruct_key_if 1x here, because if it fails, match has to try
+        the next branch 
+Ltac compare_keys := match goal with
+| _ :  context[binds _ _ (?E ;; ?b)] |- _ => unfoldg binds
+|   |- context[binds _ _ (?E ;; ?b)]      => unfoldg binds
+| _ :  context[unbound _ (?E ;; ?b)] |- _ => unfoldg unbound
+|   |- context[unbound _ (?E ;; ?b)]      => unfoldg unbound
+end; destruct_key_if. *)
 
 Lemma map_head: forall (E: t) (b: B) (f: B -> B), map f (E ;; b) = (map f E) ;; (f b).
 Proof.
-  intros. destruct E as [|a E].
-  + unfold map. unfold List.map. reflexivity.
-  + unfold map. remember (E ;; a) as L. unfold List.map. reflexivity.
+  intros. simpl. reflexivity.
 Qed.
 Lemma concat_cons_assoc: forall (E1: t) (E2: t) (b: B), E1 & (E2 ;; b) = (E1 & E2) ;; b.
 Proof.
@@ -177,20 +188,20 @@ Proof.
 Qed.
 Lemma binds_unbound_head_inv: forall E b, unbound (key b) (E ;; b) -> False.
 Proof.
-  intros. unfoldg unbound. destruct (eq_key_dec (key b) (key b)).
+  intros. compare_keys.
   + discriminate H.
   + apply n. reflexivity.
 Qed.
 Lemma unbound_cons_inv: forall E k b, unbound k (E ;; b) -> unbound k E.
 Proof.
-  intros. unfoldg unbound. destruct_key_if.
+  intros. compare_keys.
   + inversion H.
   + assumption.
 Qed.
 Lemma binds_push_eq_inv: forall E a b,
   binds (key a) (value b) (E ;; a) -> value a = value b.
 Proof.
-  intros. unfoldg binds. destruct_key_if.
+  intros. compare_keys.
   + inversion H. reflexivity.
   + contradiction n. reflexivity.
 Qed.
@@ -198,7 +209,7 @@ Lemma binds_binding_inv: forall k v E, binds k v E -> exists b, key b = k /\ val
 Proof.
   intros k v E. induction E; intros.
   + empty_binds_contradiction.
-  + unfold binds, get in H. fold get in H. destruct (eq_key_dec k (key a)).
+  + compare_keys.
     - inversion H. rewrite -> H1. exists a. symmetry in e. split; assumption.
     - unfold binds in IHE. apply IHE. assumption.
 Qed.
@@ -209,11 +220,9 @@ Lemma binds_map: forall b (f : B -> B) E,
 Proof.
   intros. induction E.
   + empty_binds_contradiction.
-  + simpl. unfoldg binds. rewrite -> (H a). rewrite -> (H b).
-    unfold binds, get in H0. destruct (eq_key_dec (key b) (key a)).
+  + simpl. unfoldg binds. rewrite -> (H a). rewrite -> (H b). destruct_key_if.
     - inv H0. do 3 f_equal. symmetry in e. apply key_val_eq_eq; assumption.
-    - fold get. fold get in H0. unfold binds in IHE. 
-      rewrite -> (H b) in IHE. apply (IHE H0).
+    - rewrite -> (H b) in IHE. apply (IHE H0).
 Qed.
 Lemma unbound_map: forall k (f : B -> B) E,
   (forall a, key (f a) = key a) ->
@@ -222,11 +231,9 @@ Lemma unbound_map: forall k (f : B -> B) E,
 Proof.
   intros. induction E.
   + simpl. assumption.
-  + simpl. unfold unbound, get. fold get. rewrite -> (H a).
-    destruct (eq_key_dec k (key a)).
-    - exfalso. rewrite -> e in H0. apply (@binds_unbound_head_inv E a H0).
-    - unfold unbound in IHE. apply IHE. apply unbound_cons_inv in H0.
-      unfold unbound in H0. assumption.
+  + simpl. unfoldg unbound. fold get. rewrite -> (H a). destruct_key_if.
+    - discriminate H0.
+    - apply IHE. assumption.
 Qed.
 Lemma binds_concat_right : forall k v E1 E2,
   binds k v E2 ->
@@ -234,10 +241,9 @@ Lemma binds_concat_right : forall k v E1 E2,
 Proof.
   intros. induction E2.
   + empty_binds_contradiction.
-  + rewrite -> concat_cons_assoc. unfold binds, get. unfold binds, get in H.
-    destruct (eq_key_dec k (key a)).
+  + rewrite -> concat_cons_assoc. compare_keys.
     - assumption.
-    - fold get in *. unfold binds in IHE2. apply IHE2. assumption.
+    - apply IHE2. assumption.
 Qed.
 Lemma binds_concat_left_inv : forall k v E1 E2,
   binds k v (E1 & E2) ->
@@ -246,10 +252,9 @@ Lemma binds_concat_left_inv : forall k v E1 E2,
 Proof.
   intros. induction E2.
   + simpl in H. assumption.
-  + rewrite -> concat_cons_assoc in H. unfold binds, get in H. fold get in H.
-    destruct (eq_key_dec k (key a)).
-    - exfalso. rewrite -> e in H0. apply (@binds_unbound_head_inv E2 a H0).
-    - apply IHE2. unfold binds. assumption. apply (@unbound_cons_inv E2 k a H0).
+  + rewrite -> concat_cons_assoc in H. compare_keys.
+    - exfalso. rewrite -> e in H0. apply (binds_unbound_head_inv H0).
+    - apply IHE2. assumption. apply (unbound_cons_inv H0).
 Qed.
 Lemma binds_concat_left : forall k v E1 E2,
   binds k v E1 ->
@@ -258,42 +263,39 @@ Lemma binds_concat_left : forall k v E1 E2,
 Proof.
   intros. induction E2.
   + simpl. assumption.
-  + rewrite -> concat_cons_assoc. unfold binds, get. fold get.
-    destruct (eq_key_dec k (key a)).
-    - exfalso. rewrite -> e in H0. apply (@binds_unbound_head_inv E2 a H0).
-    - unfold binds in IHE2. apply IHE2. apply (@unbound_cons_inv E2 k a H0).
+  + rewrite -> concat_cons_assoc. compare_keys.
+    - exfalso. rewrite -> e in H0. apply (binds_unbound_head_inv H0).
+    - apply IHE2. apply (unbound_cons_inv H0).
 Qed.
 Lemma binds_unbound_inv : forall k v E,
   binds k v E -> unbound k E -> False.
 Proof.
   intros. induction E.
   + inv H.
-  + unfold binds, get in H. fold get in H. destruct (eq_key_dec k (key a)).
+  + compare_keys.
     - subst. apply (binds_unbound_head_inv H0).
-    - apply IHE. unfold binds. assumption. apply (unbound_cons_inv H0).
+    - apply IHE. assumption. apply (unbound_cons_inv H0).
 Qed.
 Lemma binds_unique : forall k v1 v2 E,
   binds k v1 E -> binds k v2 E -> v1 = v2.
 Proof.
   intros. induction E.
   + inv H.
-  + unfold binds, get in *. fold get in *. destruct (eq_key_dec k (key a)).
+  + compare_keys.
     - inv H. inv H0. reflexivity.
     - inv H. inv H0. apply IHE; assumption.
 Qed.
 Lemma build_unbound: forall k E, (forall k' v, binds k' v E -> k' <> k) -> unbound k E.
 Proof.
   intros. induction E.
-  + unfold unbound, get. reflexivity.
-  + unfold unbound, get. fold get. destruct (eq_key_dec k (key a)) eqn: Hdestr.
-    - specialize (H k (value a)). 
-      unfold binds, get in H. rewrite -> Hdestr in H. specialize (H eq_refl).
-      contradiction H. reflexivity.
-    - unfold unbound in IHE. apply IHE. clear IHE. clear Hdestr.
-      intros. destruct (eq_key_dec k' (key a)) eqn: Hdestr.
+  + reflexivity.
+  + compare_keys.
+    - specialize (H k (value a)). compare_keys.
+      * specialize (H eq_refl). contradiction H. reflexivity.
+      * contradiction n. 
+    - apply IHE. intros. destruct (eq_key_dec k' (key a)) eqn: Hdestr.
       * rewrite <- e in n. intro. symmetry in H1. contradiction H1.
-      * apply H with v. unfold binds, get. fold get.
-        rewrite -> Hdestr. unfold binds in H0. assumption.
+      * apply H with v. unfoldg binds. rewrite -> Hdestr. assumption.
 Qed.
 End Env.
 
@@ -455,14 +457,13 @@ Lemma refine_dec_spec_fld: forall ds2 n T1 T2,
 Proof. 
   intro ds2. induction ds2; intros.
   + decs.empty_binds_contradiction.
-  + unfold decs.binds in H. unfold decs.get in H. unfold decs.key, decsParams.key in H.
-    destruct_matchee.
+  + decs.compare_keys.
     - inv H. unfold decs.value, decsParams.value in H1. destruct a eqn: Heqa.
       * inv H1. inversion e. subst. simpl. destruct (eq_nat_dec n0 n0). reflexivity.
         contradiction n. reflexivity.
       * inv H1.
     - simpl. destruct a eqn: Heqa. 
-      * assert (Hnn: n <> n1). unfold not in *. intro. apply n0. f_equal. assumption.
+      * assert (Hnn: n <> n1). unfold not in *. intro. apply n0. simpl. f_equal. assumption.
         destruct (eq_nat_dec n n1). contradiction Hnn.
         apply IHds2. unfold decs.binds, decs.get. unfold decs.key, decsParams.key.
         assumption.
@@ -476,7 +477,7 @@ Lemma refine_dec_spec_mtd: forall ds2 n T1 S1 T2 S2,
 Proof. 
   intro ds2. induction ds2; intros.
   + decs.empty_binds_contradiction.
-  + decs.unfoldg decs.binds. decs.destruct_key_if.
+  + decs.compare_keys.
     - inv H. destruct a eqn: Heqa.
       * inv H1.
       * inv H1. inversion e. subst. simpl. destruct (eq_nat_dec n0 n0). reflexivity.
@@ -890,10 +891,10 @@ Lemma decs_binds_to_inis_binds: forall l d is ds s,
 Proof.
   intros l d is ds s Hty Hbi. induction Hty.
   + decs.empty_binds_contradiction.
-  + inis.unfoldg inis.binds. inis.destruct_key_if.
+  + inis.compare_keys.
     - subst. exists (inis.value i). reflexivity.
     - destruct (invert_typing_ini H) as [k [iv [dv [Hik [Hiv [Hdk Hdv]]]]]]. subst.
-      decs.unfoldg decs.binds. decs.destruct_key_if.
+      decs.compare_keys.
       * rewrite <- Hdk in n. contradiction e.
       * apply IHHty. assumption.
 Qed.
@@ -903,12 +904,9 @@ Lemma inis_binds_fld_sync_val: forall n v is,
 Proof.
   intros. induction is.
   + inis.empty_binds_contradiction.
-  + unfold inis.binds, inis.get in H. fold inis.get in H. destruct a;
-    simpl in H; unfold inisParams.eq_key_dec in H.
-    - destruct (eq_label_dec (label_fld n) (label_fld n0)).
+  + inis.unfoldg inis.binds. destruct a; simpl in H; inis.destruct_key_if.
       * inv H. exists a. reflexivity.
       * apply IHis. unfold inis.binds. assumption.
-    - destruct (eq_label_dec (label_fld n) (label_mtd n0)).
       * inv e. (* contradiction *)
       * apply IHis. unfold inis.binds. assumption.
 Qed.
@@ -918,12 +916,9 @@ Lemma inis_binds_mtd_sync_val: forall n v is,
 Proof.
   intros. induction is.
   + inis.empty_binds_contradiction.
-  + unfold inis.binds, inis.get in H. fold inis.get in H. destruct a;
-    simpl in H; unfold inisParams.eq_key_dec in H.
-    - destruct (eq_label_dec (label_mtd n) (label_fld n0)).
+  + inis.unfoldg inis.binds. destruct a; simpl in H; inis.destruct_key_if.
       * inv e. (* contradiction *)
       * apply IHis. unfold inis.binds. assumption.
-    - destruct (eq_label_dec (label_mtd n) (label_mtd n0)).
       * inv H. exists t t0. reflexivity.
       * apply IHis. unfold inis.binds. assumption.
 Qed.
