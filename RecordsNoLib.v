@@ -151,9 +151,20 @@ Fixpoint get(k: K)(E: t): option V := match E with
   end.
 Definition binds(k: K)(v: V)(E: t): Prop := (get k E = Some v).
 Definition unbound(k: K)(E: t): Prop := (get k E = None).
+
 Ltac empty_binds_contradiction := match goal with
 | H: binds _ _ [] |- _ => inversion H
 end.
+(*
+Tactic Notation "unfoldg" reference(I)             := unfold I, get; fold get.
+Tactic Notation "unfoldg" reference(I) "in" hyp(H) := unfold I, get in H; fold get in H.
+*)
+Ltac unfoldg I := unfold I, get in *; fold get in *.
+Ltac destruct_key_if := match goal with
+| H:   context[if eq_key_dec ?k1 ?k2 then _ else _] |- _ => destruct (eq_key_dec k1 k2)
+|   |- context[if eq_key_dec ?k1 ?k2 then _ else _]      => destruct (eq_key_dec k1 k2)
+end.
+
 Lemma map_head: forall (E: t) (b: B) (f: B -> B), map f (E ;; b) = (map f E) ;; (f b).
 Proof.
   intros. destruct E as [|a E].
@@ -166,20 +177,20 @@ Proof.
 Qed.
 Lemma binds_unbound_head_inv: forall E b, unbound (key b) (E ;; b) -> False.
 Proof.
-  intros. unfold unbound in H. simpl in H. destruct (eq_key_dec (key b) (key b)).
+  intros. unfoldg unbound. destruct (eq_key_dec (key b) (key b)).
   + discriminate H.
   + apply n. reflexivity.
 Qed.
 Lemma unbound_cons_inv: forall E k b, unbound k (E ;; b) -> unbound k E.
 Proof.
-  intros. unfold unbound in H. unfold get in H. destruct (eq_key_dec k (key b)).
+  intros. unfoldg unbound. destruct_key_if.
   + inversion H.
-  + fold get in H. unfold unbound. assumption.
+  + assumption.
 Qed.
 Lemma binds_push_eq_inv: forall E a b,
   binds (key a) (value b) (E ;; a) -> value a = value b.
 Proof.
-  intros. unfold binds, get in H. destruct (eq_key_dec (key a) (key a)).
+  intros. unfoldg binds. destruct_key_if.
   + inversion H. reflexivity.
   + contradiction n. reflexivity.
 Qed.
@@ -198,7 +209,7 @@ Lemma binds_map: forall b (f : B -> B) E,
 Proof.
   intros. induction E.
   + empty_binds_contradiction.
-  + simpl. unfold binds, get. rewrite -> (H a). rewrite -> (H b).
+  + simpl. unfoldg binds. rewrite -> (H a). rewrite -> (H b).
     unfold binds, get in H0. destruct (eq_key_dec (key b) (key a)).
     - inv H0. do 3 f_equal. symmetry in e. apply key_val_eq_eq; assumption.
     - fold get. fold get in H0. unfold binds in IHE. 
@@ -465,19 +476,16 @@ Lemma refine_dec_spec_mtd: forall ds2 n T1 S1 T2 S2,
 Proof. 
   intro ds2. induction ds2; intros.
   + decs.empty_binds_contradiction.
-  + unfold decs.binds in H. unfold decs.get in H. unfold decs.key, decsParams.key in H.
-    destruct_matchee.
-    - inv H. unfold decs.value, decsParams.value in H1. destruct a eqn: Heqa.
+  + decs.unfoldg decs.binds. decs.destruct_key_if.
+    - inv H. destruct a eqn: Heqa.
       * inv H1.
       * inv H1. inversion e. subst. simpl. destruct (eq_nat_dec n0 n0). reflexivity.
         contradiction n. reflexivity.
     - simpl. destruct a eqn: Heqa. 
-      * apply IHds2. unfold decs.binds, decs.get. unfold decs.key, decsParams.key.
-        assumption.
-      * assert (Hnn: n <> n1). unfold not in *. intro. apply n0. f_equal. assumption.
+      * apply IHds2. assumption.
+      * assert (Hnn: n <> n1). unfold not in *. intro. apply n0. simpl. f_equal. assumption.
         destruct (eq_nat_dec n n1). contradiction Hnn.
-        apply IHds2. unfold decs.binds, decs.get. unfold decs.key, decsParams.key.
-        assumption.
+        apply IHds2. assumption.
 Qed.
 
 Lemma refine_dec_spec_label: forall d1 ds2, decs.key d1 = decs.key (refine_dec d1 ds2).
@@ -882,14 +890,12 @@ Lemma decs_binds_to_inis_binds: forall l d is ds s,
 Proof.
   intros l d is ds s Hty Hbi. induction Hty.
   + decs.empty_binds_contradiction.
-  + unfold inis.binds, inis.get. fold inis.get. unfold inisParams.eq_key_dec.
-    destruct (eq_label_dec l (inis.key i)).
+  + inis.unfoldg inis.binds. inis.destruct_key_if.
     - subst. exists (inis.value i). reflexivity.
     - destruct (invert_typing_ini H) as [k [iv [dv [Hik [Hiv [Hdk Hdv]]]]]]. subst.
-      unfold decs.binds, decs.get in Hbi. fold decs.get in Hbi.
-      destruct (decsParams.eq_key_dec l (decs.key d0)).
+      decs.unfoldg decs.binds. decs.destruct_key_if.
       * rewrite <- Hdk in n. contradiction e.
-      * unfold inis.binds in IHHty. apply IHHty. unfold decs.binds. assumption.
+      * apply IHHty. assumption.
 Qed.
 
 Lemma inis_binds_fld_sync_val: forall n v is,
