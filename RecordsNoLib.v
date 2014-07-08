@@ -818,7 +818,23 @@ Proof.
   intros. inv H. eauto.
 Qed.
 
-Lemma invert_typing_var_s: forall G s x is ds,
+Lemma invert_typing_trm_call: forall G s t m V u,
+  typing_trm G s (trm_call t m u) V ->
+  exists U, has G s t (label_mtd m) (dec_mtd U V) /\ typing_trm G s u U.
+Proof.
+  intros. inv H. eauto.
+Qed.
+
+Lemma invert_typing_var_s: forall s x ds,
+  typing_trm nil s (trm_var (avar_f x)) (typ_rcd ds) ->
+  exists is, venv.binds x is s /\ typing_inis nil s is ds.
+Proof.
+  intros. inv H.
+  + tenv.empty_binds_contradiction.
+  + eauto.
+Qed.
+
+Lemma invert_typing_var_s_with_given_inis: forall G s x is ds,
   typing_trm G s (trm_var (avar_f x)) (typ_rcd ds) ->
   venv.binds x is s ->
   typing_inis nil s is ds.
@@ -923,6 +939,14 @@ Proof.
       * apply IHis. unfold inis.binds. assumption.
 Qed.
 
+(*
+Lemma decs_binds_fld_to_inis_binds_fld: forall l d is ds s,
+  typing_inis nil s is ds ->
+  decs.binds l (dec_fld T ds ->
+  exists i, inis.binds l i is.
+Proof.
+*)
+
 Definition progress_for(s: venv.t)(e: trm) :=
   (* can step *)
   (exists s' e', red s e s' e') \/
@@ -1013,6 +1037,88 @@ Proof.
 Qed.
 
 Print Assumptions progress.
+
+Tactic Notation "keep" constr(E) "as" ident(H) :=
+    let Temp := type of E in assert (H: Temp) by apply E.
+
+Lemma extract_typing_ini_from_typing_inis: forall s l i is d ds,
+  typing_inis nil s is ds ->
+  inis.binds l (inis.value i) is ->
+  decs.binds l (decs.value d) ds ->
+  typing_ini nil s i d.
+Proof.
+Admitted.
+
+Lemma invert_typing_mtd_ini_inside_typing_inis: forall s is ds m S1 S2 T body,
+  typing_inis nil s is ds ->
+  inis.binds (label_mtd m) (ini_mtd S1 body) is ->
+  decs.binds (label_mtd m) (dec_mtd S2 T) ds ->
+  (* conclusion is the premise needed to construct a typing_mtd_ini: *)
+  (forall y, venv.unbound y s -> typing_trm (nil ;; (y, S2)) s (open_trm y body) T).
+Proof.
+Admitted.
+
+(* Values bound in store may depend on bindings defined earlier in store.
+   Similarly, the types bound in gamma may depend on bindings defined earlier in gamma
+     (once we have path types).
+   Moreover, if we're in a given execution state with non-empty store, the types bound in
+     gamma may depend on the values bound in the store. 
+     But the store cannot depend on gamma, because the store is "concrete", and gamma
+     is "hypothetical".
+   ---> it would make sense to invert the order of gamma/store to store/gamma -> TODO
+*)
+
+Lemma split_store_in_typing_trm_var_s: forall s y ds,
+  typing_trm nil s (trm_var (avar_f y)) (typ_rcd ds) ->
+  exists s1 s2 is, s = (s1 ;; (y, is) & s2) /\
+                   typing_inis nil s1 is ds.
+Admitted.
+
+(*
+  venv.unbound y s1 ->
+  venv.unbound y s2 -> 
+  typing_trm (nil ;; (y, S)) (s1 & s2) e T ->
+  typing_trm (s1 ;; (y, S) & s2) e T
+*)
+
+Theorem preservation: forall s e T s' e',
+  typing_trm nil s e T -> red s e s' e' -> typing_trm nil s' e' T.
+Proof.
+  intros s e T s' e' Hty Hred. induction Hred.
+  (* red_call *)
+  + rename H0 into Hbi.
+    destruct (invert_typing_trm_call Hty) as [S [Hhas Hty2]]. clear Hty.
+    destruct (invert_has Hhas) as [ds [Hty3 Hbd]]. clear Hhas.
+    keep (invert_typing_var_s_with_given_inis Hty3 H) as Hisds.
+    keep (invert_typing_mtd_ini_inside_typing_inis Hisds Hbi Hbd) as Hmtd.
+    destruct S as [dsy].
+    destruct (split_store_in_typing_trm_var_s Hty2) as [s1 [s2 [isy [Heq Htis1]]]].
+    subst.
+
+stop
+
+    destruct (invert_typing_var_s Hty2) as [isy [Hbvy Htyy]].
+
+
+    destruct (decs_binds_to_inis_binds Hty4 Hbd) as [i Hbi].
+    destruct (inis_binds_mtd_sync_val Hbi) as [S' [body' Heq]]. subst. (* <- already known*)
+
+
+    assert (Hty4: typing_inis [] s is ds).
+
+    refine (typing_trm_call _ Hty2).
+
+  (* red_sel *)
+  +
+  (* red_new *)
+  +
+  (* red_call1 *)
+  +
+  (* red_call2 *)
+  +
+  (* red_sel1 *)
+  +
+Qed.
 
 (* garbage .............. *)
 
