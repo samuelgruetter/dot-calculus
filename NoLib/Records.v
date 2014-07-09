@@ -758,51 +758,51 @@ Inductive red : venv.t -> trm -> venv.t -> trm -> Prop :=
       red s  (trm_sel o  l)
           s' (trm_sel o' l).
 
+(* The store is not an argument of the typing judgment because
+   * it's only needed in typing_trm_var_s
+   * we must allow types in Gamma to depend on values in the store, which seems complicated
+   * how can we ensure that the store is well-formed? By requiring it in the "leaf"
+     typing rules (those without typing assumptions)? Typing rules become unintuitive,
+     and maybe to prove that store is wf, we need to prove what we're about to prove...
+*)
+
 (* Term typing *)
-Inductive has : tenv.t -> venv.t -> trm -> label -> dec -> Prop :=
-  | has_dec : forall G s e l d ds,
-      typing_trm G s e (typ_rcd ds) ->
+Inductive has : tenv.t -> trm -> label -> dec -> Prop :=
+  | has_dec : forall G e l d ds,
+      typing_trm G e (typ_rcd ds) ->
       decs.binds l d ds ->
-      has G s e l d
-with typing_trm : tenv.t -> venv.t -> trm -> typ -> Prop :=
-  | typing_trm_var_g : forall G s x T,
+      has G e l d
+with typing_trm : tenv.t -> trm -> typ -> Prop :=
+  | typing_trm_var : forall G x T,
       tenv.binds x T G ->
-      venv.unbound x s ->
-      typing_trm G s (trm_var (avar_f x)) T
-  | typing_trm_var_s : forall G s x is ds,
-      tenv.unbound x G ->
-      venv.binds x is s ->
-      typing_inis nil s is ds -> 
-      typing_trm G s (trm_var (avar_f x)) (typ_rcd ds)
-  | typing_trm_sel : forall G s e l T,
-      has G s e (label_fld l) (dec_fld T) ->
-      typing_trm G s (trm_sel e l) T
-  | typing_trm_call : forall G s t m U V u,
-      has G s t (label_mtd m) (dec_mtd U V) ->
-      typing_trm G s u U ->
-      typing_trm G s (trm_call t m u) V
-  | typing_trm_new : forall G s nis ds t T,
-      typing_inis G s nis ds -> (* no self reference yet, no recursion *)
+      typing_trm G (trm_var (avar_f x)) T
+  | typing_trm_sel : forall G e l T,
+      has G e (label_fld l) (dec_fld T) ->
+      typing_trm G (trm_sel e l) T
+  | typing_trm_call : forall G t m U V u,
+      has G t (label_mtd m) (dec_mtd U V) ->
+      typing_trm G u U ->
+      typing_trm G (trm_call t m u) V
+  | typing_trm_new : forall G nis ds t T,
+      typing_inis G nis ds -> (* no self reference yet, no recursion *)
       (forall x, tenv.unbound x G ->
-                 venv.unbound x s ->
-                 typing_trm (G ;; (x, typ_rcd ds)) s (open_trm x t) T) ->
-      typing_trm G s (trm_new nis t) T
-with typing_ini : tenv.t -> venv.t -> nini -> ndec -> Prop :=
-  | typing_ini_fld : forall G s l v T,
-      typing_trm G s (trm_var v) T ->
-      typing_ini G s (nini_fld l v) (ndec_fld l T)
-  | typing_ini_mtd : forall G s m S T t,
+                 typing_trm (G ;; (x, typ_rcd ds)) (open_trm x t) T) ->
+      typing_trm G (trm_new nis t) T
+with typing_ini : tenv.t -> nini -> ndec -> Prop :=
+  | typing_ini_fld : forall G l v T,
+      typing_trm G (trm_var v) T ->
+      typing_ini G (nini_fld l v) (ndec_fld l T)
+  | typing_ini_mtd : forall G m S T t,
       (forall x, tenv.unbound x G ->
-                 venv.unbound x s ->
-                 typing_trm (G ;; (x, S)) s (open_trm x t) T) ->
-      typing_ini G s (nini_mtd m S t) (ndec_mtd m S T)
-with typing_inis : tenv.t -> venv.t -> inis.t -> decs.t -> Prop :=
-  | typing_inis_nil : forall G s,
-      typing_inis G s nil nil
-  | typing_inis_cons : forall G s is i ds d,
-      typing_inis G s is ds ->
-      typing_ini  G s i d ->
-      typing_inis G s (is ;; i) (ds ;; d).
+                 typing_trm (G ;; (x, S)) (open_trm x t) T) ->
+      typing_ini G (nini_mtd m S t) (ndec_mtd m S T)
+with typing_inis : tenv.t -> inis.t -> decs.t -> Prop :=
+  | typing_inis_nil : forall G,
+      typing_inis G nil nil
+  | typing_inis_cons : forall G is i ds d,
+      typing_inis G is ds ->
+      typing_ini  G i d ->
+      typing_inis G (is ;; i) (ds ;; d).
 
 Scheme has_mut         := Induction for has         Sort Prop
 with   typing_trm_mut  := Induction for typing_trm  Sort Prop
