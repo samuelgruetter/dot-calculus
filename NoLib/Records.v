@@ -186,6 +186,8 @@ Lemma concat_cons_assoc: forall (E1: t) (E2: t) (b: B), E1 & (E2 ;; b) = (E1 & E
 Proof.
   intros. simpl. reflexivity.
 Qed.
+Lemma concat_assoc: forall (E1 E2 E3: t), (E1 & E2) & E3 = E1 & (E2 & E3).
+Proof. intros. apply app_assoc. Qed. 
 Lemma binds_unbound_head_inv: forall E b, unbound (key b) (E ;; b) -> False.
 Proof.
   intros. compare_keys.
@@ -246,15 +248,15 @@ Proof.
     - apply IHE2. assumption.
 Qed.
 Lemma binds_concat_left_inv : forall k v E1 E2,
-  binds k v (E1 & E2) ->
   unbound k E2 ->
+  binds k v (E1 & E2) ->
   binds k v E1.
 Proof.
   intros. induction E2.
-  + simpl in H. assumption.
-  + rewrite -> concat_cons_assoc in H. compare_keys.
-    - exfalso. rewrite -> e in H0. apply (binds_unbound_head_inv H0).
-    - apply IHE2. assumption. apply (unbound_cons_inv H0).
+  + simpl in H0. assumption.
+  + rewrite -> concat_cons_assoc in H0. compare_keys.
+    - exfalso. rewrite -> e in H. apply (binds_unbound_head_inv H).
+    - apply IHE2. apply (unbound_cons_inv H). assumption.
 Qed.
 Lemma binds_concat_left : forall k v E1 E2,
   binds k v E1 ->
@@ -297,6 +299,22 @@ Proof.
       * rewrite <- e in n. intro. symmetry in H1. contradiction H1.
       * apply H with v. unfoldg binds. rewrite -> Hdestr. assumption.
 Qed.
+Lemma expose_two_binds: forall b1 b2 E,
+  binds (key b1) (value b1) E -> 
+  binds (key b2) (value b2) E -> (
+    (exists F G H, E = F ;; b1 & G ;; b2 & H /\ 
+                   key b1 <> key b2 /\
+                   unbound (key b1) (G ;; b2 & H) /\
+                   unbound (key b2) H) \/
+    (exists F G,   E = F ;; b1 & G /\ 
+                   b1 = b2 /\
+                   unbound (key b1) G) \/
+    (exists F G H, E = F ;; b2 & G ;; b1 & H /\ 
+                   key b1 <> key b2 /\
+                   unbound (key b1) H /\
+                   unbound (key b2) (G ;; b1 & H))
+  ).
+Proof. Admitted.
 End Env.
 
 (* Module decs: For lists of declarations: [list ndec] or [label => dec] *)
@@ -996,6 +1014,46 @@ Lemma invert_wf_venv: forall s G,
       typing_inis G is ds.
 Admitted.
 
+Lemma expose_two_binds_in_wf_venv: forall s G x y isx isy dsx dsy,
+  wf_venv s G ->
+  venv.binds x isx s ->
+  tenv.binds x (typ_rcd dsx) G ->
+  venv.binds y isy s ->
+  tenv.binds y (typ_rcd dsy) G -> (
+    (exists s1 s2 s3 G1 G2 G3,
+       s = s1 ;; (x,     isx      ) & s2 ;; (y,     isy      ) & s3 /\
+       G = G1 ;; (x, (typ_rcd dsx)) & G2 ;; (y, (typ_rcd dsy)) & G3 /\
+       x <> y /\
+       venv.unbound x (s2 ;; (y,     isy      ) & s3) /\
+       tenv.unbound x (G2 ;; (y, (typ_rcd dsy)) & G3) /\
+       venv.unbound y s3 /\
+       tenv.unbound y G3) \/
+    (exists s1 s2 G1 G2,
+       s = s1 ;; (x,      isx     ) & s2 /\
+       G = G1 ;; (x, (typ_rcd dsx)) & G2 /\
+       x = y /\
+       isx = isy /\
+       dsx = dsy /\
+       venv.unbound x s2 /\
+       tenv.unbound x G2) \/
+    (exists s1 s2 s3 G1 G2 G3,
+       s = s1 ;; (y,     isy      ) & s2 ;; (x,     isx      ) & s3 /\
+       G = G1 ;; (y, (typ_rcd dsy)) & G2 ;; (x, (typ_rcd dsx)) & G3 /\
+       x <> y /\
+       venv.unbound y (s2 ;; (x,     isx      ) & s3) /\
+       tenv.unbound y (G2 ;; (x, (typ_rcd dsx)) & G3) /\
+       venv.unbound x s3 /\
+       tenv.unbound x G3)
+  ).
+Admitted.
+
+Lemma restrict_wf_venv: forall s G1 G2,
+  wf_venv s (G1 & G2) ->
+  exists s1 s2, s = s1 & s2 /\ wf_venv s1 G1.
+Admitted.
+
+(*Lemma invert_wf_venv_cons*)
+
 Tactic Notation "keep" constr(E) "as" ident(H) :=
     let Temp := type of E in assert (H: Temp) by apply E.
 
@@ -1104,43 +1162,68 @@ Admitted. *)
   typing_trm (s1 ;; (y, S) & s2) e T
 *)
 
-Theorem preservation: forall s e T s' e',
-  typing_trm nil s e T -> red s e s' e' -> typing_trm nil s' e' T.
+(*
+Lemma strengthen_typing_trm
+
+typing_trm G (trm_var (avar_f x)) (typ_rcd ds)
+wf_venv s G <-- don't mix this in
+and just use "expose"
+*)
+
+Ltac unfoldp :=
+  unfold venvParams.K, venvParams.V, venvParams.B,
+         tenvParams.K, tenvParams.V, tenvParams.B  in *.
+
+Theorem preservation: forall s G e T s' e',
+  wf_venv s G -> typing_trm G e T -> red s e s' e' ->
+  (exists G', wf_venv s' G' /\ typing_trm G' e' T).
 Proof.
-  intros s e T s' e' Hty Hred. induction Hred.
+  intros s G e T s' e' Hwf Hty Hred. induction Hred.
   (* red_call *)
-  + rename H0 into Hbi.
-    destruct (invert_typing_trm_call Hty) as [S [Hhas Hty2]]. clear Hty.
-    destruct (invert_has Hhas) as [ds [Hty3 Hbd]]. clear Hhas.
-    keep (invert_typing_var_s_with_given_inis Hty3 H) as Hisds.
-    keep (invert_typing_mtd_ini_inside_typing_inis Hisds Hbi Hbd) as Hmtd.
+  + rename H into Hvbx. rename H0 into Hibm. rename is into isx.
+    exists G. split. apply Hwf.
+    destruct (invert_typing_trm_call Hty) as [S [Hhas Htyy]]. clear Hty.
+    keep (invert_typing_trm_var Htyy) as Htby.
+    destruct (invert_has Hhas) as [dsx [Htyx Hdbm]]. clear Hhas.
+    keep (invert_typing_trm_var Htyx) as Htbx.
+    destruct (tenv_binds_to_venv_binds Hwf Htby) as [isy Hvby].
     destruct S as [dsy].
-    destruct (split_store_in_typing_trm_var_s Hty2) as [s1 [s2 [isy [Heq Htis1]]]].
-    subst.
+    destruct (expose_two_binds_in_wf_venv Hwf Hvbx Htbx Hvby Htby) 
+      as [Hsplit | [Hsplit | Hsplit]].
+    * destruct Hsplit as [s1 [s2 [s3 [G1 [G2 [G3 Hsplit]]]]]].
+      destruct Hsplit as [Heqs [HeqG [Hxy [Hvux [Htux [Hvuy Htuy]]]]]].
+      (* Restrict tenv in Htbx, Htby *)
+      rewrite -> HeqG in Htbx.
+      keep (tenv.concat_assoc (G1 ;; (x, typ_rcd dsx)) (G2 ;; (y, typ_rcd dsy)) G3) as Ha.
+      unfoldp.
+      rewrite -> Ha in Htbx. clear Ha.
+      apply (tenv.binds_concat_left_inv (G1 ;; (x, typ_rcd dsx)) Htux) in Htbx.
+      rewrite -> HeqG in Htby.
+      apply (tenv.binds_concat_left_inv (G1 ;; (x, typ_rcd dsx) & G2 ;; (y, typ_rcd dsy))
+                                        Htuy) in Htby.
 
-stop
-
-    destruct (invert_typing_var_s Hty2) as [isy [Hbvy Htyy]].
-
-
-    destruct (decs_binds_to_inis_binds Hty4 Hbd) as [i Hbi].
-    destruct (inis_binds_mtd_sync_val Hbi) as [S' [body' Heq]]. subst. (* <- already known*)
-
-
-    assert (Hty4: typing_inis [] s is ds).
-
-    refine (typing_trm_call _ Hty2).
-
+      assert (Hisxdsx: typing_inis G1 isx dsx). admit.
+        (* keep (invert_wf_venv Hwf Hbv Hbtx) as Hisxdsx. *)
+      (* ---> The point of this whole story is that we apply this inversion lemma
+              on the restricted environment (G1 ;; (y, typ_rcd dsy)), instead of
+              applying it on the whole G: *)
+      keep (invert_typing_mtd_ini_inside_typing_inis Hisxdsx Hibm Hdbm) as Hmtd.
+      assert (HtuyG1: tenv.unbound y G1). admit. (* since no envs have multiple mappings *)
+      specialize (Hmtd y HtuyG1).
+      (* now weaken Hmtd to get goal *)
+      admit.
+    * (* similar *) admit.
+    * (* similar *) admit.
   (* red_sel *)
-  +
+  + admit.
   (* red_new *)
-  +
+  + admit.
   (* red_call1 *)
-  +
+  + admit.
   (* red_call2 *)
-  +
+  + admit.
   (* red_sel1 *)
-  +
+  + admit.
 Qed.
 
 (* garbage .............. *)
