@@ -833,8 +833,17 @@ Inductive wf_venv: venv.t -> tenv.t -> Prop :=
   | wf_venv_nil : wf_venv nil nil
   | wf_venv_cons : forall s g x is ds,
       wf_venv s g ->
+      venv.unbound x s ->
+      tenv.unbound x g ->
       typing_inis g is ds ->
       wf_venv (s ;; (x, is)) (g ;; (x, (typ_rcd ds))).
+
+Lemma invert_wf_venv_cons: forall s G x is ds,
+  wf_venv (s ;; (x, is)) (G ;; (x, typ_rcd ds)) ->
+  wf_venv s G /\ venv.unbound x s /\ tenv.unbound x G /\ typing_inis G is ds.
+Proof.
+  intros. inv H. auto.
+Qed.
 
 Lemma invert_has: forall G e l d,
   has G e l d ->
@@ -1047,6 +1056,27 @@ Lemma expose_two_binds_in_wf_venv: forall s G x y isx isy dsx dsy,
   ).
 Admitted.
 
+Lemma shrink_wf_venv: forall s G x is T,
+  wf_venv s G ->
+  venv.binds x is s ->
+  tenv.binds x  T G ->
+  exists (s1 s2: venv.t) (G1 G2: tenv.t), 
+    s = s1 ;; (x, is) & s2 /\
+    G = G1 ;; (x,  T) & G2 /\
+    wf_venv (s1 ;; (x, is)) (G1 ;; (x, T)).
+Admitted.
+
+(*
+Lemma shrink_wf_venv: forall s G y T,
+  wf_venv s G ->
+  tenv.binds y T G ->
+  exists (s1 s2: venv.t) (G1 G2: tenv.t) (is: inis.t), 
+    s = s1 ;; (y, is) & s2 /\
+    G = G1 ;; (y,  T) & G2 /\
+    wf_venv (s1 ;; (y, is)) (G1 ;; (y, T)).
+Admitted.
+*)
+
 Lemma restrict_wf_venv: forall s G1 G2,
   wf_venv s (G1 & G2) ->
   exists s1 s2, s = s1 & s2 /\ wf_venv s1 G1.
@@ -1179,6 +1209,68 @@ Theorem preservation: forall s G e T s' e',
   (exists G', wf_venv s' G' /\ typing_trm G' e' T).
 Proof.
   intros s G e T s' e' Hwf Hty Hred. induction Hred.
+  (* red_call *)
+  + rename H into Hvbx. rename H0 into Hibm.
+    exists G. split. apply Hwf.
+    apply invert_typing_trm_call in Hty. 
+    destruct Hty as [S [Hhas Htyy]].
+    apply invert_typing_trm_var in Htyy. rename Htyy into Htby.
+    apply invert_has in Hhas. 
+    destruct Hhas as [ds [Htyx Hdbm]].
+    apply invert_typing_trm_var in Htyx. rename Htyx into Htbx.
+    destruct (shrink_wf_venv Hwf Hvbx Htbx) as [s1 [s2 [G1 [G2 [Heqs [HeqG Hwf']]]]]].
+    destruct (invert_wf_venv_cons Hwf') as [_ [Hvux [Htux Hisds]]].
+    keep (invert_typing_mtd_ini_inside_typing_inis Hisds Hibm Hdbm) as Hmtd.
+
+    (* G1 is G until (but excluding) x. If y is after x, then y is unbound in G1,
+       and we can specialize Hmtd, and then weaken it, and we're done.
+       But what if y is before x?
+         i.e. what if typechecking 'body' requires bindings defined after y?
+
+         Suppose we used Chargueraud's L/pick_fresh framework:
+         Then the typing_ini_mtd rule inversion would not give us 
+
+         Hmtd: forall y : tenvParams.K,
+               tenv.unbound y G1 -> typing_trm (G1 ;; (y, S)) (open_trm y body) T
+
+         but
+
+         L: fset var
+         Hmtd: forall y : tenvParams.K,
+               y \notin L -> typing_trm (G1 ;; (y, S)) (open_trm y body) T
+
+         We could pick a fresh y' not in L, and get
+
+         typing_trm (G1 ;; (y', S)) (open_trm y' body) T
+
+         but we need to prove `typing_trm G (open_trm y body) T`, not with y'.
+     *)
+
+
+  (* red_call *)
+  + rename H into Hvbx. rename H0 into Hibm. rename is into isx.
+    exists G. split. apply Hwf.
+    apply invert_typing_trm_call in Hty. 
+    destruct Hty as [S [Hhas Htyy]].
+    apply invert_typing_trm_var in Htyy. rename Htyy into Htby.
+    apply invert_has in Hhas.
+    destruct Hhas as [dsx [_ Hdbm]].
+    destruct (tenv_binds_to_venv_binds Hwf Htby) as [isy Hvby].
+    destruct (shrink_wf_venv Hwf Hvby Htby) as [s1 [s2 [G1 [G2 [Heqs [HeqG Hwf']]]]]].
+    destruct S as [dsy].
+    destruct (invert_wf_venv_cons Hwf') as [_ [Hvuy [Htuy Hisds]]].
+    keep (invert_typing_mtd_ini_inside_typing_inis Hisds Hibm Hdbm) as Hmtd.
+       (* do this with x, not with y! *)
+
+
+
+
+
+
+
+
+
+
   (* red_call *)
   + rename H into Hvbx. rename H0 into Hibm. rename is into isx.
     exists G. split. apply Hwf.
