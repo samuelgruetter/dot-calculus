@@ -811,20 +811,35 @@ with   typing_inis_mut := Induction for typing_inis Sort Prop.
 
 Combined Scheme typing_mutind from has_mut, typing_trm_mut, typing_ini_mut, typing_inis_mut.
 
-Lemma invert_has: forall G s e l d,
-  has G s e l d ->
-  exists ds, typing_trm G s e (typ_rcd ds) /\ decs.binds l d ds.
+Inductive wf_venv: venv.t -> tenv.t -> Prop :=
+  | wf_venv_nil : wf_venv nil nil
+  | wf_venv_cons : forall s g x is ds,
+      wf_venv s g ->
+      typing_inis g is ds ->
+      wf_venv (s ;; (x, is)) (g ;; (x, (typ_rcd ds))).
+
+Lemma invert_has: forall G e l d,
+  has G e l d ->
+  exists ds, typing_trm G e (typ_rcd ds) /\ decs.binds l d ds.
 Proof.
   intros. inv H. eauto.
 Qed.
 
-Lemma invert_typing_trm_call: forall G s t m V u,
-  typing_trm G s (trm_call t m u) V ->
-  exists U, has G s t (label_mtd m) (dec_mtd U V) /\ typing_trm G s u U.
+Lemma invert_typing_trm_var: forall G x T,
+  typing_trm G (trm_var (avar_f x)) T ->
+  tenv.binds x T G.
+Proof.
+  intros. inv H. assumption.
+Qed.
+
+Lemma invert_typing_trm_call: forall G t m V u,
+  typing_trm G (trm_call t m u) V ->
+  exists U, has G t (label_mtd m) (dec_mtd U V) /\ typing_trm G u U.
 Proof.
   intros. inv H. eauto.
 Qed.
 
+(*
 Lemma invert_typing_var_s: forall s x ds,
   typing_trm nil s (trm_var (avar_f x)) (typ_rcd ds) ->
   exists is, venv.binds x is s /\ typing_inis nil s is ds.
@@ -846,15 +861,16 @@ Proof.
   (* typing_var_s *)
   + assert (is0 = is) by apply (venv.binds_unique H4 Hbv). subst. assumption.
 Qed.
+*)
 
-Lemma invert_typing_ini_key: forall G s i d, 
-  typing_ini G s i d -> inis.key i = decs.key d.
+Lemma invert_typing_ini_key: forall G i d, 
+  typing_ini G i d -> inis.key i = decs.key d.
 Proof.
   intros. inv H; reflexivity.
 Qed.
 
-Lemma invert_typing_ini_cases: forall G s i d, 
-  typing_ini G s i d ->
+Lemma invert_typing_ini_cases: forall G i d, 
+  typing_ini G i d ->
   (exists l x T, i = (nini_fld l x) /\ d = (ndec_fld l T)) \/
   (exists m e T U, i = (nini_mtd m T e) /\ d = (ndec_mtd m T U)).
 Proof.
@@ -863,8 +879,8 @@ Proof.
   + right. exists m t S T. split; reflexivity.
 Qed.
 
-Lemma invert_typing_ini: forall G s i d, 
-  typing_ini G s i d ->
+Lemma invert_typing_ini: forall G i d, 
+  typing_ini G i d ->
   exists k iv dv, inis.key i = k /\ inis.value i = iv /\ 
                   decs.key d = k /\ decs.value d = dv.
 Proof.
@@ -900,8 +916,8 @@ Proof.
   apply venv.build_unbound. intros. specialize (H k' v H0). omega.
 Qed.
 
-Lemma decs_binds_to_inis_binds: forall l d is ds s,
-  typing_inis nil s is ds ->
+Lemma decs_binds_to_inis_binds: forall G l d is ds,
+  typing_inis G is ds ->
   decs.binds l d ds ->
   exists i, inis.binds l i is.
 Proof.
@@ -955,37 +971,55 @@ Definition progress_for(s: venv.t)(e: trm) :=
 
 Ltac auto_specialize :=
   repeat match goal with
-  | Impl: ?Cond -> _ |- _ => let HC := fresh in 
-                             assert (HC: Cond) by auto; specialize (Impl HC); clear HC
+  | Impl: ?Cond ->            _ |- _ => let HC := fresh in 
+      assert (HC: Cond) by auto; specialize (Impl HC); clear HC
+  | Impl: forall (_ : ?Cond), _ |- _ => match goal with
+      | p: Cond |- _ => specialize (Impl p)
+      end
   end.
 
 Ltac rewrite_with EqT := match goal with
 | H: EqT |- _ => rewrite H in *; clear H
 end.
 
-Lemma progress_proof: forall G s e T,
-  typing_trm G s e T -> G = nil -> progress_for s e.
+Lemma tenv_binds_to_venv_binds: forall s G x T,
+  wf_venv s G ->
+  tenv.binds x T G ->
+  exists is, venv.binds x is s.
+Admitted.
+
+Lemma invert_wf_venv: forall s G,
+  wf_venv s G -> 
+    forall x is ds, 
+      venv.binds x is s -> 
+      tenv.binds x (typ_rcd ds) G ->
+      typing_inis G is ds.
+Admitted.
+
+Tactic Notation "keep" constr(E) "as" ident(H) :=
+    let Temp := type of E in assert (H: Temp) by apply E.
+
+Lemma progress_proof: forall G e T,
+  typing_trm G e T -> forall s, wf_venv s G -> progress_for s e.
 Proof.
-  Definition P_has :=         fun G s e l d (Hhas: has G s e l d)   
-                              => G = nil -> progress_for s e.
-  Definition P_typing_trm :=  fun G s e T (Hty: typing_trm G s e T)
-                              => G = nil -> progress_for s e.
-  Definition P_typing_ini :=  fun G s i d (Htyp: typing_ini G s i d)
-                              => G = nil -> True.
-  Definition P_typing_inis := fun G s is ds (Htyp: typing_inis G s is ds)
-                              => G = nil -> True.
+  Definition P_has :=         fun G e l d (Hhas: has G e l d)   
+                              => forall s, wf_venv s G -> progress_for s e.
+  Definition P_typing_trm :=  fun G e T (Hty: typing_trm G e T)
+                              => forall s, wf_venv s G -> progress_for s e.
+  Definition P_typing_ini :=  fun G i d (Htyp: typing_ini G i d)
+                              => True.
+  Definition P_typing_inis := fun G is ds (Htyp: typing_inis G is ds)
+                              => True.
   apply (typing_trm_mut P_has P_typing_trm P_typing_ini P_typing_inis);
     unfold P_has, P_typing_trm, P_typing_ini, P_typing_inis, progress_for;
     intros;
     try apply I;
-    rewrite_with (G = []);
     auto_specialize.
   (* case has_dec *)
   + assumption. 
-  (* case typing_trm_var_g *)
-  + tenv.empty_binds_contradiction.
-  (* case typing_trm_var_s *)
-  + right. exists x is. split. reflexivity. assumption.
+  (* case typing_trm_var *)
+  + right. destruct (tenv_binds_to_venv_binds H b) as [is Hbv].
+    exists x is. split. reflexivity. assumption.
   (* case typing_trm_sel *)
   + left. destruct H as [IH | IH].
     (* receiver is an expression *)
@@ -993,15 +1027,12 @@ Proof.
     (* receiver is a var *)
     - destruct IH as [x [is [Heq Hbv]]]. subst.
       destruct (invert_has h) as [ds [Hty Hbd]].
-      inv Hty.
-      (* receiver var is in empty Gamma *)
-      * tenv.empty_binds_contradiction.
-      (* receiver var is in s *)
-      * rewrite -> (venv.binds_unique H4 Hbv) in *. clear H4. clear is0.
-        destruct (decs_binds_to_inis_binds H5 Hbd) as [i Hbl].
-        destruct (inis_binds_fld_sync_val Hbl) as [y Hieq]. subst.
-        exists s (trm_var y).
-        apply (red_sel Hbv Hbl).
+      keep (invert_typing_trm_var Hty) as Hbt.
+      keep (invert_wf_venv H0 Hbv Hbt) as Hty2.
+      destruct (decs_binds_to_inis_binds Hty2 Hbd) as [i Hbi].
+      destruct (inis_binds_fld_sync_val Hbi) as [y Heq]. subst.
+      exists s (trm_var y).
+      apply (red_sel Hbv Hbi).
   (* case typing_trm_call *)
   + left. destruct H as [IHrec | IHrec].
     (* case receiver is an expression *)
@@ -1014,65 +1045,57 @@ Proof.
       (* arg is a var *)
       * destruct IHarg as [y [is' [Heqy Hbv']]]. subst. 
         destruct (invert_has h) as [ds [Hty Hbd]].
-        inv Hty.
-        (* receiver var is in empty Gamma *)
-          tenv.empty_binds_contradiction.
-        (* receiver var is in s *)
-          rewrite -> (venv.binds_unique H4 Hbv) in *. clear H4. clear is0.
-          destruct (decs_binds_to_inis_binds H5 Hbd) as [i Hbl].
-          destruct (inis_binds_mtd_sync_val Hbl) as [U' [e Hieq]]. subst.
-          exists s (open_trm y e).
-          apply (red_call y Hbv Hbl).
+        keep (invert_typing_trm_var Hty) as Hbt.
+        keep (invert_wf_venv H1 Hbv Hbt) as Hty2.
+        destruct (decs_binds_to_inis_binds Hty2 Hbd) as [i Hbi].
+        destruct (inis_binds_mtd_sync_val Hbi) as [U' [e Heq]]. subst.
+        exists s (open_trm y e).
+        apply (red_call y Hbv Hbi).
   (* case typing_trm_new *)
-  + left. clear H. clear H0.
-    destruct (venv_gen_fresh s) as [x Hxub].
+  + left. destruct (venv_gen_fresh s) as [x Hxub].
     exists (s ;; (x, nis)) (open_trm x t).
     apply red_new. assumption.
 Qed.
 
-Theorem progress: forall s e T,
-  typing_trm nil s e T -> progress_for s e.
+Theorem progress: forall s G e T,
+  wf_venv s G ->
+  typing_trm G e T -> 
+  (
+    (* can step *)
+    (exists s' e', red s e s' e') \/
+    (* or is a value *)
+    (exists x is, e = (trm_var (avar_f x)) /\ venv.binds x is s)
+  ).
 Proof.
-  intros. apply (progress_proof H eq_refl). 
+  intros.
+  keep (progress_proof H0 H) as P. unfold progress_for in P. apply P.
 Qed.
 
 Print Assumptions progress.
 
-Tactic Notation "keep" constr(E) "as" ident(H) :=
-    let Temp := type of E in assert (H: Temp) by apply E.
-
-Lemma extract_typing_ini_from_typing_inis: forall s l i is d ds,
-  typing_inis nil s is ds ->
+Lemma extract_typing_ini_from_typing_inis: forall G l i is d ds,
+  typing_inis G is ds ->
   inis.binds l (inis.value i) is ->
   decs.binds l (decs.value d) ds ->
-  typing_ini nil s i d.
+  typing_ini G i d.
 Proof.
 Admitted.
 
-Lemma invert_typing_mtd_ini_inside_typing_inis: forall s is ds m S1 S2 T body,
-  typing_inis nil s is ds ->
+Lemma invert_typing_mtd_ini_inside_typing_inis: forall G is ds m S1 S2 T body,
+  typing_inis G is ds ->
   inis.binds (label_mtd m) (ini_mtd S1 body) is ->
   decs.binds (label_mtd m) (dec_mtd S2 T) ds ->
   (* conclusion is the premise needed to construct a typing_mtd_ini: *)
-  (forall y, venv.unbound y s -> typing_trm (nil ;; (y, S2)) s (open_trm y body) T).
+  (forall y, tenv.unbound y G -> typing_trm (G ;; (y, S2)) (open_trm y body) T).
 Proof.
 Admitted.
 
-(* Values bound in store may depend on bindings defined earlier in store.
-   Similarly, the types bound in gamma may depend on bindings defined earlier in gamma
-     (once we have path types).
-   Moreover, if we're in a given execution state with non-empty store, the types bound in
-     gamma may depend on the values bound in the store. 
-     But the store cannot depend on gamma, because the store is "concrete", and gamma
-     is "hypothetical".
-   ---> it would make sense to invert the order of gamma/store to store/gamma -> TODO
-*)
-
-Lemma split_store_in_typing_trm_var_s: forall s y ds,
-  typing_trm nil s (trm_var (avar_f y)) (typ_rcd ds) ->
+(* TODO need also y unbound in s2 
+Lemma split_store_in_typing_trm_var_s: forall G y ds,
+  typing_trm G (trm_var (avar_f y)) (typ_rcd ds) ->
   exists s1 s2 is, s = (s1 ;; (y, is) & s2) /\
                    typing_inis nil s1 is ds.
-Admitted.
+Admitted. *)
 
 (*
   venv.unbound y s1 ->
