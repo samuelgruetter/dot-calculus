@@ -859,6 +859,13 @@ Proof.
   intros. inv H. assumption.
 Qed.
 
+Lemma invert_typing_trm_sel: forall G e l T,
+  typing_trm G (trm_sel e l) T ->
+  has G e (label_fld l) (dec_fld T).
+Proof.
+  intros. inv H. assumption.
+Qed.
+
 Lemma invert_typing_trm_call: forall G t m V u,
   typing_trm G (trm_call t m u) V ->
   exists U, has G t (label_mtd m) (dec_mtd U V) /\ typing_trm G u U.
@@ -866,29 +873,14 @@ Proof.
   intros. inv H. eauto.
 Qed.
 
-(*
-Lemma invert_typing_var_s: forall s x ds,
-  typing_trm nil s (trm_var (avar_f x)) (typ_rcd ds) ->
-  exists is, venv.binds x is s /\ typing_inis nil s is ds.
+Lemma invert_typing_trm_new: forall G is t T,
+  typing_trm G (trm_new is t) T ->
+  exists ds, typing_inis G is ds /\
+             (forall x, tenv.unbound x G ->
+                        typing_trm (G ;; (x, typ_rcd ds)) (open_trm x t) T).
 Proof.
-  intros. inv H.
-  + tenv.empty_binds_contradiction.
-  + eauto.
+  intros. inv H. eauto.
 Qed.
-
-Lemma invert_typing_var_s_with_given_inis: forall G s x is ds,
-  typing_trm G s (trm_var (avar_f x)) (typ_rcd ds) ->
-  venv.binds x is s ->
-  typing_inis nil s is ds.
-Proof.
-  intros G s x is ds Hty Hbv.
-  inversion Hty; subst.
-  (* typing_var_g *)
-  + exfalso. apply (@venv.binds_unbound_inv x is s); assumption.
-  (* typing_var_s *)
-  + assert (is0 = is) by apply (venv.binds_unique H4 Hbv). subst. assumption.
-Qed.
-*)
 
 Lemma invert_typing_ini_key: forall G i d, 
   typing_ini G i d -> inis.key i = decs.key d.
@@ -1181,6 +1173,21 @@ Lemma invert_typing_mtd_ini_inside_typing_inis: forall G is ds m S1 S2 T body,
 Proof.
 Admitted.
 
+Lemma invert_typing_fld_ini_inside_typing_inis: forall G is ds l v T,
+  typing_inis G is ds ->
+  inis.binds (label_fld l) (ini_fld v) is ->
+  decs.binds (label_fld l) (dec_fld T) ds ->
+  (* conclusion is the premise needed to construct a typing_ini_fld: *)
+  typing_trm G (trm_var v) T.
+Proof.
+Admitted.
+
+Lemma venv_unbound_to_tenv_unbound: forall s G x,
+  wf_venv s G ->
+  venv.unbound x s ->
+  tenv.unbound x G.
+Admitted.
+
 (*
 The well-known substitution principle, usually written like
 
@@ -1229,17 +1236,17 @@ Ltac unfoldp :=
   unfold venvParams.K, venvParams.V, venvParams.B,
          tenvParams.K, tenvParams.V, tenvParams.B  in *.
 
-Theorem preservation: forall s G e T s' e',
-  wf_venv s G -> typing_trm G e T -> red s e s' e' ->
+Theorem preservation_proof: 
+  forall s e s' e' (Hred: red s e s' e') G T (Hwf: wf_venv s G) (Hty: typing_trm G e T),
   (exists G', wf_venv s' G' /\ typing_trm G' e' T).
 Proof.
-  intros s G e T s' e' Hwf Hty Hred. induction Hred.
+  intros s e s' e' Hred. induction Hred; intros.
   (* red_call *)
-  + rename H into Hvbx. rename H0 into Hibm.
+  + rename H into Hvbx. rename H0 into Hibm. rename T0 into U.
     exists G. split. apply Hwf.
     (* Grab "tenv binds x" hypothesis: *)
     apply invert_typing_trm_call in Hty. 
-    destruct Hty as [S [Hhas Htyy]].
+    destruct Hty as [T' [Hhas Htyy]].
     apply invert_has in Hhas. 
     destruct Hhas as [ds [Htyx Hdbm]].
     apply invert_typing_trm_var in Htyx. rename Htyx into Htbx.
@@ -1250,15 +1257,62 @@ Proof.
     specialize (Hmtd y' Htuy').
     apply (subst_principle _ Hmtd Htyy).
   (* red_sel *)
-  + admit.
+  + rename H into Hvbx. rename H0 into Hibl.
+    exists G. split. apply Hwf.
+    apply invert_typing_trm_sel in Hty.
+    apply invert_has in Hty.
+    destruct Hty as [ds [Htyx Hdbl]].
+    apply invert_typing_trm_var in Htyx. rename Htyx into Htbx.
+    (* Feed "venv binds x" and "tenv binds x" to invert_wf_venv: *)
+    keep (invert_wf_venv Hwf Hvbx Htbx) as Hisds.
+    apply (invert_typing_fld_ini_inside_typing_inis Hisds Hibl Hdbl).
   (* red_new *)
-  + admit.
+  + rename H into Hvux.
+    apply invert_typing_trm_new in Hty.
+    destruct Hty as [ds [Hisds Htye]].
+    keep (venv_unbound_to_tenv_unbound Hwf Hvux) as Htux.
+    exists (G ;; (x, typ_rcd ds)). split.
+    - apply (wf_venv_cons Hwf Hvux Htux Hisds).
+    - apply (Htye x Htux).
   (* red_call1 *)
-  + admit.
+  + rename T into Tr.
+    apply invert_typing_trm_call in Hty.
+    destruct Hty as [Ta [Hhas Htya]].
+    apply invert_has in Hhas.
+    destruct Hhas as [ds [Htyo Hdbm]].
+    specialize (IHHred G (typ_rcd ds) Hwf Htyo).
+    destruct IHHred as [G' [Hwf' Htyo']].
+    exists G'. split. assumption. apply (@typing_trm_call G' o' m Ta Tr a).
+    - apply (has_dec Htyo' Hdbm).
+    - (* We have
+          Hwf : wf_venv s G
+          Hwf' : wf_venv s' G'
+        Somehow we need to assert that s'/G' are bigger, and then we can use weakening. *)
+      admit.
   (* red_call2 *)
-  + admit.
+  + rename T into Tr.
+    apply invert_typing_trm_call in Hty.
+    destruct Hty as [Ta [Hhas Htya]].
+    specialize (IHHred G Ta Hwf Htya).
+    destruct IHHred as [G' [Hwf' Htya']].
+    exists G'. split. assumption. apply (@typing_trm_call G' _ m Ta Tr a').
+    - admit. (* needs weakening *)
+    - assumption.
   (* red_sel1 *)
-  + admit.
+  + apply invert_typing_trm_sel in Hty.
+    apply invert_has in Hty.
+    destruct Hty as [ds [Htyo Hdbl]].
+    specialize (IHHred G (typ_rcd ds) Hwf Htyo).
+    destruct IHHred as [G' [Hwf' Htyo']].
+    exists G'. split. assumption. apply (@typing_trm_sel G' o' l T).
+    apply (has_dec Htyo' Hdbl).
+Qed.
+
+Theorem preservation: forall s G e T s' e',
+  wf_venv s G -> typing_trm G e T -> red s e s' e' ->
+  (exists G', wf_venv s' G' /\ typing_trm G' e' T).
+Proof.
+  intros. apply (preservation_proof H1 H H0).
 Qed.
 
 (* garbage .............. *)
