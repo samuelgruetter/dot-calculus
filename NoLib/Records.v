@@ -1,3 +1,7 @@
+(** * DOT *)
+
+(* ###################################################################### *)
+(** * Setup *)
 
 Require Export List.
 Require Export Arith.Peano_dec.
@@ -8,11 +12,24 @@ Require Import Omega.
 
 Set Implicit Arguments.
 
-(* List notation with head on the right *)
+(** ** List notation with head on the right *)
 Notation "E '&' F" := (app F E) (at level 31, left associativity).
 Notation " E  ;; x " := (cons x E) (at level 29, left associativity).
 
-(* Testing the list notations: *)
+(** For reference: Here's how list notations are usually defined:
+
+        theories/Lists/List, Module ListNotations:
+        Notation " [ ] " := nil : list_scope.
+        Notation " [ x ] " := (cons x nil) : list_scope.
+        Notation " [ x ; .. ; y ] " := (cons x .. (cons y nil) ..) : list_scope.
+
+        theories/Init/Datatypes:
+        Infix "++" := app (right associativity, at level 60) : list_scope.
+        Infix "::" := cons (at level 60, right associativity) : list_scope.
+*)
+
+(** ** Testing the list notations: *)
+
 Module ListNotationTests.
 Definition head(l: list nat) := match l with
 | nil => 777
@@ -26,9 +43,39 @@ Eval compute in nil ;; 1 ;; 2 & nil ;; 3 ;; 4 & nil ;; 5 ;; 6.
 Check (nil ;; 0 & nil ;; 0 ;; 0 & nil ;; 0 ;; 0 ;; 0).
 End ListNotationTests.
 
+(** ** Some tactics *)
+
+Ltac auto_specialize :=
+  repeat match goal with
+  | Impl: ?Cond ->            _ |- _ => let HC := fresh in 
+      assert (HC: Cond) by auto; specialize (Impl HC); clear HC
+  | Impl: forall (_ : ?Cond), _ |- _ => match goal with
+      | p: Cond |- _ => specialize (Impl p)
+      end
+  end.
+
+Ltac rewrite_with EqT := match goal with
+| H: EqT |- _ => rewrite H in *; clear H
+end.
+
+Tactic Notation "keep" constr(E) "as" ident(H) :=
+    let Temp := type of E in assert (H: Temp) by apply E.
+
+Ltac destruct_matchee :=
+  match goal with
+  | [ Hm: match ?e1 with _ => _ end = _ |- _ ]  => 
+      remember e1 as mExpr; destruct mExpr
+  | [ Hm: if ?e1 then _ else _ = _ |- _ ]  => 
+      remember e1 as mExpr; destruct mExpr
+  end.
+
+
+(* ###################################################################### *)
+(** * Syntax *)
+
 Definition var := nat.
 
-(* If it's clear whether a field or method is meant, we use nat, if not, we use label: *)
+(** If it's clear whether a field or method is meant, we use nat, if not, we use label: *)
 Inductive label: Type :=
 | label_fld: nat -> label
 | label_mtd: nat -> label.
@@ -67,7 +114,7 @@ Inductive ini : Type :=
   | ini_fld : avar -> ini
   | ini_mtd : typ -> trm -> ini.
 
-(* Syntactic sugar *)
+(** ** Syntactic sugar *)
 Definition trm_fun(T: typ)(body: trm) := trm_new (nil ;; nini_mtd 0 T body)
                                                  (trm_var (avar_b 0)).
 Definition trm_app(func arg: trm) := trm_call func 0 arg.
@@ -75,9 +122,12 @@ Definition trm_let(T: typ)(rhs body: trm) := trm_app (trm_fun T body) rhs.
 Definition trm_upcast(T: typ)(e: trm) := trm_app (trm_fun T (trm_var (avar_b 0))) e.
 Definition typ_arrow(T1 T2: typ) := typ_rcd (nil ;; ndec_mtd 0 T1 T2).
 
-(* ... opening ...
-   replaces in some syntax a bound variable with dangling index (k) by a free variable x
-*)
+
+(* ###################################################################### *)
+(** * Opening *)
+
+(** Opening replaces in some syntax a bound variable with dangling index (k) 
+   by a free variable x. *)
 
 Fixpoint open_rec_avar (k: nat) (u: var) (a: avar) { struct a } : avar :=
   match a with
@@ -109,6 +159,10 @@ Inductive fvar : avar -> Prop :=
   | fvar_f : forall x,
       fvar (avar_f x).
 
+
+(* ###################################################################### *)
+(** * Environments *)
+
 (* 
 Environment requirements:
    * Want to use the same definitions and lemmas for
@@ -139,7 +193,10 @@ End EnvParams.
 
 Ltac inv H := inversion H; clear H; subst.
 
-(* General environment *)
+
+(* ###################################################################### *)
+(** ** General environment *)
+
 Module Env (params: EnvParams).
 Import params.
 Definition key := key.
@@ -174,13 +231,7 @@ Ltac compare_keys := match goal with
 | _ :  context[unbound _ (?E ;; ?b)] |- _ => unfoldg unbound; destruct_key_if
 |   |- context[unbound _ (?E ;; ?b)]      => unfoldg unbound; destruct_key_if
 end. (* We don't just put destruct_key_if 1x here, because if it fails, match has to try
-        the next branch 
-Ltac compare_keys := match goal with
-| _ :  context[binds _ _ (?E ;; ?b)] |- _ => unfoldg binds
-|   |- context[binds _ _ (?E ;; ?b)]      => unfoldg binds
-| _ :  context[unbound _ (?E ;; ?b)] |- _ => unfoldg unbound
-|   |- context[unbound _ (?E ;; ?b)]      => unfoldg unbound
-end; destruct_key_if. *)
+        the next branch *)
 
 Lemma map_head: forall (E: t) (b: B) (f: B -> B), map f (E ;; b) = (map f E) ;; (f b).
 Proof.
@@ -303,23 +354,10 @@ Proof.
       * rewrite <- e in n. intro. symmetry in H1. contradiction H1.
       * apply H with v. unfoldg binds. rewrite -> Hdestr. assumption.
 Qed.
-Lemma expose_two_binds: forall b1 b2 E,
-  binds (key b1) (value b1) E -> 
-  binds (key b2) (value b2) E -> (
-    (exists F G H, E = F ;; b1 & G ;; b2 & H /\ 
-                   key b1 <> key b2 /\
-                   unbound (key b1) (G ;; b2 & H) /\
-                   unbound (key b2) H) \/
-    (exists F G,   E = F ;; b1 & G /\ 
-                   b1 = b2 /\
-                   unbound (key b1) G) \/
-    (exists F G H, E = F ;; b2 & G ;; b1 & H /\ 
-                   key b1 <> key b2 /\
-                   unbound (key b1) H /\
-                   unbound (key b2) (G ;; b1 & H))
-  ).
-Proof. Admitted.
 End Env.
+
+(* ###################################################################### *)
+(** ** List of declarations *)
 
 (* Module decs: For lists of declarations: [list ndec] or [label => dec] *)
 Module decsParams <: EnvParams.
@@ -346,6 +384,9 @@ Qed.
 End decsParams.
 Module decs := Env(decsParams).
 
+(* ###################################################################### *)
+(** ** List of initialisations *)
+
 (* Module inis: For lists of initialisations: [list nini] or [label => ini] *)
 Module inisParams <: EnvParams.
 Definition K := label.
@@ -371,6 +412,33 @@ Qed.
 End inisParams.
 Module inis := Env(inisParams).
 
+Lemma inis_binds_fld_sync_val: forall n v is,
+  inis.binds (label_fld n) v is -> exists x, v = (ini_fld x).
+Proof.
+  intros. induction is.
+  + inis.empty_binds_contradiction.
+  + inis.unfoldg inis.binds. destruct a; simpl in H; inis.destruct_key_if.
+      * inv H. exists a. reflexivity.
+      * apply IHis. unfold inis.binds. assumption.
+      * inv e. (* contradiction *)
+      * apply IHis. unfold inis.binds. assumption.
+Qed.
+
+Lemma inis_binds_mtd_sync_val: forall n v is,
+  inis.binds (label_mtd n) v is -> exists T e, v = (ini_mtd T e).
+Proof.
+  intros. induction is.
+  + inis.empty_binds_contradiction.
+  + inis.unfoldg inis.binds. destruct a; simpl in H; inis.destruct_key_if.
+      * inv e. (* contradiction *)
+      * apply IHis. unfold inis.binds. assumption.
+      * inv H. exists t t0. reflexivity.
+      * apply IHis. unfold inis.binds. assumption.
+Qed.
+
+(* ###################################################################### *)
+(** ** Typing environment ("Gamma") *)
+
 (* Module tenv: For type environments: [var => typ] *)
 Module tenvParams <: EnvParams.
 Definition K := var.
@@ -386,6 +454,12 @@ Qed.
 End tenvParams.
 Module tenv := Env(tenvParams).
 
+Lemma tenv_gen_fresh : forall G, exists x, tenv.unbound x G.
+Admitted.
+
+(* ###################################################################### *)
+(** ** Value environment ("store") *)
+
 (* Module venv: For value environments: [var => inis] *)
 Module venvParams <: EnvParams.
 Definition K := var.
@@ -400,6 +474,35 @@ Proof.
 Qed.
 End venvParams.
 Module venv := Env(venvParams).
+
+Lemma venv_gen_gt : forall s, exists x, forall y i, venv.binds y i s -> y < x.
+Proof.
+  intros. induction s.
+  + exists 0. intros. venv.empty_binds_contradiction.
+  + destruct IHs as [x IH].
+    destruct (le_lt_dec x (venv.key a)) as [Hc | Hc].
+    - exists (S (venv.key a)). intros.
+      unfold venv.binds, venv.get in H. fold venv.get in H. 
+      unfold venvParams.eq_key_dec in H.
+      destruct (eq_nat_dec y (venv.key a)).
+      * omega.
+      * unfold venv.binds in IH. specialize (IH y i H). omega.
+    - exists x. intros.
+      unfold venv.binds, venv.get in H. fold venv.get in H. 
+      unfold venvParams.eq_key_dec in H.
+      destruct (eq_nat_dec y (venv.key a)).
+      * omega.
+      * apply (IH y i). unfold venv.binds. assumption.
+Qed.
+
+Lemma venv_gen_fresh : forall s, exists x, venv.unbound x s.
+Proof.
+  intros. destruct (venv_gen_gt s) as [x H]. exists x.
+  apply venv.build_unbound. intros. specialize (H k' v H0). omega.
+Qed.
+
+(* ###################################################################### *)
+(** * Preview: How intersection will work *)
 
 Module Type IntersectionPreview.
 
@@ -447,10 +550,6 @@ Fixpoint get_fld(n: nat)(ds: decs.t): option typ := match ds with
       | _ => get_fld n tail
       end
   end.
-(*
-Lemma get_fld_spec: forall n ds, decs.get (label_fld n) ds = dec_fld (get_fld n ds).
-Proof.
-*)
 
 Fixpoint refine_dec(d1: ndec)(ds2: decs.t): ndec := match ds2 with
 | nil => d1
@@ -464,14 +563,6 @@ Fixpoint refine_dec(d1: ndec)(ds2: decs.t): ndec := match ds2 with
     | _, _ => refine_dec d1 tail2
     end
 end.
-
-Ltac destruct_matchee :=
-  match goal with
-  | [ Hm: match ?e1 with _ => _ end = _ |- _ ]  => 
-      remember e1 as mExpr; destruct mExpr
-  | [ Hm: if ?e1 then _ else _ = _ |- _ ]  => 
-      remember e1 as mExpr; destruct mExpr
-  end.
 
 Lemma refine_dec_spec_fld: forall ds2 n T1 T2,
   decs.binds (label_fld n) (dec_fld T2) ds2 ->
@@ -702,8 +793,8 @@ Proof.
         } 
 Qed.
 
-
-(* refined decs shadow the outdated decs of ds2 *)
+(* Refined decs shadow the outdated decs of ds2.
+   So [decs.ok (intersect ds1 ds2)] usually does not hold. *)
 Definition intersect(ds1 ds2: decs.t): decs.t := ds2 & (refine_decs ds1 ds2).
 
 Lemma intersect_spec_1: forall l d ds1 ds2,
@@ -746,10 +837,12 @@ Qed.
 End IntersectionPreviewImpl.
 
 
-(** Operational Semantics **)
-(* Note: Terms given by user are closed, so they only contain avar_b, no avar_f.
-   Whenever we introduce a new avar_f (only happens in red_new), we choose one
-   which is not in the store, so we never have name clashes. *) 
+(* ###################################################################### *)
+(** * Operational Semantics *)
+
+(** Note: Terms given by user are closed, so they only contain avar_b, no avar_f.
+    Whenever we introduce a new avar_f (only happens in red_new), we choose one
+    which is not in the store, so we never have name clashes. *) 
 Inductive red : venv.t -> trm -> venv.t -> trm -> Prop :=
   (* computation rules *)
   | red_call : forall (s: venv.t) (x y: var) (m: nat) (T: typ) (is: inis.t) (body: trm),
@@ -787,6 +880,10 @@ Inductive red : venv.t -> trm -> venv.t -> trm -> Prop :=
      typing rules (those without typing assumptions)? Typing rules become unintuitive,
      and maybe to prove that store is wf, we need to prove what we're about to prove...
 *)
+
+
+(* ###################################################################### *)
+(** * Typing *)
 
 (* Term typing *)
 Inductive has : tenv.t -> trm -> label -> dec -> Prop :=
@@ -833,6 +930,10 @@ with   typing_inis_mut := Induction for typing_inis Sort Prop.
 
 Combined Scheme typing_mutind from has_mut, typing_trm_mut, typing_ini_mut, typing_inis_mut.
 
+
+(* ###################################################################### *)
+(** * Well-formed store ([wf_venv]) *)
+
 Inductive wf_venv: venv.t -> tenv.t -> Prop :=
   | wf_venv_nil : wf_venv nil nil
   | wf_venv_cons : forall s g x is ds,
@@ -841,6 +942,8 @@ Inductive wf_venv: venv.t -> tenv.t -> Prop :=
       tenv.unbound x g ->
       typing_inis g is ds ->
       wf_venv (s ;; (x, is)) (g ;; (x, (typ_rcd ds))).
+
+(** ** Inversion lemmas for [wf_venv] *)
 
 Lemma invert_wf_venv_cons: forall s G x is ds,
   wf_venv (s ;; (x, is)) (G ;; (x, typ_rcd ds)) ->
@@ -858,48 +961,68 @@ Proof.
     apply venv.ok_cons; assumption. apply tenv.ok_cons; assumption.
 Qed.
 
+Lemma tenv_binds_to_venv_binds: forall s G x T,
+  wf_venv s G ->
+  tenv.binds x T G ->
+  exists is, venv.binds x is s.
+Admitted.
+
+Lemma invert_wf_venv: forall s G,
+  wf_venv s G -> 
+    forall x is ds, 
+      venv.binds x is s -> 
+      tenv.binds x (typ_rcd ds) G ->
+      typing_inis G is ds.
+Admitted.
+
+Lemma venv_unbound_to_tenv_unbound: forall s G x,
+  wf_venv s G ->
+  venv.unbound x s ->
+  tenv.unbound x G.
+Admitted.
+
+
+(* ###################################################################### *)
+(** * Inversion lemmas for typing *)
+
+(** **** Inverting [has] *)
+
 Lemma invert_has: forall G e l d,
   has G e l d ->
   exists ds, typing_trm G e (typ_rcd ds) /\ decs.binds l d ds.
-Proof.
-  intros. inv H. eauto.
-Qed.
+Proof. intros. inv H. eauto. Qed.
+
+
+(** **** Inverting [typing_trm] *)
 
 Lemma invert_typing_trm_var: forall G x T,
   typing_trm G (trm_var (avar_f x)) T ->
   tenv.binds x T G.
-Proof.
-  intros. inv H. assumption.
-Qed.
+Proof. intros. inv H. assumption. Qed.
 
 Lemma invert_typing_trm_sel: forall G e l T,
   typing_trm G (trm_sel e l) T ->
   has G e (label_fld l) (dec_fld T).
-Proof.
-  intros. inv H. assumption.
-Qed.
+Proof. intros. inv H. assumption. Qed.
 
 Lemma invert_typing_trm_call: forall G t m V u,
   typing_trm G (trm_call t m u) V ->
   exists U, has G t (label_mtd m) (dec_mtd U V) /\ typing_trm G u U.
-Proof.
-  intros. inv H. eauto.
-Qed.
+Proof. intros. inv H. eauto. Qed.
 
 Lemma invert_typing_trm_new: forall G is t T,
   typing_trm G (trm_new is t) T ->
   exists ds, typing_inis G is ds /\
              (forall x, tenv.unbound x G ->
                         typing_trm (G ;; (x, typ_rcd ds)) (open_trm x t) T).
-Proof.
-  intros. inv H. eauto.
-Qed.
+Proof. intros. inv H. eauto. Qed.
+
+
+(** **** Inverting [typing_ini] *)
 
 Lemma invert_typing_ini_key: forall G i d, 
   typing_ini G i d -> inis.key i = decs.key d.
-Proof.
-  intros. inv H; reflexivity.
-Qed.
+Proof. intros. inv H; reflexivity. Qed.
 
 Lemma invert_typing_ini_cases: forall G i d, 
   typing_ini G i d ->
@@ -922,33 +1045,33 @@ Proof.
   + exists (label_mtd m) (ini_mtd T e) (dec_mtd T U). subst. auto.
 Qed.
 
-Lemma venv_gen_gt : forall s, exists x, forall y i, venv.binds y i s -> y < x.
-Proof.
-  intros. induction s.
-  + exists 0. intros. venv.empty_binds_contradiction.
-  + destruct IHs as [x IH].
-    destruct (le_lt_dec x (venv.key a)) as [Hc | Hc].
-    - exists (S (venv.key a)). intros.
-      unfold venv.binds, venv.get in H. fold venv.get in H. 
-      unfold venvParams.eq_key_dec in H.
-      destruct (eq_nat_dec y (venv.key a)).
-      * omega.
-      * unfold venv.binds in IH. specialize (IH y i H). omega.
-    - exists x. intros.
-      unfold venv.binds, venv.get in H. fold venv.get in H. 
-      unfold venvParams.eq_key_dec in H.
-      destruct (eq_nat_dec y (venv.key a)).
-      * omega.
-      * apply (IH y i). unfold venv.binds. assumption.
-Qed.
 
-Lemma venv_gen_fresh : forall s, exists x, venv.unbound x s.
-Proof.
-  intros. destruct (venv_gen_gt s) as [x H]. exists x.
-  apply venv.build_unbound. intros. specialize (H k' v H0). omega.
-Qed.
+(** **** Inverting [typing_inis] *)
 
-Lemma tenv_gen_fresh : forall G, exists x, tenv.unbound x G.
+Lemma extract_typing_ini_from_typing_inis: forall G l i is d ds,
+  typing_inis G is ds ->
+  inis.binds l (inis.value i) is ->
+  decs.binds l (decs.value d) ds ->
+  typing_ini G i d.
+Proof.
+Admitted.
+
+Lemma invert_typing_mtd_ini_inside_typing_inis: forall G is ds m S1 S2 T body,
+  typing_inis G is ds ->
+  inis.binds (label_mtd m) (ini_mtd S1 body) is ->
+  decs.binds (label_mtd m) (dec_mtd S2 T) ds ->
+  (* conclusion is the premise needed to construct a typing_mtd_ini: *)
+  (forall y, tenv.unbound y G -> typing_trm (G ;; (y, S2)) (open_trm y body) T).
+Proof.
+Admitted.
+
+Lemma invert_typing_fld_ini_inside_typing_inis: forall G is ds l v T,
+  typing_inis G is ds ->
+  inis.binds (label_fld l) (ini_fld v) is ->
+  decs.binds (label_fld l) (dec_fld T) ds ->
+  (* conclusion is the premise needed to construct a typing_ini_fld: *)
+  typing_trm G (trm_var v) T.
+Proof.
 Admitted.
 
 Lemma decs_binds_to_inis_binds: forall G l d is ds,
@@ -966,29 +1089,9 @@ Proof.
       * apply IHHty. assumption.
 Qed.
 
-Lemma inis_binds_fld_sync_val: forall n v is,
-  inis.binds (label_fld n) v is -> exists x, v = (ini_fld x).
-Proof.
-  intros. induction is.
-  + inis.empty_binds_contradiction.
-  + inis.unfoldg inis.binds. destruct a; simpl in H; inis.destruct_key_if.
-      * inv H. exists a. reflexivity.
-      * apply IHis. unfold inis.binds. assumption.
-      * inv e. (* contradiction *)
-      * apply IHis. unfold inis.binds. assumption.
-Qed.
 
-Lemma inis_binds_mtd_sync_val: forall n v is,
-  inis.binds (label_mtd n) v is -> exists T e, v = (ini_mtd T e).
-Proof.
-  intros. induction is.
-  + inis.empty_binds_contradiction.
-  + inis.unfoldg inis.binds. destruct a; simpl in H; inis.destruct_key_if.
-      * inv e. (* contradiction *)
-      * apply IHis. unfold inis.binds. assumption.
-      * inv H. exists t t0. reflexivity.
-      * apply IHis. unfold inis.binds. assumption.
-Qed.
+(* ###################################################################### *)
+(** * Weakening lemmas *)
 
 Lemma weaken_has: forall G H e l d,
   has G e l d -> tenv.ok (G & H) -> has (G & H) e l d.
@@ -998,110 +1101,15 @@ Lemma weaken_typing_trm: forall G H e T,
   typing_trm G e T -> tenv.ok (G & H) -> typing_trm (G & H) e T.
 Admitted.
 
-(*
-Lemma decs_binds_fld_to_inis_binds_fld: forall l d is ds s,
-  typing_inis nil s is ds ->
-  decs.binds l (dec_fld T ds ->
-  exists i, inis.binds l i is.
-Proof.
-*)
+
+(* ###################################################################### *)
+(** * Progress *)
 
 Definition progress_for(s: venv.t)(e: trm) :=
   (* can step *)
   (exists s' e', red s e s' e') \/
   (* or is a value *)
   (exists x is, e = (trm_var (avar_f x)) /\ venv.binds x is s).
-
-Ltac auto_specialize :=
-  repeat match goal with
-  | Impl: ?Cond ->            _ |- _ => let HC := fresh in 
-      assert (HC: Cond) by auto; specialize (Impl HC); clear HC
-  | Impl: forall (_ : ?Cond), _ |- _ => match goal with
-      | p: Cond |- _ => specialize (Impl p)
-      end
-  end.
-
-Ltac rewrite_with EqT := match goal with
-| H: EqT |- _ => rewrite H in *; clear H
-end.
-
-Lemma tenv_binds_to_venv_binds: forall s G x T,
-  wf_venv s G ->
-  tenv.binds x T G ->
-  exists is, venv.binds x is s.
-Admitted.
-
-Lemma invert_wf_venv: forall s G,
-  wf_venv s G -> 
-    forall x is ds, 
-      venv.binds x is s -> 
-      tenv.binds x (typ_rcd ds) G ->
-      typing_inis G is ds.
-Admitted.
-
-Lemma expose_two_binds_in_wf_venv: forall s G x y isx isy dsx dsy,
-  wf_venv s G ->
-  venv.binds x isx s ->
-  tenv.binds x (typ_rcd dsx) G ->
-  venv.binds y isy s ->
-  tenv.binds y (typ_rcd dsy) G -> (
-    (exists s1 s2 s3 G1 G2 G3,
-       s = s1 ;; (x,     isx      ) & s2 ;; (y,     isy      ) & s3 /\
-       G = G1 ;; (x, (typ_rcd dsx)) & G2 ;; (y, (typ_rcd dsy)) & G3 /\
-       x <> y /\
-       venv.unbound x (s2 ;; (y,     isy      ) & s3) /\
-       tenv.unbound x (G2 ;; (y, (typ_rcd dsy)) & G3) /\
-       venv.unbound y s3 /\
-       tenv.unbound y G3) \/
-    (exists s1 s2 G1 G2,
-       s = s1 ;; (x,      isx     ) & s2 /\
-       G = G1 ;; (x, (typ_rcd dsx)) & G2 /\
-       x = y /\
-       isx = isy /\
-       dsx = dsy /\
-       venv.unbound x s2 /\
-       tenv.unbound x G2) \/
-    (exists s1 s2 s3 G1 G2 G3,
-       s = s1 ;; (y,     isy      ) & s2 ;; (x,     isx      ) & s3 /\
-       G = G1 ;; (y, (typ_rcd dsy)) & G2 ;; (x, (typ_rcd dsx)) & G3 /\
-       x <> y /\
-       venv.unbound y (s2 ;; (x,     isx      ) & s3) /\
-       tenv.unbound y (G2 ;; (x, (typ_rcd dsx)) & G3) /\
-       venv.unbound x s3 /\
-       tenv.unbound x G3)
-  ).
-Admitted.
-
-Lemma shrink_wf_venv: forall s G x is T,
-  wf_venv s G ->
-  venv.binds x is s ->
-  tenv.binds x  T G ->
-  exists (s1 s2: venv.t) (G1 G2: tenv.t), 
-    s = s1 ;; (x, is) & s2 /\
-    G = G1 ;; (x,  T) & G2 /\
-    wf_venv (s1 ;; (x, is)) (G1 ;; (x, T)).
-Admitted.
-
-(*
-Lemma shrink_wf_venv: forall s G y T,
-  wf_venv s G ->
-  tenv.binds y T G ->
-  exists (s1 s2: venv.t) (G1 G2: tenv.t) (is: inis.t), 
-    s = s1 ;; (y, is) & s2 /\
-    G = G1 ;; (y,  T) & G2 /\
-    wf_venv (s1 ;; (y, is)) (G1 ;; (y, T)).
-Admitted.
-*)
-
-Lemma restrict_wf_venv: forall s G1 G2,
-  wf_venv s (G1 & G2) ->
-  exists s1 s2, s = s1 & s2 /\ wf_venv s1 G1.
-Admitted.
-
-(*Lemma invert_wf_venv_cons*)
-
-Tactic Notation "keep" constr(E) "as" ident(H) :=
-    let Temp := type of E in assert (H: Temp) by apply E.
 
 Lemma progress_proof: forall G e T,
   typing_trm G e T -> forall s, wf_venv s G -> progress_for s e.
@@ -1175,39 +1183,9 @@ Proof.
   keep (progress_proof H0 H) as P. unfold progress_for in P. apply P.
 Qed.
 
-Print Assumptions progress.
 
-Lemma extract_typing_ini_from_typing_inis: forall G l i is d ds,
-  typing_inis G is ds ->
-  inis.binds l (inis.value i) is ->
-  decs.binds l (decs.value d) ds ->
-  typing_ini G i d.
-Proof.
-Admitted.
-
-Lemma invert_typing_mtd_ini_inside_typing_inis: forall G is ds m S1 S2 T body,
-  typing_inis G is ds ->
-  inis.binds (label_mtd m) (ini_mtd S1 body) is ->
-  decs.binds (label_mtd m) (dec_mtd S2 T) ds ->
-  (* conclusion is the premise needed to construct a typing_mtd_ini: *)
-  (forall y, tenv.unbound y G -> typing_trm (G ;; (y, S2)) (open_trm y body) T).
-Proof.
-Admitted.
-
-Lemma invert_typing_fld_ini_inside_typing_inis: forall G is ds l v T,
-  typing_inis G is ds ->
-  inis.binds (label_fld l) (ini_fld v) is ->
-  decs.binds (label_fld l) (dec_fld T) ds ->
-  (* conclusion is the premise needed to construct a typing_ini_fld: *)
-  typing_trm G (trm_var v) T.
-Proof.
-Admitted.
-
-Lemma venv_unbound_to_tenv_unbound: forall s G x,
-  wf_venv s G ->
-  venv.unbound x s ->
-  tenv.unbound x G.
-Admitted.
+(* ###################################################################### *)
+(** * The substitution principle *)
 
 (*
 The well-known substitution principle, usually written like
@@ -1231,31 +1209,9 @@ Lemma subst_principle: forall G x u e S T,
   typing_trm G (open_trm u e) T.
 Admitted.
 
-(* TODO need also y unbound in s2 
-Lemma split_store_in_typing_trm_var_s: forall G y ds,
-  typing_trm G (trm_var (avar_f y)) (typ_rcd ds) ->
-  exists s1 s2 is, s = (s1 ;; (y, is) & s2) /\
-                   typing_inis nil s1 is ds.
-Admitted. *)
 
-(*
-  venv.unbound y s1 ->
-  venv.unbound y s2 -> 
-  typing_trm (nil ;; (y, S)) (s1 & s2) e T ->
-  typing_trm (s1 ;; (y, S) & s2) e T
-*)
-
-(*
-Lemma strengthen_typing_trm
-
-typing_trm G (trm_var (avar_f x)) (typ_rcd ds)
-wf_venv s G <-- don't mix this in
-and just use "expose"
-*)
-
-Ltac unfoldp :=
-  unfold venvParams.K, venvParams.V, venvParams.B,
-         tenvParams.K, tenvParams.V, tenvParams.B  in *.
+(* ###################################################################### *)
+(** * Preservation *)
 
 Theorem preservation_proof:
   forall s e s' e' (Hred: red s e s' e') G T (Hwf: wf_venv s G) (Hty: typing_trm G e T),
@@ -1335,53 +1291,3 @@ Proof.
   destruct (preservation_proof Hred Hwf Hty) as [H [Hwf' Hty']].
   exists (G & H). split; assumption.
 Qed.
-
-(* garbage .............. *)
-
-
-
-(*
-what's below is not needed because simpler:
-assign everything first to a var -> no need to evaluate fields of record
-and one type for record construction / fully evaluated record
-*)
-
-(* Value (: [list nslot] or [label => slot] *)
-Module val <: env.
-Definition K := loc.
-Definition V := slot.
-Definition B := nslot.
-Definition t := list nslot.
-Definition key(s: nslot): loc := match s with
-| nslot_fld n lo => label_fld n
-| nslot_mtd n T e => label_mtd n
-end.
-Definition value(s: nslot): slot := match s with
-| nslot_fld n lo => slot_fld lo
-| nslot_mtd n T e => slot_mtd T e
-end.
-End val.
-
-(* fully evaluated record member *)
-Inductive slot : Type :=
-  | slot_fld : loc -> slot
-  | slot_mtd : typ -> trm -> slot.
-
-(* named slot *)
-Inductive nslot : Type :=
-  | nslot_fld : nat -> loc -> nslot
-  | nslot_mtd : nat -> typ -> trm -> nslot.
-
-(* Import List.ListNotations. *)
-
-(*
-theories/Lists/List, Module ListNotations:
-Notation " [ ] " := nil : list_scope.
-Notation " [ x ] " := (cons x nil) : list_scope.
-Notation " [ x ; .. ; y ] " := (cons x .. (cons y nil) ..) : list_scope.
-
-theories/Init/Datatypes:
-Infix "++" := app (right associativity, at level 60) : list_scope.
-Infix "::" := cons (at level 60, right associativity) : list_scope.
-*)
-
