@@ -145,6 +145,7 @@ Import params.
 Definition key := key.
 Definition value := value.
 Definition t := list B.
+Definition empty : t := nil. (* to avoid having to write (@nil ...) *)
 Fixpoint get(k: K)(E: t): option V := match E with
   | nil => None
   | bs ;; b => if eq_key_dec k (key b) then Some (value b) else get k bs
@@ -1236,14 +1237,14 @@ Ltac unfoldp :=
   unfold venvParams.K, venvParams.V, venvParams.B,
          tenvParams.K, tenvParams.V, tenvParams.B  in *.
 
-Theorem preservation_proof: 
+Theorem preservation_proof:
   forall s e s' e' (Hred: red s e s' e') G T (Hwf: wf_venv s G) (Hty: typing_trm G e T),
-  (exists G', wf_venv s' G' /\ typing_trm G' e' T).
+  (exists H, wf_venv s' (G & H) /\ typing_trm (G & H) e' T).
 Proof.
   intros s e s' e' Hred. induction Hred; intros.
   (* red_call *)
   + rename H into Hvbx. rename H0 into Hibm. rename T0 into U.
-    exists G. split. apply Hwf.
+    exists tenv.empty. simpl. split. apply Hwf.
     (* Grab "tenv binds x" hypothesis: *)
     apply invert_typing_trm_call in Hty. 
     destruct Hty as [T' [Hhas Htyy]].
@@ -1258,7 +1259,7 @@ Proof.
     apply (subst_principle _ Hmtd Htyy).
   (* red_sel *)
   + rename H into Hvbx. rename H0 into Hibl.
-    exists G. split. apply Hwf.
+    exists tenv.empty. simpl. split. apply Hwf.
     apply invert_typing_trm_sel in Hty.
     apply invert_has in Hty.
     destruct Hty as [ds [Htyx Hdbl]].
@@ -1271,7 +1272,7 @@ Proof.
     apply invert_typing_trm_new in Hty.
     destruct Hty as [ds [Hisds Htye]].
     keep (venv_unbound_to_tenv_unbound Hwf Hvux) as Htux.
-    exists (G ;; (x, typ_rcd ds)). split.
+    exists (tenv.empty ;; (x, typ_rcd ds)). simpl. split.
     - apply (wf_venv_cons Hwf Hvux Htux Hisds).
     - apply (Htye x Htux).
   (* red_call1 *)
@@ -1281,8 +1282,8 @@ Proof.
     apply invert_has in Hhas.
     destruct Hhas as [ds [Htyo Hdbm]].
     specialize (IHHred G (typ_rcd ds) Hwf Htyo).
-    destruct IHHred as [G' [Hwf' Htyo']].
-    exists G'. split. assumption. apply (@typing_trm_call G' o' m Ta Tr a).
+    destruct IHHred as [H [Hwf' Htyo']].
+    exists H. split. assumption. apply (@typing_trm_call (G & H) o' m Ta Tr a).
     - apply (has_dec Htyo' Hdbm).
     - (* We have
           Hwf : wf_venv s G
@@ -1294,8 +1295,8 @@ Proof.
     apply invert_typing_trm_call in Hty.
     destruct Hty as [Ta [Hhas Htya]].
     specialize (IHHred G Ta Hwf Htya).
-    destruct IHHred as [G' [Hwf' Htya']].
-    exists G'. split. assumption. apply (@typing_trm_call G' _ m Ta Tr a').
+    destruct IHHred as [H [Hwf' Htya']].
+    exists H. split. assumption. apply (@typing_trm_call (G & H) _ m Ta Tr a').
     - admit. (* needs weakening *)
     - assumption.
   (* red_sel1 *)
@@ -1303,8 +1304,8 @@ Proof.
     apply invert_has in Hty.
     destruct Hty as [ds [Htyo Hdbl]].
     specialize (IHHred G (typ_rcd ds) Hwf Htyo).
-    destruct IHHred as [G' [Hwf' Htyo']].
-    exists G'. split. assumption. apply (@typing_trm_sel G' o' l T).
+    destruct IHHred as [H [Hwf' Htyo']].
+    exists H. split. assumption. apply (@typing_trm_sel (G & H) o' l T).
     apply (has_dec Htyo' Hdbl).
 Qed.
 
@@ -1312,7 +1313,9 @@ Theorem preservation: forall s G e T s' e',
   wf_venv s G -> typing_trm G e T -> red s e s' e' ->
   (exists G', wf_venv s' G' /\ typing_trm G' e' T).
 Proof.
-  intros. apply (preservation_proof H1 H H0).
+  intros s G e T s' e' Hwf Hty Hred.
+  destruct (preservation_proof Hred Hwf Hty) as [H [Hwf' Hty']].
+  exists (G & H). split; assumption.
 Qed.
 
 (* garbage .............. *)
