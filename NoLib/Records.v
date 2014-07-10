@@ -212,6 +212,8 @@ Definition unbound(k: K)(E: t): Prop := (get k E = None).
 Inductive ok : t -> Prop :=
 | ok_nil  : ok nil
 | ok_cons : forall E b, ok E -> unbound (key b) E -> ok (E ;; b).
+Lemma invert_ok_cons: forall E b, ok (E ;; b) -> ok E /\ unbound (key b) E.
+Proof. intros. inv H. split; assumption. Qed.
 
 Ltac empty_binds_contradiction := match goal with
 | H: binds _ _ [] |- _ => inversion H
@@ -255,6 +257,15 @@ Proof.
   + inversion H.
   + assumption.
 Qed.
+Lemma unbound_concat_inv: forall k E1 E2, 
+  unbound k (E1 & E2) -> unbound k E1 /\ unbound k E2.
+Proof.
+  intros. induction E2. 
+  + simpl in *. split. assumption. unfoldg unbound. reflexivity.
+  + rewrite -> concat_cons_assoc in *. compare_keys.
+    - discriminate H.
+    - apply (IHE2 H).
+Qed.  
 Lemma binds_push_eq_inv: forall E a b,
   binds (key a) (value b) (E ;; a) -> value a = value b.
 Proof.
@@ -500,6 +511,12 @@ Proof.
   intros. destruct (venv_gen_gt s) as [x H]. exists x.
   apply venv.build_unbound. intros. specialize (H k' v H0). omega.
 Qed.
+
+Ltac unfoldp :=
+  unfold venvParams.K, venvParams.V, venvParams.B,
+         tenvParams.K, tenvParams.V, tenvParams.B,
+         inisParams.K, inisParams.V, inisParams.B,
+         decsParams.K, decsParams.V, decsParams.B  in *.
 
 (* ###################################################################### *)
 (** * Preview: How intersection will work *)
@@ -1091,18 +1108,6 @@ Qed.
 
 
 (* ###################################################################### *)
-(** * Weakening lemmas *)
-
-Lemma weaken_has: forall G H e l d,
-  has G e l d -> tenv.ok (G & H) -> has (G & H) e l d.
-Admitted.
-
-Lemma weaken_typing_trm: forall G H e T,
-  typing_trm G e T -> tenv.ok (G & H) -> typing_trm (G & H) e T.
-Admitted.
-
-
-(* ###################################################################### *)
 (** * Progress *)
 
 Definition progress_for(s: venv.t)(e: trm) :=
@@ -1182,6 +1187,67 @@ Proof.
   intros.
   keep (progress_proof H0 H) as P. unfold progress_for in P. apply P.
 Qed.
+
+
+(* ###################################################################### *)
+(** * Weakening lemmas *)
+
+Lemma weaken_binds: forall x T G H,
+  tenv.ok (G & H) -> tenv.binds x T G -> tenv.binds x T (G & H).
+Proof.
+  intros x T G H. induction H; intros Hok Hb.
+  + simpl. assumption.
+  + rewrite -> tenv.concat_cons_assoc in *. 
+    destruct (tenv.invert_ok_cons Hok) as [Hok' Hub].
+    auto_specialize.
+    tenv.compare_keys.
+    - unfold tenv.unbound in Hub. rewrite -> e in IHlist. symmetry in Hub.
+      assert (C: None = Some T). transitivity (tenv.get (tenv.key a) (G & H)); assumption.
+      discriminate C.
+    - assumption.
+Qed.
+
+Lemma weakening:
+    (forall G1 e l d                      (Hhas:  has          G1       e l d ),
+     forall G2 (Hok: tenv.ok (G1 & G2)),          has         (G1 & G2) e l d ) 
+ /\ (forall G1 e T                        (Hty:   typing_trm   G1       e T   ),
+     forall G2 (Hok: tenv.ok (G1 & G2)),          typing_trm  (G1 & G2) e T   ) 
+ /\ (forall G1 i d                        (Hty:   typing_ini   G1       i d   ),
+     forall G2 (Hok: tenv.ok (G1 & G2)),          typing_ini  (G1 & G2) i d   ) 
+ /\ (forall G1 is ds                      (Hisds: typing_inis  G1       is ds ),
+     forall G2 (Hok: tenv.ok (G1 & G2)),          typing_inis (G1 & G2) is ds ).
+Proof.
+  apply typing_mutind; intros; unfoldp.
+  (* case has_dec *)
+  + auto_specialize. apply has_dec with ds; assumption.
+  (* case typing_trm_var *)
+  + auto_specialize. apply typing_trm_var. apply weaken_binds; assumption.
+  (* case typing_trm_sel *)
+  + auto_specialize. apply typing_trm_sel. assumption.
+  (* case typing_trm_call *)
+  + auto_specialize. apply typing_trm_call with U; assumption.
+  (* case typing_trm_new *)
+  + apply typing_trm_new with ds.
+    - auto_specialize. assumption.
+    - intros. destruct (tenv.unbound_concat_inv _ _ H1) as [Hub _].
+      specialize (H0 x Hub G2). appl
+  (* case typing_ini_fld *)
+  + admit.
+  (* case typing_ini_mtd *)
+  + admit.
+  (* case typing_inis_nil *)
+  + admit.
+  (* case typing_inis_cons *)
+  + admit.
+Qed.
+
+Lemma weaken_has: forall G H e l d,
+  has G e l d -> tenv.ok (G & H) -> has (G & H) e l d.
+Admitted.
+
+Lemma weaken_typing_trm: forall G H e T,
+  typing_trm G e T -> tenv.ok (G & H) -> typing_trm (G & H) e T.
+Admitted.
 
 
 (* ###################################################################### *)
@@ -1291,3 +1357,4 @@ Proof.
   destruct (preservation_proof Hred Hwf Hty) as [H [Hwf' Hty']].
   exists (G & H). split; assumption.
 Qed.
+
