@@ -943,6 +943,9 @@ Proof.
   apply venv.build_unbound. intros. specialize (H k' v H0). omega.
 Qed.
 
+Lemma tenv_gen_fresh : forall G, exists x, tenv.unbound x G.
+Admitted.
+
 Lemma decs_binds_to_inis_binds: forall G l d is ds,
   typing_inis G is ds ->
   decs.binds l d ds ->
@@ -1178,6 +1181,28 @@ Lemma invert_typing_mtd_ini_inside_typing_inis: forall G is ds m S1 S2 T body,
 Proof.
 Admitted.
 
+(*
+The well-known substitution principle, usually written like
+
+                  G, x: S |- e : T      G |- u : S
+                 ----------------------------------
+                            G |- [u/x]e : T
+
+becomes the following in locally nameless style:
+
+   G, x: S |- (open_trm x e) : T       G |- (trm_var (avar_f u)) : S
+  -------------------------------------------------------------------
+                       G |- (open_trm u e) : T
+
+Note that in general, u is a term, but for our purposes, it suffices to consider
+the special case where u is a variable.
+*)
+Lemma subst_principle: forall G x u e S T,
+  typing_trm (G ;; (x, S)) (open_trm x e) T ->
+  typing_trm G (trm_var (avar_f u)) S ->
+  typing_trm G (open_trm u e) T.
+Admitted.
+
 (* TODO need also y unbound in s2 
 Lemma split_store_in_typing_trm_var_s: forall G y ds,
   typing_trm G (trm_var (avar_f y)) (typ_rcd ds) ->
@@ -1212,100 +1237,18 @@ Proof.
   (* red_call *)
   + rename H into Hvbx. rename H0 into Hibm.
     exists G. split. apply Hwf.
+    (* Grab "tenv binds x" hypothesis: *)
     apply invert_typing_trm_call in Hty. 
     destruct Hty as [S [Hhas Htyy]].
-    apply invert_typing_trm_var in Htyy. rename Htyy into Htby.
     apply invert_has in Hhas. 
     destruct Hhas as [ds [Htyx Hdbm]].
     apply invert_typing_trm_var in Htyx. rename Htyx into Htbx.
-    destruct (shrink_wf_venv Hwf Hvbx Htbx) as [s1 [s2 [G1 [G2 [Heqs [HeqG Hwf']]]]]].
-    destruct (invert_wf_venv_cons Hwf') as [_ [Hvux [Htux Hisds]]].
+    (* Feed "venv binds x" and "tenv binds x" to invert_wf_venv: *)
+    keep (invert_wf_venv Hwf Hvbx Htbx) as Hisds.
     keep (invert_typing_mtd_ini_inside_typing_inis Hisds Hibm Hdbm) as Hmtd.
-
-    (* G1 is G until (but excluding) x. If y is after x, then y is unbound in G1,
-       and we can specialize Hmtd, and then weaken it, and we're done.
-       But what if y is before x?
-         i.e. what if typechecking 'body' requires bindings defined after y?
-
-         Suppose we used Chargueraud's L/pick_fresh framework:
-         Then the typing_ini_mtd rule inversion would not give us 
-
-         Hmtd: forall y : tenvParams.K,
-               tenv.unbound y G1 -> typing_trm (G1 ;; (y, S)) (open_trm y body) T
-
-         but
-
-         L: fset var
-         Hmtd: forall y : tenvParams.K,
-               y \notin L -> typing_trm (G1 ;; (y, S)) (open_trm y body) T
-
-         We could pick a fresh y' not in L, and get
-
-         typing_trm (G1 ;; (y', S)) (open_trm y' body) T
-
-         but we need to prove `typing_trm G (open_trm y body) T`, not with y'.
-     *)
-
-
-  (* red_call *)
-  + rename H into Hvbx. rename H0 into Hibm. rename is into isx.
-    exists G. split. apply Hwf.
-    apply invert_typing_trm_call in Hty. 
-    destruct Hty as [S [Hhas Htyy]].
-    apply invert_typing_trm_var in Htyy. rename Htyy into Htby.
-    apply invert_has in Hhas.
-    destruct Hhas as [dsx [_ Hdbm]].
-    destruct (tenv_binds_to_venv_binds Hwf Htby) as [isy Hvby].
-    destruct (shrink_wf_venv Hwf Hvby Htby) as [s1 [s2 [G1 [G2 [Heqs [HeqG Hwf']]]]]].
-    destruct S as [dsy].
-    destruct (invert_wf_venv_cons Hwf') as [_ [Hvuy [Htuy Hisds]]].
-    keep (invert_typing_mtd_ini_inside_typing_inis Hisds Hibm Hdbm) as Hmtd.
-       (* do this with x, not with y! *)
-
-
-
-
-
-
-
-
-
-
-  (* red_call *)
-  + rename H into Hvbx. rename H0 into Hibm. rename is into isx.
-    exists G. split. apply Hwf.
-    destruct (invert_typing_trm_call Hty) as [S [Hhas Htyy]]. clear Hty.
-    keep (invert_typing_trm_var Htyy) as Htby.
-    destruct (invert_has Hhas) as [dsx [Htyx Hdbm]]. clear Hhas.
-    keep (invert_typing_trm_var Htyx) as Htbx.
-    destruct (tenv_binds_to_venv_binds Hwf Htby) as [isy Hvby].
-    destruct S as [dsy].
-    destruct (expose_two_binds_in_wf_venv Hwf Hvbx Htbx Hvby Htby) 
-      as [Hsplit | [Hsplit | Hsplit]].
-    * destruct Hsplit as [s1 [s2 [s3 [G1 [G2 [G3 Hsplit]]]]]].
-      destruct Hsplit as [Heqs [HeqG [Hxy [Hvux [Htux [Hvuy Htuy]]]]]].
-      (* Restrict tenv in Htbx, Htby *)
-      rewrite -> HeqG in Htbx.
-      keep (tenv.concat_assoc (G1 ;; (x, typ_rcd dsx)) (G2 ;; (y, typ_rcd dsy)) G3) as Ha.
-      unfoldp.
-      rewrite -> Ha in Htbx. clear Ha.
-      apply (tenv.binds_concat_left_inv (G1 ;; (x, typ_rcd dsx)) Htux) in Htbx.
-      rewrite -> HeqG in Htby.
-      apply (tenv.binds_concat_left_inv (G1 ;; (x, typ_rcd dsx) & G2 ;; (y, typ_rcd dsy))
-                                        Htuy) in Htby.
-
-      assert (Hisxdsx: typing_inis G1 isx dsx). admit.
-        (* keep (invert_wf_venv Hwf Hbv Hbtx) as Hisxdsx. *)
-      (* ---> The point of this whole story is that we apply this inversion lemma
-              on the restricted environment (G1 ;; (y, typ_rcd dsy)), instead of
-              applying it on the whole G: *)
-      keep (invert_typing_mtd_ini_inside_typing_inis Hisxdsx Hibm Hdbm) as Hmtd.
-      assert (HtuyG1: tenv.unbound y G1). admit. (* since no envs have multiple mappings *)
-      specialize (Hmtd y HtuyG1).
-      (* now weaken Hmtd to get goal *)
-      admit.
-    * (* similar *) admit.
-    * (* similar *) admit.
+    destruct (tenv_gen_fresh G) as [y' Htuy'].
+    specialize (Hmtd y' Htuy').
+    apply (subst_principle _ Hmtd Htyy).
   (* red_sel *)
   + admit.
   (* red_new *)
