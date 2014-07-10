@@ -152,6 +152,9 @@ Fixpoint get(k: K)(E: t): option V := match E with
   end.
 Definition binds(k: K)(v: V)(E: t): Prop := (get k E = Some v).
 Definition unbound(k: K)(E: t): Prop := (get k E = None).
+Inductive ok : t -> Prop :=
+| ok_nil  : ok nil
+| ok_cons : forall E b, ok E -> unbound (key b) E -> ok (E ;; b).
 
 Ltac empty_binds_contradiction := match goal with
 | H: binds _ _ [] |- _ => inversion H
@@ -846,6 +849,15 @@ Proof.
   intros. inv H. auto.
 Qed.
 
+Lemma wf_venv_to_ok: forall s G,
+  wf_venv s G -> venv.ok s /\ tenv.ok G.
+Proof.
+  intros. induction H.
+  + split. apply venv.ok_nil. apply tenv.ok_nil.
+  + destruct IHwf_venv as [IH1 IH2]. split.
+    apply venv.ok_cons; assumption. apply tenv.ok_cons; assumption.
+Qed.
+
 Lemma invert_has: forall G e l d,
   has G e l d ->
   exists ds, typing_trm G e (typ_rcd ds) /\ decs.binds l d ds.
@@ -977,6 +989,14 @@ Proof.
       * inv H. exists t t0. reflexivity.
       * apply IHis. unfold inis.binds. assumption.
 Qed.
+
+Lemma weaken_has: forall G H e l d,
+  has G e l d -> tenv.ok (G & H) -> has (G & H) e l d.
+Admitted.
+
+Lemma weaken_typing_trm: forall G H e T,
+  typing_trm G e T -> tenv.ok (G & H) -> typing_trm (G & H) e T.
+Admitted.
 
 (*
 Lemma decs_binds_fld_to_inis_binds_fld: forall l d is ds s,
@@ -1285,11 +1305,8 @@ Proof.
     destruct IHHred as [H [Hwf' Htyo']].
     exists H. split. assumption. apply (@typing_trm_call (G & H) o' m Ta Tr a).
     - apply (has_dec Htyo' Hdbm).
-    - (* We have
-          Hwf : wf_venv s G
-          Hwf' : wf_venv s' G'
-        Somehow we need to assert that s'/G' are bigger, and then we can use weakening. *)
-      admit.
+    - destruct (wf_venv_to_ok Hwf') as [_ Hok].
+      apply (weaken_typing_trm _ Htya Hok).
   (* red_call2 *)
   + rename T into Tr.
     apply invert_typing_trm_call in Hty.
@@ -1297,7 +1314,8 @@ Proof.
     specialize (IHHred G Ta Hwf Htya).
     destruct IHHred as [H [Hwf' Htya']].
     exists H. split. assumption. apply (@typing_trm_call (G & H) _ m Ta Tr a').
-    - admit. (* needs weakening *)
+    - destruct (wf_venv_to_ok Hwf') as [_ Hok].
+      apply (weaken_has _ Hhas Hok).
     - assumption.
   (* red_sel1 *)
   + apply invert_typing_trm_sel in Hty.
