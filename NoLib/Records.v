@@ -265,7 +265,44 @@ Proof.
   + rewrite -> concat_cons_assoc in *. compare_keys.
     - discriminate H.
     - apply (IHE2 H).
-Qed.  
+Qed.
+Lemma unbound_concat: forall k E1 E2,
+  unbound k E1 -> unbound k E2 -> unbound k (E1 & E2).
+Proof.
+  intros. induction E2.
+  + simpl in *. assumption.
+  + rewrite -> concat_cons_assoc. compare_keys.
+    - assumption.
+    - apply IHE2. assumption.
+Qed.
+Lemma unbound_remove_middle: forall k E1 E2 E3,
+  unbound k (E1 & E2 & E3) -> unbound k (E1 & E3).
+Proof.
+  intros.
+  destruct (unbound_concat_inv _ _ H) as [Hub12 Hub3].
+  destruct (unbound_concat_inv _ _ Hub12) as [Hub1 Hub2].
+  apply (unbound_concat Hub1 Hub3).
+Qed.
+Lemma invert_ok_concat: forall E1 E2, ok (E1 & E2) -> ok E1 /\ ok E2.
+Proof.
+  intros. induction E2. 
+  + simpl in *. split. assumption. apply ok_nil.
+  + rewrite -> concat_cons_assoc in *. destruct (invert_ok_cons H) as [H1 H2].
+    specialize (IHE2 H1). destruct IHE2 as [Hok1 Hok2]. split.
+    - assumption.
+    - destruct (unbound_concat_inv _ _ H2) as [Hu1 Hu2]. apply (ok_cons Hok2 Hu2).
+Qed.
+Lemma ok_remove_middle: forall E1 E2 E3, ok (E1 & E2 & E3) -> ok (E1 & E3).
+Proof.
+  intros. induction E3.
+  + simpl in *. destruct (invert_ok_concat _ _ H) as [Hok1 _]. assumption.
+  + rewrite -> concat_cons_assoc in H.
+    destruct (invert_ok_cons H) as [Hok123 Hub].
+    rewrite -> concat_cons_assoc.
+    apply ok_cons.
+    - apply IHE3. assumption.
+    - apply (unbound_remove_middle E1 E2 E3 Hub).
+Qed.
 Lemma binds_push_eq_inv: forall E a b,
   binds (key a) (value b) (E ;; a) -> value a = value b.
 Proof.
@@ -1207,47 +1244,94 @@ Proof.
     - assumption.
 Qed.
 
-Lemma weakening:
-    (forall G1 e l d                      (Hhas:  has          G1       e l d ),
-     forall G2 (Hok: tenv.ok (G1 & G2)),          has         (G1 & G2) e l d ) 
- /\ (forall G1 e T                        (Hty:   typing_trm   G1       e T   ),
-     forall G2 (Hok: tenv.ok (G1 & G2)),          typing_trm  (G1 & G2) e T   ) 
- /\ (forall G1 i d                        (Hty:   typing_ini   G1       i d   ),
-     forall G2 (Hok: tenv.ok (G1 & G2)),          typing_ini  (G1 & G2) i d   ) 
- /\ (forall G1 is ds                      (Hisds: typing_inis  G1       is ds ),
-     forall G2 (Hok: tenv.ok (G1 & G2)),          typing_inis (G1 & G2) is ds ).
+Lemma weaken_binds_middle: forall x T G1 G2 G3,
+  tenv.ok (G1 & G2 & G3) -> tenv.binds x T (G1 & G3) -> tenv.binds x T (G1 & G2 & G3).
 Proof.
-  apply typing_mutind; intros; unfoldp.
-  (* case has_dec *)
-  + auto_specialize. apply has_dec with ds; assumption.
-  (* case typing_trm_var *)
-  + auto_specialize. apply typing_trm_var. apply weaken_binds; assumption.
-  (* case typing_trm_sel *)
-  + auto_specialize. apply typing_trm_sel. assumption.
-  (* case typing_trm_call *)
-  + auto_specialize. apply typing_trm_call with U; assumption.
-  (* case typing_trm_new *)
-  + apply typing_trm_new with ds.
-    - auto_specialize. assumption.
-    - intros. destruct (tenv.unbound_concat_inv _ _ H1) as [Hub _].
-      specialize (H0 x Hub G2). appl
-  (* case typing_ini_fld *)
-  + admit.
-  (* case typing_ini_mtd *)
-  + admit.
-  (* case typing_inis_nil *)
-  + admit.
-  (* case typing_inis_cons *)
-  + admit.
+  intros x T G1 G2 G3. induction G3; intros Hok Hb.
+  + simpl in *. apply (weaken_binds _ Hok Hb).
+  + rewrite -> tenv.concat_cons_assoc in *. 
+    destruct (tenv.invert_ok_cons Hok) as [Hok' Hub].
+    tenv.compare_keys.
+    - assumption.
+    - apply (IHG3 Hok' Hb).
 Qed.
 
-Lemma weaken_has: forall G H e l d,
-  has G e l d -> tenv.ok (G & H) -> has (G & H) e l d.
-Admitted.
+(* If we only weaken at the end, i.e. from [G1] to [G1 & G2], the IH for the 
+   [typing_trm_new] case adds G2 to the end, so it takes us from [G1, x: ds] 
+   to [G1, x: ds, G2], but we need [G1, G2, x: ds].
+   So we need to weaken in the middle, i.e. from [G1 & G3] to [G1 & G2 & G3].
+   Then, the IH for the [typing_trm_new] case inserts G2 in the middle, so it
+   takes us from [G1 & G3, x: ds] to [G1 & G2 & G3, x: ds], which is what we
+   need. *)
 
-Lemma weaken_typing_trm: forall G H e T,
-  typing_trm G e T -> tenv.ok (G & H) -> typing_trm (G & H) e T.
-Admitted.
+Lemma weakening:
+   (forall G e l d (Hhas: has G e l d)
+           G1 G2 G3 (Heq: G = G1 & G3) (Hok123: tenv.ok (G1 & G2 & G3)),
+           has (G1 & G2 & G3) e l d ) 
+/\ (forall G e T (Hty: typing_trm G e T)
+           G1 G2 G3 (Heq: G = G1 & G3) (Hok123: tenv.ok (G1 & G2 & G3)),
+           typing_trm (G1 & G2 & G3) e T) 
+/\ (forall G i d (Hty: typing_ini G i d)
+           G1 G2 G3 (Heq: G = G1 & G3) (Hok123: tenv.ok (G1 & G2 & G3)), 
+           typing_ini (G1 & G2 & G3) i d)
+/\ (forall G is ds (Hisds: typing_inis G is ds)
+           G1 G2 G3 (Heq: G = G1 & G3) (Hok123: tenv.ok (G1 & G2 & G3)), 
+           typing_inis (G1 & G2 & G3) is ds).
+Proof.
+  apply typing_mutind; intros; unfoldp; 
+    repeat match goal with
+    | H: forall (_ _ _ : list (var * typ)), _ |- _ => 
+        specialize (H G1 G2 G3 Heq Hok123); let IH := fresh IH in rename H into IH
+    end;
+    subst.
+  + apply has_dec with ds; assumption.
+  + apply typing_trm_var. apply weaken_binds_middle; assumption.
+  + apply typing_trm_sel. assumption.
+  + apply typing_trm_call with U; assumption.
+  + apply (typing_trm_new _ IH).
+    intros.
+    assert (Hub13: tenv.unbound x (G1 & G3)) by 
+      (apply (tenv.unbound_remove_middle G1 G2 G3); assumption).
+    rewrite <- tenv.concat_cons_assoc.
+    specialize (H0 x Hub13 G1 G2 (G3 ;; (x, typ_rcd ds))).
+    apply H0.
+    - reflexivity.
+    - rewrite -> tenv.concat_cons_assoc. apply (tenv.ok_cons Hok123).
+      simpl. assumption.
+  + apply typing_ini_fld. assumption.
+  + apply typing_ini_mtd.
+    intros.
+    assert (Hub13: tenv.unbound x (G1 & G3)) by 
+      (apply (tenv.unbound_remove_middle G1 G2 G3); assumption).
+    rewrite <- tenv.concat_cons_assoc.
+    specialize (H x Hub13 G1 G2 (G3 ;; (x, S))).
+    apply H.
+    - reflexivity.
+    - rewrite -> tenv.concat_cons_assoc. apply (tenv.ok_cons Hok123).
+      simpl. assumption.
+  + apply typing_inis_nil.
+  + apply typing_inis_cons; assumption.
+Qed.
+
+Print Assumptions weakening.
+
+Lemma weaken_has: forall G1 G2 e l d,
+  has G1 e l d -> tenv.ok (G1 & G2) -> has (G1 & G2) e l d.
+Proof.
+  intros.
+  destruct weakening as [W _].
+  change (has (G1 & G2 & nil) e l d).
+  apply (W (G1 & nil)); trivial.
+Qed.
+
+Lemma weaken_typing_trm: forall G1 G2 e T,
+  typing_trm G1 e T -> tenv.ok (G1 & G2) -> typing_trm (G1 & G2) e T.
+Proof.
+  intros.
+  destruct weakening as [_ [W _]].
+  change (typing_trm (G1 & G2 & nil) e T).
+  apply (W (G1 & nil)); trivial.
+Qed.
 
 
 (* ###################################################################### *)
@@ -1358,3 +1442,4 @@ Proof.
   exists (G & H). split; assumption.
 Qed.
 
+Print Assumptions preservation.
