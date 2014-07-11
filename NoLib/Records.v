@@ -1435,7 +1435,94 @@ Lemma subst_principle: forall G x u e S T,
   typing_trm (G ;; (x, S)) (open_trm x e) T ->
   typing_trm G (trm_var (avar_f u)) S ->
   typing_trm G (open_trm u e) T.
-Admitted.
+Proof.
+  assert (P: forall G u S, typing_trm G (trm_var (avar_f u)) S -> 
+     forall G0 e0 T, typing_trm G0 e0 T 
+             -> forall x e, G0 = (G ;; (x, S)) -> e0 = (open_trm x e) -> 
+                            typing_trm G (open_trm u e) T). {
+  intros G u S HuS.
+  apply (typing_trm_mut 
+    (fun G e l d (Hhas: has G e l d) => True)
+    (fun G0 e0 T (Hty: typing_trm G0 e0 T) => 
+                forall x e, G0 = (G ;; (x, S)) -> e0 = (open_trm x e) -> 
+                                  typing_trm G (open_trm u e) T)
+    (fun G i d (Htyp: typing_ini G i d) => True)
+    (fun G is ds (Htyp: typing_inis G is ds) => True));
+  try (intros; apply I).
+  Ltac sync Heqe e :=
+    unfold open_trm, open_rec_trm in Heqe; destruct e; fold open_rec_trm in Heqe;
+    try discriminate Heqe.
+  (* case typing_trm_var *)
+  + intros G0 x0 T Hb x e HeqG Heqe. sync Heqe e.
+    unfold open_rec_avar in Heqe.
+    destruct a. 
+    - destruct (eq_nat_dec 0 n).
+      * inversion Heqe. rewrite <- e, -> H0 in *. clear e. clear H0.
+        unfold open_trm, open_rec_trm, open_rec_avar. simpl.
+        admit. (* ??? *)
+      * inv Heqe. (* contradiction *)
+    - inversion Heqe. rewrite -> H0 in *. clear H0.
+      unfold open_trm, open_rec_trm, open_rec_avar.
+      apply typing_trm_var. subst. tenv.compare_keys.
+      * inv Hb. simpl. admit. (* ??? *) 
+      * assumption.
+  (* case typing_trm_sel *)
+  + intros G0 e0 l T Hhas _ x e HeqG Heqe. admit.
+  (* case typing_trm_call *)
+  + intros G0 e0 m U V u0 Hhas _ Hu0U IH x e HeqG Heqe. admit.
+  (* case typing_trm_new *)
+  + admit.
+  }
+  intros. apply (P G u S H0 (G ;; (x, S)) (open_trm x e) T H x e eq_refl eq_refl).
+
+
+
+  assert (P: forall G0 e0 T, typing_trm G0 e0 T 
+             -> forall G x u e S, G0 = (G ;; (x, S)) -> e0 = (open_trm x e) -> 
+                                  typing_trm G (trm_var (avar_f u)) S ->
+                                  typing_trm G (open_trm u e) T). {
+  apply (typing_trm_mut 
+    (fun G e l d (Hhas: has G e l d) => True)
+    (fun G0 e0 T (Hty: typing_trm G0 e0 T) => 
+                forall G x u e S, G0 = (G ;; (x, S)) -> e0 = (open_trm x e) -> 
+                                  typing_trm G (trm_var (avar_f u)) S ->
+                                  typing_trm G (open_trm u e) T)
+    (fun G i d (Htyp: typing_ini G i d) => True)
+    (fun G is ds (Htyp: typing_inis G is ds) => True));
+  try (intros; apply I).
+  (* case typing_trm_var *)
+  + intros G0 x0 T Hb G x u e S HeqG Heqe HuS. admit.
+  (* case typing_trm_sel *)
+  + intros G0 e0 l T Hhas _ G x u e S HeqG Heqe HuS. admit.
+  (* case typing_trm_call *)
+  + intros G0 e0 m U V u0 Hhas _ Hu0U IH G x u e S HeqG Heqe HuS. admit.
+  (* case typing_trm_new *)
+  + admit.
+  }
+  intros. apply (P (G ;; (x, S)) (open_trm x e) T H G x u e S eq_refl eq_refl H0).
+Qed.
+
+         (P : forall (t : tenv.t) (t0 : trm) (l : label) (d : dec),
+              has t t0 l d -> Prop)
+         (P0 : forall (t : tenv.t) (t0 : trm) (t1 : typ),
+               typing_trm t t0 t1 -> Prop)
+         (P1 : forall (t : tenv.t) (n : nini) (n0 : ndec),
+               typing_ini t n n0 -> Prop)
+         (P2 : forall (t : tenv.t) (t0 : inis.t) (t1 : decs.t),
+               typing_inis t t0 t1 -> Prop)
+
+  apply typing_trm_mut.
+
+  assert (P: forall G x S e T (HxeT: typing_trm (G ;; (x, S)) (open_trm x e) T)
+   u (HuS: typing_trm G (trm_var (avar_f u)) S), typing_trm G (open_trm u e) T).
+  * intros G x S e T HxeT. induction HxeT; intros.
+    + admit.
+    + admit.
+    + admit.
+    + admit.
+  induction HxeT; unfoldp.
+  + 
+Qed.
 
 
 (* ###################################################################### *)
