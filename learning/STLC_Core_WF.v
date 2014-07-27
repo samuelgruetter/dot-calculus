@@ -32,11 +32,7 @@ Fixpoint open_rec (k : nat) (u : trm) (t : trm) {struct t} : trm :=
   | trm_app t1 t2 => trm_app (open_rec k u t1) (open_rec k u t2)
   end.
 
-Definition open t u := open_rec 0 u t.
-
-Notation "{ k ~> u } t" := (open_rec k u t) (at level 67).
-Notation "t ^^ u" := (open t u) (at level 67).
-Notation "t ^ x" := (open t (trm_fvar x)).
+Definition open u t := open_rec 0 u t.
 
 (** Terms are locally-closed pre-terms *)
 
@@ -44,7 +40,7 @@ Inductive term : trm -> Prop :=
   | term_var : forall x,
       term (trm_fvar x)
   | term_abs : forall L t1,
-      (forall x, x \notin L -> term (t1 ^ x)) ->
+      (forall x, x \notin L -> term (open (trm_fvar x) t1)) ->
       term (trm_abs t1)
   | term_app : forall t1 t2,
       term t1 -> 
@@ -57,23 +53,19 @@ Definition env := LibEnv.env typ.
 
 (** Typing relation *)
 
-Reserved Notation "E |= t ~: T" (at level 69).
-
 Inductive typing : env -> trm -> typ -> Prop :=
   | typing_var : forall E x T,
       ok E ->
       binds x T E ->
-      E |= (trm_fvar x) ~: T
+      typing E (trm_fvar x) T
   | typing_abs : forall L E U T t1,
       (forall x, x \notin L -> 
-        (E & x ~ U) |= t1 ^ x ~: T) ->
-      E |= (trm_abs t1) ~: (typ_arrow U T)
+        typing (E & x ~ U) (open (trm_fvar x) t1)  T) ->
+      typing E (trm_abs t1)  (typ_arrow U T)
   | typing_app : forall S T E t1 t2,
-      E |= t1 ~: (typ_arrow S T) -> 
-      E |= t2 ~: S ->
-      E |= (trm_app t1 t2) ~: T
-
-where "E |= t ~: T" := (typing E t T).
+      typing E t1  (typ_arrow S T) -> 
+      typing E t2  S ->
+      typing E (trm_app t1 t2)  T.
 
 (** Definition of values (only abstractions are values) *)
 
@@ -103,24 +95,22 @@ Inductive red : trm -> trm -> Prop :=
   | red_beta : forall t1 t2,
       term (trm_abs t1) -> 
       value t2 ->
-      red (trm_app (trm_abs t1) t2) (t1 ^^ t2)
+      red (trm_app (trm_abs t1) t2) (open t2 t1)
   | red_ctx : forall C t t',
       red t t' ->
       red (ctx_of C t) (ctx_of C t').
 
-Notation "t --> t'" := (red t t') (at level 68).
-
 (** Goal is to prove preservation and progress *)
 
 Definition preservation := forall E t t' T,
-  E |= t ~: T ->
-  t --> t' ->
-  E |= t' ~: T.
+  typing E t T ->
+  red t t' ->
+  typing E t' T.
 
 Definition progress := forall t T, 
-  empty |= t ~: T ->
+  typing empty t T ->
      value t 
-  \/ exists t', t --> t'.
+  \/ exists t', red t t'.
 
 
 (* ###################################################################### *)
@@ -149,12 +139,14 @@ Fixpoint subst (z : var) (u : trm) (t : trm) {struct t} : trm :=
   | trm_app t1 t2 => trm_app (subst z u t1) (subst z u t2)
   end.
 
-Notation "[ z ~> u ] t" := (subst z u t) (at level 68).
+(* Substitution should have lower precedence than application (which is 10), so
+   we take 9. *)
+Notation "[ z ~> u ] t" := (subst z u t) (at level 9).
 
 (** Definition of the body of an abstraction *)
 
 Definition body t :=
-  exists L, forall x, x \notin L -> term (t ^ x).
+  exists L, forall x, x \notin L -> term (open (trm_fvar x) t).
 
 
 (* ********************************************************************** *)
@@ -185,7 +177,7 @@ Hint Constructors term value red.
 (** Substitution on indices is identity on well-formed terms. *)
 
 Lemma open_rec_term_core :forall t j v i u, i <> j ->
-  {j ~> v}t = {i ~> u}({j ~> v}t) -> t = {i ~> u}t.
+  open_rec j v t = open_rec i u (open_rec j v t) -> t = open_rec i u t.
 Proof.
   induction t; introv Neq Equ;
   simpl in *; inversion* Equ; f_equal*.  
@@ -193,7 +185,7 @@ Proof.
 Qed.
 
 Lemma open_rec_term : forall t u,
-  term t -> forall k, t = {k ~> u}t.
+  term t -> forall k, t = open_rec k u t.
 Proof.
   induction 1; intros; simpl; f_equal*. unfolds open.
   pick_fresh x. apply* (@open_rec_term_core t1 0 (trm_fvar x)).
@@ -210,7 +202,7 @@ Qed.
 (** Substitution distributes on the open operation. *)
 
 Lemma subst_open : forall x u t1 t2, term u -> 
-  [x ~> u] (t1 ^^ t2) = ([x ~> u]t1) ^^ ([x ~> u]t2).
+  [x ~> u] (open t2 t1) = open ([x ~> u]t2) ([x ~> u]t1).
 Proof.
   intros. unfold open. generalize 0.
   induction t1; intros; simpl; f_equal*.
@@ -220,7 +212,7 @@ Qed.
 (** Substitution and open_var for distinct names commute. *)
 
 Lemma subst_open_var : forall x y u t, y <> x -> term u ->
-  ([x ~> u]t) ^ y = [x ~> u] (t ^ y).
+  open (trm_fvar y) ([x ~> u]t) = [x ~> u] (open (trm_fvar y) t).
 Proof.
   introv Neq Wu. rewrite* subst_open.
   simpl. case_var*.
@@ -231,10 +223,10 @@ Qed.
 
 Lemma subst_intro : forall x t u, 
   x \notin (fv t) -> term u ->
-  t ^^ u = [x ~> u](t ^ x).
+  open u t = [x ~> u](open (trm_fvar x) t).
 Proof.
   introv Fr Wu. rewrite* subst_open.
-  rewrite* subst_fresh. simpl. case_var*.
+  rewrite* (@subst_fresh x t u). simpl. case_var*.
 Qed.
 
 
@@ -276,7 +268,7 @@ Hint Resolve term_abs_to_body body_to_term_abs.
 (** ** Opening a body with a term gives a term *)
 
 Lemma open_term : forall t u,
-  body t -> term u -> term (t ^^ u).
+  body t -> term u -> term (open u t).
 Proof.
   intros. destruct H. pick_fresh y. rewrite* (@subst_intro y).
 Qed.
@@ -346,9 +338,9 @@ Hint Extern 1 (term ?t) =>
 (** Typing is preserved by weakening. *)
 
 Lemma typing_weaken : forall G E F t T,
-   (E & G) |= t ~: T -> 
+   typing (E & G) t  T -> 
    ok (E & F & G) ->
-   (E & F & G) |= t ~: T.
+   typing (E & F & G) t  T.
 Proof.
   introv Typ. gen_eq H: (E & G). gen G.
   induction Typ; intros G EQ Ok; subst.
@@ -360,9 +352,9 @@ Qed.
 (** Typing is preserved by substitution. *)
 
 Lemma typing_subst : forall F E t T z u U,
-  (E & z ~ U & F) |= t ~: T ->
-  E |= u ~: U ->
-  (E & F) |= [z ~> u]t ~: T.
+  typing (E & z ~ U & F) t  T ->
+  typing E u  U ->
+  typing (E & F) [z ~> u]t T.
 Proof.
   introv Typt Typu. gen_eq G: (E & z ~ U & F). gen F.
   induction Typt; intros G Equ; subst; simpl subst.
@@ -407,8 +399,7 @@ Proof.
   right. destruct~ IHTyp1 as [Val1 | [C [t1a [t1'a [Red1 Ctx1]]]]].
     destruct~ IHTyp2 as [Val2 | [C [t2a [t2a' [Red2 Ctx2]]]]].
       inversions Typ1; inversions Val1.
-        exists ctx_hole (trm_app (trm_abs t0) t2) (t0 ^^ t2). split*.
+        exists ctx_hole (trm_app (trm_abs t0) t2) (open t2 t0). split*.
         subst. exists (ctx_app_2 C Val1). eauto.
       subst. asserts* W: (term t2). exists (ctx_app_1 C W). eauto.
 Qed.
-
