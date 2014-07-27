@@ -1431,97 +1431,135 @@ becomes the following in locally nameless style:
 Note that in general, u is a term, but for our purposes, it suffices to consider
 the special case where u is a variable.
 *)
-Lemma subst_principle: forall G x u e S T,
-  typing_trm (G ;; (x, S)) (open_trm x e) T ->
-  typing_trm G (trm_var (avar_f u)) S ->
-  typing_trm G (open_trm u e) T.
+
+
+Lemma destruct_trm_var_eq_open_trm: forall z x e,
+  trm_var (avar_f z) = open_trm x e ->
+  (z = x /\ (e = trm_var (avar_b 0) \/ e = trm_var (avar_f z)))
+  \/ z <> x.
 Proof.
-  assert (P: forall G u S, typing_trm G (trm_var (avar_f u)) S -> 
-     forall G0 e0 T, typing_trm G0 e0 T 
-             -> forall x e, G0 = (G ;; (x, S)) -> e0 = (open_trm x e) -> 
-                            typing_trm G (open_trm u e) T). {
-  intros G u S HuS.
-  apply (typing_trm_mut 
-    (fun G e l d (Hhas: has G e l d) => True)
-    (fun G0 e0 T (Hty: typing_trm G0 e0 T) => 
-                forall x e, G0 = (G ;; (x, S)) -> e0 = (open_trm x e) -> 
-                                  typing_trm G (open_trm u e) T)
-    (fun G i d (Htyp: typing_ini G i d) => True)
-    (fun G is ds (Htyp: typing_inis G is ds) => True));
-  try (intros; apply I).
-  Ltac sync Heqe e :=
-    unfold open_trm, open_rec_trm in Heqe; destruct e; fold open_rec_trm in Heqe;
-    try discriminate Heqe.
-  (* case typing_trm_var *)
-  + intros G0 x0 T Hb x e HeqG Heqe. sync Heqe e.
-    unfold open_rec_avar in Heqe.
-    destruct a. 
-    - destruct (eq_nat_dec 0 n).
-      * inversion Heqe. rewrite <- e, -> H0 in *. clear e. clear H0.
-        unfold open_trm, open_rec_trm, open_rec_avar. simpl.
-        admit. (* ??? *)
-      * inv Heqe. (* contradiction *)
-    - inversion Heqe. rewrite -> H0 in *. clear H0.
-      unfold open_trm, open_rec_trm, open_rec_avar.
-      apply typing_trm_var. subst. tenv.compare_keys.
-      * inv Hb. simpl. admit. (* ??? *) 
-      * assumption.
-  (* case typing_trm_sel *)
-  + intros G0 e0 l T Hhas _ x e HeqG Heqe. admit.
-  (* case typing_trm_call *)
-  + intros G0 e0 m U V u0 Hhas _ Hu0U IH x e HeqG Heqe. admit.
-  (* case typing_trm_new *)
-  + admit.
-  }
-  intros. apply (P G u S H0 (G ;; (x, S)) (open_trm x e) T H x e eq_refl eq_refl).
-
-
-
-  assert (P: forall G0 e0 T, typing_trm G0 e0 T 
-             -> forall G x u e S, G0 = (G ;; (x, S)) -> e0 = (open_trm x e) -> 
-                                  typing_trm G (trm_var (avar_f u)) S ->
-                                  typing_trm G (open_trm u e) T). {
-  apply (typing_trm_mut 
-    (fun G e l d (Hhas: has G e l d) => True)
-    (fun G0 e0 T (Hty: typing_trm G0 e0 T) => 
-                forall G x u e S, G0 = (G ;; (x, S)) -> e0 = (open_trm x e) -> 
-                                  typing_trm G (trm_var (avar_f u)) S ->
-                                  typing_trm G (open_trm u e) T)
-    (fun G i d (Htyp: typing_ini G i d) => True)
-    (fun G is ds (Htyp: typing_inis G is ds) => True));
-  try (intros; apply I).
-  (* case typing_trm_var *)
-  + intros G0 x0 T Hb G x u e S HeqG Heqe HuS. admit.
-  (* case typing_trm_sel *)
-  + intros G0 e0 l T Hhas _ G x u e S HeqG Heqe HuS. admit.
-  (* case typing_trm_call *)
-  + intros G0 e0 m U V u0 Hhas _ Hu0U IH G x u e S HeqG Heqe HuS. admit.
-  (* case typing_trm_new *)
-  + admit.
-  }
-  intros. apply (P (G ;; (x, S)) (open_trm x e) T H G x u e S eq_refl eq_refl H0).
+  intros. unfold open_trm, open_rec_trm in H. destruct e; try discriminate H.
+  inversion H.
+  unfold open_rec_avar in H1. destruct a.
+  + destruct (eq_nat_dec 0 n).
+    - inv H1. left. split. reflexivity. left. reflexivity.
+    - discriminate H1.
+  + inv H1. destruct (eq_nat_dec v x).
+    - subst. left. split. reflexivity. right. reflexivity.
+    - right. assumption.
 Qed.
 
-         (P : forall (t : tenv.t) (t0 : trm) (l : label) (d : dec),
-              has t t0 l d -> Prop)
-         (P0 : forall (t : tenv.t) (t0 : trm) (t1 : typ),
-               typing_trm t t0 t1 -> Prop)
-         (P1 : forall (t : tenv.t) (n : nini) (n0 : ndec),
-               typing_ini t n n0 -> Prop)
-         (P2 : forall (t : tenv.t) (t0 : inis.t) (t1 : decs.t),
-               typing_inis t t0 t1 -> Prop)
+(*
+Lemma destruct_trm_var_eq_open_trm: forall z x e,
+  trm_var (avar_f z) = open_trm x e ->
+  (e = trm_var (avar_b 0) /\ z = x) \/
+  (e = trm_var (avar_f z)).
+Proof.
+  intros. unfold open_trm, open_rec_trm in H. destruct e; try discriminate H.
+  inversion H.
+  unfold open_rec_avar in H1. destruct a.
+  + destruct (eq_nat_dec 0 n).
+    - inv H1. left; split; reflexivity.
+    - discriminate H1.
+  + inv H1. right; reflexivity.
+Qed.
+*)
 
-  apply typing_trm_mut.
+Lemma raw_subst_principles: 
+  forall G1 G2 y S, typing_trm (G1 & G2) (trm_var (avar_f y)) S ->
+  (forall (G0 : tenv.t) (e0 : trm) (l : label) (d : dec) (Hhas : has G0 e0 l d),
+    (fun G0 e0 l d (Hhas: has G0 e0 l d) => 
+      forall x e, G0 = (G1 ;; (x, S) & G2) ->
+                  tenv.ok (G1 ;; (x, S) & G2) ->
+                  e0 = (open_trm x e) -> 
+                  has (G1 & G2) (open_trm y e) l d)
+    G0 e0 l d Hhas) /\
+  (forall (G0 : tenv.t) (e0 : trm) (T : typ) (Hty : typing_trm G0 e0 T),
+    (fun G0 e0 T (Hty: typing_trm G0 e0 T) => 
+      forall x e, G0 = (G1 ;; (x, S) & G2) ->
+                  tenv.ok (G1 ;; (x, S) & G2) ->
+                  e0 = (open_trm x e) -> 
+                  typing_trm (G1 & G2) (open_trm y e) T)
+    G0 e0 T Hty) /\
+  (forall (G0 : tenv.t) (i0 : nini) (d : ndec) (Hty : typing_ini G0 i0 d),
+    (fun G i0 d (Htyp: typing_ini G i0 d) => 
+      forall x i, G0 = (G1 ;; (x, S) & G2) ->
+                  tenv.ok (G1 ;; (x, S) & G2) ->
+                  i0 = (open_nini x i) -> 
+                  typing_ini (G1 & G2) (open_nini y i) d)
+    G0 i0 d Hty) /\
+  (forall (G0 : tenv.t) (is0 : inis.t) (ds : decs.t) (Hty : typing_inis G0 is0 ds),
+    (fun G is0 ds (Hty: typing_inis G is0 ds) => 
+      forall x is, G0 = (G1 ;; (x, S) & G2) ->
+                   tenv.ok (G1 ;; (x, S) & G2) ->
+                   is0 = (map (open_nini y) is) -> 
+                   typing_inis (G1 & G2) (map (open_nini y) is) ds)
+    G0 is0 ds Hty).
+Proof.
+  intros G1 G2 y S Htyy.
+  apply typing_mutind; intros;
+  (* renaming: *)
+  lazymatch goal with
+    (* 2 IHs *)
+    | H1: forall _ _, _, H2: forall _ _, _  |- _ => rename H1 into IH1, H2 into IH2
+    (* 1 IH *)
+    | H : forall _ _, _ |- _ => rename H into IH
+    (* no IH *)
+    | _ => idtac
+  end;
+  match goal with
+    | H: @eq tenv.t _ _ |- _ => rename H into EqG
+  end;
+  match goal with
+    | H: @eq trm    _ _ |- _ => rename H into EqTrm
+    | H: @eq nini   _ _ |- _ => rename H into EqIni
+    | H: @eq inis.t _ _ |- _ => rename H into EqInis
+  end;
+  match goal with
+    | H: tenv.ok _ |- _ => rename H into Hok
+  end.
+  (* case has_dec *)
+  + specialize (IH _ _ EqG Hok EqTrm).
+    apply has_dec with ds; assumption.
+  (* case typing_trm_var *)
+  + subst. rename x into z, x0 into x.
+    destruct (destruct_trm_var_eq_open_trm _ _ EqTrm) as [[EqTrm' [EqV | EqV]] | Neq].
+    (* case z = x and e bound var *)
+    - subst. assert (EqST: S = T) by admit. subst.
+      unfold open_trm, open_rec_trm. simpl.
+      apply Htyy.
+    (* case z = x and e free var z *)
+    - subst. assert (EqST: S = T) by admit. subst. admit.
+    (* case z <> x *)
+    - admit.
+  (* case typing_trm_sel *)
+  + admit.
+  (* case typing_trm_call *)
+  + admit.
+  (* case typing_trm_new *)
+  + admit.
+  (* case typing_ini_fld *)
+  + admit.
+  (* case typing_ini_mtd *)
+  + admit.
+  (* case typing_inis_nil *)
+  + admit.
+  (* case typing_inis_cons *)
+  + admit.
+Qed.
 
-  assert (P: forall G x S e T (HxeT: typing_trm (G ;; (x, S)) (open_trm x e) T)
-   u (HuS: typing_trm G (trm_var (avar_f u)) S), typing_trm G (open_trm u e) T).
-  * intros G x S e T HxeT. induction HxeT; intros.
-    + admit.
-    + admit.
-    + admit.
-    + admit.
-  induction HxeT; unfoldp.
-  + 
+(* Does not hold if e = trm_var (avar_f x), because opening e with y results
+   in trm_var (avar_f x), which does not typecheck in an environment where we removed x.
+   Maybe need x notin FV(e) ? *)
+Lemma subst_principle: forall G x y e S T,
+  typing_trm (G ;; (x, S)) (open_trm x e) T ->
+  typing_trm G (trm_var (avar_f y)) S ->
+  typing_trm G (open_trm y e) T.
+Proof.
+  intros G x y e S T He Hy.
+  destruct (raw_subst_principles G tenv.empty Hy) as [_ [P _]].
+  assert (Hok: tenv.ok (G ;; (x, S))). admit.
+  apply (P _ _ _ He _ _ eq_refl Hok eq_refl).
 Qed.
 
 
