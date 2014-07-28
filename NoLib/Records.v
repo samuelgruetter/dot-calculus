@@ -199,8 +199,10 @@ Ltac inv H := inversion H; clear H; subst.
 
 Module Env (params: EnvParams).
 Import params.
+(*
 Definition key := key.
 Definition value := value.
+*)
 Definition t := list B.
 Definition empty : t := nil. (* to avoid having to write (@nil ...) *)
 Fixpoint get(k: K)(E: t): option V := match E with
@@ -412,7 +414,7 @@ End Env.
 (** ** List of declarations *)
 
 (* Module decs: For lists of declarations: [list ndec] or [label => dec] *)
-Module decsParams <: EnvParams.
+Module decs.
 Definition K := label.
 Definition V := dec.
 Definition B := ndec.
@@ -433,14 +435,14 @@ Proof.
   + inv H.
   + inv H. inv H0. reflexivity.
 Qed.
-End decsParams.
-Module decs := Env(decsParams).
+Include Env.
+End decs.
 
 (* ###################################################################### *)
 (** ** List of initialisations *)
 
 (* Module inis: For lists of initialisations: [list nini] or [label => ini] *)
-Module inisParams <: EnvParams.
+Module inis.
 Definition K := label.
 Definition V := ini.
 Definition B := nini.
@@ -461,8 +463,8 @@ Proof.
   + inv H.
   + inv H. inv H0. reflexivity.
 Qed.
-End inisParams.
-Module inis := Env(inisParams).
+Include Env.
+End inis.
 
 Lemma inis_binds_fld_sync_val: forall n v is,
   inis.binds (label_fld n) v is -> exists x, v = (ini_fld x).
@@ -492,7 +494,7 @@ Qed.
 (** ** Typing environment ("Gamma") *)
 
 (* Module tenv: For type environments: [var => typ] *)
-Module tenvParams <: EnvParams.
+Module tenv.
 Definition K := var.
 Definition V := typ.
 Definition B := (var * typ)%type.
@@ -503,8 +505,8 @@ Lemma key_val_eq_eq: forall b1 b2, key b1 = key b2 -> value b1 = value b2 -> b1 
 Proof.
   intros. destruct b1, b2. unfold key, fst, value, snd in *. subst. reflexivity.
 Qed.
-End tenvParams.
-Module tenv := Env(tenvParams).
+Include Env.
+End tenv.
 
 Lemma tenv_gen_gt : forall G, exists x, forall y T, tenv.binds y T G -> y < x.
 Proof.
@@ -530,7 +532,7 @@ Qed.
 (** ** Value environment ("store") *)
 
 (* Module venv: For value environments: [var => inis] *)
-Module venvParams <: EnvParams.
+Module venv.
 Definition K := var.
 Definition V := inis.t.
 Definition B := (var * inis.t)%type.
@@ -541,8 +543,8 @@ Lemma key_val_eq_eq: forall b1 b2, key b1 = key b2 -> value b1 = value b2 -> b1 
 Proof.
   intros. destruct b1, b2. unfold key, fst, value, snd in *. subst. reflexivity.
 Qed.
-End venvParams.
-Module venv := Env(venvParams).
+Include Env.
+End venv.
 
 Lemma venv_gen_gt : forall s, exists x, forall y i, venv.binds y i s -> y < x.
 Proof.
@@ -551,17 +553,13 @@ Proof.
   + destruct IHs as [x IH].
     destruct (le_lt_dec x (venv.key a)) as [Hc | Hc].
     - exists (S (venv.key a)). intros.
-      unfold venv.binds, venv.get in H. fold venv.get in H. 
-      unfold venvParams.eq_key_dec in H.
-      destruct (eq_nat_dec y (venv.key a)).
+      venv.compare_keys.
       * omega.
-      * unfold venv.binds in IH. specialize (IH y i H). omega.
+      * specialize (IH y i H). omega.
     - exists x. intros.
-      unfold venv.binds, venv.get in H. fold venv.get in H. 
-      unfold venvParams.eq_key_dec in H.
-      destruct (eq_nat_dec y (venv.key a)).
+      venv.compare_keys.
       * omega.
-      * apply (IH y i). unfold venv.binds. assumption.
+      * apply (IH y i H).
 Qed.
 
 Lemma venv_gen_fresh : forall s, exists x, venv.unbound x s.
@@ -571,10 +569,11 @@ Proof.
 Qed.
 
 Ltac unfoldp :=
-  unfold venvParams.K, venvParams.V, venvParams.B,
-         tenvParams.K, tenvParams.V, tenvParams.B,
-         inisParams.K, inisParams.V, inisParams.B,
-         decsParams.K, decsParams.V, decsParams.B  in *.
+  unfold venv.K, venv.V, venv.B,
+         tenv.K, tenv.V, tenv.B,
+         inis.K, inis.V, inis.B,
+         decs.K, decs.V, decs.B  in *.
+
 
 (* ###################################################################### *)
 (** * Preview: How intersection will work *)
@@ -646,16 +645,16 @@ Proof.
   intro ds2. induction ds2; intros.
   + decs.empty_binds_contradiction.
   + decs.compare_keys.
-    - inv H. unfold decs.value, decsParams.value in H1. destruct a eqn: Heqa.
+    - inv H. unfold decs.value in H1. destruct a eqn: Heqa.
       * inv H1. inversion e. subst. simpl. destruct (eq_nat_dec n0 n0). reflexivity.
         contradiction n. reflexivity.
       * inv H1.
     - simpl. destruct a eqn: Heqa. 
       * assert (Hnn: n <> n1). unfold not in *. intro. apply n0. simpl. f_equal. assumption.
         destruct (eq_nat_dec n n1). contradiction Hnn.
-        apply IHds2. unfold decs.binds, decs.get. unfold decs.key, decsParams.key.
+        apply IHds2. unfold decs.binds, decs.get. unfold decs.key.
         assumption.
-      * apply IHds2. unfold decs.binds, decs.get. unfold decs.key, decsParams.key.
+      * apply IHds2. unfold decs.binds, decs.get. unfold decs.key.
         assumption.
 Qed.
 
@@ -682,18 +681,18 @@ Proof.
   intros.
   induction ds2.
   + simpl. reflexivity.
-  + unfold decs.key, decsParams.key. unfold refine_dec. destruct a; destruct d1.
+  + unfold decs.key. unfold refine_dec. destruct a; destruct d1.
     - destruct (eq_nat_dec n0 n).
       * simpl. reflexivity.
-      * fold refine_dec. unfold decs.key, decsParams.key in IHds2.
+      * fold refine_dec. unfold decs.key in IHds2.
         rewrite <- IHds2. reflexivity.
-    - fold refine_dec. unfold decs.key, decsParams.key in IHds2.
+    - fold refine_dec. unfold decs.key in IHds2.
         rewrite <- IHds2. reflexivity.
-    - fold refine_dec. unfold decs.key, decsParams.key in IHds2.
+    - fold refine_dec. unfold decs.key in IHds2.
         rewrite <- IHds2. reflexivity.
     - destruct (eq_nat_dec n0 n).
       * simpl. reflexivity.
-      * fold refine_dec. unfold decs.key, decsParams.key in IHds2.
+      * fold refine_dec. unfold decs.key in IHds2.
         rewrite <- IHds2. reflexivity.
 Qed.
 
@@ -704,7 +703,7 @@ Proof.
   intros.
   induction ds2.
   + simpl. reflexivity.
-  + unfold decs.key, decsParams.key. unfold refine_dec. destruct a; destruct d1.
+  + unfold decs.key. unfold refine_dec. destruct a; destruct d1.
     - destruct (eq_nat_dec n0 n) eqn: Hn0ndec.
       * subst. 
         assert (Hkeq: (decs.key (ndec_fld n t0)) = (decs.key (ndec_fld n t)))
@@ -712,13 +711,13 @@ Proof.
         rewrite -> Hkeq in H.
         exfalso. apply (decs.binds_unbound_head_inv H).
       * fold refine_dec. apply IHds2.
-        inv H. unfold decsParams.eq_key_dec in H1. 
+        inv H. unfold decs.eq_key_dec in H1.
         destruct (eq_label_dec (label_fld n0) (label_fld n)).
         { inv e. contradiction n1. reflexivity. }
-        { unfold decs.unbound. unfold decs.key, decsParams.key. assumption. }
-    - fold refine_dec. unfold decs.key, decsParams.key in *.
+        { unfold decs.unbound. unfold decs.key. assumption. }
+    - fold refine_dec. unfold decs.key in *.
       apply decs.unbound_cons_inv in H. apply (IHds2 H).
-    - fold refine_dec. unfold decs.key, decsParams.key in *.
+    - fold refine_dec. unfold decs.key in *.
       apply decs.unbound_cons_inv in H. apply (IHds2 H).
     - destruct (eq_nat_dec n0 n) eqn: Hn0ndec.
       * subst. 
@@ -727,10 +726,10 @@ Proof.
         rewrite -> Hkeq in H.
         exfalso. apply (decs.binds_unbound_head_inv H).
       * fold refine_dec. apply IHds2.
-        inv H. unfold decsParams.eq_key_dec in H1. 
+        inv H. unfold decs.eq_key_dec in H1. 
         destruct (eq_label_dec (label_mtd n0) (label_mtd n)).
         { inv e. contradiction n1. reflexivity. }
-        { unfold decs.unbound. unfold decs.key, decsParams.key. assumption. }
+        { unfold decs.unbound. unfold decs.key. assumption. }
 Qed.
 
 Definition refine_decs(ds1: decs.t)(ds2: decs.t): decs.t := 
@@ -774,32 +773,32 @@ Proof.
   intros n ds1 ds2 T1 T2 H. induction ds1; intros.
   + decs.empty_binds_contradiction.
   + unfold decs.binds, decs.get in H. destruct a eqn: Heqa.
-    - fold decs.get in H. unfold decs.key, decsParams.key in H.
-      destruct (decsParams.eq_key_dec (label_fld n) (label_fld n0)).
+    - fold decs.get in H. unfold decs.key in H.
+      destruct (decs.eq_key_dec (label_fld n) (label_fld n0)).
       * inv H. inv e.
         unfold decs.binds, decs.get. simpl. fold decs.get. 
         rewrite <- (@refine_dec_spec_label (ndec_fld n0 T1) ds2).
-        unfold decs.key, decsParams.key.
-        destruct (decsParams.eq_key_dec (label_fld n0) (label_fld n0)). {
+        unfold decs.key.
+        destruct (decs.eq_key_dec (label_fld n0) (label_fld n0)). {
           f_equal. rewrite -> (@refine_dec_spec_fld ds2 n0 T1 T2 H0).
           simpl. reflexivity. 
         } { contradiction n. reflexivity. }
       * assert (Hnn: n <> n0). unfold not in *. intro. apply n1. f_equal. assumption.
         unfold decs.binds, decs.get. simpl. fold decs.get. 
         rewrite <- (@refine_dec_spec_label (ndec_fld n0 t) ds2).
-        unfold decs.key, decsParams.key.
-        destruct (decsParams.eq_key_dec (label_fld n) (label_fld n0)). {
+        unfold decs.key.
+        destruct (decs.eq_key_dec (label_fld n) (label_fld n0)). {
           inv e. contradiction Hnn. reflexivity.
         } {
           unfold decs.binds in *. apply IHds1; assumption.
         }
-    - fold decs.get in H. unfold decs.key, decsParams.key in H.
-      destruct (decsParams.eq_key_dec (label_fld n) (label_fld n0)).
+    - fold decs.get in H. unfold decs.key in H.
+      destruct (decs.eq_key_dec (label_fld n) (label_fld n0)).
       * inv H. inv e.
         unfold decs.binds, decs.get. simpl. fold decs.get.
         rewrite <- (@refine_dec_spec_label (ndec_mtd n0 t t0) ds2).
-        unfold decs.key, decsParams.key.
-        destruct (decsParams.eq_key_dec (label_fld n0) (label_mtd n0)). {
+        unfold decs.key.
+        destruct (decs.eq_key_dec (label_fld n0) (label_mtd n0)). {
           inv H2.
         } {
           unfold decs.binds in *. apply IHds1; assumption.
@@ -807,11 +806,11 @@ Proof.
       * assert (Hnn: n <> n0). unfold not in *. intro. apply n1. f_equal. assumption.
         unfold decs.binds, decs.get. simpl. fold decs.get. 
         rewrite <- (@refine_dec_spec_label (ndec_mtd n0 t t0) ds2).
-        unfold decs.key, decsParams.key.
-        destruct (decsParams.eq_key_dec (label_fld n) (label_fld n0)). {
+        unfold decs.key.
+        destruct (decs.eq_key_dec (label_fld n) (label_fld n0)). {
           inv e. contradiction Hnn. reflexivity.
         } {
-          destruct (decsParams.eq_key_dec (label_fld n) (label_mtd n0)).
+          destruct (decs.eq_key_dec (label_fld n) (label_mtd n0)).
           + inv e.
           + unfold decs.binds in *. apply IHds1; assumption.
         }
@@ -825,13 +824,13 @@ Proof.
   intros n ds1 ds2 T1 S1 T2 S2 H. induction ds1; intros.
   + decs.empty_binds_contradiction.
   + unfold decs.binds, decs.get in H. destruct a eqn: Heqa.
-    - fold decs.get in H. unfold decs.key, decsParams.key in H.
-      destruct (decsParams.eq_key_dec (label_mtd n) (label_mtd n0)).
+    - fold decs.get in H. unfold decs.key in H.
+      destruct (decs.eq_key_dec (label_mtd n) (label_mtd n0)).
       * inv H. inv e.
         unfold decs.binds, decs.get. simpl. fold decs.get.
         rewrite <- (@refine_dec_spec_label (ndec_fld n0 t) ds2).
-        unfold decs.key, decsParams.key.
-        destruct (decsParams.eq_key_dec (label_mtd n0) (label_fld n0)). {
+        unfold decs.key.
+        destruct (decs.eq_key_dec (label_mtd n0) (label_fld n0)). {
           inv H2.
         } {
           unfold decs.binds in *. apply IHds1; assumption.
@@ -839,29 +838,29 @@ Proof.
       * assert (Hnn: n <> n0). unfold not in *. intro. apply n1. f_equal. assumption.
         unfold decs.binds, decs.get. simpl. fold decs.get. 
         rewrite <- (@refine_dec_spec_label (ndec_fld n0 t) ds2).
-        unfold decs.key, decsParams.key.
-        destruct (decsParams.eq_key_dec (label_mtd n) (label_mtd n0)). {
+        unfold decs.key.
+        destruct (decs.eq_key_dec (label_mtd n) (label_mtd n0)). {
           inv e. contradiction Hnn. reflexivity.
         } {
-          destruct (decsParams.eq_key_dec (label_mtd n) (label_fld n0)).
+          destruct (decs.eq_key_dec (label_mtd n) (label_fld n0)).
           + inv e.
           + unfold decs.binds in *. apply IHds1; assumption.
         }
-    - fold decs.get in H. unfold decs.key, decsParams.key in H.
-      destruct (decsParams.eq_key_dec (label_mtd n) (label_mtd n0)).
+    - fold decs.get in H. unfold decs.key in H.
+      destruct (decs.eq_key_dec (label_mtd n) (label_mtd n0)).
       * inv H. inv e.
         unfold decs.binds, decs.get. simpl. fold decs.get. 
         rewrite <- (@refine_dec_spec_label (ndec_mtd n0 T1 S1) ds2).
-        unfold decs.key, decsParams.key.
-        destruct (decsParams.eq_key_dec (label_mtd n0) (label_mtd n0)). {
+        unfold decs.key.
+        destruct (decs.eq_key_dec (label_mtd n0) (label_mtd n0)). {
           f_equal. rewrite -> (@refine_dec_spec_mtd ds2 n0 T1 S1 T2 S2 H0).
           simpl. reflexivity. 
         } { contradiction n. reflexivity. }
       * assert (Hnn: n <> n0). unfold not in *. intro. apply n1. f_equal. assumption.
         unfold decs.binds, decs.get. simpl. fold decs.get. 
         rewrite <- (@refine_dec_spec_label (ndec_mtd n0 t t0) ds2).
-        unfold decs.key, decsParams.key.
-        destruct (decsParams.eq_key_dec (label_mtd n) (label_mtd n0)). {
+        unfold decs.key.
+        destruct (decs.eq_key_dec (label_mtd n) (label_mtd n0)). {
           inv e. contradiction Hnn. reflexivity.
         } {
           unfold decs.binds in *. apply IHds1; assumption.
