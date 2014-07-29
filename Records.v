@@ -80,34 +80,6 @@ Definition defs_hasnt(ds: defs)(l: label): Prop := (get_def l ds = None).
 Definition decs_has(Ds: decs)(l: label)(D: dec): Prop := (get_dec l Ds = Some D).
 Definition decs_hasnt(Ds: decs)(l: label): Prop := (get_dec l Ds = None).
 
-(*
-Inductive trm : Type :=
-  | trm_var  : avar -> trm
-  | trm_new  : list ndef -> trm -> trm
-  | trm_sel  : trm -> nat -> trm
-  | trm_call : trm -> nat -> trm -> trm
-with ndef : Type :=
-  | ndef_fld : nat -> avar -> ndef (* cannot have term here, need to assign first *)
-  | ndef_mtd : nat -> typ -> trm -> ndef.
-
-Scheme trm_mut0   := Induction for trm   Sort Prop
-with   ndef_mut0  := Induction for ndef  Sort Prop.
-Combined Scheme trm_mutind0 from trm_mut0, ndef_mut0.
-
-Lemma trm_mutind: 
-  forall (P : trm -> Prop) (P0 : ndef -> Prop) (P1 : list ndef -> Prop),
-    (forall a : avar, P (trm_var a)) ->
-    (forall (l : list ndef) (t : trm), P1 l -> P t -> P (trm_new l t)) ->
-    (forall t : trm, P t -> forall n : nat, P (trm_sel t n)) ->
-    (forall t : trm, P t -> forall (n : nat) (t0 : trm), P t0 -> P (trm_call t n t0)) ->
-    (forall (n : nat) (a : avar), P0 (ndef_fld n a)) ->
-    (forall (n : nat) (t : typ) (t0 : trm), P t0 -> P0 (ndef_mtd n t t0)) ->
-    (forall t : trm, P t) /\ 
-    (forall n : ndef, P0 n) /\
-    (forall ns : list ndef, P1 ns).
-Proof. Abort.
-*)
-
 (** ** Syntactic sugar *)
 Definition trm_fun(T: typ)(body: trm) := trm_new (defs_cons 0 (def_mtd T body) defs_nil)
                                                  (trm_var (avar_b 0)).
@@ -310,363 +282,8 @@ Qed.
 
 Print Assumptions subst_intro_trm.
 
-(*
-(* ###################################################################### *)
-(** * Environments *)
-
-(* 
-Environment requirements:
-   * ...
-   * Intersection of two dec lists must be total, i.e. if we have
-     (m: T -> U) in ds1 and (m: T) in ds2,
-     then (ds1 /\ ds2) must be defined and contain both declarations.
-     This requires that method labels be distinct from field labels, or that
-     the environment data structure allows two decs with the same name if they
-     are of a different kind.
-   * Want to have generic dec (dec_typ, dec_mtd, dec_fld), and treat dec lists as
-     as mappings from dec name to dec, instead of having three separate lists.
-Hopefully, this module system approach satisfies the requirements.
-*)
-
-Module Type DMapParams.
-Parameter K : Type.
-Parameter V : Type.
-Parameter B : Type.
-Parameter T : Type.
-Parameter key: B -> K.
-Parameter value: B -> V.
-(* Parameter get: K -> T -> option V. *)
-Parameter dnil: T.
-Parameter dcons: B -> T -> T.
-Parameter dmatch: forall R: Type, T -> R -> (B -> T -> R) -> R. 
-(* Axiom dmatch: forall l: T, l = dnil \/ exists l *)
-(*
-Parameter to_list: T -> list B.
-Parameter from_list: list B -> T.
-*)
-Axiom key_val_eq_eq: forall b1 b2, key b1 = key b2 -> value b1 = value b2 -> b1 = b2.
-End DMapParams.
-
 
 (* ###################################################################### *)
-(** ** General environment *)
-
-Module DMap (params: DMapParams).
-Import params.
-(*
-Definition t := list B.
-Definition empty : t := nil. (* to avoid having to write (@nil ...) *)
-*)
-
-Fixpoint get(k: K)(E: T): option V := dmatch E
-  None
-  (fun b bs => If k = (key b) then Some (value b) else get k bs).
-
-
-(*
-Definition get(k: K)(E: T): option V := 
-  (fix getl(l: list B): option V := match l with
-   | nil => None
-   | cons b bs => If k = (key b) then Some (value b) else getl bs
-   end) (to_list E).
-
-Fixpoint get(k: K)(E: T): option V := match (to_list E) with
-  | nil => None
-  | cons b bs => If k = (key b) then Some (value b) else get k (from_list bs)
-  end.
-*)
-Definition has(E: T)(k: K)(v: V): Prop := (get k E = Some v).
-Definition hasnt(E: T)(k: K): Prop := (get k E = None).
-
-Lemma get_cons : forall k b E,
-  get k (cons b E) = If k = key b then Some (value b) else get k E.
-Proof.
-  intros. unfold get. case_if~.
-Qed.
-(*
-Inductive ok : t -> Prop :=
-| ok_nil  : ok nil
-| ok_cons : forall E b, ok E -> unbound (key b) E -> ok (b::E).
-Lemma invert_ok_cons: forall E b, ok (E ;; b) -> ok E /\ unbound (key b) E.
-Proof. intros. inversions H. split; assumption. Qed.
-Ltac empty_binds_contradiction := match goal with
-| H: has nil _ _ |- _ => inversion H
-end.
-*)
-(*
-Tactic Notation "unfoldg" reference(I)             := unfold I, get; fold get.
-Tactic Notation "unfoldg" reference(I) "in" hyp(H) := unfold I, get in H; fold get in H.
-*)
-(*Ltac unfoldg I := unfold I, get in *; fold get in *.*)
-(*
-Ltac destruct_key_if := match goal with
-| H:   context[if eq_key_dec ?k1 ?k2 then _ else _] |- _ => destruct (eq_key_dec k1 k2)
-|   |- context[if eq_key_dec ?k1 ?k2 then _ else _]      => destruct (eq_key_dec k1 k2)
-end.
-Ltac compare_keys := match goal with
-| _ :  context[binds _ _ (?E ;; ?b)] |- _ => unfoldg binds;   destruct_key_if
-|   |- context[binds _ _ (?E ;; ?b)]      => unfoldg binds;   destruct_key_if
-| _ :  context[unbound _ (?E ;; ?b)] |- _ => unfoldg unbound; destruct_key_if
-|   |- context[unbound _ (?E ;; ?b)]      => unfoldg unbound; destruct_key_if
-end. (* We don't just put destruct_key_if 1x here, because if it fails, match has to try
-        the next branch *)
-
-Lemma map_head: forall (E: t) (b: B) (f: B -> B), map f (E ;; b) = (map f E) ;; (f b).
-Proof.
-  intros. simpl. reflexivity.
-Qed.
-Lemma concat_cons_assoc: forall (E1: t) (E2: t) (b: B), E1 & (E2 ;; b) = (E1 & E2) ;; b.
-Proof.
-  intros. simpl. reflexivity.
-Qed.
-Lemma concat_assoc: forall (E1 E2 E3: t), (E1 & E2) & E3 = E1 & (E2 & E3).
-Proof. intros. apply app_assoc. Qed. 
-Lemma binds_unbound_head_inv: forall E b, unbound (key b) (E ;; b) -> False.
-Proof.
-  intros. compare_keys.
-  + discriminate H.
-  + apply n. reflexivity.
-Qed.
-Lemma unbound_cons_inv: forall E k b, unbound k (E ;; b) -> unbound k E.
-Proof.
-  intros. compare_keys.
-  + inversion H.
-  + assumption.
-Qed.
-Lemma unbound_concat_inv: forall k E1 E2, 
-  unbound k (E1 & E2) -> unbound k E1 /\ unbound k E2.
-Proof.
-  intros. induction E2. 
-  + simpl in *. split. assumption. unfoldg unbound. reflexivity.
-  + rewrite -> concat_cons_assoc in *. compare_keys.
-    - discriminate H.
-    - apply (IHE2 H).
-Qed.
-Lemma unbound_concat: forall k E1 E2,
-  unbound k E1 -> unbound k E2 -> unbound k (E1 & E2).
-Proof.
-  intros. induction E2.
-  + simpl in *. assumption.
-  + rewrite -> concat_cons_assoc. compare_keys.
-    - assumption.
-    - apply IHE2. assumption.
-Qed.
-Lemma unbound_remove_middle: forall k E1 E2 E3,
-  unbound k (E1 & E2 & E3) -> unbound k (E1 & E3).
-Proof.
-  intros.
-  destruct (unbound_concat_inv _ _ H) as [Hub12 Hub3].
-  destruct (unbound_concat_inv _ _ Hub12) as [Hub1 Hub2].
-  apply (unbound_concat Hub1 Hub3).
-Qed.
-Lemma invert_ok_concat: forall E1 E2, ok (E1 & E2) -> ok E1 /\ ok E2.
-Proof.
-  intros. induction E2. 
-  + simpl in *. split. assumption. apply ok_nil.
-  + rewrite -> concat_cons_assoc in *. destruct (invert_ok_cons H) as [H1 H2].
-    specialize (IHE2 H1). destruct IHE2 as [Hok1 Hok2]. split.
-    - assumption.
-    - destruct (unbound_concat_inv _ _ H2) as [Hu1 Hu2]. apply (ok_cons Hok2 Hu2).
-Qed.
-Lemma ok_remove_middle: forall E1 E2 E3, ok (E1 & E2 & E3) -> ok (E1 & E3).
-Proof.
-  intros. induction E3.
-  + simpl in *. destruct (invert_ok_concat _ _ H) as [Hok1 _]. assumption.
-  + rewrite -> concat_cons_assoc in H.
-    destruct (invert_ok_cons H) as [Hok123 Hub].
-    rewrite -> concat_cons_assoc.
-    apply ok_cons.
-    - apply IHE3. assumption.
-    - apply (unbound_remove_middle E1 E2 E3 Hub).
-Qed.
-Lemma binds_push_eq : forall b E, binds (key b) (value b) (E ;; b).
-Proof.
-  intros. compare_keys. reflexivity. contradiction n. reflexivity.
-Qed.
-Lemma binds_push_eq_inv: forall E a b,
-  binds (key a) (value b) (E ;; a) -> value a = value b.
-Proof.
-  intros. compare_keys.
-  + inversion H. reflexivity.
-  + contradiction n. reflexivity.
-Qed.
-Lemma binds_binding_inv: forall k v E, binds k v E -> exists b, key b = k /\ value b = v.
-Proof.
-  intros k v E. induction E; intros.
-  + empty_binds_contradiction.
-  + compare_keys.
-    - inversion H. rewrite -> H1. exists a. symmetry in e. split; assumption.
-    - unfold binds in IHE. apply IHE. assumption.
-Qed.
-Lemma binds_map: forall b (f : B -> B) E,
-  (forall a, key (f a) = key a) ->
-  binds (key b) (value b) E -> 
-  binds (key (f b)) (value (f b)) (map f E).
-Proof.
-  intros. induction E.
-  + empty_binds_contradiction.
-  + simpl. unfoldg binds. rewrite -> (H a). rewrite -> (H b). destruct_key_if.
-    - inversions H0. do 3 f_equal. symmetry in e. apply key_val_eq_eq; assumption.
-    - rewrite -> (H b) in IHE. apply (IHE H0).
-Qed.
-Lemma unbound_map: forall k (f : B -> B) E,
-  (forall a, key (f a) = key a) ->
-  unbound k E -> 
-  unbound k (map f E).
-Proof.
-  intros. induction E.
-  + simpl. assumption.
-  + simpl. unfoldg unbound. fold get. rewrite -> (H a). destruct_key_if.
-    - discriminate H0.
-    - apply IHE. assumption.
-Qed. *)
-(*
-Lemma has_append_right : forall k v E1 E2,
-  has E2                     k v ->
-  has (LibList.append E1 E2) k v.
-Proof. Admitted.
-  intros. induction E2.
-  + empty_binds_contradiction.
-  + rewrite -> concat_cons_assoc. compare_keys.
-    - assumption.
-    - apply IHE2. assumption.
-Qed.
-Lemma binds_concat_left_inv : forall k v E1 E2,
-  unbound k E2 ->
-  binds k v (E1 & E2) ->
-  binds k v E1.
-Proof.
-  intros. induction E2.
-  + simpl in H0. assumption.
-  + rewrite -> concat_cons_assoc in H0. compare_keys.
-    - exfalso. rewrite -> e in H. apply (binds_unbound_head_inv H).
-    - apply IHE2. apply (unbound_cons_inv H). assumption.
-Qed.*)
-Lemma has_append_left : forall k v E1 E2,
-  has   E1 k v ->
-  hasnt E2 k ->
-  has   (LibList.append E1 E2) k v.
-Proof. Admitted. (*
-  intros. induction E2.
-  + simpl. assumption.
-  + rewrite -> concat_cons_assoc. compare_keys.
-    - exfalso. rewrite -> e in H0. apply (binds_unbound_head_inv H0).
-    - apply IHE2. apply (unbound_cons_inv H0).
-Qed.
-Lemma binds_unbound_inv : forall k v E,
-  binds k v E -> unbound k E -> False.
-Proof.
-  intros. induction E.
-  + inversions H.
-  + compare_keys.
-    - subst. apply (binds_unbound_head_inv H0).
-    - apply IHE. assumption. apply (unbound_cons_inv H0).
-Qed.
-Lemma binds_unique : forall k v1 v2 E,
-  binds k v1 E -> binds k v2 E -> v1 = v2.
-Proof.
-  intros. induction E.
-  + inversions H.
-  + compare_keys.
-    - inversions H. inversions H0. reflexivity.
-    - inversions H. inversions H0. apply IHE; assumption.
-Qed.
-Lemma build_unbound: forall k E, (forall k' v, binds k' v E -> k' <> k) -> unbound k E.
-Proof.
-  intros. induction E.
-  + reflexivity.
-  + compare_keys.
-    - specialize (H k (value a)). compare_keys.
-      * specialize (H eq_refl). contradiction H. reflexivity.
-      * contradiction n. 
-    - apply IHE. intros. destruct (eq_key_dec k' (key a)) eqn: Hdestr.
-      * rewrite <- e in n. intro. symmetry in H1. contradiction H1.
-      * apply H with v. unfoldg binds. rewrite -> Hdestr. assumption.
-Qed.*)
-End DMap.
-
-(* ###################################################################### *)
-(** ** List of declarations *)
-
-(* Module decs: For lists of declarations: [list dec] or [label => dec] *)
-Module decs.
-Definition K := label.
-Definition V := dec.
-Definition B := dec.
-Definition key(d: dec): label := match d with
-| dec_fld n T => label_fld n
-| dec_mtd n T U => label_mtd n
-end.
-Definition value(d: dec): dec := match d with
-| dec_fld n T => dec_fld T
-| dec_mtd n T U => dec_mtd T U
-end.
-Lemma key_val_eq_eq: forall b1 b2, key b1 = key b2 -> value b1 = value b2 -> b1 = b2.
-Proof.
-  intros. destruct b1, b2.
-  + inversions H. inversions H0. reflexivity.
-  + inversions H.
-  + inversions H.
-  + inversions H. inversions H0. reflexivity.
-Qed.
-Include DMap.
-End decs.
-
-(* ###################################################################### *)
-(** ** List of definitions ("initialisations") *)
-
-(* Module defs: For lists of definitions: [list def] or [label => def] *)
-Module defs.
-Definition K := label.
-Definition V := def.
-Definition B := def.
-Definition key(i: def): label := match i with
-| def_fld n T => label_fld n
-| def_mtd n T e => label_mtd n
-end.
-Definition value(i: def): def := match i with
-| def_fld n T => def_fld T
-| def_mtd n T e => def_mtd T e
-end.
-Lemma key_val_eq_eq: forall b1 b2, key b1 = key b2 -> value b1 = value b2 -> b1 = b2.
-Proof.
-  intros. destruct b1, b2.
-  + inversions H. inversions H0. reflexivity.
-  + inversions H.
-  + inversions H.
-  + inversions H. inversions H0. reflexivity.
-Qed.
-Include DMap.
-End defs.
-
-Lemma defs_binds_fld_sync_val: forall n v ds,
-  defs_has ds (label_fld n) v -> exists x, v = (def_fld x).
-Proof. Admitted. (*
-  intros. induction ds.
-  + defs.empty_binds_contradiction.
-  + defs.unfoldg defs_has. destruct a; simpl in H; defs.destruct_key_if.
-      * inversions H. exists a. reflexivity.
-      * apply IHis. unfold defs_has. assumption.
-      * inversions e. (* contradiction *)
-      * apply IHis. unfold defs_has. assumption.
-Qed.*)
-
-Lemma defs_binds_mtd_sync_val: forall n v ds,
-  defs_has ds (label_mtd n) v -> exists T e, v = (def_mtd T e).
-Proof. Admitted. (*
-  intros. induction is.
-  + defs.empty_binds_contradiction.
-  + defs.unfoldg defs.binds. destruct a; simpl in H; defs.destruct_key_if.
-      * inversions e. (* contradiction *)
-      * apply IHis. unfold defs.binds. assumption.
-      * inversions H. exists t t0. reflexivity.
-      * apply IHis. unfold defs.binds. assumption.
-Qed.*)
-
-Ltac unfoldp :=
-  unfold defs.K, defs.V, defs.B,
-         decs.K, decs.V, decs.B  in *.
-*)
 
 (** ** Typing environment ("Gamma") *)
 Definition ctx := env typ.
@@ -674,7 +291,7 @@ Definition ctx := env typ.
 (** ** Value environment ("store") *)
 Definition sto := env defs.
 
-(*
+
 (* ###################################################################### *)
 (** * Preview: How intersection will work *)
 
@@ -685,7 +302,7 @@ Parameter t_and: typ -> typ -> typ.
 Parameter t_or:  typ -> typ -> typ.
 
 (* Left as an exercise for the reader ;-) We define intersection by the spec below. *)
-Parameter intersect: decs.t -> decs.t -> decs.t.
+Parameter intersect: decs -> decs -> decs.
 
 Axiom intersect_spec_1: forall l D Ds1 Ds2,
   decs_has    Ds1                l D ->
@@ -717,32 +334,22 @@ Module IntersectionPreviewImpl <: IntersectionPreview.
 Parameter t_and: typ -> typ -> typ.
 Parameter t_or:  typ -> typ -> typ.
 
-(*
-Fixpoint get_fld(n: nat)(ds: decs.t): option typ := match Ds with
-  | nil => None
-  | tail ;; d => match d with
-      | dec_fld m T => if eq_nat_dec n m then Some T else get_fld n tail
-      | _ => get_fld n tail
-      end
-  end.
-*)
-
-Fixpoint refine_dec(D1: dec)(Ds2: decs.t): dec := match Ds2 with
-| nil => D1
-| cons D2 tail2 => match D1, D2 with
-    | dec_fld n1 T1   , dec_fld n2 T2    => If n1 = n2
-                                              then dec_fld n1 (t_and T1 T2) 
-                                              else refine_dec D1 tail2
-    | dec_mtd n1 T1 S1, dec_mtd n2 T2 S2 => If n1 = n2
-                                              then dec_mtd n1 (t_or T1 T2) (t_and S1 S2) 
-                                              else refine_dec D1 tail2
-    | _, _ => refine_dec D1 tail2
+Fixpoint refine_dec(n1: nat)(D1: dec)(Ds2: decs): dec := match Ds2 with
+| decs_nil => D1
+| decs_cons n2 D2 tail2 => match D1, D2 with
+    | dec_fld T1   , dec_fld T2    => If n1 = n2
+                                      then dec_fld (t_and T1 T2) 
+                                      else refine_dec n1 D1 tail2
+    | dec_mtd T1 S1, dec_mtd T2 S2 => If n1 = n2
+                                      then dec_mtd (t_or T1 T2) (t_and S1 S2) 
+                                      else refine_dec n1 D1 tail2
+    | _, _ => refine_dec n1 D1 tail2
     end
 end.
 
 Lemma refine_dec_spec_fld: forall Ds2 n T1 T2,
   decs_has Ds2 (label_fld n) (dec_fld T2) ->
-  (refine_dec (dec_fld n T1) Ds2) = (dec_fld n (t_and T1 T2)).
+  (refine_dec n (dec_fld T1) Ds2) = (dec_fld (t_and T1 T2)).
 Proof. Admitted. (* 
   intro Ds2. induction Ds2; intros.
   + decs.empty_binds_contradiction.
@@ -762,7 +369,7 @@ Qed.*)
 
 Lemma refine_dec_spec_mtd: forall Ds2 n T1 S1 T2 S2,
   decs_has Ds2 (label_mtd n) (dec_mtd T2 S2) ->
-  (refine_dec (dec_mtd n T1 S1) Ds2) = (dec_mtd n (t_or T1 T2) (t_and S1 S2)).
+  (refine_dec n (dec_mtd T1 S1) Ds2) = (dec_mtd (t_or T1 T2) (t_and S1 S2)).
 Proof. Admitted. (*
   intro Ds2. induction Ds2; intros.
   + decs.empty_binds_contradiction.
@@ -778,29 +385,9 @@ Proof. Admitted. (*
         apply IHDs2. assumption.
 Qed.*)
 
-Lemma refine_dec_spec_label: forall D1 Ds2, decs.key D1 = decs.key (refine_dec D1 Ds2).
-Proof. Admitted. (*
-  intros.
-  induction Ds2.
-  + simpl. reflexivity.
-  + unfold decs.key. unfold refine_dec. destruct a; destruct D1.
-    - destruct (eq_nat_dec n0 n).
-      * simpl. reflexivity.
-      * fold refine_dec. unfold decs.key in IHDs2.
-        rewrite <- IHDs2. reflexivity.
-    - fold refine_dec. unfold decs.key in IHDs2.
-        rewrite <- IHDs2. reflexivity.
-    - fold refine_dec. unfold decs.key in IHDs2.
-        rewrite <- IHDs2. reflexivity.
-    - destruct (eq_nat_dec n0 n).
-      * simpl. reflexivity.
-      * fold refine_dec. unfold decs.key in IHDs2.
-        rewrite <- IHDs2. reflexivity.
-Qed.*)
-
-Lemma refine_dec_spec_unbound: forall D1 Ds2, 
-  decs_hasnt Ds2 (decs.key D1) ->
-  decs.value (refine_dec D1 Ds2) = decs.value D1.
+Lemma refine_dec_spec_unbound: forall n D1 Ds2, 
+  decs_hasnt Ds2 (label_for_dec n D1) ->
+  (refine_dec n D1 Ds2) = D1.
 Proof. Admitted. (*
   intros.
   induction Ds2.
@@ -834,8 +421,10 @@ Proof. Admitted. (*
         { unfold decs_hasnt. unfold decs.key. assumption. }
 Qed.*)
 
-Definition refine_decs(Ds1: decs.t)(Ds2: decs.t): decs.t := 
-  List.map (fun D1 => refine_dec D1 Ds2) Ds1.
+Fixpoint refine_decs(Ds1: decs)(Ds2: decs): decs := match Ds1 with
+| decs_nil => decs_nil
+| decs_cons n D1 Ds1tail => decs_cons n (refine_dec n D1 Ds2) (refine_decs Ds1tail Ds2)
+end.
 
 Lemma refine_decs_spec_unbound: forall l D Ds1 Ds2,
   decs_has    Ds1                  l D ->
@@ -969,16 +558,32 @@ Proof. Admitted. (*
         } 
 Qed.*)
 
+Fixpoint decs_concat(Ds1 Ds2: decs) {struct Ds1}: decs := match Ds1 with
+| decs_nil => Ds2
+| decs_cons n D1 Ds1tail => decs_cons n D1 (decs_concat Ds1tail Ds2)
+end.
+
 (* Refined decs shadow the outdated decs of Ds2.
    So [decs.ok (intersect Ds1 Ds2)] usually does not hold. *)
-Definition intersect(Ds1 Ds2: decs.t): decs.t := LibList.append Ds2 (refine_decs Ds1 Ds2).
+Definition intersect(Ds1 Ds2: decs): decs := decs_concat Ds2 (refine_decs Ds1 Ds2).
+
+Lemma decs_has_concat_right : forall k v E1 E2,
+  decs_has E2                     k v ->
+  decs_has (decs_concat E1 E2) k v.
+Proof. Admitted.
+
+Lemma decs_has_concat_left : forall k v E1 E2,
+  decs_has   E1 k v ->
+  decs_hasnt E2 k ->
+  decs_has   (decs_concat E1 E2) k v.
+Proof. Admitted.
 
 Lemma intersect_spec_1: forall l D Ds1 Ds2,
   decs_has    Ds1                l D ->
   decs_hasnt  Ds2                l   ->
   decs_has   (intersect Ds1 Ds2) l D .
 Proof.
-  intros. unfold intersect. apply decs_has_append_right.
+  intros. unfold intersect. apply decs_has_concat_right.
   apply refine_decs_spec_unbound; assumption.
 Qed.
 
@@ -988,7 +593,7 @@ Lemma intersect_spec_2: forall l D Ds1 Ds2,
   decs_has   (intersect Ds1 Ds2) l D.
 Proof.
   intros. unfold intersect.
-  apply (@decs_has_append_left l D Ds2 (refine_decs Ds1 Ds2) H0). 
+  apply (@decs_has_concat_left l D Ds2 (refine_decs Ds1 Ds2) H0). 
   apply (@refine_decs_spec_unbound_preserved l Ds1 Ds2 H). 
 Qed.
 
@@ -997,7 +602,7 @@ Lemma intersect_spec_12_fld: forall n T1 T2 Ds1 Ds2,
   decs_has Ds2                 (label_fld n) (dec_fld T2) ->
   decs_has (intersect Ds1 Ds2) (label_fld n) (dec_fld (t_and T1 T2)).
 Proof.
-  intros. unfold intersect. apply decs_has_append_right.
+  intros. unfold intersect. apply decs_has_concat_right.
   apply refine_decs_spec_fld; assumption.
 Qed.
 
@@ -1006,71 +611,14 @@ Lemma intersect_spec_12_mtd: forall n S1 T1 S2 T2 Ds1 Ds2,
   decs_has Ds2                 (label_mtd n) (dec_mtd S2 T2) ->
   decs_has (intersect Ds1 Ds2) (label_mtd n) (dec_mtd (t_or S1 S2) (t_and T1 T2)).
 Proof.
-  intros. unfold intersect. apply decs_has_append_right.
+  intros. unfold intersect. apply decs_has_concat_right.
   apply refine_decs_spec_mtd; assumption.
 Qed.
 
 End IntersectionPreviewImpl.
-*)
+
 
 (* ###################################################################### *)
-(** * Simple defs/decs modules
-
-Module Type DMapParams.
-Parameter K : Type.
-Parameter V : Type.
-Parameter T : Type.
-Parameter get: K -> T -> option V.
-End DMapParams.
-
-Module DMap (params: DMapParams).
-Import params.
-Definition has(E: T)(k: K)(v: V): Prop := (get k E = Some v).
-Definition hasnt(E: T)(k: K): Prop := (get k E = None).
-End DMap.
-
-Module defs.
-Definition key(i: def): label := match i with
-| def_fld n T => label_fld n
-| def_mtd n T e => label_mtd n
-end.
-Definition value(i: def): def := match i with
-| def_fld n T => def_fld T
-| def_mtd n T e => def_mtd T e
-end.
-Fixpoint get(l: label)(ds: defs): option def := match ds with
-| defs_nil => None
-| defs_cons b bs => If l = (key b) then Some (value b) else get l bs
-end.
-Definition K := label.
-Definition V := def.
-Definition T := defs.
-Include DMap.
-End defs.
-
-Module decs.
-Definition key(d: dec): label := match d with
-| dec_fld n T => label_fld n
-| dec_mtd n T U => label_mtd n
-end.
-Definition value(d: dec): dec := match d with
-| dec_fld n T => dec_fld T
-| dec_mtd n T U => dec_mtd T U
-end.
-Fixpoint get(l: label)(ds: decs): option dec := match ds with
-| decs_nil => None
-| decs_cons b bs => If l = (key b) then Some (value b) else get l bs
-end.
-Definition K := label.
-Definition V := dec.
-Definition T := decs.
-Include DMap.
-End decs.
-
-Ltac unfoldp :=
-  unfold defs.K, defs.V, defs.T,
-         decs.K, decs.V, decs.T  in *.
-*)
 
 Lemma defs_has_fld_sync: forall n d ds,
   defs_has ds (label_fld n) d -> exists x, d = (def_fld x).
