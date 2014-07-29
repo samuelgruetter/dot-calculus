@@ -172,12 +172,46 @@ Hint Constructors term value red.
 
 
 (* ********************************************************************** *)
+(** ** Properties of var-by-var substitution (simpler) *)
+
+Module VarByVarSubst.
+
+Lemma subst_fresh : forall x t u, 
+  x \notin fv t ->  [x ~> (trm_fvar u)] t = t.
+Proof.
+  intros. induction t; simpls; f_equal*. case_var*. 
+Qed.
+
+Lemma subst_open: forall x u1 u2 t,
+   [x ~> (trm_fvar u1)] (open (trm_fvar u2) t)
+ = open ([x ~> (trm_fvar u1)](trm_fvar u2)) ([x ~> (trm_fvar u1)]t).
+Proof.
+  intros. unfold open. generalize 0.
+  induction t; intros; simpl; f_equal*.
+  case_nat*. case_var*.
+Qed.
+
+(* If we only substitute vars for vars (and not terms for vars), we don't 
+   need the "term" judgment, because there's no risk of variable capture. *)
+Lemma subst_intro : forall x t u,
+  x \notin (fv t) ->
+  open (trm_fvar u) t = [x ~> (trm_fvar u)](open (trm_fvar x) t).
+Proof.
+  introv Fr. rewrite* subst_open.
+  rewrite* (@subst_fresh x t u). simpl. case_var*.
+Qed.
+
+End VarByVarSubst.
+
+
+(* ********************************************************************** *)
 (** ** Properties of substitution *)
 
 (** Substitution on indices is identity on well-formed terms. *)
 
 Lemma open_rec_term_core :forall t j v i u, i <> j ->
-  open_rec j v t = open_rec i u (open_rec j v t) -> t = open_rec i u t.
+  open_rec j v t = open_rec i u (open_rec j v t) ->
+  t = open_rec i u t.
 Proof.
   induction t; introv Neq Equ;
   simpl in *; inversion* Equ; f_equal*.  
@@ -394,7 +428,7 @@ Proof.
   destruct K as [Val | [C [t1a [t1'a [Red Ctx]]]]]; subst*.
   gen_eq E: (empty : env). lets Typ': Typ.
   induction Typ; intros; subst.
-  false (binds_empty_inv H0).
+  false* binds_empty_inv.
   left*.
   right. destruct~ IHTyp1 as [Val1 | [C [t1a [t1'a [Red1 Ctx1]]]]].
     destruct~ IHTyp2 as [Val2 | [C [t2a [t2a' [Red2 Ctx2]]]]].
