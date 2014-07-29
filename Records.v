@@ -3,6 +3,7 @@ Set Implicit Arguments.
 
 (* CoqIDE users: Run open.sh (in ./ln) to start coqide, then open this file. *)
 Require Import LibLN.
+(*Require Import LibList.*)
 
 (** ** Some tactics *)
 
@@ -89,9 +90,87 @@ Definition open_avar u a := open_rec_avar 0 u a.
 Definition open_trm  u e := open_rec_trm  0 u e.
 Definition open_ndef u i := open_rec_ndef 0 u i.
 
-Inductive fvar : avar -> Prop :=
-  | fvar_f : forall x,
-      fvar (avar_f x).
+
+(* ###################################################################### *)
+(** * Free variables *)
+
+Fixpoint fv_avar (a: avar) { struct a } : vars :=
+  match a with
+  | avar_b i => \{}
+  | avar_f x => \{x}
+  end.
+
+(* It's a bit tricky to convince Coq that these fv functions terminate.
+   One solution is to inline fv_ndefs. See http://cs.stackexchange.com/questions/104. *)
+Fixpoint fv_trm (t: trm) : vars :=
+  let fv_ndefs := (fix fv_ndefs (ds: list ndef) : vars := match ds with
+  | nil => \{}
+  | cons d rest => (fv_ndef d) \u (fv_ndefs rest)
+  end) in
+  match t with
+  | trm_var x => fv_avar x
+  | trm_new ds t => (fv_ndefs ds) \u (fv_trm t)
+  | trm_sel t l => fv_trm t
+  | trm_call t1 m t2 => (fv_trm t1) \u (fv_trm t2)
+  end
+with fv_ndef (d: ndef) : vars :=
+  match d with
+  | ndef_fld l x => fv_avar x
+  | ndef_mtd m T u => fv_trm u
+  end.
+Fixpoint fv_ndefs (ds: list ndef) : vars := 
+  match ds with
+  | nil => \{}
+  | cons d rest => (fv_ndef d) \u (fv_ndefs rest)
+  end.
+
+Definition fv_def (d: def) : vars :=
+  match d with
+  | def_fld x => fv_avar x
+  | def_mtd T u => fv_trm u
+  end.
+
+Ltac gather_vars :=
+  let A := gather_vars_with (fun x : vars      => x         ) in
+  let B := gather_vars_with (fun x : var       => \{ x }    ) in
+  let C := gather_vars_with (fun x : env typ   => dom x     ) in
+  let D := gather_vars_with (fun x : avar      => fv_avar  x) in
+  let E := gather_vars_with (fun x : trm       => fv_trm   x) in
+  let F := gather_vars_with (fun x : ndef      => fv_ndef  x) in
+  let G := gather_vars_with (fun x : list ndef => fv_ndefs x) in
+  let H := gather_vars_with (fun x : def       => fv_def   x) in
+  constr:(A \u B \u C \u D \u E \u F \u G \u H).
+
+Ltac pick_fresh x :=
+  let L := gather_vars in (pick_fresh_gen L x).
+
+
+(* ###################################################################### *)
+(** * Var-by-var substitution *)
+
+Fixpoint subst_avar (z: var) (u: var) (a: avar) { struct a } : avar :=
+  match a with
+  | avar_b i => avar_b i
+  | avar_f x => If x = z then (avar_f u) else (avar_f x)
+  end.
+
+Fixpoint subst_trm (z: var) (u: var) (t: trm) : trm :=
+  let subst_defs := 
+  (fix subst_defs (z: var) (u: var) (ds: list ndef) : list ndef := match ds with
+  | nil => nil
+  | cons d rest => cons (subst_def z u d) (subst_defs z u rest)
+  end) in
+  match t with
+  | trm_var x => trm_var (subst_avar z u x)
+  | trm_new ds t => trm_new (subst_defs z u ds) (subst_trm z u t)
+  | trm_sel t l => trm_sel (subst_trm z u t) l
+  | trm_call t1 m t2 => trm_call (subst_trm z u t1) m (subst_trm z u t2)
+  end
+with subst_def (z: var) (u: var) (d: ndef) : ndef :=
+  match d with
+  | ndef_fld l x => ndef_fld l (subst_avar z u x)
+  | ndef_mtd m T b => ndef_mtd m T (subst_trm z u b)
+  end.
 
 
 (* ###################################################################### *)
@@ -424,15 +503,13 @@ Ltac unfoldp :=
   unfold defs.K, defs.V, defs.B,
          decs.K, decs.V, decs.B  in *.
 
-(* ###################################################################### *)
-(** ** Typing environment ("Gamma") *)
 
+(** ** Typing environment ("Gamma") *)
 Definition ctx := env typ.
 
-(* ###################################################################### *)
 (** ** Value environment ("store") *)
-
 Definition sto := env defs.t.
+
 
 (* ###################################################################### *)
 (** * Preview: How intersection will work *)
@@ -1249,7 +1326,7 @@ Note that in general, u is a term, but for our purposes, it suffices to consider
 the special case where u is a variable.
 *)
 
-
+(*
 Lemma destruct_trm_var_eq_open_trm: forall z x e,
   trm_var (avar_f z) = open_trm x e ->
   (z = x /\ (e = trm_var (avar_b 0) \/ e = trm_var (avar_f z)))
@@ -1265,6 +1342,7 @@ Proof.
     - subst. left. split. reflexivity. right. reflexivity.
     - right. assumption.
 Qed.
+*)
 
 (*
 Lemma destruct_trm_var_eq_open_trm: forall z x e,
