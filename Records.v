@@ -1251,11 +1251,25 @@ Proof.
     - eauto.
 Qed.
 
+Lemma fresh_push_eq_inv: forall A x a (E: env A),
+  x # (E & x ~ a) -> False.
+Proof.
+  intros. rewrite dom_push in H. false H. rewrite in_union.
+  left. rewrite in_singleton. reflexivity.
+Qed.
+
 Lemma sto_unbound_to_ctx_unbound: forall s G x,
   wf_sto s G ->
   x # s ->
   x # G.
-Admitted.
+Proof.
+  introv Wf Ub_s.
+  induction Wf.
+  + auto.
+  + destruct (classicT (x0 = x)) as [Eq | Ne].
+    - subst. false (fresh_push_eq_inv Ub_s). 
+    - auto.
+Qed.
 
 
 (* ###################################################################### *)
