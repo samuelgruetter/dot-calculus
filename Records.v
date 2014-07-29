@@ -39,18 +39,55 @@ Inductive dec : Type := (* declaration without name *)
 
 Inductive trm : Type :=
   | trm_var  : avar -> trm
+  | trm_new  : ndefs -> trm -> trm
+  | trm_sel  : trm -> nat -> trm
+  | trm_call : trm -> nat -> trm -> trm
+with ndef : Type :=
+  | ndef_fld : nat -> avar -> ndef (* cannot have term here, need to assign first *)
+  | ndef_mtd : nat -> typ -> trm -> ndef
+with ndefs : Type :=
+  | ndefs_nil : ndefs
+  | ndefs_cons : ndef -> ndefs -> ndefs.
+
+Inductive def : Type :=
+  | def_fld : avar -> def
+  | def_mtd : typ -> trm -> def.
+
+Scheme trm_mut   := Induction for trm   Sort Prop
+with   ndef_mut  := Induction for ndef  Sort Prop
+with   ndefs_mut := Induction for ndefs Sort Prop.
+Combined Scheme trm_mutind from trm_mut, ndef_mut, ndefs_mut.
+
+(*
+Inductive trm : Type :=
+  | trm_var  : avar -> trm
   | trm_new  : list ndef -> trm -> trm
   | trm_sel  : trm -> nat -> trm
   | trm_call : trm -> nat -> trm -> trm
 with ndef : Type :=
   | ndef_fld : nat -> avar -> ndef (* cannot have term here, need to assign first *)
   | ndef_mtd : nat -> typ -> trm -> ndef.
-Inductive def : Type :=
-  | def_fld : avar -> def
-  | def_mtd : typ -> trm -> def.
+
+Scheme trm_mut0   := Induction for trm   Sort Prop
+with   ndef_mut0  := Induction for ndef  Sort Prop.
+Combined Scheme trm_mutind0 from trm_mut0, ndef_mut0.
+
+Lemma trm_mutind: 
+  forall (P : trm -> Prop) (P0 : ndef -> Prop) (P1 : list ndef -> Prop),
+    (forall a : avar, P (trm_var a)) ->
+    (forall (l : list ndef) (t : trm), P1 l -> P t -> P (trm_new l t)) ->
+    (forall t : trm, P t -> forall n : nat, P (trm_sel t n)) ->
+    (forall t : trm, P t -> forall (n : nat) (t0 : trm), P t0 -> P (trm_call t n t0)) ->
+    (forall (n : nat) (a : avar), P0 (ndef_fld n a)) ->
+    (forall (n : nat) (t : typ) (t0 : trm), P t0 -> P0 (ndef_mtd n t t0)) ->
+    (forall t : trm, P t) /\ 
+    (forall n : ndef, P0 n) /\
+    (forall ns : list ndef, P1 ns).
+Proof. Abort.
+*)
 
 (** ** Syntactic sugar *)
-Definition trm_fun(T: typ)(body: trm) := trm_new (ndef_mtd 0 T body :: nil)
+Definition trm_fun(T: typ)(body: trm) := trm_new (ndefs_cons (ndef_mtd 0 T body) ndefs_nil)
                                                  (trm_var (avar_b 0)).
 Definition trm_app(func arg: trm) := trm_call func 0 arg.
 Definition trm_let(T: typ)(rhs body: trm) := trm_app (trm_fun T body) rhs.
@@ -76,19 +113,25 @@ Fixpoint open_rec_avar (k: nat) (u: var) (a: avar) { struct a } : avar :=
 Fixpoint open_rec_trm (k: nat) (u: var) (t: trm) { struct t } : trm :=
   match t with
   | trm_var a => trm_var (open_rec_avar k u a)
-  | trm_new ds e => trm_new (List.map (open_rec_ndef (S k) u) ds) (open_rec_trm (S k) u e)
+  | trm_new ds e => trm_new (open_rec_ndefs (S k) u ds) (open_rec_trm (S k) u e)
   | trm_sel e n => trm_sel (open_rec_trm k u e) n
   | trm_call o m a => trm_call (open_rec_trm k u o) m (open_rec_trm k u a)
   end
-with open_rec_ndef (k: nat) (u: var) (i: ndef) { struct i } : ndef :=
-  match i with
+with open_rec_ndef (k: nat) (u: var) (d: ndef) { struct d } : ndef :=
+  match d with
   | ndef_fld n a   => ndef_fld n (open_rec_avar k u a)
   | ndef_mtd n T e => ndef_mtd n T (open_rec_trm (S k) u e)
+  end
+with open_rec_ndefs (k: nat) (u: var) (ds: ndefs) { struct ds } : ndefs :=
+  match ds with
+  | ndefs_nil => ndefs_nil
+  | ndefs_cons d tl => ndefs_cons (open_rec_ndef k u d) (open_rec_ndefs k u tl)
   end.
 
-Definition open_avar u a := open_rec_avar 0 u a.
-Definition open_trm  u e := open_rec_trm  0 u e.
-Definition open_ndef u i := open_rec_ndef 0 u i.
+Definition open_avar  u a := open_rec_avar 0 u a.
+Definition open_trm   u e := open_rec_trm  0 u e.
+Definition open_ndef  u d := open_rec_ndef 0 u d.
+Definition open_ndefs u l := open_rec_ndef 0 u l.
 
 
 (* ###################################################################### *)
@@ -100,6 +143,7 @@ Fixpoint fv_avar (a: avar) { struct a } : vars :=
   | avar_f x => \{x}
   end.
 
+(*
 (* It's a bit tricky to convince Coq that these fv functions terminate.
    One solution is to inline fv_ndefs. See http://cs.stackexchange.com/questions/104. *)
 Fixpoint fv_trm (t: trm) : vars :=
@@ -122,6 +166,27 @@ Fixpoint fv_ndefs (ds: list ndef) : vars :=
   match ds with
   | nil => \{}
   | cons d rest => (fv_ndef d) \u (fv_ndefs rest)
+  end.
+*)
+
+(* If we define ndefs ourselves instead of using [list ndef], we don't have any
+   termination proof problems: *)
+Fixpoint fv_trm (t: trm) : vars :=
+  match t with
+  | trm_var x => fv_avar x
+  | trm_new ds t => (fv_ndefs ds) \u (fv_trm t)
+  | trm_sel t l => fv_trm t
+  | trm_call t1 m t2 => (fv_trm t1) \u (fv_trm t2)
+  end
+with fv_ndef (d: ndef) : vars :=
+  match d with
+  | ndef_fld l x => fv_avar x
+  | ndef_mtd m T u => fv_trm u
+  end
+with fv_ndefs(ds: ndefs) : vars :=
+  match ds with
+  | ndefs_nil => \{}
+  | ndefs_cons d tl => (fv_ndef d) \u (fv_ndefs tl)
   end.
 
 Definition fv_def (d: def) : vars :=
@@ -155,11 +220,6 @@ Fixpoint subst_avar (z: var) (u: var) (a: avar) { struct a } : avar :=
   end.
 
 Fixpoint subst_trm (z: var) (u: var) (t: trm) : trm :=
-  let subst_defs := 
-  (fix subst_defs (z: var) (u: var) (ds: list ndef) : list ndef := match ds with
-  | nil => nil
-  | cons d rest => cons (subst_def z u d) (subst_defs z u rest)
-  end) in
   match t with
   | trm_var x => trm_var (subst_avar z u x)
   | trm_new ds t => trm_new (subst_defs z u ds) (subst_trm z u t)
@@ -170,6 +230,11 @@ with subst_def (z: var) (u: var) (d: ndef) : ndef :=
   match d with
   | ndef_fld l x => ndef_fld l (subst_avar z u x)
   | ndef_mtd m T b => ndef_mtd m T (subst_trm z u b)
+  end
+with subst_defs (z: var) (u: var) (ds: ndefs) : ndefs :=
+  match ds with
+  | ndefs_nil => ndefs_nil
+  | ndefs_cons d rest => ndefs_cons (subst_def z u d) (subst_defs z u rest)
   end.
 
 
