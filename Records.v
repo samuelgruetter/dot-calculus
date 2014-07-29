@@ -29,10 +29,14 @@ Inductive avar : Type :=
   | avar_f : var -> avar. (* free var ("name"), refers to tenv or venv *)
 
 Inductive typ : Type :=
-  | typ_rcd  : list ndec -> typ (* record type *)
+  | typ_rcd  : ndecs -> typ (* record type *)
 with ndec : Type := (* named declaration *)
   | ndec_fld : nat -> typ -> ndec
-  | ndec_mtd : nat -> typ -> typ -> ndec.
+  | ndec_mtd : nat -> typ -> typ -> ndec
+with ndecs : Type :=
+  | ndecs_nil : ndecs
+  | ndecs_cons : ndec -> ndecs -> ndecs.
+
 Inductive dec : Type := (* declaration without name *)
   | dec_fld  : typ -> dec
   | dec_mtd  : typ -> typ -> dec.
@@ -92,7 +96,7 @@ Definition trm_fun(T: typ)(body: trm) := trm_new (ndefs_cons (ndef_mtd 0 T body)
 Definition trm_app(func arg: trm) := trm_call func 0 arg.
 Definition trm_let(T: typ)(rhs body: trm) := trm_app (trm_fun T body) rhs.
 Definition trm_upcast(T: typ)(e: trm) := trm_app (trm_fun T (trm_var (avar_b 0))) e.
-Definition typ_arrow(T1 T2: typ) := typ_rcd (ndec_mtd 0 T1 T2 :: nil).
+Definition typ_arrow(T1 T2: typ) := typ_rcd (ndecs_cons (ndec_mtd 0 T1 T2) ndecs_nil).
 
 
 (* ###################################################################### *)
@@ -195,21 +199,6 @@ Definition fv_def (d: def) : vars :=
   | def_mtd T u => fv_trm u
   end.
 
-Ltac gather_vars :=
-  let A := gather_vars_with (fun x : vars      => x         ) in
-  let B := gather_vars_with (fun x : var       => \{ x }    ) in
-  let C := gather_vars_with (fun x : env typ   => dom x     ) in
-  let D := gather_vars_with (fun x : avar      => fv_avar  x) in
-  let E := gather_vars_with (fun x : trm       => fv_trm   x) in
-  let F := gather_vars_with (fun x : ndef      => fv_ndef  x) in
-  let G := gather_vars_with (fun x : list ndef => fv_ndefs x) in
-  let H := gather_vars_with (fun x : def       => fv_def   x) in
-  constr:(A \u B \u C \u D \u E \u F \u G \u H).
-
-Ltac pick_fresh x :=
-  let L := gather_vars in (pick_fresh_gen L x).
-
-
 (* ###################################################################### *)
 (** * Var-by-var substitution *)
 
@@ -297,7 +286,7 @@ Qed.
 
 (* "Introduce a substitution after open": Opening a term t with a var u is the
    same as opening t with x and then replacing x by u. *)
-Lemma subst_intro_trm: forall x t u, x \notin (fv_trm t) ->
+Lemma subst_intro_trm: forall x u t, x \notin (fv_trm t) ->
   open_trm u t = subst_trm x u (open_trm x t).
 Proof.
   introv Fr. unfold open_trm.
@@ -308,7 +297,7 @@ Qed.
 
 Print Assumptions subst_intro_trm.
 
-
+(*
 (* ###################################################################### *)
 (** * Environments *)
 
@@ -330,8 +319,18 @@ Module Type DMapParams.
 Parameter K : Type.
 Parameter V : Type.
 Parameter B : Type.
+Parameter T : Type.
 Parameter key: B -> K.
 Parameter value: B -> V.
+(* Parameter get: K -> T -> option V. *)
+Parameter dnil: T.
+Parameter dcons: B -> T -> T.
+Parameter dmatch: forall R: Type, T -> R -> (B -> T -> R) -> R. 
+(* Axiom dmatch: forall l: T, l = dnil \/ exists l *)
+(*
+Parameter to_list: T -> list B.
+Parameter from_list: list B -> T.
+*)
 Axiom key_val_eq_eq: forall b1 b2, key b1 = key b2 -> value b1 = value b2 -> b1 = b2.
 End DMapParams.
 
@@ -341,36 +340,51 @@ End DMapParams.
 
 Module DMap (params: DMapParams).
 Import params.
+(*
 Definition t := list B.
 Definition empty : t := nil. (* to avoid having to write (@nil ...) *)
-Fixpoint get(k: K)(E: t): option V := match E with
+*)
+
+Fixpoint get(k: K)(E: T): option V := dmatch E
+  None
+  (fun b bs => If k = (key b) then Some (value b) else get k bs).
+
+
+(*
+Definition get(k: K)(E: T): option V := 
+  (fix getl(l: list B): option V := match l with
+   | nil => None
+   | cons b bs => If k = (key b) then Some (value b) else getl bs
+   end) (to_list E).
+
+Fixpoint get(k: K)(E: T): option V := match (to_list E) with
   | nil => None
-  | cons b bs => If k = (key b) then Some (value b) else get k bs
+  | cons b bs => If k = (key b) then Some (value b) else get k (from_list bs)
   end.
-Definition has(E: t)(k: K)(v: V): Prop := (get k E = Some v).
-Definition hasnt(E: t)(k: K): Prop := (get k E = None).
+*)
+Definition has(E: T)(k: K)(v: V): Prop := (get k E = Some v).
+Definition hasnt(E: T)(k: K): Prop := (get k E = None).
 
 Lemma get_cons : forall k b E,
   get k (cons b E) = If k = key b then Some (value b) else get k E.
 Proof.
   intros. unfold get. case_if~.
 Qed.
-
 (*
 Inductive ok : t -> Prop :=
 | ok_nil  : ok nil
 | ok_cons : forall E b, ok E -> unbound (key b) E -> ok (b::E).
 Lemma invert_ok_cons: forall E b, ok (E ;; b) -> ok E /\ unbound (key b) E.
 Proof. intros. inversions H. split; assumption. Qed.
-*)
 Ltac empty_binds_contradiction := match goal with
 | H: has nil _ _ |- _ => inversion H
 end.
+*)
 (*
 Tactic Notation "unfoldg" reference(I)             := unfold I, get; fold get.
 Tactic Notation "unfoldg" reference(I) "in" hyp(H) := unfold I, get in H; fold get in H.
 *)
-Ltac unfoldg I := unfold I, get in *; fold get in *.
+(*Ltac unfoldg I := unfold I, get in *; fold get in *.*)
 (*
 Ltac destruct_key_if := match goal with
 | H:   context[if eq_key_dec ?k1 ?k2 then _ else _] |- _ => destruct (eq_key_dec k1 k2)
@@ -493,10 +507,11 @@ Proof.
     - discriminate H0.
     - apply IHE. assumption.
 Qed. *)
+(*
 Lemma has_append_right : forall k v E1 E2,
   has E2                     k v ->
   has (LibList.append E1 E2) k v.
-Proof. Admitted. (*
+Proof. Admitted.
   intros. induction E2.
   + empty_binds_contradiction.
   + rewrite -> concat_cons_assoc. compare_keys.
@@ -638,15 +653,15 @@ Qed.*)
 Ltac unfoldp :=
   unfold defs.K, defs.V, defs.B,
          decs.K, decs.V, decs.B  in *.
-
+*)
 
 (** ** Typing environment ("Gamma") *)
 Definition ctx := env typ.
 
 (** ** Value environment ("store") *)
-Definition sto := env defs.t.
+Definition sto := env ndefs.
 
-
+(*
 (* ###################################################################### *)
 (** * Preview: How intersection will work *)
 
@@ -983,6 +998,73 @@ Proof.
 Qed.
 
 End IntersectionPreviewImpl.
+*)
+
+(* ###################################################################### *)
+(** * Simple defs/decs modules *)
+
+Module Type DMapParams.
+Parameter K : Type.
+Parameter V : Type.
+Parameter T : Type.
+Parameter get: K -> T -> option V.
+End DMapParams.
+
+Module DMap (params: DMapParams).
+Import params.
+Definition has(E: T)(k: K)(v: V): Prop := (get k E = Some v).
+Definition hasnt(E: T)(k: K): Prop := (get k E = None).
+End DMap.
+
+Module defs.
+Definition key(i: ndef): label := match i with
+| ndef_fld n T => label_fld n
+| ndef_mtd n T e => label_mtd n
+end.
+Definition value(i: ndef): def := match i with
+| ndef_fld n T => def_fld T
+| ndef_mtd n T e => def_mtd T e
+end.
+Fixpoint get(l: label)(ds: ndefs): option def := match ds with
+| ndefs_nil => None
+| ndefs_cons b bs => If l = (key b) then Some (value b) else get l bs
+end.
+Definition K := label.
+Definition V := def.
+Definition T := ndefs.
+Include DMap.
+End defs.
+
+Module decs.
+Definition key(d: ndec): label := match d with
+| ndec_fld n T => label_fld n
+| ndec_mtd n T U => label_mtd n
+end.
+Definition value(d: ndec): dec := match d with
+| ndec_fld n T => dec_fld T
+| ndec_mtd n T U => dec_mtd T U
+end.
+Fixpoint get(l: label)(ds: ndecs): option dec := match ds with
+| ndecs_nil => None
+| ndecs_cons b bs => If l = (key b) then Some (value b) else get l bs
+end.
+Definition K := label.
+Definition V := dec.
+Definition T := ndecs.
+Include DMap.
+End decs.
+
+Ltac unfoldp :=
+  unfold defs.K, defs.V, defs.T,
+         decs.K, decs.V, decs.T  in *.
+
+Lemma defs_binds_fld_sync_val: forall n v ds,
+  defs.has ds (label_fld n) v -> exists x, v = (def_fld x).
+Proof. Admitted.
+
+Lemma defs_binds_mtd_sync_val: forall n v ds,
+  defs.has ds (label_mtd n) v -> exists T e, v = (def_mtd T e).
+Proof. Admitted.
 
 
 (* ###################################################################### *)
@@ -993,17 +1075,17 @@ End IntersectionPreviewImpl.
     which is not in the store, so we never have name clashes. *) 
 Inductive red : sto -> trm -> sto -> trm -> Prop :=
   (* computation rules *)
-  | red_call : forall (s: sto) (x y: var) (m: nat) (T: typ) (ds: defs.t) (body: trm),
+  | red_call : forall (s: sto) (x y: var) (m: nat) (T: typ) (ds: ndefs) (body: trm),
       binds x ds s ->
       defs.has ds (label_mtd m) (def_mtd T body) ->
       red s (trm_call (trm_var (avar_f x)) m (trm_var (avar_f y))) 
           s (open_trm y body)
-  | red_sel : forall (s: sto) (x: var) (y: avar) (l: nat) (ds: defs.t),
+  | red_sel : forall (s: sto) (x: var) (y: avar) (l: nat) (ds: ndefs),
       binds x ds s ->
       defs.has ds (label_fld l) (def_fld y) ->
       red s (trm_sel (trm_var (avar_f x)) l) 
           s (trm_var y)
-  | red_new : forall (s: sto) (ds: defs.t) (e: trm) (x: var),
+  | red_new : forall (s: sto) (ds: ndefs) (e: trm) (x: var),
       x # s ->
       red s (trm_new ds e)
           (s & x ~ ds) (open_trm x e)
@@ -1063,13 +1145,13 @@ with typing_def : ctx -> ndef -> ndec -> Prop :=
       (forall x, x # G ->
                  typing_trm (G & x ~ S) (open_trm x t) T) ->
       typing_def G (ndef_mtd m S t) (ndec_mtd m S T)
-with typing_defs : ctx -> defs.t -> decs.t -> Prop :=
+with typing_defs : ctx -> ndefs -> ndecs -> Prop :=
   | typing_defs_nil : forall G,
-      typing_defs G nil nil
+      typing_defs G ndefs_nil ndecs_nil
   | typing_defs_cons : forall G ds d Ds D,
       typing_defs G ds Ds ->
       typing_def  G d D ->
-      typing_defs G (cons d ds) (cons D Ds).
+      typing_defs G (ndefs_cons d ds) (ndecs_cons D Ds).
 
 Scheme has_mut         := Induction for has         Sort Prop
 with   typing_trm_mut  := Induction for typing_trm  Sort Prop
@@ -1077,6 +1159,25 @@ with   typing_def_mut  := Induction for typing_def  Sort Prop
 with   typing_defs_mut := Induction for typing_defs Sort Prop.
 
 Combined Scheme typing_mutind from has_mut, typing_trm_mut, typing_def_mut, typing_defs_mut.
+
+
+(* ###################################################################### *)
+(** * Instantiation of tactics *)
+
+Ltac gather_vars :=
+  let A := gather_vars_with (fun x : vars      => x         ) in
+  let B := gather_vars_with (fun x : var       => \{ x }    ) in
+  let C := gather_vars_with (fun x : ctx       => dom x     ) in
+  let D := gather_vars_with (fun x : sto       => dom x     ) in
+  let E := gather_vars_with (fun x : avar      => fv_avar  x) in
+  let F := gather_vars_with (fun x : trm       => fv_trm   x) in
+  let G := gather_vars_with (fun x : ndef      => fv_ndef  x) in
+  let H := gather_vars_with (fun x : ndefs     => fv_ndefs x) in
+  let I := gather_vars_with (fun x : def       => fv_def   x) in
+  constr:(A \u B \u C \u D \u E \u F \u G \u H \u I).
+
+Ltac pick_fresh x :=
+  let L := gather_vars in (pick_fresh_gen L x).
 
 
 (* ###################################################################### *)
@@ -1227,14 +1328,14 @@ Lemma decs_has_to_defs_has: forall G l ds Ds D,
   typing_defs G ds Ds ->
   decs.has Ds l D ->
   exists d, defs.has ds l d.
-Proof.
+Proof. Admitted. (*
   introv Ty Bi. induction Ty.
-  + decs.empty_binds_contradiction.
+  + skip. (* TODO decs.empty_binds_contradiction. *)
   + unfold decs.has, defs.has in *. rewrite decs.get_cons, defs.get_cons in *. case_if.
     - exists (defs.value d). reflexivity.
     - destruct (invert_typing_def H) as [k [dv [Dv [Hik [Hiv [Hdk Hdv]]]]]]. subst.
       case_if. apply (IHTy Bi).
-Qed.
+Qed. *)
 
 
 (* ###################################################################### *)
@@ -1439,10 +1540,9 @@ Proof.
         exists s (open_trm y e).
         apply (red_call y Hbv Hbi).
   (* case typing_trm_new *)
-  + left. (* TODO pick_fresh *) admit. (*
-    destruct (sto_gen_fresh s) as [x Hxub].
-    exists (s ;; (x, nis)) (open_trm x t).
-    apply red_new. assumption.*)
+  + left. pick_fresh x.
+    exists (s & x ~ nis) (open_trm x t).
+    apply* red_new.
 Qed.
 
 Print Assumptions progress.
@@ -1500,33 +1600,33 @@ Lemma raw_subst_principles:
   forall G1 G2 y S, typing_trm (G1 & G2) (trm_var (avar_f y)) S ->
   (forall (G0 : ctx) (e0 : trm) (l : label) (d : dec) (Hhas : has G0 e0 l d),
     (fun G0 e0 l d (Hhas: has G0 e0 l d) => 
-      forall x e, G0 = (G1 ;; (x, S) & G2) ->
-                  ok (G1 ;; (x, S) & G2) ->
+      forall x e, G0 = (G1 & (x ~ S) & G2) ->
+                  ok (G1 & (x ~ S) & G2) ->
                   e0 = (open_trm x e) -> 
                   has (G1 & G2) (open_trm y e) l d)
     G0 e0 l d Hhas) /\
   (forall (G0 : ctx) (e0 : trm) (T : typ) (Hty : typing_trm G0 e0 T),
     (fun G0 e0 T (Hty: typing_trm G0 e0 T) => 
-      forall x e, G0 = (G1 ;; (x, S) & G2) ->
-                  ok (G1 ;; (x, S) & G2) ->
+      forall x e, G0 = (G1 & (x ~ S) & G2) ->
+                  ok (G1 & (x ~ S) & G2) ->
                   e0 = (open_trm x e) -> 
                   typing_trm (G1 & G2) (open_trm y e) T)
     G0 e0 T Hty) /\
   (forall (G0 : ctx) (i0 : ndef) (d : ndec) (Hty : typing_def G0 i0 d),
     (fun G i0 d (Htyp: typing_def G i0 d) => 
-      forall x i, G0 = (G1 ;; (x, S) & G2) ->
-                  ok (G1 ;; (x, S) & G2) ->
+      forall x i, G0 = (G1 & (x ~ S) & G2) ->
+                  ok (G1 & (x ~ S) & G2) ->
                   i0 = (open_ndef x i) -> 
                   typing_def (G1 & G2) (open_ndef y i) d)
     G0 i0 d Hty) /\
-  (forall (G0 : ctx) (is0 : defs.t) (ds : decs.t) (Hty : typing_defs G0 is0 Ds),
+  (forall (G0 : ctx) (is0 : ndefs) (Ds : ndecs) (Hty : typing_defs G0 is0 Ds),
     (fun G is0 Ds (Hty: typing_defs G is0 Ds) => 
-      forall x is, G0 = (G1 ;; (x, S) & G2) ->
-                   ok (G1 ;; (x, S) & G2) ->
-                   is0 = (map (open_ndef y) is) -> 
-                   typing_defs (G1 & G2) (map (open_ndef y) is) Ds)
+      forall x is, G0 = (G1 & (x ~ S) & G2) ->
+                   ok (G1 & (x ~ S) & G2) ->
+                   is0 = (open_ndefs y is) -> 
+                   typing_defs (G1 & G2) (open_ndefs y is) Ds)
     G0 is0 Ds Hty).
-Proof.
+Proof. (*
   intros G1 G2 y S Htyy.
   apply typing_mutind; intros;
   (* renaming: *)
@@ -1577,16 +1677,18 @@ Proof.
   + admit.
   (* case typing_defs_push *)
   + admit.
-Qed.
+Qed.*)
+Abort.
 
-Lemma subst_principle: forall G x y e S T,
-  typing_trm (G & x ~ S) (open_trm x e) T ->
+Lemma subst_principle: forall G x y t S T,
+  typing_trm (G & x ~ S) t T ->
   typing_trm G (trm_var (avar_f y)) S ->
-  typing_trm G (open_trm y e) T.
+  typing_trm G (subst_trm x y t) T.
+Admitted.
 
 (* Does not hold if e = trm_var (avar_f x), because opening e with y results
    in trm_var (avar_f x), which does not typecheck in an environment where we removed x.
-   Maybe need x notin FV(e) ? *)
+   Maybe need x notin FV(e) ?
 Lemma subst_principle: forall G x y e S T,
   typing_trm (G ;; (x, S)) (open_trm x e) T ->
   typing_trm G (trm_var (avar_f y)) S ->
@@ -1596,7 +1698,7 @@ Proof.
   destruct (raw_subst_principles G empty Hy) as [_ [P _]].
   assert (Hok: ok (G ;; (x, S))). admit.
   apply (P _ _ _ He _ _ eq_refl Hok eq_refl).
-Qed.
+Qed.*)
 
 
 (* ###################################################################### *)
@@ -1609,35 +1711,35 @@ Proof.
   intros s e s' e' Hred. induction Hred; intros.
   (* red_call *)
   + rename H into Hvbx. rename H0 into Hibm. rename T0 into U.
-    exists empty. simpl. split. apply Hwf.
+    exists (@empty typ). rewrite concat_empty_r. split. apply Hwf.
     (* Grab "ctx binds x" hypothesis: *)
     apply invert_typing_trm_call in Hty. 
     destruct Hty as [T' [Hhas Htyy]].
     apply invert_has in Hhas. 
-    destruct Hhas as [ds [Htyx Hdbm]].
+    destruct Hhas as [Ds [Htyx Hdbm]].
     apply invert_typing_trm_var in Htyx. rename Htyx into Htbx.
     (* Feed "binds x" and "ctx binds x" to invert_wf_sto: *)
-    keep (invert_wf_sto Hwf Hvbx Htbx) as Hisds.
-    keep (invert_typing_mtd_def_inside_typing_defs Hisds Hibm Hdbm) as Hmtd.
-    destruct (ctx_gen_fresh G) as [y' Htuy'].
-    specialize (Hmtd y' Htuy').
-    apply (subst_principle _ Hmtd Htyy).
+    lets HdsDs: (invert_wf_sto Hwf Hvbx Htbx).
+    lets Hmtd: (invert_typing_mtd_def_inside_typing_defs HdsDs Hibm Hdbm).
+    pick_fresh y'.
+    rewrite* (@subst_intro_trm y' y body).
+    apply* (@subst_principle G y' y ((open_trm y' body)) T' U).
   (* red_sel *)
   + rename H into Hvbx. rename H0 into Hibl.
-    exists empty. simpl. split. apply Hwf.
+    exists (@empty typ). rewrite concat_empty_r. split. apply Hwf.
     apply invert_typing_trm_sel in Hty.
     apply invert_has in Hty.
-    destruct Hty as [ds [Htyx Hdbl]].
+    destruct Hty as [Ds [Htyx Hdbl]].
     apply invert_typing_trm_var in Htyx. rename Htyx into Htbx.
     (* Feed "binds x" and "ctx binds x" to invert_wf_sto: *)
-    keep (invert_wf_sto Hwf Hvbx Htbx) as Hisds.
-    apply (invert_typing_fld_def_inside_typing_defs Hisds Hibl Hdbl).
+    lets HdsDs: (invert_wf_sto Hwf Hvbx Htbx).
+    apply (invert_typing_fld_def_inside_typing_defs HdsDs Hibl Hdbl).
   (* red_new *)
   + rename H into Hvux.
     apply invert_typing_trm_new in Hty.
-    destruct Hty as [ds [Hisds Htye]].
-    keep (sto_unbound_to_ctx_unbound Hwf Hvux) as Htux.
-    exists (empty ;; (x, typ_rcd Ds)). simpl. split.
+    destruct Hty as [Ds [Hisds Htye]].
+    lets Htux: (sto_unbound_to_ctx_unbound Hwf Hvux).
+    exists (x ~ typ_rcd Ds). split.
     - apply (wf_sto_push Hwf Hvux Htux Hisds).
     - apply (Htye x Htux).
   (* red_call1 *)
@@ -1645,13 +1747,13 @@ Proof.
     apply invert_typing_trm_call in Hty.
     destruct Hty as [Ta [Hhas Htya]].
     apply invert_has in Hhas.
-    destruct Hhas as [ds [Htyo Hdbm]].
+    destruct Hhas as [Ds [Htyo Hdbm]].
     specialize (IHHred G (typ_rcd Ds) Hwf Htyo).
     destruct IHHred as [H [Hwf' Htyo']].
     exists H. split. assumption. apply (@typing_trm_call (G & H) o' m Ta Tr a).
     - apply (has_dec Htyo' Hdbm).
-    - destruct (wf_sto_ok Hwf') as [_ Hok].
-      apply (weaken_typing_trm _ Htya Hok).
+    - lets Hok: wf_sto_to_ok_G Hwf'.
+      apply (weaken_typing_trm Htya Hok).
   (* red_call2 *)
   + rename T into Tr.
     apply invert_typing_trm_call in Hty.
@@ -1659,13 +1761,13 @@ Proof.
     specialize (IHHred G Ta Hwf Htya).
     destruct IHHred as [H [Hwf' Htya']].
     exists H. split. assumption. apply (@typing_trm_call (G & H) _ m Ta Tr a').
-    - destruct (wf_sto_ok Hwf') as [_ Hok].
-      apply (weaken_has _ Hhas Hok).
+    - lets Hok: wf_sto_to_ok_G Hwf'.
+      apply (weaken_has Hhas Hok).
     - assumption.
   (* red_sel1 *)
   + apply invert_typing_trm_sel in Hty.
     apply invert_has in Hty.
-    destruct Hty as [ds [Htyo Hdbl]].
+    destruct Hty as [Ds [Htyo Hdbl]].
     specialize (IHHred G (typ_rcd Ds) Hwf Htyo).
     destruct IHHred as [H [Hwf' Htyo']].
     exists H. split. assumption. apply (@typing_trm_sel (G & H) o' l T).
