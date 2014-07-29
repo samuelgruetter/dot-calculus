@@ -128,10 +128,10 @@ with open_rec_ndefs (k: nat) (u: var) (ds: ndefs) { struct ds } : ndefs :=
   | ndefs_cons d tl => ndefs_cons (open_rec_ndef k u d) (open_rec_ndefs k u tl)
   end.
 
-Definition open_avar  u a := open_rec_avar 0 u a.
-Definition open_trm   u e := open_rec_trm  0 u e.
-Definition open_ndef  u d := open_rec_ndef 0 u d.
-Definition open_ndefs u l := open_rec_ndef 0 u l.
+Definition open_avar  u a := open_rec_avar  0 u a.
+Definition open_trm   u e := open_rec_trm   0 u e.
+Definition open_ndef  u d := open_rec_ndef  0 u d.
+Definition open_ndefs u l := open_rec_ndefs 0 u l.
 
 
 (* ###################################################################### *)
@@ -236,6 +236,77 @@ with subst_defs (z: var) (u: var) (ds: ndefs) : ndefs :=
   | ndefs_nil => ndefs_nil
   | ndefs_cons d rest => ndefs_cons (subst_def z u d) (subst_defs z u rest)
   end.
+
+(* Hint Constructors avar trm ndef ndefs def. *)
+
+Lemma subst_fresh_avar: forall x y,
+  (forall a: avar, x \notin fv_avar a -> subst_avar x y a = a).
+Proof.
+  intros. destruct* a. simpl. case_var*. simpls. notin_false.
+Qed.
+
+Lemma subst_fresh: forall x y,
+  (forall t : trm  , x \notin fv_trm   t  -> subst_trm  x y t  = t ) /\
+  (forall d : ndef , x \notin fv_ndef  d  -> subst_def  x y d  = d ) /\
+  (forall ds: ndefs, x \notin fv_ndefs ds -> subst_defs x y ds = ds).
+Proof.
+  intros x y. apply trm_mutind; intros; simpls; f_equal*; apply* subst_fresh_avar.
+Qed.
+
+Definition subst_fvar(x y z: var): var := If x = z then y else z.
+
+Lemma subst_open_commute_avar: forall x y u,
+  (forall a: avar, forall n: nat,
+    subst_avar x y (open_rec_avar n u a) 
+    = open_rec_avar n (subst_fvar x y u) (subst_avar  x y a)).
+Proof.
+  intros. unfold subst_fvar, subst_avar, open_avar, open_rec_avar. destruct a.
+  + repeat case_if; auto.
+  + case_var*.
+Qed.
+
+(* "open and then substitute" = "substitute and then open" *)
+Lemma subst_open_commute: forall x y u,
+  (forall t : trm, forall n: nat,
+     subst_trm x y (open_rec_trm n u t)
+     = open_rec_trm n (subst_fvar x y u) (subst_trm x y t)) /\
+  (forall d : ndef , forall n: nat, 
+     subst_def x y (open_rec_ndef n u d)
+     = open_rec_ndef n (subst_fvar x y u) (subst_def x y d)) /\
+  (forall ds: ndefs, forall n: nat, 
+     subst_defs x y (open_rec_ndefs n u ds)
+     = open_rec_ndefs n (subst_fvar x y u) (subst_defs x y ds)).
+Proof.
+  intros. apply trm_mutind; intros; simpl; f_equal*; apply* subst_open_commute_avar.
+Qed.
+
+Lemma subst_id_avar: forall x,
+  (forall a : avar, subst_avar x x a  = a).
+Proof.
+  intros. unfold subst_avar. destruct* a. case_var*.
+Qed.
+
+Lemma subst_id_not_needed: forall x,
+  (forall t : trm  , subst_trm  x x t  = t ) /\
+  (forall d : ndef , subst_def  x x d  = d ) /\
+  (forall ds: ndefs, subst_defs x x ds = ds).
+Proof.
+  intro x. apply trm_mutind; intros; unfold subst_trm, subst_def, subst_defs;
+  f_equal*; apply* subst_id_avar.
+Qed.
+
+(* "Introduce a substitution after open": Opening a term t with a var u is the
+   same as opening t with x and then replacing x by u. *)
+Lemma subst_intro_trm: forall x t u, x \notin (fv_trm t) ->
+  open_trm u t = subst_trm x u (open_trm x t).
+Proof.
+  introv Fr. unfold open_trm.
+  destruct (@subst_open_commute x u x) as [P _]. rewrite* (P t 0).
+  destruct (@subst_fresh x u) as [Q _]. rewrite* (Q t).
+  unfold subst_fvar. case_var*.
+Qed.
+
+Print Assumptions subst_intro_trm.
 
 
 (* ###################################################################### *)
@@ -1507,6 +1578,11 @@ Proof.
   (* case typing_defs_push *)
   + admit.
 Qed.
+
+Lemma subst_principle: forall G x y e S T,
+  typing_trm (G & x ~ S) (open_trm x e) T ->
+  typing_trm G (trm_var (avar_f y)) S ->
+  typing_trm G (open_trm y e) T.
 
 (* Does not hold if e = trm_var (avar_f x), because opening e with y results
    in trm_var (avar_f x), which does not typecheck in an environment where we removed x.
