@@ -1596,45 +1596,47 @@ Proof.
 Qed.
 *)
 
-Lemma raw_subst_principles: 
-  forall G1 G2 y S, typing_trm (G1 & G2) (trm_var (avar_f y)) S ->
-  (forall (G0 : ctx) (e0 : trm) (l : label) (d : dec) (Hhas : has G0 e0 l d),
+Lemma raw_subst_principles: forall y S,
+  (forall (G0 : ctx) (t : trm) (l : label) (d : dec) (Hhas : has G0 t l d),
     (fun G0 e0 l d (Hhas: has G0 e0 l d) => 
-      forall x e, G0 = (G1 & (x ~ S) & G2) ->
-                  ok (G1 & (x ~ S) & G2) ->
-                  e0 = (open_trm x e) -> 
-                  has (G1 & G2) (open_trm y e) l d)
-    G0 e0 l d Hhas) /\
-  (forall (G0 : ctx) (e0 : trm) (T : typ) (Hty : typing_trm G0 e0 T),
-    (fun G0 e0 T (Hty: typing_trm G0 e0 T) => 
-      forall x e, G0 = (G1 & (x ~ S) & G2) ->
-                  ok (G1 & (x ~ S) & G2) ->
-                  e0 = (open_trm x e) -> 
-                  typing_trm (G1 & G2) (open_trm y e) T)
-    G0 e0 T Hty) /\
-  (forall (G0 : ctx) (i0 : ndef) (d : ndec) (Hty : typing_def G0 i0 d),
-    (fun G i0 d (Htyp: typing_def G i0 d) => 
-      forall x i, G0 = (G1 & (x ~ S) & G2) ->
-                  ok (G1 & (x ~ S) & G2) ->
-                  i0 = (open_ndef x i) -> 
-                  typing_def (G1 & G2) (open_ndef y i) d)
-    G0 i0 d Hty) /\
-  (forall (G0 : ctx) (is0 : ndefs) (Ds : ndecs) (Hty : typing_defs G0 is0 Ds),
-    (fun G is0 Ds (Hty: typing_defs G is0 Ds) => 
-      forall x is, G0 = (G1 & (x ~ S) & G2) ->
-                   ok (G1 & (x ~ S) & G2) ->
-                   is0 = (open_ndefs y is) -> 
-                   typing_defs (G1 & G2) (open_ndefs y is) Ds)
-    G0 is0 Ds Hty).
-Proof. (*
-  intros G1 G2 y S Htyy.
+      forall G1 G2 x, G0 = (G1 & (x ~ S) & G2) ->
+                      typing_trm (G1 & G2) (trm_var (avar_f y)) S ->
+                      ok (G1 & (x ~ S) & G2) ->
+                      has (G1 & G2) (subst_trm x y t) l d)
+    G0 t l d Hhas) /\
+  (forall (G0 : ctx) (t : trm) (T : typ) (Hty : typing_trm G0 t T),
+    (fun G0 t T (Hty: typing_trm G0 t T) => 
+      forall G1 G2 x, G0 = (G1 & (x ~ S) & G2) ->
+                      typing_trm (G1 & G2) (trm_var (avar_f y)) S ->
+                      ok (G1 & (x ~ S) & G2) ->
+                      typing_trm (G1 & G2) (subst_trm x y t) T)
+    G0 t T Hty) /\
+  (forall (G0 : ctx) (d : ndef) (D : ndec) (Hty : typing_def G0 d D),
+    (fun G d D (Htyp: typing_def G d D) => 
+      forall G1 G2 x, G0 = (G1 & (x ~ S) & G2) ->
+                      typing_trm (G1 & G2) (trm_var (avar_f y)) S ->
+                      ok (G1 & (x ~ S) & G2) ->
+                      typing_def (G1 & G2) (subst_def x y d) D)
+    G0 d D Hty) /\
+  (forall (G0 : ctx) (ds : ndefs) (Ds : ndecs) (Hty : typing_defs G0 ds Ds),
+    (fun G ds Ds (Hty: typing_defs G ds Ds) => 
+      forall G1 G2 x, G0 = (G1 & (x ~ S) & G2) ->
+                      typing_trm (G1 & G2) (trm_var (avar_f y)) S ->
+                      ok (G1 & (x ~ S) & G2) ->
+                      typing_defs (G1 & G2) (subst_defs x y ds) Ds)
+    G0 ds Ds Hty).
+Proof.
+  intros y S.
   apply typing_mutind; intros;
   (* renaming: *)
   lazymatch goal with
     (* 2 IHs *)
-    | H1: forall _ _, _, H2: forall _ _, _  |- _ => rename H1 into IH1, H2 into IH2
+    | H1: context[forall (_ _ : env typ) (_ : var), _], 
+      H2: context[forall (_ _ : env typ) (_ : var), _] |- _ 
+      => rename H1 into IH1, H2 into IH2
     (* 1 IH *)
-    | H : forall _ _, _ |- _ => rename H into IH
+    | H : context[forall (_ _ : env typ) (_ : var), _] |- _ 
+      => rename H into IH
     (* no IH *)
     | _ => idtac
   end;
@@ -1642,64 +1644,72 @@ Proof. (*
     | H: @eq ctx _ _ |- _ => rename H into EqG
   end;
   match goal with
-    | H: @eq trm    _ _ |- _ => rename H into EqTrm
-    | H: @eq ndef   _ _ |- _ => rename H into EqIni
-    | H: @eq defs.t _ _ |- _ => rename H into EqInis
-  end;
-  match goal with
     | H: ok _ |- _ => rename H into Hok
   end.
   (* case has_dec *)
-  + specialize (IH _ _ EqG Hok EqTrm).
-    apply has_dec with Ds; assumption.
+  + apply* has_dec.
   (* case typing_trm_var *)
-  + subst. rename x into z, x0 into x.
-    destruct (destruct_trm_var_eq_open_trm _ _ EqTrm) as [[EqTrm' [EqV | EqV]] | Neq].
-    (* case z = x and e bound var *)
-    - subst. assert (EqST: S = T) by admit. subst.
-      unfold open_trm, open_rec_trm. simpl.
-      apply Htyy.
-    (* case z = x and e free var z *)
-    - subst. assert (EqST: S = T) by admit. subst. admit.
+  + subst. rename x into z, x0 into x. unfold subst_trm, subst_avar. case_var.
+    (* case z = x *)
+    - assert (EqST: T = S) by apply (binds_middle_eq_inv b Hok). subst. assumption.
     (* case z <> x *)
-    - admit.
+    - apply typing_trm_var. apply* binds_remove.
   (* case typing_trm_sel *)
-  + admit.
+  + apply* typing_trm_sel.
   (* case typing_trm_call *)
-  + admit.
+  + apply* typing_trm_call.
   (* case typing_trm_new *)
-  + admit.
+  + apply typing_trm_new with Ds. 
+    (* If we had cofinite quantification, we could choose L := (dom G) \u \{ x },
+       and after introducing z, we could not only have z # G, but also x <> z *)
+    - fold subst_defs. apply* IH1.
+    - fold subst_trm. intros z Ub. assert (xUbG: z # G). rewrite EqG.
+      assert (z <> x). admit. (* That's why we need cofinite quantification! *) auto.
+      rewrite <- concat_assoc.
+      destruct (@subst_open_commute x y z) as [C _]. specialize (C t 0).
+      unfolds open_trm. unfold subst_fvar in C.
+      assert (z <> x). admit. (* Again! *)
+      case_var. rewrite <- C.
+      specialize (IH2 z xUbG G1 (G2 & z ~ typ_rcd Ds) x).
+      subst. apply* IH2; rewrite* concat_assoc.
+      apply weaken_typing_trm.
+      * assumption.
+      * auto. (* again needs x <> z *)
   (* case typing_def_fld *)
-  + admit.
+  + apply* typing_def_fld.
   (* case typing_def_mtd *)
-  + admit.
-  (* case typing_defs_empty *)
-  + admit.
-  (* case typing_defs_push *)
-  + admit.
-Qed.*)
-Abort.
+  + apply typing_def_mtd. 
+    fold subst_trm. intros z Ub. assert (xUbG: z # G). rewrite EqG.
+    assert (z <> x). admit. (* That's why we need cofinite quantification! *) auto.
+    rewrite <- concat_assoc.
+    destruct (@subst_open_commute x y z) as [C _]. specialize (C t 0).
+    unfolds open_trm. unfold subst_fvar in C.
+    assert (z <> x). admit. (* Again! *)
+    case_var. rewrite <- C.
+    specialize (IH z xUbG G1 (G2 & z ~ S0) x).
+    subst. apply* IH; rewrite* concat_assoc.
+    apply weaken_typing_trm.
+    * assumption.
+    * auto. (* again needs x <> z *)
+  (* case typing_defs_nil *)
+  + apply typing_defs_nil.
+  (* case typing_defs_cons *)
+  + apply* typing_defs_cons.
+Qed.
+
+Print Assumptions raw_subst_principles.
 
 Lemma subst_principle: forall G x y t S T,
+  ok (G & x ~ S) ->
   typing_trm (G & x ~ S) t T ->
   typing_trm G (trm_var (avar_f y)) S ->
   typing_trm G (subst_trm x y t) T.
-Admitted.
-
-(* Does not hold if e = trm_var (avar_f x), because opening e with y results
-   in trm_var (avar_f x), which does not typecheck in an environment where we removed x.
-   Maybe need x notin FV(e) ?
-Lemma subst_principle: forall G x y e S T,
-  typing_trm (G ;; (x, S)) (open_trm x e) T ->
-  typing_trm G (trm_var (avar_f y)) S ->
-  typing_trm G (open_trm y e) T.
 Proof.
-  intros G x y e S T He Hy.
-  destruct (raw_subst_principles G empty Hy) as [_ [P _]].
-  assert (Hok: ok (G ;; (x, S))). admit.
-  apply (P _ _ _ He _ _ eq_refl Hok eq_refl).
-Qed.*)
-
+  introv Hok tTy yTy. destruct (raw_subst_principles y S) as [_ [P _]].
+  specialize (P _ t T tTy G empty x).
+  repeat (progress (rewrite concat_empty_r in P)).
+  apply* P.
+Qed.
 
 (* ###################################################################### *)
 (** * Preservation *)
