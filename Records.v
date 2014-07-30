@@ -706,18 +706,18 @@ with typing_trm : ctx -> trm -> typ -> Prop :=
       has G t (label_mtd m) (dec_mtd U V) ->
       typing_trm G u U ->
       typing_trm G (trm_call t m u) V
-  | typing_trm_new : forall G nis Ds t T,
-      typing_defs G nis Ds -> (* no self reference yet, no recursion *)
-      (forall x, x # G ->
-                 typing_trm (G & x ~ typ_rcd Ds) (open_trm x t) T) ->
-      typing_trm G (trm_new nis t) T
+  | typing_trm_new : forall G ds Ds t T x,
+      typing_defs G ds Ds -> (* no self reference yet, no recursion *)
+      x # G ->
+      typing_trm (G & x ~ typ_rcd Ds) (open_trm x t) T ->
+      typing_trm G (trm_new ds t) T
 with typing_def : ctx -> def -> dec -> Prop :=
   | typing_def_fld : forall G v T,
       typing_trm G (trm_var v) T ->
       typing_def G (def_fld v) (dec_fld T)
-  | typing_def_mtd : forall G S T t,
-      (forall x, x # G ->
-                 typing_trm (G & x ~ S) (open_trm x t) T) ->
+  | typing_def_mtd : forall G S T t x,
+      x # G ->
+      typing_trm (G & x ~ S) (open_trm x t) T ->
       typing_def G (def_mtd S t) (dec_mtd S T)
 with typing_defs : ctx -> defs -> decs -> Prop :=
   | typing_defs_nil : forall G,
@@ -850,9 +850,9 @@ Proof. intros. inversions H. eauto. Qed.
 
 Lemma invert_typing_trm_new: forall G is t T,
   typing_trm G (trm_new is t) T ->
-  exists Ds, typing_defs G is Ds /\
-             (forall x, x # G ->
-                        typing_trm (G & x ~ typ_rcd Ds) (open_trm x t) T).
+  exists x Ds, typing_defs G is Ds /\ 
+               x # G /\
+               typing_trm (G & x ~ typ_rcd Ds) (open_trm x t) T.
 Proof. intros. inversions H. eauto. Qed.
 
 
@@ -1059,6 +1059,7 @@ Proof.
     - inversions H2. inversions H3. apply* weaken_typing_defs.
     - apply* weaken_typing_defs.
 Qed.
+
 
 (* ###################################################################### *)
 (** * Progress *)
