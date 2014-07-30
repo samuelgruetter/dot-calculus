@@ -819,6 +819,38 @@ Proof.
     - auto.
 Qed.
 
+Lemma ctx_unbound_to_sto_unbound: forall s G x,
+  wf_sto s G ->
+  x # G ->
+  x # s.
+Proof.
+  introv Wf Ub.
+  induction Wf.
+  + auto.
+  + destruct (classicT (x0 = x)) as [Eq | Ne].
+    - subst. false (fresh_push_eq_inv Ub). 
+    - auto.
+Qed.
+
+Lemma invert_wf_sto: forall s G,
+  wf_sto s G -> 
+    forall x ds Ds, 
+      binds x ds s -> 
+      binds x (typ_rcd Ds) G ->
+      exists G1 G2, G = G1 & G2 /\ typing_defs G1 ds Ds.
+Proof.
+  intros s G Wf. induction Wf; intros.
+  + false* binds_empty_inv.
+  + (*rename H into Hvb, H0 into Htb, H1 into Hisds, H2 into Hvb0, H3 into Htb0.*)
+    unfold binds in *. rewrite get_push in *.
+    case_if.
+    - inversions H2. inversions H3. exists G (x ~ typ_rcd Ds0). auto.
+    - specialize (IHWf x0 ds0 Ds0 H2 H3).
+      destruct IHWf as [G1 [G2 [Eq Ty]]]. rewrite Eq.
+      exists G1 (G2 & x ~ typ_rcd Ds).
+      rewrite concat_assoc. auto.
+Qed.
+
 
 (* ###################################################################### *)
 (** * Inversion lemmas for typing *)
@@ -919,36 +951,76 @@ Qed.
 
 
 (* ###################################################################### *)
+(** * Progress *)
+
+Theorem progress: forall s G e T,
+  wf_sto s G ->
+  typing_trm G e T -> 
+  (
+    (* can step *)
+    (exists s' e', red s e s' e') \/
+    (* or is a value *)
+    (exists x is, e = (trm_var (avar_f x)) /\ binds x is s)
+  ).
+Proof.
+  introv Wf Ty. gen G e T Ty s Wf.
+  set (progress_for := fun s e =>
+                         (exists s' e', red s e s' e') \/
+                         (exists x is, e = (trm_var (avar_f x)) /\ binds x is s)).
+  apply (typing_trm_mut
+    (fun G e l d (Hhas: has G e l d)         => forall s, wf_sto s G -> progress_for s e)
+    (fun G e T   (Hty: typing_trm G e T)     => forall s, wf_sto s G -> progress_for s e)
+    (fun G i d   (Htyp: typing_def G i d)    => True)
+    (fun G is Ds (Htyp: typing_defs G is Ds) => True));
+  unfold progress_for; clear progress_for; intros; try apply I; auto_specialize.
+  (* case has_dec *)
+  + assumption. 
+  (* case typing_trm_var *)
+  + right. destruct (ctx_binds_to_sto_binds H b) as [is Hbv].
+    exists x is. auto.
+  (* case typing_trm_sel *)
+  + left. destruct H as [IH | IH].
+    (* receiver is an expression *)
+    - destruct IH as [s' [e' IH]]. do 2 eexists. apply (red_sel1 l IH). 
+    (* receiver is a var *)
+    - destruct IH as [x [is [Heq Hbv]]]. subst.
+      destruct (invert_has h) as [ds [Hty Hbd]].
+      lets Hbt: (invert_typing_trm_var Hty).
+      destruct (invert_wf_sto H0 Hbv Hbt) as [G1 [G2 [Eq Hty2]]].
+      destruct (decs_has_to_defs_has Hty2 Hbd) as [i Hbi].
+      destruct (defs_has_fld_sync Hbi) as [y Heq]. subst.
+      exists s (trm_var y).
+      apply (red_sel Hbv Hbi).
+  (* case typing_trm_call *)
+  + left. destruct H as [IHrec | IHrec].
+    (* case receiver is an expression *)
+    - destruct IHrec as [s' [e' IHrec]]. do 2 eexists. apply (red_call1 m _ IHrec).
+    (* case receiver is  a var *)
+    - destruct IHrec as [x [is [Heqx Hbv]]]. subst.
+      destruct H0 as [IHarg | IHarg].
+      (* arg is an expression *)
+      * destruct IHarg as [s' [e' IHarg]]. do 2 eexists. apply (red_call2 x m IHarg).
+      (* arg is a var *)
+      * destruct IHarg as [y [is' [Heqy Hbv']]]. subst. 
+        destruct (invert_has h) as [ds [Hty Hbd]].
+        lets Hbt: (invert_typing_trm_var Hty).
+        destruct (invert_wf_sto H1 Hbv Hbt) as [G1 [G2 [Eq Hty2]]].
+        destruct (decs_has_to_defs_has Hty2 Hbd) as [i Hbi].
+        destruct (defs_has_mtd_sync Hbi) as [U' [e Heq]]. subst.
+        exists s (open_trm y e).
+        apply (red_call y Hbv Hbi).
+  (* case typing_trm_new *)
+  + left.
+    exists (s & x ~ ds) (open_trm x t).
+    apply red_new.
+    apply (ctx_unbound_to_sto_unbound H1 n).
+Qed.
+
+Print Assumptions progress.
+
+
+(* ###################################################################### *)
 (** * Weakening lemmas *)
-
-(*
-Lemma weaken_binds: forall x T G H,
-  ok (G & H) -> binds x T G -> binds x T (G & H).
-Proof.
-  intros x T G H. induction H; intros Hok Hb.
-  + simpl. assumption.
-  + rewrite -> ctx.concat_push_assoc in *. 
-    destruct (ctx.invert_ok_push Hok) as [Hok' Hub].
-    auto_specialize.
-    ctx.compare_keys.
-    - unfold ctx.unbound in Hub. rewrite -> e in IHlist. symmetry in Hub.
-      assert (C: None = Some T). transitivity (ctx.get (ctx.key a) (G & H)); assumption.
-      discriminate C.
-    - assumption.
-Qed.
-
-Lemma weaken_binds_middle: forall x T G1 G2 G3,
-  ok (G1 & G2 & G3) -> binds x T (G1 & G3) -> binds x T (G1 & G2 & G3).
-Proof.
-  intros x T G1 G2 G3. induction G3; intros Hok Hb.
-  + simpl in *. apply (weaken_binds _ Hok Hb).
-  + rewrite -> ctx.concat_push_assoc in *. 
-    destruct (ctx.invert_ok_push Hok) as [Hok' Hub].
-    ctx.compare_keys.
-    - assumption.
-    - apply (IHG3 Hok' Hb).
-Qed.
-*)
 
 (* If we only weaken at the end, i.e. from [G1] to [G1 & G2], the IH for the 
    [typing_trm_new] case adds G2 to the end, so it takes us from [G1, x: Ds] 
@@ -971,7 +1043,7 @@ Lemma weakening:
 /\ (forall G is Ds (Hisds: typing_defs G is Ds)
            G1 G2 G3 (Heq: G = G1 & G3) (Hok123: ok (G1 & G2 & G3)), 
            typing_defs (G1 & G2 & G3) is Ds).
-Proof.
+Proof. Admitted. (*
   apply typing_mutind; intros;
     repeat match goal with
     | H: forall (_ _ _ : env typ), _ |- _ => 
@@ -1000,7 +1072,7 @@ Proof.
     - rewrite -> concat_assoc. auto.
   + apply typing_defs_nil.
   + apply* typing_defs_cons.
-Qed.
+Qed.*)
 
 Print Assumptions weakening.
 
@@ -1044,7 +1116,7 @@ Qed.
 (* ###################################################################### *)
 (** * Inversion lemmas which depend on weakening *)
 
-Lemma invert_wf_sto: forall s G,
+Lemma invert_wf_sto_with_weakening: forall s G,
   wf_sto s G -> 
     forall x ds Ds, 
       binds x ds s -> 
@@ -1053,80 +1125,12 @@ Lemma invert_wf_sto: forall s G,
 Proof.
   intros s G Wf. induction Wf; intros.
   + false* binds_empty_inv.
-  + (*rename H into Hvb, H0 into Htb, H1 into Hisds, H2 into Hvb0, H3 into Htb0.*)
-    unfold binds in *. rewrite get_push in *.
+  + unfold binds in *. rewrite get_push in *.
     case_if.
     - inversions H2. inversions H3. apply* weaken_typing_defs.
     - apply* weaken_typing_defs.
 Qed.
 
-
-(* ###################################################################### *)
-(** * Progress *)
-
-Theorem progress: forall s G e T,
-  wf_sto s G ->
-  typing_trm G e T -> 
-  (
-    (* can step *)
-    (exists s' e', red s e s' e') \/
-    (* or is a value *)
-    (exists x is, e = (trm_var (avar_f x)) /\ binds x is s)
-  ).
-Proof.
-  introv Wf Ty. gen G e T Ty s Wf.
-  set (progress_for := fun s e =>
-                         (exists s' e', red s e s' e') \/
-                         (exists x is, e = (trm_var (avar_f x)) /\ binds x is s)).
-  apply (typing_trm_mut
-    (fun G e l d (Hhas: has G e l d)         => forall s, wf_sto s G -> progress_for s e)
-    (fun G e T   (Hty: typing_trm G e T)     => forall s, wf_sto s G -> progress_for s e)
-    (fun G i d   (Htyp: typing_def G i d)    => True)
-    (fun G is Ds (Htyp: typing_defs G is Ds) => True));
-  unfold progress_for; clear progress_for; intros; try apply I; auto_specialize.
-  (* case has_dec *)
-  + assumption. 
-  (* case typing_trm_var *)
-  + right. destruct (ctx_binds_to_sto_binds H b) as [is Hbv].
-    exists x is. auto.
-  (* case typing_trm_sel *)
-  + left. destruct H as [IH | IH].
-    (* receiver is an expression *)
-    - destruct IH as [s' [e' IH]]. do 2 eexists. apply (red_sel1 l IH). 
-    (* receiver is a var *)
-    - destruct IH as [x [is [Heq Hbv]]]. subst.
-      destruct (invert_has h) as [ds [Hty Hbd]].
-      lets Hbt: (invert_typing_trm_var Hty).
-      lets Hty2: (invert_wf_sto H0 Hbv Hbt).
-      destruct (decs_has_to_defs_has Hty2 Hbd) as [i Hbi].
-      destruct (defs_has_fld_sync Hbi) as [y Heq]. subst.
-      exists s (trm_var y).
-      apply (red_sel Hbv Hbi).
-  (* case typing_trm_call *)
-  + left. destruct H as [IHrec | IHrec].
-    (* case receiver is an expression *)
-    - destruct IHrec as [s' [e' IHrec]]. do 2 eexists. apply (red_call1 m _ IHrec).
-    (* case receiver is  a var *)
-    - destruct IHrec as [x [is [Heqx Hbv]]]. subst.
-      destruct H0 as [IHarg | IHarg].
-      (* arg is an expression *)
-      * destruct IHarg as [s' [e' IHarg]]. do 2 eexists. apply (red_call2 x m IHarg).
-      (* arg is a var *)
-      * destruct IHarg as [y [is' [Heqy Hbv']]]. subst. 
-        destruct (invert_has h) as [ds [Hty Hbd]].
-        lets Hbt: (invert_typing_trm_var Hty).
-        lets Hty2: (invert_wf_sto H1 Hbv Hbt).
-        destruct (decs_has_to_defs_has Hty2 Hbd) as [i Hbi].
-        destruct (defs_has_mtd_sync Hbi) as [U' [e Heq]]. subst.
-        exists s (open_trm y e).
-        apply (red_call y Hbv Hbi).
-  (* case typing_trm_new *)
-  + left. pick_fresh x.
-    exists (s & x ~ nis) (open_trm x t).
-    apply* red_new.
-Qed.
-
-Print Assumptions progress.
 
 (* ###################################################################### *)
 (** * The substitution principle *)
