@@ -301,10 +301,19 @@ Hint Resolve term_abs_to_body body_to_term_abs.
 
 (** ** Opening a body with a term gives a term *)
 
-Lemma open_term : forall t u,
+Lemma open_term_orig : forall t u,
   body t -> term u -> term (open u t).
 Proof.
   intros. destruct H. pick_fresh y. rewrite* (@subst_intro y).
+Qed.
+
+Lemma open_term : forall t u,
+  body t -> term u -> term (open u t).
+Proof.
+  introv Wt Wu. destruct Wt as [L Wt]. pick_fresh x. rewrite (@subst_intro x).
+  + apply (subst_term _ Wu). apply Wt. auto.
+  + auto.
+  + apply Wu.
 Qed.
 
 Hint Resolve open_term.
