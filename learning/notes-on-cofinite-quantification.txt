@@ -1,0 +1,72 @@
+
+Notes on Cofinite Quantification [Outdated!]
+********************************************
+
+[z # G] style 1:
+================
+
+    typing_def_mtd : forall G S T t,
+      (forall x, x # G -> typing_trm (G & x ~ S) (open_trm x t) T) ->
+      typing_def G (def_mtd S t) (dec_mtd S T)
+
+Does not work, because in proof of substitution lemma, we have an x in
+[G1 & x ~ S & G2], and typing_trm_new gives a z, which is not in (G1 & G2).
+IH takes a z, for which z # (G1 & x ~ S & G2) must hold --> need x <> z,
+but how?
+
+
+[z # G] style 2:
+================
+
+    typing_def_mtd : forall G x t S T,
+      x # G ->
+      typing_trm (G & x ~ S) (open_trm t x) T ->
+      typing_def G (def_mtd t) (dec_mtd S T)
+
+Works in var-by-var-substitution lemma, because z does not go from typing_def_mtd to
+IH, but the other way round:
+IH gives a z, which is not in G (= G1 & x ~ S & G2), so x <> z.
+We can choose a z for typing_def_mtd, and we choose the z from the IH.
+The IH needs to [z # (G1 & G2)], which also holds.
+
+If we want to do var-by-term substitution, we need the [term] judgment, which asserts
+that a trm is locally closed. It would look as follows:
+
+    term_abs : forall x t,
+      x \notin fv t ->
+      term (open (trm_fvar x) t) ->
+      term (trm_abs t)
+
+And the [body] judgment would look as follows:
+
+    Definition body t :=
+      exists x, term (open (trm_fvar x) t).
+
+Now lets' look at the [open_term] lemma:
+
+    Lemma open_term : forall t u,
+      body t -> term u -> term (open u t).
+
+Destructing [body t] would give us an x and [term (open (trm_fvar x) t)], and
+[x \notin fv t], so we could still apply [subst_intro].
+
+So it's not clear if Charguéraud didn't choose this style because of fundamental problems
+or just because it's less convenient for automation.
+
+
+[z \notin L] style:
+===================
+
+    typing_abs : forall L E U T t1,
+      (forall x, x \notin L -> typing (E & x ~ U) (open (trm_fvar x) t1) T) ->
+      typing E (trm_abs t1) (typ_arrow U T)
+
+
+    term_abs : forall L t1,
+      (forall x, x \notin L -> term (open (trm_fvar x) t1)) ->
+      term (trm_abs t1)
+
+    Definition body t :=
+      exists L, forall x, x \notin L -> term (open (trm_fvar x) t).
+
+
