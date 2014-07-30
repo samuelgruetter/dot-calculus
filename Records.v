@@ -1043,7 +1043,7 @@ Lemma weakening:
 /\ (forall G is Ds (Hisds: typing_defs G is Ds)
            G1 G2 G3 (Heq: G = G1 & G3) (Hok123: ok (G1 & G2 & G3)), 
            typing_defs (G1 & G2 & G3) is Ds).
-Proof. Admitted. (*
+Proof.
   apply typing_mutind; intros;
     repeat match goal with
     | H: forall (_ _ _ : env typ), _ |- _ => 
@@ -1054,25 +1054,33 @@ Proof. Admitted. (*
   + apply typing_trm_var. apply* binds_weaken.
   + apply* typing_trm_sel.
   + apply* typing_trm_call.
-  + apply (typing_trm_new _ IH). intros.
+  + admit. (* similar to typing_def_mtd *) (*
+    apply (typing_trm_new _ IH). intros.
     assert (Hub13: x # (G1 & G3)) by auto.
     rewrite <- concat_assoc.
     apply H0.
     - assumption.
     - rewrite -> concat_assoc. reflexivity.
-    - rewrite -> concat_assoc. auto.
+    - rewrite -> concat_assoc. auto.*)
   + apply* typing_def_fld.
-  + apply typing_def_mtd.
-    intros.
-    assert (Hub13: x # (G1 & G3)) by auto.
+  + rename H into IH.
+    (* We need a very fresh x', which is not only fresh from G1 & G3, 
+       but also from G1 & G2 & G3. *)
+    pick_fresh x'.
+    apply typing_def_mtd with x'. auto.
     rewrite <- concat_assoc.
-    apply H.
-    - assumption.
-    - rewrite -> concat_assoc. reflexivity.
-    - rewrite -> concat_assoc. auto.
+    specialize (IH G1 G2 (G3 & x ~ S)). rewrite concat_assoc in IH.
+    specialize (IH eq_refl).
+    rewrite concat_assoc in IH.
+    rewrite concat_assoc.
+    assert (x # G2). admit. (* <===== This does not hold!!!!!!! *)
+    assert (Hok123x: ok (G1 & G2 & G3 & x ~ S)) by auto.
+    specialize (IH Hok123x).
+    (* Now IH and goal are the same modulo x/x'. Should be provable. *)
+    admit.
   + apply typing_defs_nil.
   + apply* typing_defs_cons.
-Qed.*)
+Qed.
 
 Print Assumptions weakening.
 
@@ -1244,38 +1252,26 @@ Proof.
   (* case typing_trm_call *)
   + apply* typing_trm_call.
   (* case typing_trm_new *)
-  + apply typing_trm_new with Ds. 
-    (* If we had cofinite quantification, we could choose L := (dom G) \u \{ x },
-       and after introducing z, we could not only have z # G, but also x <> z *)
+  + apply typing_trm_new with Ds x0. 
     - fold subst_defs. apply* IH1.
-    - fold subst_trm. intros z Ub. assert (xUbG: z # G). rewrite EqG.
-      assert (z <> x). admit. (* That's why we need cofinite quantification! *) auto.
-      rewrite <- concat_assoc.
-      destruct (@subst_open_commute x y z) as [C _]. specialize (C t 0).
-      unfolds open_trm. unfold subst_fvar in C.
-      assert (z <> x). admit. (* Again! *)
-      case_var. rewrite <- C.
-      specialize (IH2 z xUbG G1 (G2 & z ~ typ_rcd Ds) x).
-      subst. apply* IH2; rewrite* concat_assoc.
-      apply weaken_typing_trm.
-      * assumption.
-      * auto. (* again needs x <> z *)
+    - destruct (ok_middle_inv Hok) as [UbG1 UbG2]. auto.
+    - admit. (* same as typing_def_mtd *)
   (* case typing_def_fld *)
   + apply* typing_def_fld.
   (* case typing_def_mtd *)
-  + apply typing_def_mtd. 
-    fold subst_trm. intros z Ub. assert (xUbG: z # G). rewrite EqG.
-    assert (z <> x). admit. (* That's why we need cofinite quantification! *) auto.
-    rewrite <- concat_assoc.
+  + rename x into z, x0 into x. subst.
+    specialize (IH G1 (G2 & z ~ S0) x). rewrite concat_assoc in IH.
+    specialize (IH eq_refl). rewrite concat_assoc in IH.
+    assert (Ub: z # G1 & G2) by destruct* (ok_middle_inv Hok). 
+    apply (typing_def_mtd _ Ub).
+    fold subst_trm.
     destruct (@subst_open_commute x y z) as [C _]. specialize (C t 0).
     unfolds open_trm. unfold subst_fvar in C.
-    assert (z <> x). admit. (* Again! *)
+    assert (z <> x). admit. (* Somehow follows from Hok and n *)
     case_var. rewrite <- C.
-    specialize (IH z xUbG G1 (G2 & z ~ S0) x).
-    subst. apply* IH; rewrite* concat_assoc.
-    apply weaken_typing_trm.
-    * assumption.
-    * auto. (* again needs x <> z *)
+    apply IH.
+    - apply* weaken_typing_trm.
+    - auto.
   (* case typing_defs_nil *)
   + apply typing_defs_nil.
   (* case typing_defs_cons *)
@@ -1314,7 +1310,7 @@ Proof.
     destruct Hhas as [Ds [Htyx Hdbm]].
     apply invert_typing_trm_var in Htyx. rename Htyx into Htbx.
     (* Feed "binds x" and "ctx binds x" to invert_wf_sto: *)
-    lets HdsDs: (invert_wf_sto Hwf Hvbx Htbx).
+    lets HdsDs: (invert_wf_sto_with_weakening Hwf Hvbx Htbx).
     lets Hmtd: (invert_typing_mtd_def_inside_typing_defs HdsDs Hibm Hdbm).
     pick_fresh y'.
     rewrite* (@subst_intro_trm y' y body).
@@ -1327,16 +1323,16 @@ Proof.
     destruct Hty as [Ds [Htyx Hdbl]].
     apply invert_typing_trm_var in Htyx. rename Htyx into Htbx.
     (* Feed "binds x" and "ctx binds x" to invert_wf_sto: *)
-    lets HdsDs: (invert_wf_sto Hwf Hvbx Htbx).
+    lets HdsDs: (invert_wf_sto_with_weakening Hwf Hvbx Htbx).
     apply (invert_typing_fld_def_inside_typing_defs HdsDs Hibl Hdbl).
   (* red_new *)
   + rename H into Hvux.
     apply invert_typing_trm_new in Hty.
-    destruct Hty as [Ds [Hisds Htye]].
+    destruct Hty as [z [Ds [HdsDs [Ub Htye]]]].
     lets Htux: (sto_unbound_to_ctx_unbound Hwf Hvux).
     exists (x ~ typ_rcd Ds). split.
-    - apply (wf_sto_push Hwf Hvux Htux Hisds).
-    - apply (Htye x Htux).
+    - apply (wf_sto_push Hwf Hvux Htux HdsDs).
+    - admit. (* TODO needs open/subst typing preservation lemma *)
   (* red_call1 *)
   + rename T into Tr.
     apply invert_typing_trm_call in Hty.
