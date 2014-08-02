@@ -136,33 +136,7 @@ Fixpoint fv_avar (a: avar) { struct a } : vars :=
   | avar_f x => \{x}
   end.
 
-(*
-(* It's a bit tricky to convince Coq that these fv functions terminate.
-   One solution is to inline fv_defs. See http://cs.stackexchange.com/questions/104. *)
-Fixpoint fv_trm (t: trm) : vars :=
-  let fv_defs := (fix fv_defs (ds: list def) : vars := match ds with
-  | nil => \{}
-  | cons d rest => (fv_def d) \u (fv_defs rest)
-  end) in
-  match t with
-  | trm_var x => fv_avar x
-  | trm_new ds t => (fv_defs ds) \u (fv_trm t)
-  | trm_sel t l => fv_trm t
-  | trm_call t1 m t2 => (fv_trm t1) \u (fv_trm t2)
-  end
-with fv_def (d: def) : vars :=
-  match d with
-  | def_fld l x => fv_avar x
-  | def_mtd m T u => fv_trm u
-  end.
-Fixpoint fv_defs (ds: list def) : vars := 
-  match ds with
-  | nil => \{}
-  | cons d rest => (fv_def d) \u (fv_defs rest)
-  end.
-*)
-
-(* If we define defs ourselves instead of using [list def], we don't have any
+(* Since we define defs ourselves instead of using [list def], we don't have any
    termination proof problems: *)
 Fixpoint fv_trm (t: trm) : vars :=
   match t with
@@ -209,8 +183,6 @@ with subst_defs (z: var) (u: var) (ds: defs) : defs :=
   | defs_nil => defs_nil
   | defs_cons n d rest => defs_cons n (subst_def z u d) (subst_defs z u rest)
   end.
-
-(* Hint Constructors avar trm def defs def. *)
 
 Lemma subst_fresh_avar: forall x y,
   (forall a: avar, x \notin fv_avar a -> subst_avar x y a = a).
@@ -261,14 +233,6 @@ Proof.
   unfold open_trm. assumption.
 Qed.
 
-Lemma subst_open_commute_def: forall x y u d,
-  subst_def x y (open_def u d) = open_def (subst_fvar x y u) (subst_def x y d).
-Proof.
-  intros.
-  destruct (@subst_open_commute x y u) as [_ [P _]]. specialize (P d 0).
-  unfold open_def. assumption.
-Qed.
-
 Lemma subst_open_commute_defs: forall x y u ds,
   subst_defs x y (open_defs u ds) = open_defs (subst_fvar x y u) (subst_defs x y ds).
 Proof.
@@ -281,15 +245,6 @@ Lemma subst_id_avar: forall x,
   (forall a : avar, subst_avar x x a  = a).
 Proof.
   intros. unfold subst_avar. destruct* a. case_var*.
-Qed.
-
-Lemma subst_id_not_needed: forall x,
-  (forall t : trm  , subst_trm  x x t  = t ) /\
-  (forall d : def , subst_def  x x d  = d ) /\
-  (forall ds: defs, subst_defs x x ds = ds).
-Proof.
-  intro x. apply trm_mutind; intros; unfold subst_trm, subst_def, subst_defs;
-  f_equal*; apply* subst_id_avar.
 Qed.
 
 (* "Introduce a substitution after open": Opening a term t with a var u is the
@@ -796,15 +751,6 @@ Inductive wf_sto: sto -> ctx -> Prop :=
 
 (** ** Inversion lemmas for [wf_sto] *)
 
-(*
-Lemma invert_wf_sto_push: forall s G x ds Ds,
-  wf_sto (s & x ~ ds) (G & x ~ typ_rcd Ds) ->
-  wf_sto s G /\ x # s /\ x # G /\ ty_defs G ds Ds.
-Proof.
-  intros. inversions H. auto.
-Qed.
-*)
-
 Lemma wf_sto_to_ok_s: forall s G,
   wf_sto s G -> ok s.
 Proof. intros. induction H; jauto. Qed.
@@ -870,8 +816,7 @@ Lemma invert_wf_sto: forall s G,
 Proof.
   intros s G Wf. induction Wf; intros.
   + false* binds_empty_inv.
-  + (*rename H into Hvb, H0 into Htb, H1 into Hisds, H2 into Hvb0, H3 into Htb0.*)
-    unfold binds in *. rewrite get_push in *.
+  + unfold binds in *. rewrite get_push in *.
     case_if.
     - inversions H2. inversions H3. exists G (@empty typ). rewrite concat_empty_r. auto.
     - specialize (IHWf x0 ds0 Ds0 H2 H3).
@@ -1167,7 +1112,6 @@ Qed.
 (* ###################################################################### *)
 (** * The substitution principle *)
 
-(* TODO: first define substitution... *)
 
 (*
 
@@ -1177,40 +1121,6 @@ Qed.
 
 Note that in general, u is a term, but for our purposes, it suffices to consider
 the special case where u is a variable.
-*)
-
-(*
-Lemma destruct_trm_var_eq_open_trm: forall z x e,
-  trm_var (avar_f z) = open_trm x e ->
-  (z = x /\ (e = trm_var (avar_b 0) \/ e = trm_var (avar_f z)))
-  \/ z <> x.
-Proof.
-  intros. unfold open_trm, open_rec_trm in H. destruct e; try discriminate H.
-  inversion H.
-  unfold open_rec_avar in H1. destruct a.
-  + destruct (eq_nat_dec 0 n).
-    - inversions H1. left. split. reflexivity. left. reflexivity.
-    - discriminate H1.
-  + inversions H1. destruct (eq_nat_dec v x).
-    - subst. left. split. reflexivity. right. reflexivity.
-    - right. assumption.
-Qed.
-*)
-
-(*
-Lemma destruct_trm_var_eq_open_trm: forall z x e,
-  trm_var (avar_f z) = open_trm x e ->
-  (e = trm_var (avar_b 0) /\ z = x) \/
-  (e = trm_var (avar_f z)).
-Proof.
-  intros. unfold open_trm, open_rec_trm in H. destruct e; try discriminate H.
-  inversion H.
-  unfold open_rec_avar in H1. destruct a.
-  + destruct (eq_nat_dec 0 n).
-    - inversions H1. left; split; reflexivity.
-    - discriminate H1.
-  + inversions H1. right; reflexivity.
-Qed.
 *)
 
 Lemma raw_subst_principles: forall y S,
