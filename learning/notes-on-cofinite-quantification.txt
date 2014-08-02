@@ -1,27 +1,53 @@
 
-Notes on Cofinite Quantification [Outdated!]
-********************************************
+Notes on Cofinite Quantification
+********************************
+
+In the typechecking rule for methods, we have to quantify the variable z we use
+to open the method body. There are three ways to quantify z (we give the 
+quantifiers one would get in the result of a corresponding inversion lemma):
+* forall z \notin G                called "[z # G] style 1"
+* exists z \notin G                called "[z # G] style 2"
+* exists L, forall z \notin L      called "[z \notin L] style"
+
+Here's the typing_def_mtd rule in these three styles:
 
 [z # G] style 1:
-================
 
     typing_def_mtd : forall G S T t,
       (forall x, x # G -> typing_trm (G & x ~ S) (open_trm x t) T) ->
       typing_def G (def_mtd S t) (dec_mtd S T)
 
-Does not work, because in proof of substitution lemma, we have an x in
-[G1 & x ~ S & G2], and typing_trm_new gives a z, which is not in (G1 & G2).
-IH takes a z, for which z # (G1 & x ~ S & G2) must hold --> need x <> z,
-but how?
-
-
 [z # G] style 2:
-================
 
     typing_def_mtd : forall G x t S T,
       x # G ->
       typing_trm (G & x ~ S) (open_trm t x) T ->
       typing_def G (def_mtd t) (dec_mtd S T)
+
+
+
+[z \notin L] style:
+===================
+
+    typing_abs : forall L E U T t1,
+      (forall x, x \notin L -> typing (E & x ~ U) (open (trm_fvar x) t1) T) ->
+      typing E (trm_abs t1) (typ_arrow U T)
+
+
+    term_abs : forall L t1,
+      (forall x, x \notin L -> term (open (trm_fvar x) t1)) ->
+      term (trm_abs t1)
+
+    Definition body t :=
+      exists L, forall x, x \notin L -> term (open (trm_fvar x) t).
+
+
+-------
+
+Does not work, because in proof of substitution lemma, we have an x in
+[G1 & x ~ S & G2], and typing_trm_new gives a z, which is not in (G1 & G2).
+IH takes a z, for which z # (G1 & x ~ S & G2) must hold --> need x <> z,
+but how?
 
 Works in var-by-var-substitution lemma, because z does not go from typing_def_mtd to
 IH, but the other way round:
@@ -52,21 +78,4 @@ Destructing [body t] would give us an x and [term (open (trm_fvar x) t)], and
 
 So it's not clear if Charguéraud didn't choose this style because of fundamental problems
 or just because it's less convenient for automation.
-
-
-[z \notin L] style:
-===================
-
-    typing_abs : forall L E U T t1,
-      (forall x, x \notin L -> typing (E & x ~ U) (open (trm_fvar x) t1) T) ->
-      typing E (trm_abs t1) (typ_arrow U T)
-
-
-    term_abs : forall L t1,
-      (forall x, x \notin L -> term (open (trm_fvar x) t1)) ->
-      term (trm_abs t1)
-
-    Definition body t :=
-      exists L, forall x, x \notin L -> term (open (trm_fvar x) t).
-
 
