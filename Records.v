@@ -254,6 +254,14 @@ Proof.
   intros. apply trm_mutind; intros; simpl; f_equal*; apply* subst_open_commute_avar.
 Qed.
 
+Lemma subst_open_commute_trm: forall x y u t,
+  subst_trm x y (open_trm u t) = open_trm (subst_fvar x y u) (subst_trm x y t).
+Proof.
+  intros.
+  destruct (@subst_open_commute x y u) as [P _]. specialize (P t 0).
+  unfold open_trm. assumption.
+Qed.
+
 Lemma subst_id_avar: forall x,
   (forall a : avar, subst_avar x x a  = a).
 Proof.
@@ -274,8 +282,7 @@ Qed.
 Lemma subst_intro_trm: forall x u t, x \notin (fv_trm t) ->
   open_trm u t = subst_trm x u (open_trm x t).
 Proof.
-  introv Fr. unfold open_trm.
-  destruct (@subst_open_commute x u x) as [P _]. rewrite* (P t 0).
+  introv Fr. unfold open_trm. rewrite* subst_open_commute_trm.
   destruct (@subst_fresh x u) as [Q _]. rewrite* (Q t).
   unfold subst_fvar. case_var*.
 Qed.
@@ -751,6 +758,9 @@ Ltac gather_vars :=
 Ltac pick_fresh x :=
   let L := gather_vars in (pick_fresh_gen L x).
 
+Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
+  apply_fresh_base T gather_vars x.
+
 
 (* ###################################################################### *)
 (** * Well-formed store ([wf_venv]) *)
@@ -902,7 +912,13 @@ Lemma extract_typing_def_from_typing_defs: forall G l d ds D Ds,
   decs_has Ds l D ->
   typing_def G d D.
 Proof.
-Admitted.
+  introv HdsDs. induction HdsDs.
+  + intros. inversion H.
+  + introv dsHas DsHas. unfolds defs_has, decs_has, get_def, get_dec. 
+    rewrite (typing_def_to_label_for_eq n H) in dsHas. case_if.
+    - inversions dsHas. inversions DsHas. assumption.
+    - apply* IHHdsDs.
+Qed.
 
 Lemma invert_typing_mtd_def_inside_typing_defs: forall G ds Ds m S1 S2 T body,
   typing_defs G ds Ds ->
@@ -911,16 +927,22 @@ Lemma invert_typing_mtd_def_inside_typing_defs: forall G ds Ds m S1 S2 T body,
   (* conclusion is the premise needed to construct a typing_def_mtd: *)
   exists L, forall x, x \notin L -> typing_trm (G & x ~ S2) (open_trm x body) T.
 Proof.
-Admitted.
+  introv HdsDs dsHas DsHas.
+  lets H: (extract_typing_def_from_typing_defs HdsDs dsHas DsHas).
+  inversions* H. 
+Qed.
 
 Lemma invert_typing_fld_def_inside_typing_defs: forall G ds Ds l v T,
   typing_defs G ds Ds ->
   defs_has ds (label_fld l) (def_fld v) ->
   decs_has Ds (label_fld l) (dec_fld T) ->
-  (* conclusion is the premise needed to pushtruct a typing_def_fld: *)
+  (* conclusion is the premise needed to construct a typing_def_fld: *)
   typing_trm G (trm_var v) T.
 Proof.
-Admitted.
+  introv HdsDs dsHas DsHas.
+  lets H: (extract_typing_def_from_typing_defs HdsDs dsHas DsHas).
+  inversions* H. 
+Qed.
 
 Lemma get_def_cons : forall l n d ds,
   get_def l (defs_cons n d ds) = If l = (label_for_def n d) then Some d else get_def l ds.
@@ -1284,6 +1306,24 @@ Proof.
   specialize (P _ t T tTy G empty x).
   repeat (progress (rewrite concat_empty_r in P)).
   apply* P.
+Qed.
+
+Lemma typing_open_change_var: forall x y G e S T,
+  ok (G & x ~ S) ->
+  ok (G & y ~ S) ->
+  x \notin fv_trm e ->
+  typing_trm (G & x ~ S) (open_trm x e) T ->
+  typing_trm (G & y ~ S) (open_trm y e) T.
+Proof.
+  introv Hokx Hoky xFr Ty.
+  destruct (classicT (x = y)) as [Eq | Ne]. subst. assumption.
+  assert (Hokxy: ok (G & x ~ S & y ~ S)) by destruct* (ok_push_inv Hoky).
+  assert (Ty': typing_trm (G & x ~ S & y ~ S) (open_trm x e) T).
+  apply (weaken_typing_trm Ty Hokxy).
+  rewrite* (@subst_intro_trm x y e).
+  lets yTy: (typing_trm_var (binds_push_eq y S G)).
+  destruct (raw_subst_principles y S) as [_ [P _]].
+  apply (P _ (open_trm x e) T Ty' G (y ~ S) x eq_refl yTy Hokxy).
 Qed.
 
 (* ###################################################################### *)
