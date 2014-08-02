@@ -39,7 +39,7 @@ with decs : Type :=
 
 Inductive trm : Type :=
   | trm_var  : avar -> trm
-  | trm_new  : defs -> trm -> trm
+  | trm_new  : defs -> trm
   | trm_sel  : trm -> nat -> trm
   | trm_call : trm -> nat -> trm -> trm
 with def : Type :=
@@ -81,8 +81,7 @@ Definition decs_has(Ds: decs)(l: label)(D: dec): Prop := (get_dec l Ds = Some D)
 Definition decs_hasnt(Ds: decs)(l: label): Prop := (get_dec l Ds = None).
 
 (** ** Syntactic sugar *)
-Definition trm_fun(T: typ)(body: trm) := trm_new (defs_cons 0 (def_mtd T body) defs_nil)
-                                                 (trm_var (avar_b 0)).
+Definition trm_fun(T: typ)(body: trm) := trm_new (defs_cons 0 (def_mtd T body) defs_nil).
 Definition trm_app(func arg: trm) := trm_call func 0 arg.
 Definition trm_let(T: typ)(rhs body: trm) := trm_app (trm_fun T body) rhs.
 Definition trm_upcast(T: typ)(e: trm) := trm_app (trm_fun T (trm_var (avar_b 0))) e.
@@ -107,7 +106,7 @@ Fixpoint open_rec_avar (k: nat) (u: var) (a: avar) { struct a } : avar :=
 Fixpoint open_rec_trm (k: nat) (u: var) (t: trm) { struct t } : trm :=
   match t with
   | trm_var a => trm_var (open_rec_avar k u a)
-  | trm_new ds e => trm_new (open_rec_defs (S k) u ds) (open_rec_trm (S k) u e)
+  | trm_new ds => trm_new (open_rec_defs (S k) u ds)
   | trm_sel e n => trm_sel (open_rec_trm k u e) n
   | trm_call o m a => trm_call (open_rec_trm k u o) m (open_rec_trm k u a)
   end
@@ -168,7 +167,7 @@ Fixpoint fv_defs (ds: list def) : vars :=
 Fixpoint fv_trm (t: trm) : vars :=
   match t with
   | trm_var x => fv_avar x
-  | trm_new ds t => (fv_defs ds) \u (fv_trm t)
+  | trm_new ds => (fv_defs ds)
   | trm_sel t l => fv_trm t
   | trm_call t1 m t2 => (fv_trm t1) \u (fv_trm t2)
   end
@@ -196,7 +195,7 @@ Fixpoint subst_avar (z: var) (u: var) (a: avar) { struct a } : avar :=
 Fixpoint subst_trm (z: var) (u: var) (t: trm) : trm :=
   match t with
   | trm_var x => trm_var (subst_avar z u x)
-  | trm_new ds t => trm_new (subst_defs z u ds) (subst_trm z u t)
+  | trm_new ds => trm_new (subst_defs z u ds)
   | trm_sel t l => trm_sel (subst_trm z u t) l
   | trm_call t1 m t2 => trm_call (subst_trm z u t1) m (subst_trm z u t2)
   end
@@ -262,6 +261,22 @@ Proof.
   unfold open_trm. assumption.
 Qed.
 
+Lemma subst_open_commute_def: forall x y u d,
+  subst_def x y (open_def u d) = open_def (subst_fvar x y u) (subst_def x y d).
+Proof.
+  intros.
+  destruct (@subst_open_commute x y u) as [_ [P _]]. specialize (P d 0).
+  unfold open_def. assumption.
+Qed.
+
+Lemma subst_open_commute_defs: forall x y u ds,
+  subst_defs x y (open_defs u ds) = open_defs (subst_fvar x y u) (subst_defs x y ds).
+Proof.
+  intros.
+  destruct (@subst_open_commute x y u) as [_ [_ P]]. specialize (P ds 0).
+  unfold open_def. assumption.
+Qed.
+
 Lemma subst_id_avar: forall x,
   (forall a : avar, subst_avar x x a  = a).
 Proof.
@@ -287,7 +302,13 @@ Proof.
   unfold subst_fvar. case_var*.
 Qed.
 
-Print Assumptions subst_intro_trm.
+Lemma subst_intro_defs: forall x u ds, x \notin (fv_defs ds) ->
+  open_defs u ds = subst_defs x u (open_defs x ds).
+Proof.
+  introv Fr. unfold open_trm. rewrite* subst_open_commute_defs.
+  destruct (@subst_fresh x u) as [_ [_ Q]]. rewrite* (Q ds).
+  unfold subst_fvar. case_var*.
+Qed.
 
 
 (* ###################################################################### *)
@@ -666,10 +687,9 @@ Inductive red : sto -> trm -> sto -> trm -> Prop :=
       defs_has ds (label_fld l) (def_fld y) ->
       red s (trm_sel (trm_var (avar_f x)) l) 
           s (trm_var y)
-  | red_new : forall (s: sto) (ds: defs) (e: trm) (x: var),
+  | red_new : forall (s: sto) (ds: defs) (x: var),
       x # s ->
-      red s (trm_new ds e)
-          (s & x ~ ds) (open_trm x e)
+      red s (trm_new ds) (s & x ~ (open_defs x ds)) (trm_var (avar_f x))
   (* congruence rules *)
   | red_call1 : forall s o m a s' o',
       red s o s' o' ->
@@ -713,10 +733,9 @@ with typing_trm : ctx -> trm -> typ -> Prop :=
       has G t (label_mtd m) (dec_mtd U V) ->
       typing_trm G u U ->
       typing_trm G (trm_call t m u) V
-  | typing_trm_new : forall L G ds Ds t T,
-      typing_defs G ds Ds -> (* no self reference yet, no recursion *)
-      (forall x, x \notin L -> typing_trm (G & x ~ typ_rcd Ds) (open_trm x t) T) ->
-      typing_trm G (trm_new ds t) T
+  | typing_trm_new : forall L G ds Ds,
+      (forall x, x \notin L -> typing_defs (G & x ~ typ_rcd Ds) (open_defs x ds) Ds) ->
+      typing_trm G (trm_new ds) (typ_rcd Ds)
 with typing_def : ctx -> def -> dec -> Prop :=
   | typing_def_fld : forall G v T,
       typing_trm G (trm_var v) T ->
@@ -771,7 +790,7 @@ Inductive wf_sto: sto -> ctx -> Prop :=
       wf_sto s G ->
       x # s ->
       x # G ->
-      typing_defs G ds Ds ->
+      typing_defs (G & x ~ (typ_rcd Ds)) ds Ds ->
       wf_sto (s & x ~ ds) (G & x ~ (typ_rcd Ds)).
 
 (** ** Inversion lemmas for [wf_sto] *)
@@ -845,14 +864,15 @@ Lemma invert_wf_sto: forall s G,
     forall x ds Ds, 
       binds x ds s -> 
       binds x (typ_rcd Ds) G ->
-      exists G1 G2, G = G1 & G2 /\ typing_defs G1 ds Ds.
+      exists G1 G2, G = G1 & x ~ (typ_rcd Ds) & G2 /\ 
+                    typing_defs (G1 & x ~ (typ_rcd Ds)) ds Ds.
 Proof.
   intros s G Wf. induction Wf; intros.
   + false* binds_empty_inv.
   + (*rename H into Hvb, H0 into Htb, H1 into Hisds, H2 into Hvb0, H3 into Htb0.*)
     unfold binds in *. rewrite get_push in *.
     case_if.
-    - inversions H2. inversions H3. exists G (x ~ typ_rcd Ds0). auto.
+    - inversions H2. inversions H3. exists G (@empty typ). rewrite concat_empty_r. auto.
     - specialize (IHWf x0 ds0 Ds0 H2 H3).
       destruct IHWf as [G1 [G2 [Eq Ty]]]. rewrite Eq.
       exists G1 (G2 & x ~ typ_rcd Ds).
@@ -888,11 +908,12 @@ Lemma invert_typing_trm_call: forall G t m V u,
   exists U, has G t (label_mtd m) (dec_mtd U V) /\ typing_trm G u U.
 Proof. intros. inversions H. eauto. Qed.
 
-Lemma invert_typing_trm_new: forall G is t T,
-  typing_trm G (trm_new is t) T ->
-  exists L Ds, typing_defs G is Ds /\ 
-               (forall x, x \notin L -> typing_trm (G & x ~ typ_rcd Ds) (open_trm x t) T).
-Proof. intros. inversions H. eauto. Qed.
+Lemma invert_typing_trm_new: forall G ds T,
+  typing_trm G (trm_new ds) T ->
+  exists L Ds, T = typ_rcd Ds /\
+               (forall x, x \notin L -> 
+                          typing_defs (G & x ~ typ_rcd Ds) (open_defs x ds) Ds).
+Proof. intros. destruct T as [Ds]. inversions H. eauto. Qed.
 
 
 (** **** Inverting [typing_def] *)
@@ -1030,7 +1051,7 @@ Proof.
         apply (red_call y Hbv Hbi).
   (* case typing_trm_new *)
   + left. pick_fresh x.
-    exists (s & x ~ ds) (open_trm x t).
+    exists (s & x ~ (open_defs x ds)) (trm_var (avar_f x)).
     apply* red_new.
 Qed.
 
@@ -1062,23 +1083,17 @@ Lemma weakening:
            G1 G2 G3 (Heq: G = G1 & G3) (Hok123: ok (G1 & G2 & G3)), 
            typing_defs (G1 & G2 & G3) is Ds).
 Proof.
-  apply typing_mutind; intros;
-    repeat match goal with
-    | H: forall (_ _ _ : env typ), _ |- _ => 
-        specialize (H G1 G2 G3 Heq Hok123); let IH := fresh IH in rename H into IH
-    end;
-    subst.
+  apply typing_mutind; intros; subst.
   + apply* has_dec.
   + apply typing_trm_var. apply* binds_weaken.
   + apply* typing_trm_sel.
   + apply* typing_trm_call.
   + apply_fresh typing_trm_new as x.
-    - apply IH.
-    - rewrite <- concat_assoc.
-      refine (H0 x _ G1 G2 (G3 & x ~ typ_rcd Ds) _ _).
-      * auto.
-      * symmetry. apply concat_assoc.
-      * rewrite concat_assoc. auto.
+    rewrite <- concat_assoc.
+    refine (H x _ G1 G2 (G3 & x ~ typ_rcd Ds) _ _).
+    - auto.
+    - rewrite concat_assoc. reflexivity.
+    - rewrite concat_assoc. auto.
   + apply* typing_def_fld.
   + rename H into IH.
     apply_fresh typing_def_mtd as x.
@@ -1140,12 +1155,11 @@ Lemma invert_wf_sto_with_weakening: forall s G,
       binds x (typ_rcd Ds) G ->
       typing_defs G ds Ds.
 Proof.
-  intros s G Wf. induction Wf; intros.
-  + false* binds_empty_inv.
-  + unfold binds in *. rewrite get_push in *.
-    case_if.
-    - inversions H2. inversions H3. apply* weaken_typing_defs.
-    - apply* weaken_typing_defs.
+  introv Wf Bs BG.
+  lets P: (invert_wf_sto Wf).
+  specialize (P x ds Ds Bs BG).
+  destruct P as [G1 [G2 [Eq Ty]]]. subst.
+  apply* weaken_typing_defs.
 Qed.
 
 
@@ -1262,18 +1276,17 @@ Proof.
   + apply* typing_trm_call.
   (* case typing_trm_new *)
   + apply_fresh typing_trm_new as z.
-    - fold subst_defs. apply* IH1.
-    - fold subst_trm.
-      lets C: (@subst_open_commute_trm x y z t).
-      unfolds open_trm. unfold subst_fvar in C. case_var.
-      rewrite <- C.
-      rewrite <- concat_assoc.
-      refine (IH2 z _ G1 (G2 & z ~ typ_rcd Ds) _ _ _ _).
-      * auto.
-      * subst. rewrite concat_assoc. reflexivity.
-      * subst. rewrite concat_assoc.
-        apply* weaken_typing_trm.
-      * rewrite concat_assoc. auto.
+    fold subst_defs.
+    lets C: (@subst_open_commute_defs x y z ds).
+    unfolds open_defs. unfold subst_fvar in C. case_var.
+    rewrite <- C.
+    rewrite <- concat_assoc.
+    subst G.
+    assert (zL: z \notin L) by auto.
+    refine (IH z zL G1 (G2 & z ~ typ_rcd Ds) x _ _ _); rewrite concat_assoc.
+    - reflexivity.
+    - apply* weaken_typing_trm.
+    - auto.
   (* case typing_def_fld *)
   + apply* typing_def_fld.
   (* case typing_def_mtd *)
@@ -1308,7 +1321,7 @@ Proof.
   apply* P.
 Qed.
 
-Lemma typing_open_change_var: forall x y G e S T,
+Lemma typing_open_trm_change_var: forall x y G e S T,
   ok (G & x ~ S) ->
   ok (G & y ~ S) ->
   x \notin fv_trm e ->
@@ -1325,6 +1338,25 @@ Proof.
   destruct (raw_subst_principles y S) as [_ [P _]].
   apply (P _ (open_trm x e) T Ty' G (y ~ S) x eq_refl yTy Hokxy).
 Qed.
+
+Lemma typing_open_defs_change_var: forall x y G ds S T,
+  ok (G & x ~ S) ->
+  ok (G & y ~ S) ->
+  x \notin fv_defs ds ->
+  typing_defs (G & x ~ S) (open_defs x ds) T ->
+  typing_defs (G & y ~ S) (open_defs y ds) T.
+Proof.
+  introv Hokx Hoky xFr Ty.
+  destruct (classicT (x = y)) as [Eq | Ne]. subst. assumption.
+  assert (Hokxy: ok (G & x ~ S & y ~ S)) by destruct* (ok_push_inv Hoky).
+  assert (Ty': typing_defs (G & x ~ S & y ~ S) (open_defs x ds) T).
+  apply (weaken_typing_defs Ty Hokxy).
+  rewrite* (@subst_intro_defs x y ds).
+  lets yTy: (typing_trm_var (binds_push_eq y S G)).
+  destruct (raw_subst_principles y S) as [_ [_ [_ P]]].
+  apply (P _ (open_defs x ds) T Ty' G (y ~ S) x eq_refl yTy Hokxy).
+Qed.
+
 
 (* ###################################################################### *)
 (** * Preservation *)
@@ -1362,13 +1394,14 @@ Proof.
   (* red_new *)
   + rename H into Hvux.
     apply invert_typing_trm_new in Hty.
-    destruct Hty as [L [Ds [HdsDs Htye]]].
-    exists (x ~ typ_rcd Ds). split.
-    - refine (wf_sto_push Hwf Hvux _ HdsDs). apply* sto_unbound_to_ctx_unbound.
-    - pick_fresh x'. assert (Frx': x' \notin L) by auto.
-      specialize (Htye x' Frx').
-      assert (xG: x # G) by apply *sto_unbound_to_ctx_unbound.
-      apply* (@typing_open_change_var x').
+    destruct Hty as [L [Ds [Eq HdsDs]]]. subst T.
+    exists (x ~ typ_rcd Ds).
+    pick_fresh x'. assert (Frx': x' \notin L) by auto.
+    specialize (HdsDs x' Frx').
+    assert (xG: x # G) by apply* sto_unbound_to_ctx_unbound.
+    split.
+    - apply (wf_sto_push Hwf Hvux xG). apply* (@typing_open_defs_change_var x').
+    - apply typing_trm_var. apply binds_push_eq.
   (* red_call1 *)
   + rename T into Tr.
     apply invert_typing_trm_call in Hty.
