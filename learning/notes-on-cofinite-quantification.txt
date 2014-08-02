@@ -24,58 +24,94 @@ Here's the typing_def_mtd rule in these three styles:
       typing_trm (G & x ~ S) (open_trm t x) T ->
       typing_def G (def_mtd t) (dec_mtd S T)
 
-
-
 [z \notin L] style:
-===================
 
-    typing_abs : forall L E U T t1,
-      (forall x, x \notin L -> typing (E & x ~ U) (open (trm_fvar x) t1) T) ->
-      typing E (trm_abs t1) (typ_arrow U T)
+    typing_def_mtd : forall L G S T t,
+      (forall x, x \notin L -> typing_trm (G & x ~ S) (open_trm x t) T) ->
+      typing_def G (def_mtd S t) (dec_mtd S T)
+
+Now there are two kinds of lemmas where freshness of variables is crucial:
+* Those which grow the environment, eg weakening, which transforms a typing
+  judgment which holds in [G1 & G3] into one which holds in [G1 & G2 & G3].
+* Those which shrink the environment, eg substitution, which transforms a typing
+  judgment which holds in [G1 & x ~ X & G2] into one which holds in [G1 & G2].
+
+Let's see how these styles behave in the typing_def_mtd case of these two lemmas:
 
 
-    term_abs : forall L t1,
-      (forall x, x \notin L -> term (open (trm_fvar x) t1)) ->
-      term (trm_abs t1)
+## weakening lemma in [z # G] style 1 works:
 
-    Definition body t :=
-      exists L, forall x, x \notin L -> term (open (trm_fvar x) t).
+We get a z from the goal, and can choose one for the IH:
+We want to prove
+    forall z, z # (G1 & G2 & G3) -> typing_trm (G1 & G2 & G3 & z ~ S) (open_trm z t) T
+and our IH tells us that
+    forall z, z # G1 & G3 -> typing_trm (G1 & G2 & (G3 & z ~ S)) (open_trm z t) T
+So we can introduce z and its freshness hypothesis and use it to specialize the IH to
+prove the goal, because if z is fresh from [G1 & G2 & G3], it's also fresh from [G1 & G3].
 
 
--------
+## weakening lemma in [z # G] style 2 doesn't work:
 
-Does not work, because in proof of substitution lemma, we have an x in
-[G1 & x ~ S & G2], and typing_trm_new gives a z, which is not in (G1 & G2).
-IH takes a z, for which z # (G1 & x ~ S & G2) must hold --> need x <> z,
-but how?
+We get a z from the IH, and can choose one for the goal:
+The IH gives us a z fresh from [G1 & G3] and 
+    ok (G1 & G2 & G3 & z ~ S) -> typing_trm (G1 & G2 & G3 & z ~ S) (open_trm z t) T
+We want to prove
+    typing_def (G1 & G2 & G3) (def_mtd S t) (dec_mtd S T)
+and can choose any z we want to use to open the term t.
+However, if the z given by the IH occurs in G2, we can't prove [ok (G1 & G2 & G3 & z ~ S)], 
+so we can't use the IH, and we cannot prove the weakening lemma.
 
-Works in var-by-var-substitution lemma, because z does not go from typing_def_mtd to
-IH, but the other way round:
-IH gives a z, which is not in G (= G1 & x ~ S & G2), so x <> z.
-We can choose a z for typing_def_mtd, and we choose the z from the IH.
-The IH needs to [z # (G1 & G2)], which also holds.
 
-If we want to do var-by-term substitution, we need the [term] judgment, which asserts
-that a trm is locally closed. It would look as follows:
+## substitution lemma in [z # G] style 1 doesn't work:
 
-    term_abs : forall x t,
-      x \notin fv t ->
-      term (open (trm_fvar x) t) ->
-      term (trm_abs t)
+We get a z from the goal, and can choose one for the IH:
+We want to prove
+    forall z, z # (G1 & G2) -> typing_trm (G1 & G2 & z ~ S) (open_trm z t) T
+and our IH tells us that
+    forall z, z # (G1 & x ~ X & G2) -> typing_trm (G1 & G2) (open_trm z t) T
+If we introduce z and its freshness hypothesis from the goal, we only get that z is fresh
+from [G1 & G2], and if x = z, we cannot prove [z # (G1 & x ~ X & G2)], so we cannot
+specialize the IH with the z we got from the goal.
+So let's specialize the IH with a freshly picked z'. This requires another helper lemma
+which tells us that the variable we use to open doesn't matter, something like
+    typing_trm (G & x ~ X) (open_trm x e) T ->
+    typing_trm (G & y ~ X) (open_trm y e) T
+If we assume such a lemma, we can prove the substitution lemma, but to prove the
+helper lemma, we again have the same problem in the typing_def_mtd case:
+We want to prove
+    forall z, z # G & y ~ X -> typing_trm (G & y ~ X & z ~ S) (open_trm z (open_trm y t)) T
+and our IH tells us that
+    forall z, z # G & x ~ X -> typing_trm (G & y ~ X & z ~ S) (open_rec_trm (S n) y t) T
+We cannot use the z from the goal to specialize the IH, so we would have to use a fresh
+z' instead, but to do so, we would need the lemma we're about to prove.
 
-And the [body] judgment would look as follows:
 
-    Definition body t :=
-      exists x, term (open (trm_fvar x) t).
+## substitution lemma in [z # G] style 2 works:
 
-Now lets' look at the [open_term] lemma:
+We get a z from the IH, and can choose one for the goal:
+The IH gives as a z fresh from [G1 & x ~ X & G2], and 
+    typing_trm (G1 & x ~ X & G2 & z ~ S) (open_trm z t) T
+We want to prove
+    typing_def (G1 & G2) (def_mtd S t) (dec_mtd S T)
+and can choose any z we want to use to open the term t. Choosing the z that the IH gave us
+works, because from [z # (G1 & x ~ X & G2)] follows [z # (G1 & G2)], so we can prove
+the substitution lemma.
 
-    Lemma open_term : forall t u,
-      body t -> term u -> term (open u t).
 
-Destructing [body t] would give us an x and [term (open (trm_fvar x) t)], and
-[x \notin fv t], so we could still apply [subst_intro].
+## All lemmas work in [z \notin L] style:
 
-So it's not clear if Charguéraud didn't choose this style because of fundamental problems
-or just because it's less convenient for automation.
+We get an L from the IH, and can choose one for the goal. Moreover, the goal gives us a z
+which is not in the L we chose, and we can choose choose any z not in L to specialize the IH.
+So, for the goal we can choose an L which contains all variables in the current Coq environment,
+and then the goal gives us a z which is fresh from everything, so we can use that z to 
+specialize the IH and everything works.
+
+
+## Conclusion:
+
+[z # G] style 1 works for environment-growing lemmas, but not for environment-shrinking lemmas.
+[z # G] style 2 works for environment-shrinking lemmas, but not for environment-growing lemmas.
+[z \notin L] style works for both kinds of lemmas.
+
+    
 
