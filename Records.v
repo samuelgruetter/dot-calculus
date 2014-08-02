@@ -675,34 +675,39 @@ Qed.
 (** Note: Terms given by user are closed, so they only contain avar_b, no avar_f.
     Whenever we introduce a new avar_f (only happens in red_new), we choose one
     which is not in the store, so we never have name clashes. *) 
-Inductive red : sto -> trm -> sto -> trm -> Prop :=
+Inductive red : trm -> sto -> trm -> sto -> Prop :=
   (* computation rules *)
-  | red_call : forall (s: sto) (x y: var) (m: nat) (T: typ) (ds: defs) (body: trm),
+  | red_call : forall s x y m T ds body,
       binds x ds s ->
       defs_has ds (label_mtd m) (def_mtd T body) ->
-      red s (trm_call (trm_var (avar_f x)) m (trm_var (avar_f y))) 
-          s (open_trm y body)
-  | red_sel : forall (s: sto) (x: var) (y: avar) (l: nat) (ds: defs),
+      red (trm_call (trm_var (avar_f x)) m (trm_var (avar_f y))) s
+          (open_trm y body) s
+  | red_sel : forall s x y l ds,
       binds x ds s ->
       defs_has ds (label_fld l) (def_fld y) ->
-      red s (trm_sel (trm_var (avar_f x)) l) 
-          s (trm_var y)
-  | red_new : forall (s: sto) (ds: defs) (x: var),
+      red (trm_sel (trm_var (avar_f x)) l) s
+          (trm_var y) s
+  | red_new : forall s ds x,
       x # s ->
-      red s (trm_new ds) (s & x ~ (open_defs x ds)) (trm_var (avar_f x))
+      red (trm_new ds) s
+          (trm_var (avar_f x)) (s & x ~ (open_defs x ds))
   (* congruence rules *)
   | red_call1 : forall s o m a s' o',
-      red s o s' o' ->
-      red s  (trm_call o  m a) 
-          s' (trm_call o' m a)
+      red o s o' s' ->
+      red (trm_call o  m a) s
+          (trm_call o' m a) s'
   | red_call2 : forall s x m a s' a',
-      red s a s' a' ->
-      red s  (trm_call (trm_var (avar_f x)) m a ) 
-          s' (trm_call (trm_var (avar_f x)) m a')
+      red a s a' s' ->
+      red (trm_call (trm_var (avar_f x)) m a ) s
+          (trm_call (trm_var (avar_f x)) m a') s'
   | red_sel1 : forall s o l s' o',
-      red s o s' o' ->
-      red s  (trm_sel o  l)
-          s' (trm_sel o' l).
+      red o s o' s' ->
+      red (trm_sel o  l) s
+          (trm_sel o' l) s'.
+
+
+(* ###################################################################### *)
+(** * Typing *)
 
 (* The store is not an argument of the typing judgment because
    * it's only needed in typing_trm_var_s
@@ -711,10 +716,6 @@ Inductive red : sto -> trm -> sto -> trm -> Prop :=
      typing rules (those without typing assumptions)? Typing rules become unintuitive,
      and maybe to prove that store is wf, we need to prove what we're about to prove...
 *)
-
-
-(* ###################################################################### *)
-(** * Typing *)
 
 (* Term typing *)
 Inductive has : ctx -> trm -> label -> dec -> Prop :=
@@ -998,15 +999,15 @@ Theorem progress: forall s G e T,
   typing_trm G e T -> 
   (
     (* can step *)
-    (exists s' e', red s e s' e') \/
+    (exists e' s', red e s e' s') \/
     (* or is a value *)
-    (exists x is, e = (trm_var (avar_f x)) /\ binds x is s)
+    (exists x ds, e = (trm_var (avar_f x)) /\ binds x ds s)
   ).
 Proof.
   introv Wf Ty. gen G e T Ty s Wf.
   set (progress_for := fun s e =>
-                         (exists s' e', red s e s' e') \/
-                         (exists x is, e = (trm_var (avar_f x)) /\ binds x is s)).
+                         (exists e' s', red e s e' s') \/
+                         (exists x ds, e = (trm_var (avar_f x)) /\ binds x ds s)).
   apply (typing_trm_mut
     (fun G e l d (Hhas: has G e l d)         => forall s, wf_sto s G -> progress_for s e)
     (fun G e T   (Hty: typing_trm G e T)     => forall s, wf_sto s G -> progress_for s e)
@@ -1029,7 +1030,7 @@ Proof.
       destruct (invert_wf_sto H0 Hbv Hbt) as [G1 [G2 [Eq Hty2]]].
       destruct (decs_has_to_defs_has Hty2 Hbd) as [i Hbi].
       destruct (defs_has_fld_sync Hbi) as [y Heq]. subst.
-      exists s (trm_var y).
+      exists (trm_var y) s.
       apply (red_sel Hbv Hbi).
   (* case typing_trm_call *)
   + left. destruct H as [IHrec | IHrec].
@@ -1047,11 +1048,11 @@ Proof.
         destruct (invert_wf_sto H1 Hbv Hbt) as [G1 [G2 [Eq Hty2]]].
         destruct (decs_has_to_defs_has Hty2 Hbd) as [i Hbi].
         destruct (defs_has_mtd_sync Hbi) as [U' [e Heq]]. subst.
-        exists s (open_trm y e).
+        exists (open_trm y e) s.
         apply (red_call y Hbv Hbi).
   (* case typing_trm_new *)
   + left. pick_fresh x.
-    exists (s & x ~ (open_defs x ds)) (trm_var (avar_f x)).
+    exists (trm_var (avar_f x)) (s & x ~ (open_defs x ds)).
     apply* red_new.
 Qed.
 
@@ -1362,7 +1363,7 @@ Qed.
 (** * Preservation *)
 
 Theorem preservation_proof:
-  forall s e s' e' (Hred: red s e s' e') G T (Hwf: wf_sto s G) (Hty: typing_trm G e T),
+  forall e s e' s' (Hred: red e s e' s') G T (Hwf: wf_sto s G) (Hty: typing_trm G e T),
   (exists H, wf_sto s' (G & H) /\ typing_trm (G & H) e' T).
 Proof.
   intros s e s' e' Hred. induction Hred; intros.
@@ -1434,11 +1435,11 @@ Proof.
     apply (has_dec Htyo' Hdbl).
 Qed.
 
-Theorem preservation: forall s G e T s' e',
-  wf_sto s G -> typing_trm G e T -> red s e s' e' ->
+Theorem preservation: forall s G e T e' s',
+  wf_sto s G -> typing_trm G e T -> red e s e' s' ->
   (exists G', wf_sto s' G' /\ typing_trm G' e' T).
 Proof.
-  intros s G e T s' e' Hwf Hty Hred.
+  introv Hwf Hty Hred.
   destruct (preservation_proof Hred Hwf Hty) as [H [Hwf' Hty']].
   exists (G & H). split; assumption.
 Qed.
