@@ -268,6 +268,48 @@ Qed.
 
 (* ###################################################################### *)
 
+Lemma defs_has_fld_sync: forall n d ds,
+  defs_has ds (label_fld n) d -> exists x, d = (def_fld x).
+Proof.
+  introv Hhas. induction ds; unfolds defs_has, get_def. 
+  + discriminate.
+  + case_if.
+    - inversions Hhas. unfold label_for_def in H. destruct* d. discriminate.
+    - apply* IHds.
+Qed.
+
+Lemma defs_has_mtd_sync: forall n d ds,
+  defs_has ds (label_mtd n) d -> exists T e, d = (def_mtd T e).
+Proof.
+  introv Hhas. induction ds; unfolds defs_has, get_def. 
+  + discriminate.
+  + case_if.
+    - inversions Hhas. unfold label_for_def in H. destruct* d. discriminate.
+    - apply* IHds.
+Qed.
+
+Lemma decs_has_fld_sync: forall n d ds,
+  decs_has ds (label_fld n) d -> exists x, d = (dec_fld x).
+Proof.
+  introv Hhas. induction ds; unfolds decs_has, get_dec. 
+  + discriminate.
+  + case_if.
+    - inversions Hhas. unfold label_for_dec in H. destruct* d. discriminate.
+    - apply* IHds.
+Qed.
+
+Lemma decs_has_mtd_sync: forall n d ds,
+  decs_has ds (label_mtd n) d -> exists T e, d = (dec_mtd T e).
+Proof.
+  introv Hhas. induction ds; unfolds decs_has, get_dec. 
+  + discriminate.
+  + case_if.
+    - inversions Hhas. unfold label_for_dec in H. destruct* d. discriminate.
+    - apply* IHds.
+Qed.
+
+(* ###################################################################### *)
+
 (** ** Typing environment ("Gamma") *)
 Definition ctx := env typ.
 
@@ -278,7 +320,7 @@ Definition sto := env defs.
 (* ###################################################################### *)
 (** * Preview: How intersection will work *)
 
-Module Type IntersectionPreview.
+Module Type Decs.
 
 (* Will be part of syntax: *)
 Parameter t_and: typ -> typ -> typ.
@@ -307,11 +349,16 @@ Axiom intersect_spec_12_mtd: forall n S1 T1 S2 T2 Ds1 Ds2,
   decs_has Ds2                 (label_mtd n) (dec_mtd S2 T2) ->
   decs_has (intersect Ds1 Ds2) (label_mtd n) (dec_mtd (t_or S1 S2) (t_and T1 T2)).
 
-End IntersectionPreview.
+Axiom intersect_spec_hasnt: forall l Ds1 Ds2,
+  decs_hasnt Ds1 l ->
+  decs_hasnt Ds2 l ->
+  decs_hasnt (intersect Ds1 Ds2) l.
+
+End Decs.
 
 (* Exercise: Give any implementation of `intersect`, and prove that it satisfies
    the specification. Happy hacking! ;-) *)
-Module IntersectionPreviewImpl <: IntersectionPreview.
+Module DecsImpl : Decs.
 
 (* Will be part of syntax: *)
 Parameter t_and: typ -> typ -> typ.
@@ -332,77 +379,58 @@ end.
 
 Lemma refine_dec_spec_fld: forall Ds2 n T1 T2,
   decs_has Ds2 (label_fld n) (dec_fld T2) ->
-  (refine_dec n (dec_fld T1) Ds2) = (dec_fld (t_and T1 T2)).
-Proof. Admitted. (* 
+  refine_dec n (dec_fld T1) Ds2 = dec_fld (t_and T1 T2).
+Proof.
   intro Ds2. induction Ds2; intros.
-  + decs.empty_binds_contradiction.
-  + decs.compare_keys.
-    - inversions H. unfold decs.value in H1. destruct a eqn: Heqa.
-      * inversions H1. inversion e. subst. simpl. destruct (eq_nat_dec n0 n0). reflexivity.
-        contradiction n. reflexivity.
-      * inversions H1.
-    - simpl. destruct a eqn: Heqa. 
-      * assert (Hnn: n <> n1). unfold not in *. intro. apply n0. simpl. f_equal. assumption.
-        destruct (eq_nat_dec n n1). contradiction Hnn.
-        apply IHDs2. unfold decs_has, decs.get. unfold decs.key.
-        assumption.
-      * apply IHDs2. unfold decs_has, decs.get. unfold decs.key.
-        assumption.
-Qed.*)
+  + inversion H.
+  + unfold decs_has, get_dec in H. case_if; fold get_dec in H.
+    - inversions H. unfold label_for_dec in H0. inversions H0. simpl. case_if. reflexivity.
+    - simpl. destruct d.
+      * simpl in H0. case_if.
+        apply IHDs2. unfold decs_has. assumption.
+      * apply IHDs2. unfold decs_has. assumption.
+Qed.
 
 Lemma refine_dec_spec_mtd: forall Ds2 n T1 S1 T2 S2,
   decs_has Ds2 (label_mtd n) (dec_mtd T2 S2) ->
-  (refine_dec n (dec_mtd T1 S1) Ds2) = (dec_mtd (t_or T1 T2) (t_and S1 S2)).
-Proof. Admitted. (*
+  refine_dec n (dec_mtd T1 S1) Ds2 = dec_mtd (t_or T1 T2) (t_and S1 S2).
+Proof. 
   intro Ds2. induction Ds2; intros.
-  + decs.empty_binds_contradiction.
-  + decs.compare_keys.
-    - inversions H. destruct a eqn: Heqa.
-      * inversions H1.
-      * inversions H1. inversion e. subst. simpl. destruct (eq_nat_dec n0 n0). reflexivity.
-        contradiction n. reflexivity.
-    - simpl. destruct a eqn: Heqa. 
-      * apply IHDs2. assumption.
-      * assert (Hnn: n <> n1). unfold not in *. intro. apply n0. simpl. f_equal. assumption.
-        destruct (eq_nat_dec n n1). contradiction Hnn.
-        apply IHDs2. assumption.
-Qed.*)
+  + inversion H.
+  + unfold decs_has, get_dec in H. case_if; fold get_dec in H.
+    - inversions H. unfold label_for_dec in H0. inversions H0. simpl. case_if. reflexivity.
+    - simpl. destruct d.
+      * apply IHDs2. unfold decs_has. assumption.
+      * simpl in H0. case_if.
+        apply IHDs2. unfold decs_has. assumption.
+Qed.
 
 Lemma refine_dec_spec_unbound: forall n D1 Ds2, 
   decs_hasnt Ds2 (label_for_dec n D1) ->
-  (refine_dec n D1 Ds2) = D1.
-Proof. Admitted. (*
-  intros.
-  induction Ds2.
-  + simpl. reflexivity.
-  + unfold decs.key. unfold refine_dec. destruct a; destruct D1.
-    - destruct (eq_nat_dec n0 n) eqn: Hn0dec.
-      * subst. 
-        assert (Hkeq: (decs.key (dec_fld n t0)) = (decs.key (dec_fld n t)))
-          by reflexivity.
-        rewrite -> Hkeq in H.
-        exfalso. apply (decs_has Ds_unbound_head_inv H).
-      * fold refine_dec. apply IHDs2.
-        inversions H. unfold decs.eq_key_dec in H1.
-        destruct (eq_label_dec (label_fld n0) (label_fld n)).
-        { inversions e. contradiction n1. reflexivity. }
-        { unfold decs_hasnt. unfold decs.key. assumption. }
-    - fold refine_dec. unfold decs.key in *.
-      apply decs_hasnt Ds_cons_inv in H. apply (IHDs2 H).
-    - fold refine_dec. unfold decs.key in *.
-      apply decs_hasnt Ds_cons_inv in H. apply (IHDs2 H).
-    - destruct (eq_nat_dec n0 n) eqn: Hn0dec.
-      * subst. 
-        assert (Hkeq: (decs.key (dec_mtd n t1 t2)) = (decs.key (dec_mtd n t t0)))
-          by reflexivity.
-        rewrite -> Hkeq in H.
-        exfalso. apply (decs_has Ds_unbound_head_inv H).
-      * fold refine_dec. apply IHDs2.
-        inversions H. unfold decs.eq_key_dec in H1. 
-        destruct (eq_label_dec (label_mtd n0) (label_mtd n)).
-        { inversions e. contradiction n1. reflexivity. }
-        { unfold decs_hasnt. unfold decs.key. assumption. }
-Qed.*)
+  refine_dec n D1 Ds2 = D1.
+Proof. 
+  intros. induction Ds2.
+  + reflexivity.
+  + unfold decs_hasnt, get_dec in H. fold get_dec in H. case_if. destruct D1.
+    - destruct d; simpl in H0; unfold refine_dec.
+      * case_if. fold refine_dec. apply IHDs2. assumption.
+      * destruct Ds2. reflexivity. unfold refine_dec in IHDs2. apply IHDs2. assumption.
+    - destruct d; simpl in H0; unfold refine_dec.
+      * fold refine_dec. apply IHDs2. assumption.
+      * case_if. fold refine_dec. apply IHDs2. assumption.
+Qed.
+
+Lemma refine_dec_preserves_label: forall n D1 Ds2,
+  label_for_dec n (refine_dec n D1 Ds2) = label_for_dec n D1.
+Proof.
+  intros. induction Ds2.
+  + reflexivity.
+  + destruct D1; destruct d; unfold refine_dec in *; fold refine_dec in *.
+    - case_if. reflexivity. assumption.
+    - assumption.
+    - assumption.
+    - case_if. reflexivity. assumption.
+Qed.
 
 Fixpoint refine_decs(Ds1: decs)(Ds2: decs): decs := match Ds1 with
 | decs_nil => decs_nil
@@ -413,160 +441,113 @@ Lemma refine_decs_spec_unbound: forall l D Ds1 Ds2,
   decs_has    Ds1                  l D ->
   decs_hasnt  Ds2                  l   ->
   decs_has   (refine_decs Ds1 Ds2) l D .
-Proof. Admitted. (*
-  intros. unfold refine_decs.
-  assert (Hex: exists nd, decs.key nd = l /\ decs.value nd = d).
-    apply (@decs_has Ds_binding_inv l d Ds1 H).
-  destruct Hex as [nd [Hl Hd]]. subst.
-  remember (fun D1 => refine_dec D1 Ds2) as f.
-  assert (Hk: (decs.key nd) = decs.key (f nd)).
-    subst. apply (refine_dec_spec_label nd Ds2).
-  rewrite -> Hk.
-  assert (Hv: (decs.value nd) = decs.value (f nd)).
-    subst. symmetry. apply (refine_dec_spec_unbound _ H0).
-  rewrite -> Hv.
-  apply decs_has Ds_map. 
-    intro. rewrite -> Heqf. symmetry. apply refine_dec_spec_label.
-    assumption.
-Qed.*)
+Proof.
+  intros l D Ds1 Ds2. induction Ds1; introv Has Hasnt.
+  + inversion Has.
+  + unfold refine_decs; fold refine_decs. rename d into D'. unfold decs_has, get_dec.
+    rewrite refine_dec_preserves_label. case_if.
+    - unfold decs_has, get_dec in Has. case_if.
+      inversions Has. f_equal. apply refine_dec_spec_unbound. assumption.
+    - fold get_dec. unfold decs_has in *. unfold get_dec in Has. case_if.
+      fold get_dec in Has. apply* IHDs1. 
+Qed.
 
 Lemma refine_decs_spec_unbound_preserved: forall l Ds1 Ds2,
   decs_hasnt Ds1                   l ->
   decs_hasnt (refine_decs Ds1 Ds2) l .
-Proof. Admitted. (*
-  intros. unfold refine_decs. remember (fun D1 => refine_dec D1 Ds2) as f.
-  refine (@decs_hasnt Ds_map l f Ds1 _ H).
-  subst. intro. symmetry. apply refine_dec_spec_label.
-Qed.*)
+Proof. 
+  introv Hasnt. induction Ds1.
+  + simpl. assumption.
+  + unfold refine_decs; fold refine_decs. rename d into D'. unfold decs_hasnt, get_dec.
+    rewrite refine_dec_preserves_label. case_if.
+    - unfold decs_hasnt, get_dec in Hasnt. case_if. (* contradiction *)
+    - fold get_dec. unfold decs_has in *. apply IHDs1.
+      unfold decs_hasnt, get_dec in Hasnt. case_if. fold get_dec in Hasnt. apply Hasnt.
+Qed.
 
 Lemma refine_decs_spec_fld: forall n Ds1 Ds2 T1 T2,
   decs_has  Ds1                  (label_fld n) (dec_fld T1) ->
   decs_has  Ds2                  (label_fld n) (dec_fld T2) ->
   decs_has (refine_decs Ds1 Ds2) (label_fld n) (dec_fld (t_and T1 T2)).
-Proof. Admitted. (*
-  intros n Ds1 Ds2 T1 T2 H. induction Ds1; intros.
-  + decs.empty_binds_contradiction.
-  + unfold decs_has, decs.get in H. destruct a eqn: Heqa.
-    - fold decs.get in H. unfold decs.key in H.
-      destruct (decs.eq_key_dec (label_fld n) (label_fld n0)).
-      * inversions H. inversions e.
-        unfold decs_has, decs.get. simpl. fold decs.get. 
-        rewrite <- (@refine_dec_spec_label (dec_fld n0 T1) Ds2).
-        unfold decs.key.
-        destruct (decs.eq_key_dec (label_fld n0) (label_fld n0)). {
-          f_equal. rewrite -> (@refine_dec_spec_fld Ds2 n0 T1 T2 H0).
-          simpl. reflexivity. 
-        } { contradiction n. reflexivity. }
-      * assert (Hnn: n <> n0). unfold not in *. intro. apply n1. f_equal. assumption.
-        unfold decs_has, decs.get. simpl. fold decs.get. 
-        rewrite <- (@refine_dec_spec_label (dec_fld n0 t) Ds2).
-        unfold decs.key.
-        destruct (decs.eq_key_dec (label_fld n) (label_fld n0)). {
-          inversions e. contradiction Hnn. reflexivity.
-        } {
-          unfold decs_has in *. apply IHDs1; assumption.
-        }
-    - fold decs.get in H. unfold decs.key in H.
-      destruct (decs.eq_key_dec (label_fld n) (label_fld n0)).
-      * inversions H. inversions e.
-        unfold decs_has, decs.get. simpl. fold decs.get.
-        rewrite <- (@refine_dec_spec_label (dec_mtd n0 t t0) Ds2).
-        unfold decs.key.
-        destruct (decs.eq_key_dec (label_fld n0) (label_mtd n0)). {
-          inversions H2.
-        } {
-          unfold decs_has in *. apply IHDs1; assumption.
-        }
-      * assert (Hnn: n <> n0). unfold not in *. intro. apply n1. f_equal. assumption.
-        unfold decs_has, decs.get. simpl. fold decs.get. 
-        rewrite <- (@refine_dec_spec_label (dec_mtd n0 t t0) Ds2).
-        unfold decs.key.
-        destruct (decs.eq_key_dec (label_fld n) (label_fld n0)). {
-          inversions e. contradiction Hnn. reflexivity.
-        } {
-          destruct (decs.eq_key_dec (label_fld n) (label_mtd n0)).
-          + inversions e.
-          + unfold decs_has in *. apply IHDs1; assumption.
-        }
-Qed.*)
+Proof. 
+  introv Has1 Has2. induction Ds1.
+  + inversion Has1.
+  + unfold decs_has, get_dec in Has1. case_if.
+    - inversions Has1. simpl in H. inversions H. simpl. 
+      rewrite (refine_dec_spec_fld _ Has2). unfold decs_has, get_dec. simpl.
+      case_if. reflexivity.
+    - fold get_dec in Has1. simpl. unfold decs_has, get_dec.
+      rewrite refine_dec_preserves_label. case_if. fold get_dec.
+      unfold decs_has in IHDs1. apply IHDs1. assumption.
+Qed.
 
 Lemma refine_decs_spec_mtd: forall n Ds1 Ds2 T1 S1 T2 S2,
   decs_has  Ds1                  (label_mtd n) (dec_mtd T1 S1) ->
   decs_has  Ds2                  (label_mtd n) (dec_mtd T2 S2) ->
   decs_has (refine_decs Ds1 Ds2) (label_mtd n) (dec_mtd (t_or T1 T2) (t_and S1 S2)).
-Proof. Admitted. (*
-  intros n Ds1 Ds2 T1 S1 T2 S2 H. induction Ds1; intros.
-  + decs.empty_binds_contradiction.
-  + unfold decs_has, decs.get in H. destruct a eqn: Heqa.
-    - fold decs.get in H. unfold decs.key in H.
-      destruct (decs.eq_key_dec (label_mtd n) (label_mtd n0)).
-      * inversions H. inversions e.
-        unfold decs_has, decs.get. simpl. fold decs.get.
-        rewrite <- (@refine_dec_spec_label (dec_fld n0 t) Ds2).
-        unfold decs.key.
-        destruct (decs.eq_key_dec (label_mtd n0) (label_fld n0)). {
-          inversions H2.
-        } {
-          unfold decs_has in *. apply IHDs1; assumption.
-        }
-      * assert (Hnn: n <> n0). unfold not in *. intro. apply n1. f_equal. assumption.
-        unfold decs_has, decs.get. simpl. fold decs.get. 
-        rewrite <- (@refine_dec_spec_label (dec_fld n0 t) Ds2).
-        unfold decs.key.
-        destruct (decs.eq_key_dec (label_mtd n) (label_mtd n0)). {
-          inversions e. contradiction Hnn. reflexivity.
-        } {
-          destruct (decs.eq_key_dec (label_mtd n) (label_fld n0)).
-          + inversions e.
-          + unfold decs_has in *. apply IHDs1; assumption.
-        }
-    - fold decs.get in H. unfold decs.key in H.
-      destruct (decs.eq_key_dec (label_mtd n) (label_mtd n0)).
-      * inversions H. inversions e.
-        unfold decs_has, decs.get. simpl. fold decs.get. 
-        rewrite <- (@refine_dec_spec_label (dec_mtd n0 T1 S1) Ds2).
-        unfold decs.key.
-        destruct (decs.eq_key_dec (label_mtd n0) (label_mtd n0)). {
-          f_equal. rewrite -> (@refine_dec_spec_mtd Ds2 n0 T1 S1 T2 S2 H0).
-          simpl. reflexivity. 
-        } { contradiction n. reflexivity. }
-      * assert (Hnn: n <> n0). unfold not in *. intro. apply n1. f_equal. assumption.
-        unfold decs_has, decs.get. simpl. fold decs.get. 
-        rewrite <- (@refine_dec_spec_label (dec_mtd n0 t t0) Ds2).
-        unfold decs.key.
-        destruct (decs.eq_key_dec (label_mtd n) (label_mtd n0)). {
-          inversions e. contradiction Hnn. reflexivity.
-        } {
-          unfold decs_has in *. apply IHDs1; assumption.
-        } 
-Qed.*)
+Proof.
+  introv Has1 Has2. induction Ds1.
+  + inversion Has1.
+  + unfold decs_has, get_dec in Has1. case_if.
+    - inversions Has1. simpl in H. inversions H. simpl. 
+      rewrite (refine_dec_spec_mtd _ _ Has2). unfold decs_has, get_dec. simpl.
+      case_if. reflexivity.
+    - fold get_dec in Has1. simpl. unfold decs_has, get_dec.
+      rewrite refine_dec_preserves_label. case_if. fold get_dec.
+      unfold decs_has in IHDs1. apply IHDs1. assumption.
+Qed.
 
 Fixpoint decs_concat(Ds1 Ds2: decs) {struct Ds1}: decs := match Ds1 with
 | decs_nil => Ds2
 | decs_cons n D1 Ds1tail => decs_cons n D1 (decs_concat Ds1tail Ds2)
 end.
 
-(* Refined decs shadow the outdated decs of Ds2.
-   So [decs.ok (intersect Ds1 Ds2)] usually does not hold. *)
-Definition intersect(Ds1 Ds2: decs): decs := decs_concat Ds2 (refine_decs Ds1 Ds2).
+(* Refined decs shadow the outdated decs of Ds2. *)
+Definition intersect(Ds1 Ds2: decs): decs := decs_concat (refine_decs Ds1 Ds2) Ds2.
 
-Lemma decs_has_concat_right : forall k v E1 E2,
-  decs_has E2                     k v ->
-  decs_has (decs_concat E1 E2) k v.
-Proof. Admitted.
+Lemma decs_has_concat_left : forall l D Ds1 Ds2,
+  decs_has Ds1 l D ->
+  decs_has (decs_concat Ds1 Ds2) l D.
+Proof.
+  introv Has. induction Ds1.
+  + inversion Has.
+  + simpl. unfold decs_has, get_dec in *. fold get_dec in *. case_if.
+    - assumption.
+    - apply IHDs1. assumption.
+Qed. 
 
-Lemma decs_has_concat_left : forall k v E1 E2,
-  decs_has   E1 k v ->
-  decs_hasnt E2 k ->
-  decs_has   (decs_concat E1 E2) k v.
-Proof. Admitted.
+Lemma decs_has_concat_right : forall l D Ds1 Ds2,
+  decs_hasnt Ds1 l ->
+  decs_has Ds2 l D ->
+  decs_has (decs_concat Ds1 Ds2) l D.
+Proof.
+  introv Hasnt Has. induction Ds1.
+  + simpl. assumption.
+  + simpl. unfold decs_has, get_dec. case_if.
+    - unfold decs_hasnt, get_dec in Hasnt. case_if. (* contradiction *)
+    - fold get_dec. apply IHDs1. unfold decs_hasnt, get_dec in Hasnt. case_if.
+      apply Hasnt.
+Qed.
+
+Lemma decs_hasnt_concat : forall l Ds1 Ds2,
+  decs_hasnt Ds1 l ->
+  decs_hasnt Ds2 l ->
+  decs_hasnt (decs_concat Ds1 Ds2) l.
+Proof.
+  introv Hasnt1 Hasnt2. induction Ds1.
+  + simpl. assumption.
+  + simpl. unfold decs_hasnt, get_dec. case_if.
+    - unfold decs_hasnt, get_dec in Hasnt1. case_if. (* contradiction *)
+    - fold get_dec. apply IHDs1. unfold decs_hasnt, get_dec in Hasnt1. case_if.
+      apply Hasnt1.
+Qed.
 
 Lemma intersect_spec_1: forall l D Ds1 Ds2,
   decs_has    Ds1                l D ->
   decs_hasnt  Ds2                l   ->
   decs_has   (intersect Ds1 Ds2) l D .
 Proof.
-  intros. unfold intersect. apply decs_has_concat_right.
+  intros. unfold intersect. apply decs_has_concat_left.
   apply refine_decs_spec_unbound; assumption.
 Qed.
 
@@ -575,9 +556,10 @@ Lemma intersect_spec_2: forall l D Ds1 Ds2,
   decs_has   Ds2                 l D ->
   decs_has   (intersect Ds1 Ds2) l D.
 Proof.
-  intros. unfold intersect.
-  apply (@decs_has_concat_left l D Ds2 (refine_decs Ds1 Ds2) H0). 
-  apply (@refine_decs_spec_unbound_preserved l Ds1 Ds2 H). 
+  introv Hasnt Has. unfold intersect.
+  apply (@decs_has_concat_right l D (refine_decs Ds1 Ds2) Ds2).
+  apply (@refine_decs_spec_unbound_preserved l Ds1 Ds2 Hasnt).
+  assumption. 
 Qed.
 
 Lemma intersect_spec_12_fld: forall n T1 T2 Ds1 Ds2,
@@ -585,7 +567,7 @@ Lemma intersect_spec_12_fld: forall n T1 T2 Ds1 Ds2,
   decs_has Ds2                 (label_fld n) (dec_fld T2) ->
   decs_has (intersect Ds1 Ds2) (label_fld n) (dec_fld (t_and T1 T2)).
 Proof.
-  intros. unfold intersect. apply decs_has_concat_right.
+  intros. unfold intersect. apply decs_has_concat_left.
   apply refine_decs_spec_fld; assumption.
 Qed.
 
@@ -594,34 +576,21 @@ Lemma intersect_spec_12_mtd: forall n S1 T1 S2 T2 Ds1 Ds2,
   decs_has Ds2                 (label_mtd n) (dec_mtd S2 T2) ->
   decs_has (intersect Ds1 Ds2) (label_mtd n) (dec_mtd (t_or S1 S2) (t_and T1 T2)).
 Proof.
-  intros. unfold intersect. apply decs_has_concat_right.
+  intros. unfold intersect. apply decs_has_concat_left.
   apply refine_decs_spec_mtd; assumption.
 Qed.
 
-End IntersectionPreviewImpl.
-
-
-(* ###################################################################### *)
-
-Lemma defs_has_fld_sync: forall n d ds,
-  defs_has ds (label_fld n) d -> exists x, d = (def_fld x).
+Lemma intersect_spec_hasnt: forall l Ds1 Ds2,
+  decs_hasnt Ds1 l ->
+  decs_hasnt Ds2 l ->
+  decs_hasnt (intersect Ds1 Ds2) l.
 Proof.
-  introv Hhas. induction ds; unfolds defs_has, get_def. 
-  + discriminate.
-  + case_if.
-    - inversions Hhas. unfold label_for_def in H. destruct* d. discriminate.
-    - apply* IHds.
+  introv Hasnt1 Hasnt2. unfold intersect. apply decs_hasnt_concat.
+  + apply (refine_decs_spec_unbound_preserved _ Hasnt1).
+  + apply Hasnt2.
 Qed.
 
-Lemma defs_has_mtd_sync: forall n d ds,
-  defs_has ds (label_mtd n) d -> exists T e, d = (def_mtd T e).
-Proof.
-  introv Hhas. induction ds; unfolds defs_has, get_def. 
-  + discriminate.
-  + case_if.
-    - inversions Hhas. unfold label_for_def in H. destruct* d. discriminate.
-    - apply* IHds.
-Qed.
+End DecsImpl.
 
 
 (* ###################################################################### *)
