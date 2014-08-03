@@ -12,8 +12,10 @@ Require Import LibLN.
 (* ###################################################################### *)
 (** ** Syntax *)
 
-(** If it's clear whether a field or method is meant, we use nat, if not, we use label: *)
+(** If it's clear whether a type, field or method is meant, we use nat, 
+    if not, we use label: *)
 Inductive label: Type :=
+| label_typ: nat -> label
 | label_fld: nat -> label
 | label_mtd: nat -> label.
 
@@ -21,10 +23,17 @@ Inductive avar : Type :=
   | avar_b : nat -> avar  (* bound var (de Bruijn index) *)
   | avar_f : var -> avar. (* free var ("name"), refers to tenv or venv *)
 
+Inductive pth : Type :=
+  | pth_var : avar -> pth.
+
 Inductive typ : Type :=
-  | typ_rcd  : decs -> typ (* record type *)
+  | typ_top  : typ
+  | typ_bot  : typ
+  | typ_bind : decs -> typ (* { z => decs } *)
+  | typ_sel : pth -> label -> typ (* select on abstract type *)
 with dec : Type :=
-  | dec_fld : typ -> dec
+  | dec_typ  : typ -> typ -> dec
+  | dec_fld  : typ -> dec
   | dec_mtd : typ -> typ -> dec
 with decs : Type :=
   | decs_nil : decs
@@ -36,6 +45,7 @@ Inductive trm : Type :=
   | trm_sel  : trm -> nat -> trm
   | trm_call : trm -> nat -> trm -> trm
 with def : Type :=
+  | def_typ : def (* just a placeholder *)
   | def_fld : avar -> def (* cannot have term here, need to assign first *)
   | def_mtd : typ -> trm -> def
 with defs : Type :=
@@ -48,18 +58,20 @@ Definition trm_fun(T: typ)(body: trm) := trm_new (defs_cons 0 (def_mtd T body) d
 Definition trm_app(func arg: trm) := trm_call func 0 arg.
 Definition trm_let(T: typ)(rhs body: trm) := trm_app (trm_fun T body) rhs.
 Definition trm_upcast(T: typ)(e: trm) := trm_app (trm_fun T (trm_var (avar_b 0))) e.
-Definition typ_arrow(T1 T2: typ) := typ_rcd (decs_cons 0 (dec_mtd T1 T2) decs_nil).
+Definition typ_arrow(T1 T2: typ) := typ_bind (decs_cons 0 (dec_mtd T1 T2) decs_nil).
 
 
 (* ###################################################################### *)
 (** ** Declaration and definition lists *)
 
 Definition label_for_def(n: nat)(d: def): label := match d with
-| def_fld _ => label_fld n
+| def_typ     => label_typ n
+| def_fld _   => label_fld n
 | def_mtd _ _ => label_mtd n
 end.
 Definition label_for_dec(n: nat)(D: dec): label := match D with
-| dec_fld _ => label_fld n
+| dec_typ _ _ => label_typ n
+| dec_fld _   => label_fld n
 | dec_mtd _ _ => label_mtd n
 end.
 
@@ -85,14 +97,35 @@ Definition decs_hasnt(Ds: decs)(l: label): Prop := (get_dec l Ds = None).
 (** Opening replaces in some syntax a bound variable with dangling index (k) 
    by a free variable x. *)
 
-Fixpoint open_rec_avar (k: nat) (u: var) (a: avar) { struct a } : avar :=
+Definition open_rec_avar (k: nat) (u: var) (a: avar) : avar :=
   match a with
   | avar_b i => If k = i then avar_f u else avar_b i
   | avar_f x => avar_f x
   end.
 
-(* The only binders are trm_new and (n)def_mtd, which cannot be inside a typ or
-   inside a dec, so we don't need opening for typ and dec *)
+Definition open_rec_pth (k: nat) (u: var) (p: pth) : pth :=
+  match p with
+  | pth_var a => pth_var (open_rec_avar k u a)
+  end.
+
+Fixpoint open_rec_typ (k: nat) (u: var) (T: typ) { struct T } : typ :=
+  match T with
+  | typ_top     => typ_top
+  | typ_bot     => typ_bot
+  | typ_bind Ds => typ_bind (open_rec_decs (S k) u Ds)
+  | typ_sel p L => typ_sel (open_rec_pth k u p) L
+  end
+with open_rec_dec (k: nat) (u: var) (D: dec) { struct D } : dec :=
+  match D with
+  | dec_typ T U => dec_typ (open_rec_typ k u T) (open_rec_typ k u U)
+  | dec_fld T   => dec_fld (open_rec_typ k u T)
+  | dec_mtd T U => dec_mtd (open_rec_typ k u T) (open_rec_typ k u U)
+  end
+with open_rec_decs (k: nat) (u: var) (Ds: decs) { struct Ds } : decs :=
+  match Ds with
+  | decs_nil          => decs_nil
+  | decs_cons n D Ds' => decs_cons n (open_rec_dec k u D) (open_rec_decs k u Ds')
+  end.
 
 Fixpoint open_rec_trm (k: nat) (u: var) (t: trm) { struct t } : trm :=
   match t with
@@ -103,8 +136,9 @@ Fixpoint open_rec_trm (k: nat) (u: var) (t: trm) { struct t } : trm :=
   end
 with open_rec_def (k: nat) (u: var) (d: def) { struct d } : def :=
   match d with
+  | def_typ     => def_typ
   | def_fld a   => def_fld (open_rec_avar k u a)
-  | def_mtd T e => def_mtd T (open_rec_trm (S k) u e)
+  | def_mtd T e => def_mtd (open_rec_typ k u T) (open_rec_trm (S k) u e)
   end
 with open_rec_defs (k: nat) (u: var) (ds: defs) { struct ds } : defs :=
   match ds with
@@ -112,19 +146,45 @@ with open_rec_defs (k: nat) (u: var) (ds: defs) { struct ds } : defs :=
   | defs_cons n d tl => defs_cons n (open_rec_def k u d) (open_rec_defs k u tl)
   end.
 
-Definition open_avar  u a := open_rec_avar  0 u a.
-Definition open_trm   u e := open_rec_trm   0 u e.
-Definition open_def  u d := open_rec_def  0 u d.
-Definition open_defs u l := open_rec_defs 0 u l.
+Definition open_avar u a := open_rec_avar  0 u a.
+Definition open_pth  u p := open_rec_pth   0 u p.
+Definition open_typ  u t := open_rec_typ   0 u t.
+Definition open_trm  u e := open_rec_trm   0 u e.
+Definition open_def  u d := open_rec_def   0 u d.
+Definition open_defs u l := open_rec_defs  0 u l.
 
 
 (* ###################################################################### *)
 (** ** Free variables *)
 
-Fixpoint fv_avar (a: avar) { struct a } : vars :=
+Definition fv_avar (a: avar) : vars :=
   match a with
   | avar_b i => \{}
   | avar_f x => \{x}
+  end.
+
+Definition fv_pth (p: pth) : vars :=
+  match p with
+  | pth_var a => fv_avar a
+  end.
+
+Fixpoint fv_typ (T: typ) { struct T } : vars :=
+  match T with
+  | typ_top     => \{}
+  | typ_bot     => \{}
+  | typ_bind Ds => fv_decs Ds
+  | typ_sel p L => fv_pth p
+  end
+with fv_dec (D: dec) { struct D } : vars :=
+  match D with
+  | dec_typ T U => (fv_typ T) \u (fv_typ U)
+  | dec_fld T   => (fv_typ T)
+  | dec_mtd T U => (fv_typ T) \u (fv_typ U)
+  end
+with fv_decs (Ds: decs) { struct Ds } : vars :=
+  match Ds with
+  | decs_nil          => \{}
+  | decs_cons n D Ds' => (fv_dec D) \u (fv_decs Ds')
   end.
 
 (* Since we define defs ourselves instead of using [list def], we don't have any
@@ -138,8 +198,9 @@ Fixpoint fv_trm (t: trm) : vars :=
   end
 with fv_def (d: def) : vars :=
   match d with
+  | def_typ => \{}
   | def_fld x => fv_avar x
-  | def_mtd T u => fv_trm u
+  | def_mtd T u => (fv_typ T) \u (fv_trm u)
   end
 with fv_defs(ds: defs) : vars :=
   match ds with
@@ -216,6 +277,11 @@ Axiom intersect_spec_2: forall l D Ds1 Ds2,
   decs_has   Ds2                 l D ->
   decs_has   (intersect Ds1 Ds2) l D.
 
+Axiom intersect_spec_12_typ: forall n S1 T1 S2 T2 Ds1 Ds2,
+  decs_has Ds1                 (label_typ n) (dec_typ S1 T1) ->
+  decs_has Ds2                 (label_typ n) (dec_typ S2 T2) ->
+  decs_has (intersect Ds1 Ds2) (label_typ n) (dec_typ (t_or S1 S2) (t_and T1 T2)).
+
 Axiom intersect_spec_12_fld: forall n T1 T2 Ds1 Ds2,
   decs_has Ds1                 (label_fld n) (dec_fld T1) ->
   decs_has Ds2                 (label_fld n) (dec_fld T2) ->
@@ -248,7 +314,7 @@ End Decs.
 (* Term typing *)
 Inductive has : ctx -> trm -> label -> dec -> Prop :=
   | has_trm : forall G e l D Ds,
-      ty_trm G e (typ_rcd Ds) ->
+      ty_trm G e (typ_bind Ds) ->
       decs_has Ds l D ->
       has G e l D
 with ty_trm : ctx -> trm -> typ -> Prop :=
@@ -263,8 +329,8 @@ with ty_trm : ctx -> trm -> typ -> Prop :=
       ty_trm G u U ->
       ty_trm G (trm_call t m u) V
   | ty_new : forall L G ds Ds,
-      (forall x, x \notin L -> ty_defs (G & x ~ typ_rcd Ds) (open_defs x ds) Ds) ->
-      ty_trm G (trm_new ds) (typ_rcd Ds)
+      (forall x, x \notin L -> ty_defs (G & x ~ typ_bind Ds) (open_defs x ds) Ds) ->
+      ty_trm G (trm_new ds) (typ_bind Ds)
 with ty_def : ctx -> def -> dec -> Prop :=
   | ty_fld : forall G v T,
       ty_trm G (trm_var v) T ->
@@ -287,8 +353,8 @@ Inductive wf_sto: sto -> ctx -> Prop :=
       wf_sto s G ->
       x # s ->
       x # G ->
-      ty_defs (G & x ~ (typ_rcd Ds)) ds Ds ->
-      wf_sto (s & x ~ ds) (G & x ~ (typ_rcd Ds)).
+      ty_defs (G & x ~ (typ_bind Ds)) ds Ds ->
+      wf_sto (s & x ~ ds) (G & x ~ (typ_bind Ds)).
 
 
 (* ###################################################################### *)
@@ -313,6 +379,15 @@ Definition preservation := forall s G e T e' s',
 (* ###################################################################### *)
 (** * Infrastructure *)
 
+
+Inductive notsel: typ -> Prop :=
+  | notsel_top  : notsel typ_top
+  | notsel_bot  : notsel typ_bot
+  | notsel_bind : forall ds, notsel (typ_bind ds).
+
+Hint Constructors notsel.
+
+
 (* ###################################################################### *)
 (** ** Induction principles *)
 
@@ -321,11 +396,15 @@ with   def_mut  := Induction for def  Sort Prop
 with   defs_mut := Induction for defs Sort Prop.
 Combined Scheme trm_mutind from trm_mut, def_mut, defs_mut.
 
+Scheme typ_mut  := Induction for typ  Sort Prop
+with   dec_mut  := Induction for dec  Sort Prop
+with   decs_mut := Induction for decs Sort Prop.
+Combined Scheme typ_mutind from typ_mut, dec_mut, decs_mut.
+
 Scheme has_mut     := Induction for has     Sort Prop
 with   ty_trm_mut  := Induction for ty_trm  Sort Prop
 with   ty_def_mut  := Induction for ty_def  Sort Prop
 with   ty_defs_mut := Induction for ty_defs Sort Prop.
-
 Combined Scheme ty_mutind from has_mut, ty_trm_mut, ty_def_mut, ty_defs_mut.
 
 
@@ -375,6 +454,30 @@ Fixpoint subst_avar (z: var) (u: var) (a: avar) { struct a } : avar :=
   | avar_f x => If x = z then (avar_f u) else (avar_f x)
   end.
 
+Definition subst_pth (z: var) (u: var) (p: pth) : pth :=
+  match p with
+  | pth_var a => pth_var (subst_avar z u a)
+  end.
+
+Fixpoint subst_typ (z: var) (u: var) (T: typ) { struct T } : typ :=
+  match T with
+  | typ_top     => typ_top
+  | typ_bot     => typ_bot
+  | typ_bind Ds => typ_bind (subst_decs z u Ds)
+  | typ_sel p L => typ_sel (subst_pth z u p) L
+  end
+with subst_dec (z: var) (u: var) (D: dec) { struct D } : dec :=
+  match D with
+  | dec_typ T U => dec_typ (subst_typ z u T) (subst_typ z u U)
+  | dec_fld T   => dec_fld (subst_typ z u T)
+  | dec_mtd T U => dec_mtd (subst_typ z u T) (subst_typ z u U)
+  end
+with subst_decs (z: var) (u: var) (Ds: decs) { struct Ds } : decs :=
+  match Ds with
+  | decs_nil          => decs_nil
+  | decs_cons n D Ds' => decs_cons n (subst_dec z u D) (subst_decs z u Ds')
+  end.
+
 Fixpoint subst_trm (z: var) (u: var) (t: trm) : trm :=
   match t with
   | trm_var x => trm_var (subst_avar z u x)
@@ -384,8 +487,9 @@ Fixpoint subst_trm (z: var) (u: var) (t: trm) : trm :=
   end
 with subst_def (z: var) (u: var) (d: def) : def :=
   match d with
+  | def_typ => def_typ
   | def_fld x => def_fld (subst_avar z u x)
-  | def_mtd T b => def_mtd T (subst_trm z u b)
+  | def_mtd T b => def_mtd (subst_typ z u T) (subst_trm z u b)
   end
 with subst_defs (z: var) (u: var) (ds: defs) : defs :=
   match ds with
@@ -403,12 +507,29 @@ Proof.
   intros. destruct* a. simpl. case_var*. simpls. notin_false.
 Qed.
 
-Lemma subst_fresh: forall x y,
-  (forall t : trm  , x \notin fv_trm   t  -> subst_trm  x y t  = t ) /\
+Lemma subst_fresh_pth: forall x y,
+  (forall p: pth, x \notin fv_pth p -> subst_pth x y p = p).
+Proof.
+  intros. destruct p. simpl. f_equal. apply* subst_fresh_avar.
+Qed.
+
+Lemma subst_fresh_typ_dec_decs: forall x y,
+  (forall T : typ , x \notin fv_typ  T  -> subst_typ  x y T  = T ) /\
+  (forall d : dec , x \notin fv_dec  d  -> subst_dec  x y d  = d ) /\
+  (forall ds: decs, x \notin fv_decs ds -> subst_decs x y ds = ds).
+Proof.
+  intros x y. apply typ_mutind; intros; simpls; f_equal*. apply* subst_fresh_pth.
+Qed.
+
+Lemma subst_fresh_trm_def_defs: forall x y,
+  (forall t : trm , x \notin fv_trm  t  -> subst_trm  x y t  = t ) /\
   (forall d : def , x \notin fv_def  d  -> subst_def  x y d  = d ) /\
   (forall ds: defs, x \notin fv_defs ds -> subst_defs x y ds = ds).
 Proof.
-  intros x y. apply trm_mutind; intros; simpls; f_equal*; apply* subst_fresh_avar.
+  intros x y. apply trm_mutind; intros; simpls; f_equal*.
+  + apply* subst_fresh_avar.
+  + apply* subst_fresh_avar.
+  + apply* subst_fresh_typ_dec_decs.
 Qed.
 
 Definition subst_fvar(x y z: var): var := If x = z then y else z.
@@ -423,8 +544,32 @@ Proof.
   + case_var*.
 Qed.
 
+Lemma subst_open_commute_pth: forall x y u,
+  (forall p: pth, forall n: nat,
+    subst_pth x y (open_rec_pth n u p) 
+    = open_rec_pth n (subst_fvar x y u) (subst_pth x y p)).
+Proof.
+  intros. unfold subst_pth, open_pth, open_rec_pth. destruct p.
+  f_equal. apply subst_open_commute_avar.
+Qed.
+
 (* "open and then substitute" = "substitute and then open" *)
-Lemma subst_open_commute: forall x y u,
+Lemma subst_open_commute_typ_dec_decs: forall x y u,
+  (forall t : typ, forall n: nat,
+     subst_typ x y (open_rec_typ n u t)
+     = open_rec_typ n (subst_fvar x y u) (subst_typ x y t)) /\
+  (forall d : dec , forall n: nat, 
+     subst_dec x y (open_rec_dec n u d)
+     = open_rec_dec n (subst_fvar x y u) (subst_dec x y d)) /\
+  (forall ds: decs, forall n: nat, 
+     subst_decs x y (open_rec_decs n u ds)
+     = open_rec_decs n (subst_fvar x y u) (subst_decs x y ds)).
+Proof.
+  intros. apply typ_mutind; intros; simpl; f_equal*. apply subst_open_commute_pth.
+Qed.
+
+(* "open and then substitute" = "substitute and then open" *)
+Lemma subst_open_commute_trm_def_defs: forall x y u,
   (forall t : trm, forall n: nat,
      subst_trm x y (open_rec_trm n u t)
      = open_rec_trm n (subst_fvar x y u) (subst_trm x y t)) /\
@@ -435,29 +580,22 @@ Lemma subst_open_commute: forall x y u,
      subst_defs x y (open_rec_defs n u ds)
      = open_rec_defs n (subst_fvar x y u) (subst_defs x y ds)).
 Proof.
-  intros. apply trm_mutind; intros; simpl; f_equal*; apply* subst_open_commute_avar.
+  intros. apply trm_mutind; intros; simpl; f_equal*.
+  + apply* subst_open_commute_avar.
+  + apply* subst_open_commute_avar.
+  + apply* subst_open_commute_typ_dec_decs.
 Qed.
 
 Lemma subst_open_commute_trm: forall x y u t,
   subst_trm x y (open_trm u t) = open_trm (subst_fvar x y u) (subst_trm x y t).
 Proof.
-  intros.
-  destruct (@subst_open_commute x y u) as [P _]. specialize (P t 0).
-  unfold open_trm. assumption.
+  intros. apply* subst_open_commute_trm_def_defs.
 Qed.
 
 Lemma subst_open_commute_defs: forall x y u ds,
   subst_defs x y (open_defs u ds) = open_defs (subst_fvar x y u) (subst_defs x y ds).
 Proof.
-  intros.
-  destruct (@subst_open_commute x y u) as [_ [_ P]]. specialize (P ds 0).
-  unfold open_def. assumption.
-Qed.
-
-Lemma subst_id_avar: forall x,
-  (forall a : avar, subst_avar x x a  = a).
-Proof.
-  intros. unfold subst_avar. destruct* a. case_var*.
+  intros. apply* subst_open_commute_trm_def_defs.
 Qed.
 
 (* "Introduce a substitution after open": Opening a term t with a var u is the
@@ -466,7 +604,7 @@ Lemma subst_intro_trm: forall x u t, x \notin (fv_trm t) ->
   open_trm u t = subst_trm x u (open_trm x t).
 Proof.
   introv Fr. unfold open_trm. rewrite* subst_open_commute_trm.
-  destruct (@subst_fresh x u) as [Q _]. rewrite* (Q t).
+  destruct (@subst_fresh_trm_def_defs x u) as [Q _]. rewrite* (Q t).
   unfold subst_fvar. case_var*.
 Qed.
 
@@ -474,7 +612,7 @@ Lemma subst_intro_defs: forall x u ds, x \notin (fv_defs ds) ->
   open_defs u ds = subst_defs x u (open_defs x ds).
 Proof.
   introv Fr. unfold open_trm. rewrite* subst_open_commute_defs.
-  destruct (@subst_fresh x u) as [_ [_ Q]]. rewrite* (Q ds).
+  destruct (@subst_fresh_trm_def_defs x u) as [_ [_ Q]]. rewrite* (Q ds).
   unfold subst_fvar. case_var*.
 Qed.
 
@@ -488,7 +626,7 @@ Proof.
   introv Hhas. induction ds; unfolds defs_has, get_def. 
   + discriminate.
   + case_if.
-    - inversions Hhas. unfold label_for_def in H. destruct* d. discriminate.
+    - inversions Hhas. unfold label_for_def in H. destruct* d; discriminate.
     - apply* IHds.
 Qed.
 
@@ -498,7 +636,7 @@ Proof.
   introv Hhas. induction ds; unfolds defs_has, get_def. 
   + discriminate.
   + case_if.
-    - inversions Hhas. unfold label_for_def in H. destruct* d. discriminate.
+    - inversions Hhas. unfold label_for_def in H. destruct* d; discriminate.
     - apply* IHds.
 Qed.
 
@@ -508,7 +646,7 @@ Proof.
   introv Hhas. induction ds; unfolds decs_has, get_dec. 
   + discriminate.
   + case_if.
-    - inversions Hhas. unfold label_for_dec in H. destruct* d. discriminate.
+    - inversions Hhas. unfold label_for_dec in H. destruct* d; discriminate.
     - apply* IHds.
 Qed.
 
@@ -518,7 +656,7 @@ Proof.
   introv Hhas. induction ds; unfolds decs_has, get_dec. 
   + discriminate.
   + case_if.
-    - inversions Hhas. unfold label_for_dec in H. destruct* d. discriminate.
+    - inversions Hhas. unfold label_for_dec in H. destruct* d; discriminate.
     - apply* IHds.
 Qed.
 
@@ -537,6 +675,9 @@ Parameter t_or:  typ -> typ -> typ.
 Fixpoint refine_dec(n1: nat)(D1: dec)(Ds2: decs): dec := match Ds2 with
 | decs_nil => D1
 | decs_cons n2 D2 tail2 => match D1, D2 with
+    | dec_typ T1 S1, dec_typ T2 S2 => If n1 = n2
+                                      then dec_typ (t_or T1 T2) (t_and S1 S2) 
+                                      else refine_dec n1 D1 tail2
     | dec_fld T1   , dec_fld T2    => If n1 = n2
                                       then dec_fld (t_and T1 T2) 
                                       else refine_dec n1 D1 tail2
@@ -547,6 +688,21 @@ Fixpoint refine_dec(n1: nat)(D1: dec)(Ds2: decs): dec := match Ds2 with
     end
 end.
 
+Lemma refine_dec_spec_typ: forall Ds2 n T1 S1 T2 S2,
+  decs_has Ds2 (label_typ n) (dec_typ T2 S2) ->
+  refine_dec n (dec_typ T1 S1) Ds2 = dec_typ (t_or T1 T2) (t_and S1 S2).
+Proof. 
+  intro Ds2. induction Ds2; intros.
+  + inversion H.
+  + unfold decs_has, get_dec in H. case_if; fold get_dec in H.
+    - inversions H. unfold label_for_dec in H0. inversions H0. simpl. case_if. reflexivity.
+    - simpl. destruct d.
+      * simpl in H0. case_if.
+        apply IHDs2. unfold decs_has. assumption.
+      * apply IHDs2. unfold decs_has. assumption.
+      * apply IHDs2. unfold decs_has. assumption.
+Qed.
+
 Lemma refine_dec_spec_fld: forall Ds2 n T1 T2,
   decs_has Ds2 (label_fld n) (dec_fld T2) ->
   refine_dec n (dec_fld T1) Ds2 = dec_fld (t_and T1 T2).
@@ -556,6 +712,7 @@ Proof.
   + unfold decs_has, get_dec in H. case_if; fold get_dec in H.
     - inversions H. unfold label_for_dec in H0. inversions H0. simpl. case_if. reflexivity.
     - simpl. destruct d.
+      * apply IHDs2. unfold decs_has. assumption.
       * simpl in H0. case_if.
         apply IHDs2. unfold decs_has. assumption.
       * apply IHDs2. unfold decs_has. assumption.
@@ -571,6 +728,7 @@ Proof.
     - inversions H. unfold label_for_dec in H0. inversions H0. simpl. case_if. reflexivity.
     - simpl. destruct d.
       * apply IHDs2. unfold decs_has. assumption.
+      * apply IHDs2. unfold decs_has. assumption.
       * simpl in H0. case_if.
         apply IHDs2. unfold decs_has. assumption.
 Qed.
@@ -584,8 +742,14 @@ Proof.
   + unfold decs_hasnt, get_dec in H. fold get_dec in H. case_if. destruct D1.
     - destruct d; simpl in H0; unfold refine_dec.
       * case_if. fold refine_dec. apply IHDs2. assumption.
-      * destruct Ds2. reflexivity. unfold refine_dec in IHDs2. apply IHDs2. assumption.
+      * fold refine_dec. apply IHDs2. assumption.
+      * fold refine_dec. apply IHDs2. assumption.
     - destruct d; simpl in H0; unfold refine_dec.
+      * fold refine_dec. apply IHDs2. assumption.
+      * case_if. fold refine_dec. apply IHDs2. assumption.
+      * fold refine_dec. apply IHDs2. assumption.
+    - destruct d; simpl in H0; unfold refine_dec.
+      * fold refine_dec. apply IHDs2. assumption.
       * fold refine_dec. apply IHDs2. assumption.
       * case_if. fold refine_dec. apply IHDs2. assumption.
 Qed.
@@ -595,11 +759,8 @@ Lemma refine_dec_preserves_label: forall n D1 Ds2,
 Proof.
   intros. induction Ds2.
   + reflexivity.
-  + destruct D1; destruct d; unfold refine_dec in *; fold refine_dec in *.
-    - case_if. reflexivity. assumption.
-    - assumption.
-    - assumption.
-    - case_if. reflexivity. assumption.
+  + destruct D1; destruct d; unfold refine_dec in *; fold refine_dec in *; 
+    solve [ assumption | case_if* ].
 Qed.
 
 Fixpoint refine_decs(Ds1: decs)(Ds2: decs): decs := match Ds1 with
@@ -633,6 +794,22 @@ Proof.
     - unfold decs_hasnt, get_dec in Hasnt. case_if. (* contradiction *)
     - fold get_dec. unfold decs_has in *. apply IHDs1.
       unfold decs_hasnt, get_dec in Hasnt. case_if. fold get_dec in Hasnt. apply Hasnt.
+Qed.
+
+Lemma refine_decs_spec_typ: forall n Ds1 Ds2 T1 S1 T2 S2,
+  decs_has  Ds1                  (label_typ n) (dec_typ T1 S1) ->
+  decs_has  Ds2                  (label_typ n) (dec_typ T2 S2) ->
+  decs_has (refine_decs Ds1 Ds2) (label_typ n) (dec_typ (t_or T1 T2) (t_and S1 S2)).
+Proof.
+  introv Has1 Has2. induction Ds1.
+  + inversion Has1.
+  + unfold decs_has, get_dec in Has1. case_if.
+    - inversions Has1. simpl in H. inversions H. simpl. 
+      rewrite (refine_dec_spec_typ _ _ Has2). unfold decs_has, get_dec. simpl.
+      case_if. reflexivity.
+    - fold get_dec in Has1. simpl. unfold decs_has, get_dec.
+      rewrite refine_dec_preserves_label. case_if. fold get_dec.
+      unfold decs_has in IHDs1. apply IHDs1. assumption.
 Qed.
 
 Lemma refine_decs_spec_fld: forall n Ds1 Ds2 T1 T2,
@@ -732,6 +909,15 @@ Proof.
   assumption. 
 Qed.
 
+Lemma intersect_spec_12_typ: forall n S1 T1 S2 T2 Ds1 Ds2,
+  decs_has Ds1                 (label_typ n) (dec_typ S1 T1) ->
+  decs_has Ds2                 (label_typ n) (dec_typ S2 T2) ->
+  decs_has (intersect Ds1 Ds2) (label_typ n) (dec_typ (t_or S1 S2) (t_and T1 T2)).
+Proof.
+  intros. unfold intersect. apply decs_has_concat_left.
+  apply refine_decs_spec_typ; assumption.
+Qed.
+
 Lemma intersect_spec_12_fld: forall n T1 T2 Ds1 Ds2,
   decs_has Ds1                 (label_fld n) (dec_fld T1) ->
   decs_has Ds2                 (label_fld n) (dec_fld T2) ->
@@ -827,9 +1013,9 @@ Lemma invert_wf_sto: forall s G,
   wf_sto s G -> 
     forall x ds Ds, 
       binds x ds s -> 
-      binds x (typ_rcd Ds) G ->
-      exists G1 G2, G = G1 & x ~ (typ_rcd Ds) & G2 /\ 
-                    ty_defs (G1 & x ~ (typ_rcd Ds)) ds Ds.
+      binds x (typ_bind Ds) G ->
+      exists G1 G2, G = G1 & x ~ (typ_bind Ds) & G2 /\ 
+                    ty_defs (G1 & x ~ (typ_bind Ds)) ds Ds.
 Proof.
   intros s G Wf. induction Wf; intros.
   + false* binds_empty_inv.
@@ -838,7 +1024,7 @@ Proof.
     - inversions H2. inversions H3. exists G (@empty typ). rewrite concat_empty_r. auto.
     - specialize (IHWf x0 ds0 Ds0 H2 H3).
       destruct IHWf as [G1 [G2 [Eq Ty]]]. rewrite Eq.
-      exists G1 (G2 & x ~ typ_rcd Ds).
+      exists G1 (G2 & x ~ typ_bind Ds).
       rewrite concat_assoc. auto.
 Qed.
 
@@ -847,7 +1033,7 @@ Qed.
 
 Lemma invert_has: forall G e l d,
   has G e l d ->
-  exists Ds, ty_trm G e (typ_rcd Ds) /\ decs_has Ds l d.
+  exists Ds, ty_trm G e (typ_bind Ds) /\ decs_has Ds l d.
 Proof. intros. inversions H. eauto. Qed.
 
 
@@ -870,10 +1056,10 @@ Proof. intros. inversions H. eauto. Qed.
 
 Lemma invert_ty_new: forall G ds T,
   ty_trm G (trm_new ds) T ->
-  exists L Ds, T = typ_rcd Ds /\
+  exists L Ds, T = typ_bind Ds /\
                (forall x, x \notin L -> 
-                          ty_defs (G & x ~ typ_rcd Ds) (open_defs x ds) Ds).
-Proof. intros. destruct T as [Ds]. inversions H. eauto. Qed.
+                          ty_defs (G & x ~ typ_bind Ds) (open_defs x ds) Ds).
+Proof. intros. inversions H. eauto. Qed.
 
 
 (** *** Inverting [ty_def] *)
@@ -1046,7 +1232,7 @@ Proof.
   + apply* ty_call.
   + apply_fresh ty_new as x.
     rewrite <- concat_assoc.
-    refine (H x _ G1 G2 (G3 & x ~ typ_rcd Ds) _ _).
+    refine (H x _ G1 G2 (G3 & x ~ typ_bind Ds) _ _).
     - auto.
     - rewrite concat_assoc. reflexivity.
     - rewrite concat_assoc. auto.
@@ -1108,7 +1294,7 @@ Lemma invert_wf_sto_with_weakening: forall s G,
   wf_sto s G -> 
     forall x ds Ds, 
       binds x ds s -> 
-      binds x (typ_rcd Ds) G ->
+      binds x (typ_bind Ds) G ->
       ty_defs G ds Ds.
 Proof.
   introv Wf Bs BG.
@@ -1204,7 +1390,7 @@ Proof.
     rewrite <- concat_assoc.
     subst G.
     assert (zL: z \notin L) by auto.
-    refine (IH z zL G1 (G2 & z ~ typ_rcd Ds) x _ _ _); rewrite concat_assoc.
+    refine (IH z zL G1 (G2 & z ~ typ_bind Ds) x _ _ _); rewrite concat_assoc.
     - reflexivity.
     - apply* weaken_ty_trm.
     - auto.
@@ -1316,7 +1502,7 @@ Proof.
   + rename H into Hvux.
     apply invert_ty_new in Hty.
     destruct Hty as [L [Ds [Eq HdsDs]]]. subst T.
-    exists (x ~ typ_rcd Ds).
+    exists (x ~ typ_bind Ds).
     pick_fresh x'. assert (Frx': x' \notin L) by auto.
     specialize (HdsDs x' Frx').
     assert (xG: x # G) by apply* sto_unbound_to_ctx_unbound.
@@ -1329,7 +1515,7 @@ Proof.
     destruct Hty as [Ta [Hhas Htya]].
     apply invert_has in Hhas.
     destruct Hhas as [Ds [Htyo Hdbm]].
-    specialize (IHHred G (typ_rcd Ds) Hwf Htyo).
+    specialize (IHHred G (typ_bind Ds) Hwf Htyo).
     destruct IHHred as [H [Hwf' Htyo']].
     exists H. split. assumption. apply (@ty_call (G & H) o' m Ta Tr a).
     - apply (has_trm Htyo' Hdbm).
@@ -1349,7 +1535,7 @@ Proof.
   + apply invert_ty_sel in Hty.
     apply invert_has in Hty.
     destruct Hty as [Ds [Htyo Hdbl]].
-    specialize (IHHred G (typ_rcd Ds) Hwf Htyo).
+    specialize (IHHred G (typ_bind Ds) Hwf Htyo).
     destruct IHHred as [H [Hwf' Htyo']].
     exists H. split. assumption. apply (@ty_sel (G & H) o' l T).
     apply (has_trm Htyo' Hdbl).
