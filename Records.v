@@ -3,21 +3,14 @@ Set Implicit Arguments.
 
 (* CoqIDE users: Run open.sh (in ./ln) to start coqide, then open this file. *)
 Require Import LibLN.
-(*Require Import LibList.*)
 
-(** ** Some tactics *)
-
-Ltac auto_specialize :=
-  repeat match goal with
-  | Impl: ?Cond ->            _ |- _ => let HC := fresh in 
-      assert (HC: Cond) by auto; specialize (Impl HC); clear HC
-  | Impl: forall (_ : ?Cond), _ |- _ => match goal with
-      | p: Cond |- _ => specialize (Impl p)
-      end
-  end.
 
 (* ###################################################################### *)
-(** * Syntax *)
+(* ###################################################################### *)
+(** * Definitions *)
+
+(* ###################################################################### *)
+(** ** Syntax *)
 
 (** If it's clear whether a field or method is meant, we use nat, if not, we use label: *)
 Inductive label: Type :=
@@ -49,38 +42,8 @@ with defs : Type :=
   | defs_nil : defs
   | defs_cons : nat -> def -> defs -> defs.
 
-Scheme trm_mut  := Induction for trm  Sort Prop
-with   def_mut  := Induction for def  Sort Prop
-with   defs_mut := Induction for defs Sort Prop.
-Combined Scheme trm_mutind from trm_mut, def_mut, defs_mut.
 
-Definition label_for_def(n: nat)(d: def): label := match d with
-| def_fld _ => label_fld n
-| def_mtd _ _ => label_mtd n
-end.
-
-Fixpoint get_def(l: label)(ds: defs): option def := match ds with
-| defs_nil => None
-| defs_cons n d ds' => If l = label_for_def n d then Some d else get_def l ds'
-end.
-
-Definition label_for_dec(n: nat)(D: dec): label := match D with
-| dec_fld _ => label_fld n
-| dec_mtd _ _ => label_mtd n
-end.
-
-Fixpoint get_dec(l: label)(Ds: decs): option dec := match Ds with
-| decs_nil => None
-| decs_cons n D Ds' => If l = label_for_dec n D then Some D else get_dec l Ds'
-end.
-
-Definition defs_has(ds: defs)(l: label)(d: def): Prop := (get_def l ds = Some d).
-Definition defs_hasnt(ds: defs)(l: label): Prop := (get_def l ds = None).
-
-Definition decs_has(Ds: decs)(l: label)(D: dec): Prop := (get_dec l Ds = Some D).
-Definition decs_hasnt(Ds: decs)(l: label): Prop := (get_dec l Ds = None).
-
-(** ** Syntactic sugar *)
+(** *** Syntactic sugar *)
 Definition trm_fun(T: typ)(body: trm) := trm_new (defs_cons 0 (def_mtd T body) defs_nil).
 Definition trm_app(func arg: trm) := trm_call func 0 arg.
 Definition trm_let(T: typ)(rhs body: trm) := trm_app (trm_fun T body) rhs.
@@ -89,7 +52,35 @@ Definition typ_arrow(T1 T2: typ) := typ_rcd (decs_cons 0 (dec_mtd T1 T2) decs_ni
 
 
 (* ###################################################################### *)
-(** * Opening *)
+(** ** Declaration and definition lists *)
+
+Definition label_for_def(n: nat)(d: def): label := match d with
+| def_fld _ => label_fld n
+| def_mtd _ _ => label_mtd n
+end.
+Definition label_for_dec(n: nat)(D: dec): label := match D with
+| dec_fld _ => label_fld n
+| dec_mtd _ _ => label_mtd n
+end.
+
+Fixpoint get_def(l: label)(ds: defs): option def := match ds with
+| defs_nil => None
+| defs_cons n d ds' => If l = label_for_def n d then Some d else get_def l ds'
+end.
+Fixpoint get_dec(l: label)(Ds: decs): option dec := match Ds with
+| decs_nil => None
+| decs_cons n D Ds' => If l = label_for_dec n D then Some D else get_dec l Ds'
+end.
+
+Definition defs_has(ds: defs)(l: label)(d: def): Prop := (get_def l ds = Some d).
+Definition decs_has(Ds: decs)(l: label)(D: dec): Prop := (get_dec l Ds = Some D).
+
+Definition defs_hasnt(ds: defs)(l: label): Prop := (get_def l ds = None).
+Definition decs_hasnt(Ds: decs)(l: label): Prop := (get_dec l Ds = None).
+
+
+(* ###################################################################### *)
+(** ** Opening *)
 
 (** Opening replaces in some syntax a bound variable with dangling index (k) 
    by a free variable x. *)
@@ -128,7 +119,7 @@ Definition open_defs u l := open_rec_defs 0 u l.
 
 
 (* ###################################################################### *)
-(** * Free variables *)
+(** ** Free variables *)
 
 Fixpoint fv_avar (a: avar) { struct a } : vars :=
   match a with
@@ -158,7 +149,225 @@ with fv_defs(ds: defs) : vars :=
 
 
 (* ###################################################################### *)
-(** * Var-by-var substitution *)
+(** ** Environments *)
+
+(** *** Typing environment ("Gamma") *)
+Definition ctx := env typ.
+
+(** *** Value environment ("store") *)
+Definition sto := env defs.
+
+
+(* ###################################################################### *)
+(** ** Operational Semantics *)
+
+(** Note: Terms given by user are closed, so they only contain avar_b, no avar_f.
+    Whenever we introduce a new avar_f (only happens in red_new), we choose one
+    which is not in the store, so we never have name clashes. *) 
+Inductive red : trm -> sto -> trm -> sto -> Prop :=
+  (* computation rules *)
+  | red_call : forall s x y m T ds body,
+      binds x ds s ->
+      defs_has ds (label_mtd m) (def_mtd T body) ->
+      red (trm_call (trm_var (avar_f x)) m (trm_var (avar_f y))) s
+          (open_trm y body) s
+  | red_sel : forall s x y l ds,
+      binds x ds s ->
+      defs_has ds (label_fld l) (def_fld y) ->
+      red (trm_sel (trm_var (avar_f x)) l) s
+          (trm_var y) s
+  | red_new : forall s ds x,
+      x # s ->
+      red (trm_new ds) s
+          (trm_var (avar_f x)) (s & x ~ (open_defs x ds))
+  (* congruence rules *)
+  | red_call1 : forall s o m a s' o',
+      red o s o' s' ->
+      red (trm_call o  m a) s
+          (trm_call o' m a) s'
+  | red_call2 : forall s x m a s' a',
+      red a s a' s' ->
+      red (trm_call (trm_var (avar_f x)) m a ) s
+          (trm_call (trm_var (avar_f x)) m a') s'
+  | red_sel1 : forall s o l s' o',
+      red o s o' s' ->
+      red (trm_sel o  l) s
+          (trm_sel o' l) s'.
+
+
+(* ###################################################################### *)
+(** ** Specification of declaration intersection (not yet used) *)
+
+Module Type Decs.
+
+(* Will be part of syntax: *)
+Parameter t_and: typ -> typ -> typ.
+Parameter t_or:  typ -> typ -> typ.
+
+Parameter intersect: decs -> decs -> decs.
+
+Axiom intersect_spec_1: forall l D Ds1 Ds2,
+  decs_has    Ds1                l D ->
+  decs_hasnt  Ds2                l   ->
+  decs_has   (intersect Ds1 Ds2) l D .
+
+Axiom intersect_spec_2: forall l D Ds1 Ds2,
+  decs_hasnt Ds1                 l   ->
+  decs_has   Ds2                 l D ->
+  decs_has   (intersect Ds1 Ds2) l D.
+
+Axiom intersect_spec_12_fld: forall n T1 T2 Ds1 Ds2,
+  decs_has Ds1                 (label_fld n) (dec_fld T1) ->
+  decs_has Ds2                 (label_fld n) (dec_fld T2) ->
+  decs_has (intersect Ds1 Ds2) (label_fld n) (dec_fld (t_and T1 T2)).
+
+Axiom intersect_spec_12_mtd: forall n S1 T1 S2 T2 Ds1 Ds2,
+  decs_has Ds1                 (label_mtd n) (dec_mtd S1 T1) ->
+  decs_has Ds2                 (label_mtd n) (dec_mtd S2 T2) ->
+  decs_has (intersect Ds1 Ds2) (label_mtd n) (dec_mtd (t_or S1 S2) (t_and T1 T2)).
+
+Axiom intersect_spec_hasnt: forall l Ds1 Ds2,
+  decs_hasnt Ds1 l ->
+  decs_hasnt Ds2 l ->
+  decs_hasnt (intersect Ds1 Ds2) l.
+
+End Decs.
+
+
+(* ###################################################################### *)
+(** ** Typing *)
+
+(* The store is not an argument of the typing judgment because
+   * it's only needed in typing_trm_var_s
+   * we must allow types in Gamma to depend on values in the store, which seems complicated
+   * how can we ensure that the store is well-formed? By requiring it in the "leaf"
+     typing rules (those without typing assumptions)? Typing rules become unintuitive,
+     and maybe to prove that store is wf, we need to prove what we're about to prove...
+*)
+
+(* Term typing *)
+Inductive has : ctx -> trm -> label -> dec -> Prop :=
+  | has_trm : forall G e l D Ds,
+      ty_trm G e (typ_rcd Ds) ->
+      decs_has Ds l D ->
+      has G e l D
+with ty_trm : ctx -> trm -> typ -> Prop :=
+  | ty_var : forall G x T,
+      binds x T G ->
+      ty_trm G (trm_var (avar_f x)) T
+  | ty_sel : forall G e l T,
+      has G e (label_fld l) (dec_fld T) ->
+      ty_trm G (trm_sel e l) T
+  | ty_call : forall G t m U V u,
+      has G t (label_mtd m) (dec_mtd U V) ->
+      ty_trm G u U ->
+      ty_trm G (trm_call t m u) V
+  | ty_new : forall L G ds Ds,
+      (forall x, x \notin L -> ty_defs (G & x ~ typ_rcd Ds) (open_defs x ds) Ds) ->
+      ty_trm G (trm_new ds) (typ_rcd Ds)
+with ty_def : ctx -> def -> dec -> Prop :=
+  | ty_fld : forall G v T,
+      ty_trm G (trm_var v) T ->
+      ty_def G (def_fld v) (dec_fld T)
+  | ty_mtd : forall L G S T t,
+      (forall x, x \notin L -> ty_trm (G & x ~ S) (open_trm x t) T) ->
+      ty_def G (def_mtd S t) (dec_mtd S T)
+with ty_defs : ctx -> defs -> decs -> Prop :=
+  | ty_dsnil : forall G,
+      ty_defs G defs_nil decs_nil
+  | ty_dscons : forall G ds d Ds D n,
+      ty_defs G ds Ds ->
+      ty_def  G d D ->
+      ty_defs G (defs_cons n d ds) (decs_cons n D Ds).
+
+(** *** Well-formed store *)
+Inductive wf_sto: sto -> ctx -> Prop :=
+  | wf_sto_empty : wf_sto empty empty
+  | wf_sto_push : forall s G x ds Ds,
+      wf_sto s G ->
+      x # s ->
+      x # G ->
+      ty_defs (G & x ~ (typ_rcd Ds)) ds Ds ->
+      wf_sto (s & x ~ ds) (G & x ~ (typ_rcd Ds)).
+
+
+(* ###################################################################### *)
+(** ** Statements we want to prove *)
+
+Definition progress := forall s G e T,
+  wf_sto s G ->
+  ty_trm G e T -> 
+  (
+    (* can step *)
+    (exists e' s', red e s e' s') \/
+    (* or is a value *)
+    (exists x ds, e = (trm_var (avar_f x)) /\ binds x ds s)
+  ).
+
+Definition preservation := forall s G e T e' s',
+  wf_sto s G -> ty_trm G e T -> red e s e' s' ->
+  (exists G', wf_sto s' G' /\ ty_trm G' e' T).
+
+
+(* ###################################################################### *)
+(* ###################################################################### *)
+(** * Infrastructure *)
+
+(* ###################################################################### *)
+(** ** Induction principles *)
+
+Scheme trm_mut  := Induction for trm  Sort Prop
+with   def_mut  := Induction for def  Sort Prop
+with   defs_mut := Induction for defs Sort Prop.
+Combined Scheme trm_mutind from trm_mut, def_mut, defs_mut.
+
+Scheme has_mut     := Induction for has     Sort Prop
+with   ty_trm_mut  := Induction for ty_trm  Sort Prop
+with   ty_def_mut  := Induction for ty_def  Sort Prop
+with   ty_defs_mut := Induction for ty_defs Sort Prop.
+
+Combined Scheme ty_mutind from has_mut, ty_trm_mut, ty_def_mut, ty_defs_mut.
+
+
+(* ###################################################################### *)
+(** ** Tactics *)
+
+Ltac auto_specialize :=
+  repeat match goal with
+  | Impl: ?Cond ->            _ |- _ => let HC := fresh in 
+      assert (HC: Cond) by auto; specialize (Impl HC); clear HC
+  | Impl: forall (_ : ?Cond), _ |- _ => match goal with
+      | p: Cond |- _ => specialize (Impl p)
+      end
+  end.
+
+Ltac gather_vars :=
+  let A := gather_vars_with (fun x : vars      => x         ) in
+  let B := gather_vars_with (fun x : var       => \{ x }    ) in
+  let C := gather_vars_with (fun x : ctx       => dom x     ) in
+  let D := gather_vars_with (fun x : sto       => dom x     ) in
+  let E := gather_vars_with (fun x : avar      => fv_avar  x) in
+  let F := gather_vars_with (fun x : trm       => fv_trm   x) in
+  let G := gather_vars_with (fun x : def      => fv_def  x) in
+  let H := gather_vars_with (fun x : defs     => fv_defs x) in
+  let I := gather_vars_with (fun x : def       => fv_def   x) in
+  constr:(A \u B \u C \u D \u E \u F \u G \u H \u I).
+
+Ltac pick_fresh x :=
+  let L := gather_vars in (pick_fresh_gen L x).
+
+Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
+  apply_fresh_base T gather_vars x.
+
+
+(* ###################################################################### *)
+(** ** Definition of var-by-var substitution *)
+
+(** Note that substitution is not part of the definitions, because for the
+    definitions, opening is sufficient. For the proofs, however, we also
+    need substitution, but only var-by-var substitution, not var-by-term
+    substitution. That's why we don't need a judgment asserting that a term
+    is locally closed. *)
 
 Fixpoint subst_avar (z: var) (u: var) (a: avar) { struct a } : avar :=
   match a with
@@ -183,6 +392,10 @@ with subst_defs (z: var) (u: var) (ds: defs) : defs :=
   | defs_nil => defs_nil
   | defs_cons n d rest => defs_cons n (subst_def z u d) (subst_defs z u rest)
   end.
+
+
+(* ###################################################################### *)
+(** ** Lemmas for var-by-var substitution *)
 
 Lemma subst_fresh_avar: forall x y,
   (forall a: avar, x \notin fv_avar a -> subst_avar x y a = a).
@@ -267,6 +480,7 @@ Qed.
 
 
 (* ###################################################################### *)
+(** ** Helper lemmas for definition/declaration lists *)
 
 Lemma defs_has_fld_sync: forall n d ds,
   defs_has ds (label_fld n) d -> exists x, d = (def_fld x).
@@ -308,53 +522,9 @@ Proof.
     - apply* IHds.
 Qed.
 
-(* ###################################################################### *)
-
-(** ** Typing environment ("Gamma") *)
-Definition ctx := env typ.
-
-(** ** Value environment ("store") *)
-Definition sto := env defs.
-
 
 (* ###################################################################### *)
-(** * Preview: How intersection will work *)
-
-Module Type Decs.
-
-(* Will be part of syntax: *)
-Parameter t_and: typ -> typ -> typ.
-Parameter t_or:  typ -> typ -> typ.
-
-(* Left as an exercise for the reader ;-) We define intersection by the spec below. *)
-Parameter intersect: decs -> decs -> decs.
-
-Axiom intersect_spec_1: forall l D Ds1 Ds2,
-  decs_has    Ds1                l D ->
-  decs_hasnt  Ds2                l   ->
-  decs_has   (intersect Ds1 Ds2) l D .
-
-Axiom intersect_spec_2: forall l D Ds1 Ds2,
-  decs_hasnt Ds1                 l   ->
-  decs_has   Ds2                 l D ->
-  decs_has   (intersect Ds1 Ds2) l D.
-
-Axiom intersect_spec_12_fld: forall n T1 T2 Ds1 Ds2,
-  decs_has Ds1                 (label_fld n) (dec_fld T1) ->
-  decs_has Ds2                 (label_fld n) (dec_fld T2) ->
-  decs_has (intersect Ds1 Ds2) (label_fld n) (dec_fld (t_and T1 T2)).
-
-Axiom intersect_spec_12_mtd: forall n S1 T1 S2 T2 Ds1 Ds2,
-  decs_has Ds1                 (label_mtd n) (dec_mtd S1 T1) ->
-  decs_has Ds2                 (label_mtd n) (dec_mtd S2 T2) ->
-  decs_has (intersect Ds1 Ds2) (label_mtd n) (dec_mtd (t_or S1 S2) (t_and T1 T2)).
-
-Axiom intersect_spec_hasnt: forall l Ds1 Ds2,
-  decs_hasnt Ds1 l ->
-  decs_hasnt Ds2 l ->
-  decs_hasnt (intersect Ds1 Ds2) l.
-
-End Decs.
+(** ** Implementation of declaration intersection *)
 
 (* Exercise: Give any implementation of `intersect`, and prove that it satisfies
    the specification. Happy hacking! ;-) *)
@@ -594,131 +764,9 @@ End DecsImpl.
 
 
 (* ###################################################################### *)
-(** * Operational Semantics *)
+(** ** Inversion lemmas *)
 
-(** Note: Terms given by user are closed, so they only contain avar_b, no avar_f.
-    Whenever we introduce a new avar_f (only happens in red_new), we choose one
-    which is not in the store, so we never have name clashes. *) 
-Inductive red : trm -> sto -> trm -> sto -> Prop :=
-  (* computation rules *)
-  | red_call : forall s x y m T ds body,
-      binds x ds s ->
-      defs_has ds (label_mtd m) (def_mtd T body) ->
-      red (trm_call (trm_var (avar_f x)) m (trm_var (avar_f y))) s
-          (open_trm y body) s
-  | red_sel : forall s x y l ds,
-      binds x ds s ->
-      defs_has ds (label_fld l) (def_fld y) ->
-      red (trm_sel (trm_var (avar_f x)) l) s
-          (trm_var y) s
-  | red_new : forall s ds x,
-      x # s ->
-      red (trm_new ds) s
-          (trm_var (avar_f x)) (s & x ~ (open_defs x ds))
-  (* congruence rules *)
-  | red_call1 : forall s o m a s' o',
-      red o s o' s' ->
-      red (trm_call o  m a) s
-          (trm_call o' m a) s'
-  | red_call2 : forall s x m a s' a',
-      red a s a' s' ->
-      red (trm_call (trm_var (avar_f x)) m a ) s
-          (trm_call (trm_var (avar_f x)) m a') s'
-  | red_sel1 : forall s o l s' o',
-      red o s o' s' ->
-      red (trm_sel o  l) s
-          (trm_sel o' l) s'.
-
-
-(* ###################################################################### *)
-(** * Typing *)
-
-(* The store is not an argument of the typing judgment because
-   * it's only needed in typing_trm_var_s
-   * we must allow types in Gamma to depend on values in the store, which seems complicated
-   * how can we ensure that the store is well-formed? By requiring it in the "leaf"
-     typing rules (those without typing assumptions)? Typing rules become unintuitive,
-     and maybe to prove that store is wf, we need to prove what we're about to prove...
-*)
-
-(* Term typing *)
-Inductive has : ctx -> trm -> label -> dec -> Prop :=
-  | has_trm : forall G e l D Ds,
-      ty_trm G e (typ_rcd Ds) ->
-      decs_has Ds l D ->
-      has G e l D
-with ty_trm : ctx -> trm -> typ -> Prop :=
-  | ty_var : forall G x T,
-      binds x T G ->
-      ty_trm G (trm_var (avar_f x)) T
-  | ty_sel : forall G e l T,
-      has G e (label_fld l) (dec_fld T) ->
-      ty_trm G (trm_sel e l) T
-  | ty_call : forall G t m U V u,
-      has G t (label_mtd m) (dec_mtd U V) ->
-      ty_trm G u U ->
-      ty_trm G (trm_call t m u) V
-  | ty_new : forall L G ds Ds,
-      (forall x, x \notin L -> ty_defs (G & x ~ typ_rcd Ds) (open_defs x ds) Ds) ->
-      ty_trm G (trm_new ds) (typ_rcd Ds)
-with ty_def : ctx -> def -> dec -> Prop :=
-  | ty_fld : forall G v T,
-      ty_trm G (trm_var v) T ->
-      ty_def G (def_fld v) (dec_fld T)
-  | ty_mtd : forall L G S T t,
-      (forall x, x \notin L -> ty_trm (G & x ~ S) (open_trm x t) T) ->
-      ty_def G (def_mtd S t) (dec_mtd S T)
-with ty_defs : ctx -> defs -> decs -> Prop :=
-  | ty_dsnil : forall G,
-      ty_defs G defs_nil decs_nil
-  | ty_dscons : forall G ds d Ds D n,
-      ty_defs G ds Ds ->
-      ty_def  G d D ->
-      ty_defs G (defs_cons n d ds) (decs_cons n D Ds).
-
-Scheme has_mut     := Induction for has     Sort Prop
-with   ty_trm_mut  := Induction for ty_trm  Sort Prop
-with   ty_def_mut  := Induction for ty_def  Sort Prop
-with   ty_defs_mut := Induction for ty_defs Sort Prop.
-
-Combined Scheme ty_mutind from has_mut, ty_trm_mut, ty_def_mut, ty_defs_mut.
-
-
-(* ###################################################################### *)
-(** * Instantiation of tactics *)
-
-Ltac gather_vars :=
-  let A := gather_vars_with (fun x : vars      => x         ) in
-  let B := gather_vars_with (fun x : var       => \{ x }    ) in
-  let C := gather_vars_with (fun x : ctx       => dom x     ) in
-  let D := gather_vars_with (fun x : sto       => dom x     ) in
-  let E := gather_vars_with (fun x : avar      => fv_avar  x) in
-  let F := gather_vars_with (fun x : trm       => fv_trm   x) in
-  let G := gather_vars_with (fun x : def      => fv_def  x) in
-  let H := gather_vars_with (fun x : defs     => fv_defs x) in
-  let I := gather_vars_with (fun x : def       => fv_def   x) in
-  constr:(A \u B \u C \u D \u E \u F \u G \u H \u I).
-
-Ltac pick_fresh x :=
-  let L := gather_vars in (pick_fresh_gen L x).
-
-Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
-  apply_fresh_base T gather_vars x.
-
-
-(* ###################################################################### *)
-(** * Well-formed store ([wf_venv]) *)
-
-Inductive wf_sto: sto -> ctx -> Prop :=
-  | wf_sto_empty : wf_sto empty empty
-  | wf_sto_push : forall s G x ds Ds,
-      wf_sto s G ->
-      x # s ->
-      x # G ->
-      ty_defs (G & x ~ (typ_rcd Ds)) ds Ds ->
-      wf_sto (s & x ~ ds) (G & x ~ (typ_rcd Ds)).
-
-(** ** Inversion lemmas for [wf_sto] *)
+(** *** Inversion lemmas for [wf_sto] *)
 
 Lemma wf_sto_to_ok_s: forall s G,
   wf_sto s G -> ok s.
@@ -795,10 +843,7 @@ Proof.
 Qed.
 
 
-(* ###################################################################### *)
-(** * Inversion lemmas for typing *)
-
-(** **** Inverting [has] *)
+(** *** Inverting [has] *)
 
 Lemma invert_has: forall G e l d,
   has G e l d ->
@@ -806,7 +851,7 @@ Lemma invert_has: forall G e l d,
 Proof. intros. inversions H. eauto. Qed.
 
 
-(** **** Inverting [ty_trm] *)
+(** *** Inverting [ty_trm] *)
 
 Lemma invert_ty_var: forall G x T,
   ty_trm G (trm_var (avar_f x)) T ->
@@ -831,7 +876,7 @@ Lemma invert_ty_new: forall G ds T,
 Proof. intros. destruct T as [Ds]. inversions H. eauto. Qed.
 
 
-(** **** Inverting [ty_def] *)
+(** *** Inverting [ty_def] *)
 
 Lemma ty_def_to_label_for_eq: forall G d D n, 
   ty_def G d D ->
@@ -840,7 +885,7 @@ Proof.
   intros. inversions H; reflexivity.
 Qed.
 
-(** **** Inverting [ty_defs] *)
+(** *** Inverting [ty_defs] *)
 
 Lemma extract_ty_def_from_ty_defs: forall G l d ds D Ds,
   ty_defs G ds Ds ->
@@ -906,17 +951,13 @@ Qed.
 
 
 (* ###################################################################### *)
-(** * Progress *)
+(* ###################################################################### *)
+(** * Soundness Proofs *)
 
-Theorem progress: forall s G e T,
-  wf_sto s G ->
-  ty_trm G e T -> 
-  (
-    (* can step *)
-    (exists e' s', red e s e' s') \/
-    (* or is a value *)
-    (exists x ds, e = (trm_var (avar_f x)) /\ binds x ds s)
-  ).
+(* ###################################################################### *)
+(** ** Progress *)
+
+Theorem progress_result: progress.
 Proof.
   introv Wf Ty. gen G e T Ty s Wf.
   set (progress_for := fun s e =>
@@ -970,11 +1011,11 @@ Proof.
     apply* red_new.
 Qed.
 
-Print Assumptions progress.
+Print Assumptions progress_result.
 
 
 (* ###################################################################### *)
-(** * Weakening lemmas *)
+(** ** Weakening lemmas *)
 
 (* If we only weaken at the end, i.e. from [G1] to [G1 & G2], the IH for the 
    [ty_new] case adds G2 to the end, so it takes us from [G1, x: Ds] 
@@ -1061,7 +1102,7 @@ Qed.
 
 
 (* ###################################################################### *)
-(** * Inversion lemmas which depend on weakening *)
+(** ** Inversion lemmas which depend on weakening *)
 
 Lemma invert_wf_sto_with_weakening: forall s G,
   wf_sto s G -> 
@@ -1079,7 +1120,7 @@ Qed.
 
 
 (* ###################################################################### *)
-(** * The substitution principle *)
+(** ** The substitution principle *)
 
 
 (*
@@ -1239,7 +1280,7 @@ Qed.
 
 
 (* ###################################################################### *)
-(** * Preservation *)
+(** ** Preservation *)
 
 Theorem preservation_proof:
   forall e s e' s' (Hred: red e s e' s') G T (Hwf: wf_sto s G) (Hty: ty_trm G e T),
@@ -1314,13 +1355,11 @@ Proof.
     apply (has_trm Htyo' Hdbl).
 Qed.
 
-Theorem preservation: forall s G e T e' s',
-  wf_sto s G -> ty_trm G e T -> red e s e' s' ->
-  (exists G', wf_sto s' G' /\ ty_trm G' e' T).
+Theorem preservation_result: preservation.
 Proof.
   introv Hwf Hty Hred.
   destruct (preservation_proof Hred Hwf Hty) as [H [Hwf' Hty']].
   exists (G & H). split; assumption.
 Qed.
 
-Print Assumptions preservation.
+Print Assumptions preservation_result.
