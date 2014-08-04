@@ -1,0 +1,318 @@
+Variable              x, y, z
+Field label           l
+Method label          m
+Bounded type label    M
+Class label           K
+Type label        L = K | M
+
+Term           t, u = x                               variable
+                      t.l                             selection
+                      t.m(u)                          application
+                      T { z => ds }                   creation
+
+Path              p = x
+                      p.l
+
+Definition        d = l = x                           field definition
+                      m(x) = t                        method definition
+
+Type        S, T, U = p.L                             type reference
+                      T { z => D }                    refinement
+                      T & T                           intersection
+                      T | T                           union
+                      Top
+                      Bot
+
+Declaration       D = DT
+                      Dt
+Type Declaration DT = L: S..U                         abstract or alias type declaration
+Term Declaration Dt = l: T                            field declaration
+                      m(x: S): T                      method declaration
+
+Context           G = E                               subsumption typing environonment
+                      E!                              precise typing environment
+Environment       E = x_1: T_1, ..., x_n: T_n         (x_i disjoint)
+Store             s = x_1: o_1, ..., x_n: o_n         (x_i disjoint)
+Object            o = T { ds }
+
+Eval Context      e = []
+                      e.l
+                      e.m
+                      x.m(e)
+
+
+Expansion: G |- T <z Ds
+=======================
+
+                             G |- T <z Ds
+                     ---------------------------
+                     G |- T { z => D } <z D & Ds
+
+                  G |- p has L: S..U    G |- U <z Ds
+                  ----------------------------------
+                            G |- p.L <z Ds
+
+                   G |- T1 <z Ds1    G |- T2 <z Ds2
+                   --------------------------------
+                      G |- T1 & T2 <z Ds1 & Ds2
+
+                   G |- T1 <z Ds1    G |- T2 <z Ds2
+                   --------------------------------
+                      G |- T1 | T2 <z Ds1 | Ds2
+
+                            G |- Top <z {}
+
+depends on: path membership (p has D)
+
+
+Membership: G |- t has D
+========================
+
+              G |- t : T    G |- T <z D     D' = [t/z]D
+              -----------------------------------------
+                            G |- t has D'
+
+depends on type assignment (t : T), expansion (T <z D)
+
+
+Subtyping: E |- S <: T
+======================
+
+                             E |- T <: T
+
+                            E |- T <: Top
+
+                            E |- Bot <: T
+
+          E |- S <: T    E |- S <z Ds    E, z: S |- Ds <: D
+          -------------------------------------------------
+                        E |- S <: T { z => D }
+
+                             E |- T <: S
+                        ----------------------
+                        E |- T { z => D } <: S
+
+                  E |- p has L: S..U    E |- U <: T
+                  ---------------------------------
+                            E |- p.L <: T
+
+                  E |- p has L: S..U    E |- T <: S
+                  ---------------------------------
+                            E |- T <: p.L
+
+                     E |- S <: T1    E |- S <: T2
+                     ----------------------------
+                          E |- S <: T1 & T2
+
+                             E |- Ti <: S
+                          -----------------
+                          E |- T1 & T2 <: S
+
+                             E |- S <: Ti
+                          -----------------
+                          E |- S <: T1 | T2
+
+                     E |- T1 <: S    E |- T2 <: S
+                     ----------------------------
+                          E |- T1 | T2 <: S
+
+depends on: path membership (p has D), expansion (T <z D), declaration subtyping (D <: D')
+
+
+Declaration Subtyping: E |- D <: D'
+===================================
+
+                             E |- D <: D
+
+                    E |- S2 <: S1    E |- U1 <: U2
+                    ------------------------------
+                     E |- M: S1..U1 <: M: S2..U2
+
+                            E |- T1 <: T2
+                         -------------------
+                         E |- l: T1 <: l: T2
+
+                E |- S2 <: S1    E, x: S2 |- T1 <: T2
+                -------------------------------------
+                  E |- m(x: S1): T1 <: m(x: S2): T2
+
+depends on: subtyping (T <: T')
+
+
+Well-formed types: G |- T wf
+=============================
+
+
+                             E |- Bot wf
+
+                             E! |- Top wf
+
+                          E |- p has M: S..U
+                          ------------------
+                             E |- p.M wf
+
+                        E! |- p has K: Bot..U
+                        ---------------------
+                             E! |- p.K wf
+
+                    E! |- T wf    E, z: T |- D wf
+                    -----------------------------
+                        E! |- T { z => D } wf
+
+                      E! |- T1 wf    E! |- T2 wf
+                      --------------------------
+                           E! |- T1 & T2 wf
+
+                       E |- T1 wf    E |- T2 wf
+                       ------------------------
+                           E |- T1 | T2 wf
+
+                              E! |- T wf
+                              ----------
+                              E |- T wf
+
+depends on: path membership (p has D), well-formed declarations (D wf)
+
+
+Well-formed declarations: E |- D wf
+===================================
+
+                        E |- S wf    E |- U wf
+                        ----------------------
+                           E |- M: S..U wf
+
+                              E |- U wf
+                          -----------------
+                          E |- K: Bot..U wf
+
+                              E |- T wf
+                             ------------
+                             E |- l: T wf
+
+                     E |- S wf    E, x: S |- T wf
+                     ----------------------------
+                          E |- m(x: S): T wf
+
+depends on: well-formed types (T wf)
+
+
+Realizable declarations: E |- D real
+====================================
+
+                             E |- S <: U
+                          -----------------
+                          E |- L: S..U real
+
+                             E |- T real
+                            --------------
+                            E |- l: T real
+
+                         E |- m(x: S): T real
+
+depends on subtyping (T <: T')
+
+
+Type assignment: G |- t: T
+==========================
+
+                              x: T in G
+(Var)                         ----------
+                              G |- x : T
+
+                           G |- t has l: T
+(Sel)                      ---------------
+                             G |- t.l : T
+
+          E |- t has m(x: S): T    E |- u: S    T' = [u/x]T
+(App)     -------------------------------------------------
+                           E |- t.m(u) : T'
+
+                  E! |- T wf    E! |- T <z DTs, Dts
+            E, z: T |= DTs, Dts real    E, z: T |- ds : Dts
+(Constr)    -----------------------------------------------
+                        E |- T { z => ds } : T
+
+                      E |- t : T    E |- T <: U
+(Sub)                 -------------------------
+                              E |- t : U
+
+depends on: membership (t has T), subtyping (T <: U), realizable types (T real),
+            expansion (T <z Ds), implementation typing (d: D)
+
+Implementation typing : E |- d : Dt
+===================================
+
+                              E |- x: T
+                         -------------------
+                         E |- l = x  :  l: T
+
+                           E, x: S |- t : T
+                     ----------------------------
+                     E |- m(x) = t  :  m(x: S): T
+
+
+Reduction: t | s -> t' | s'
+============================
+
+                       x: T { l = y, ds } in s
+                       -----------------------
+                          x.l | s  ->  y | s
+
+                      x: T { m(y) = t, ds } in s
+                      --------------------------
+                        x.m(y) | s  ->  t | s
+
+              T { x => ds } | s  ->  x | s, x: T { ds }
+
+                          t | s  ->  t' | s'
+                        ----------------------
+                       e[t] | s  ->  e[t'] | s'
+
+
+Store Equivalence: s |- p ~ q
+=============================
+
+                   s, x: T { l = y, ds } |- x.l ~ y
+
+                              s |- p ~ p
+
+                       s |- p ~ q   s |- q ~ r
+                       -----------------------
+                              s |- p ~ r
+
+                              s |- p ~ q
+                              ----------
+                              s |- q ~ p
+
+                              s |- p ~ q
+                           ---------------
+                            s |- p.l ~ q.l
+
+(Question: Need to keep track of var renamings in method calls as well?)
+
+
+Runtime rules
+=============
+
+Runtime Environment E(s):
+
+E(x: T { ds }) = x: T, extended homomorphically
+
+                      s |- p ~ q    E(s) |- p: T
+(Eqv)                 --------------------------
+                             E(s) |- q: T
+
+Sugar
+=====
+
+T{D}
+ ~~>  T{ z => D }   where z is fresh
+
+S { ls: Ts = xs, ms(ys: Ts): Us = ts }
+ ~~>  S { ls: Ts, ms(ys: Ts): Us } { ls = xs, ms(ys) = us }
+
+let x: T in u: U
+ ~~>  Top { k(x: T): U = u }.k(t)   where k is a reserved label
+
+S { ... l: T = t ... }
+ ~~>  let x: T = t in S { ... l: T = x ... }: S    (in order)
