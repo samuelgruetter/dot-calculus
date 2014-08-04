@@ -1536,6 +1536,14 @@ But why does narrow-lk in oopsla/dot.elf work? Because
 * there is no Bot, but lower bounds have a topt
 
 Note: narrow-lk depends on extend-wf-mem and extend-wf-xp (= weakening for var_has/exp)
+
+xp and has-mem are unique
+
+And why does narrowing has work in DotTransitivity?
+* Because has only defined for variables of type typ_bind => no expansion needed.
+
+Note that imprecise has means non-unique has => problems in transitivity pushing proof.
+So we need an expansion for Bot.
 *)
 
 Lemma narrow_exp_var_has:

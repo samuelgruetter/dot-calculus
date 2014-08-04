@@ -1297,9 +1297,9 @@ Proof.
   unfold chain in *. unfold st_middle in *.
   inversion Hokt; inversion H; subst.
   (* case refl *)
-  assumption.
+* assumption.
   (* case top *)
-  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+* destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
   inversion Hch1; subst.
   destruct Hch2 as [Hch2 | [Hch2 | [Hch2a Hch2b]]]; subst.
   exists A1 typ_top.
@@ -1308,11 +1308,11 @@ Proof.
   auto 10.
   exists A1 C.
   auto 10.
-  (* case bot *)
+* (* case bot *)
   destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
   exists typ_bot C.
   auto 10.
-  (* case bind *)
+* (* case bind *)
   destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
   inversion Hch1; subst.
   exists (typ_bind ds1) C.
@@ -1322,38 +1322,46 @@ Proof.
   auto 10.
   set (Hst := (subtyp_trans_notrans Hok (notsel_bind _) H Hch2b)).
   auto 10.
-  (* case asel_l *)
+* (* case asel_l *)
   set (IH := (prepend_chain G U A2 D Hok H4 Hch)).
   destruct IH as [B [C [IH1 [IH2 IH3]]]].
   exists B C.
   split. 
   apply (follow_ub_cons H0 IH1).
   split; assumption.
-  (* case asel_r *) 
+* (* case asel_r *) 
   set (Hch' := Hch).
   destruct Hch' as [B [C [Hch1 [Hch2 Hch3]]]].
   inversion Hch1; subst.
     (* case follow_ub_nil *)
-    destruct Hch2 as [Hch2 | [Hch2 | [Hch2a Hch2b]]].
-    subst.
-    apply (prepend_chain G A1 S D Hok H5).
-    exists S S. 
-    set (Hflb := (follow_lb_cons H0 H4 Hch3)).
-    auto.
-    exists A1 C.
-    auto.
-    inversion Hch2a. (* contradiction *)
+    + destruct Hch2 as [Hch2 | [Hch2 | [Hch2a Hch2b]]].
+      - subst.
+        apply (prepend_chain G A1 S D Hok H5).
+        exists S S. 
+        set (Hflb := (follow_lb_cons H0 H4 Hch3)).
+        auto.
+      - exists A1 C.
+        auto.
+      - inversion Hch2a. (* contradiction *)
     (* case follow_ub_cons *)
-    apply (prepend_chain G A1 S D Hok H5).
-    apply (prepend_chain G S U D Hok H4).
-    assert (HdecEq: dec_typ Lo Hi = dec_typ S U) by apply (has_unique H6 H0).
-    injection HdecEq; intros; subst.
-    exists B C.
-    split. assumption. split. assumption. assumption.
+    + apply (prepend_chain G A1 S D Hok H5).
+      apply (prepend_chain G S U D Hok H4).
+      exists B C. split.
+      - (* H0 comes from subtyp hypothesis, H6 from chain hypothesis (via Hch1) 
+           subtyp oktrans G A1 p.L ---> G |- p has L: S..U
+           chain G p.L D           ---> G |- p has L: Lo..Hi
+           If instead of has_unique (which tells us U=Hi), we had some lemma telling us
+           that Hi<:U or U<:Hi (which probably doesn't hold), we couldn't use it,
+           because it's not smaller, so we can't feed it to the IH.
+        *) 
+        assert (HdecEq: dec_typ Lo Hi = dec_typ S U) by apply (has_unique H6 H0).
+        injection HdecEq; intros; subst.
+        assumption.
+      - split; assumption.
   (* case mode *)
-  apply (prepend_chain G _ _ _ Hok H (prepend_chain G _ _ _ Hok H0 Hch)).
+* apply (prepend_chain G _ _ _ Hok H (prepend_chain G _ _ _ Hok H0 Hch)).
   (* case trans *)
-  apply (prepend_chain G _ _ _ Hok H (prepend_chain G _ _ _ Hok H0 Hch)).
+* apply (prepend_chain G _ _ _ Hok H (prepend_chain G _ _ _ Hok H0 Hch)).
 Qed.
 
 Lemma oktrans_to_notrans: forall G T1 T3,
