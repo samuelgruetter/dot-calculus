@@ -1338,8 +1338,61 @@ Qed. (* Error: Cannot guess decreasing argument of fix. *)
 (** ** Transitivity *)
 
 (* "reflexive subdec", just subdec+reflexivity *)
-Definition rsubdec(G: ctx)(d1 d2: dec): Prop :=
-  d1 = d2 \/ subdec oktrans G d1 d2.
+Definition rsubdec(G: ctx)(D1 D2: dec): Prop :=
+  D1 = D2 \/ subdec oktrans G D1 D2.
+Definition rsubdecs(G: ctx)(Ds1 Ds2: decs): Prop :=
+  Ds1 = Ds2 \/ subdecs oktrans G Ds1 Ds2.
+
+Hint Unfold rsubdec rsubdecs.
+Hint Constructors exp var_has.
+
+Lemma narrow_binds: forall x T G1 y (S1 S2: typ) G2,
+  binds x T (G1 & y ~ S1 & G2) ->
+  binds x T (G1 & y ~ S2 & G2).
+Proof.
+  introv Bi. apply binds_middle_inv in Bi.
+  destruct Bi as [Bi | [[Fr [Eq1 Eq2]] | [Fr [Ne Bi]]]]; subst; auto.
+
+Lemma narrow_exp_var_has:
+   (forall G T z DsB, exp G T z DsB -> 
+     forall G1 G2 x S1 S2, 
+       G = (G1 & x ~ S2 & G2) -> 
+       ok G ->
+       subtyp oktrans (G1 & x ~ S1) S1 S2 -> 
+       exists DsA, rsubdecs (G1 & x ~ S1) DsA DsB /\
+                    exp (G1 & x ~ S1 & G2) T z DsA)
+/\ (forall G v l DB, var_has G v l DB -> 
+     forall G1 G2 x S1 S2, 
+       G = (G1 & x ~ S2 & G2) ->
+       ok G ->
+       subtyp oktrans (G1 & x ~ S1) S1 S2 -> 
+       exists DA, rsubdec (G1 & x ~ S1) DA DB /\
+                  var_has (G1 & x ~ S1 & G2) v l DA).
+Proof.
+  apply exp_var_has_mutind.
+  (* case exp_top *)
+  + intros. exists decs_nil. auto.
+  (* case exp_bind *)
+  + intros. exists (open_decs z Ds). auto.
+  (* case exp_sel *)
+  + intros G x L Lo Hi z Ds Has IH1 Exp IH2 G1 G2 y S1 S2 Eq OkG SubS1S2. subst G.
+    admit.
+  (* case var_has_dec *)
+  + intros G x T Ds l D Bi Exp IH Has G1 G2 y S1 S2 Eq OkG SubS1S2. subst G.
+    specialize (IH G1 G2 y S1 S2 eq_refl OkG SubS1S2).
+    destruct IH as [DsA [RS Exp']].
+    destruct RS as [Eq | Sd].
+    - subst. exists D. split. auto. inversions Exp'.
+      * inversion Has. (* contradiction *)
+      * apply* var_has_dec. (* need to swap variable x used to do expansion!*)
+Qed.
+
+(forall (c : ctx) (t : typ) (v : var) (d : decs) (e : exp c t v d),
+        P c t v d e) /\
+       (forall (c : ctx) (v : var) (l : label) (d : dec)
+          (v0 : var_has c v l d), P0 c v l d v0)
+
+exp_var_has_mutind
 
 Lemma narrow_has: forall G1 G2 z ds1 ds2 p L dB,
   ok              (G1 & z ~ typ_bind ds2 & G2) ->
