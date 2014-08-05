@@ -1050,25 +1050,6 @@ End DecsImpl.
 
 
 (* ###################################################################### *)
-(* ** Helpers for transitivity *)
-
-(** transitivity in oktrans mode (trivial) *)
-Lemma subtyp_trans_oktrans: forall G T1 T2 T3,
-  subtyp oktrans G T1 T2 -> subtyp oktrans G T2 T3 -> subtyp oktrans G T1 T3.
-Proof.
-  introv H12 H23.
-  apply (subtyp_trans H12 H23).
-Qed.
-
-Lemma subdec_trans_oktrans: forall G d1 d2 d3,
-  subdec oktrans G d1 d2 -> subdec oktrans G d2 d3 -> subdec oktrans G d1 d3.
-Proof.
-  introv H12 H23. inversions H12; inversions H23; constructor;
-  solve [ assumption | (eapply subtyp_trans_oktrans; eassumption)].
-Qed.
-
-
-(* ###################################################################### *)
 (** ** Inversion lemmas *)
 
 (** *** Inversion lemmas for [wf_sto] *)
@@ -1491,7 +1472,22 @@ Proof.
     - fold get_dec in Has. apply* IHDs2.
 Qed.
 
-Lemma subdecs_trans: forall G Ds1 Ds2 Ds3,
+(** transitivity in oktrans mode (trivial) *)
+Lemma subtyp_trans_oktrans: forall G T1 T2 T3,
+  subtyp oktrans G T1 T2 -> subtyp oktrans G T2 T3 -> subtyp oktrans G T1 T3.
+Proof.
+  introv H12 H23.
+  apply (subtyp_trans H12 H23).
+Qed.
+
+Lemma subdec_trans_oktrans: forall G d1 d2 d3,
+  subdec oktrans G d1 d2 -> subdec oktrans G d2 d3 -> subdec oktrans G d1 d3.
+Proof.
+  introv H12 H23. inversions H12; inversions H23; constructor;
+  solve [ assumption | (eapply subtyp_trans_oktrans; eassumption)].
+Qed.
+
+Lemma subdecs_trans_oktrans: forall G Ds1 Ds2 Ds3,
   subdecs oktrans G Ds1 Ds2 ->
   subdecs oktrans G Ds2 Ds3 ->
   subdecs oktrans G Ds1 Ds3.
@@ -1510,6 +1506,44 @@ Proof.
     - apply subdec_trans_oktrans with D2; assumption.
     - apply (IHDs3 H23c).
 Qed.
+
+Lemma subtyp_trans_oktrans_n: forall G x T1 T2 T3 Ds1 Ds2,
+  subdecs oktrans (G & x ~ typ_bind Ds1) Ds1 Ds2 ->
+  subtyp oktrans (G & x ~ typ_bind Ds1) T1 T2 -> 
+  subtyp oktrans (G & x ~ typ_bind Ds2) T2 T3 -> 
+  subtyp oktrans (G & x ~ typ_bind Ds1) T1 T3.
+Proof.
+  introv Sds H12 H23.
+  (* for T1=T2, this is narrowing *)
+Abort.
+
+Lemma subdec_trans_oktrans_n: forall G x D1 D2 D3 Ds1 Ds2,
+  subdecs oktrans (G & x ~ typ_bind Ds1) Ds1 Ds2 ->
+  subdec oktrans (G & x ~ typ_bind Ds1) D1 D2 ->
+  subdec oktrans (G & x ~ typ_bind Ds2) D2 D3 ->
+  subdec oktrans (G & x ~ typ_bind Ds1) D1 D3.
+Proof.
+Admitted.
+
+Lemma subdecs_trans_oktrans_n: forall G x Ds1 Ds2 Ds3,
+  subdecs oktrans (G & x ~ typ_bind Ds1) Ds1 Ds2 ->
+  subdecs oktrans (G & x ~ typ_bind Ds2) Ds2 Ds3 ->
+  subdecs oktrans (G & x ~ typ_bind Ds1) Ds1 Ds3.
+Proof.
+  introv H12 H23.
+  induction Ds3.
+  + apply subdecs_empty.
+  + rename d into D3.
+    apply invert_subdecs_push in H23.
+    destruct H23 as [D2 [H23a [H23b H23c]]].
+    lets H12': (invert_subdecs H12).
+    specialize (H12' _ _ H23a).
+    destruct H12' as [D1 [Has Sd]].
+    apply subdecs_push with D1.
+    - assumption.
+    - apply subdec_trans_oktrans_n with D2 Ds2; assumption.
+    - apply (IHDs3 H23c).
+Qed. (* does not work because it doesn't work for types *)
 
 Lemma exp_preserves_sub: forall G T1 T2 Ds2,
   subtyp oktrans G T1 T2 ->
@@ -1581,7 +1615,7 @@ Proof.
     - exists DsA. split. apply Sds. apply (exp_sel Has' Exp').
     (* case subdec_typ *)
     - exists DsA. split. assumption.
-      apply (exp_sel Has'). apply Exp'.
+      apply (exp_sel Has'). (* apply Exp'.*) admit.
   
   (* case var_has_dec *)
   + intros G x T Ds l D Bi Exp IH Has G1 G2 y S1 S2 Eq OkG SubS1S2. subst G.
@@ -1594,33 +1628,6 @@ Proof.
     lets Bi': (narrow_binds S1 Ne Bi).
     apply (var_has_dec Bi' Exp' Has').
 Qed.
-
-(forall (c : ctx) (t : typ) (v : var) (d : decs) (e : exp c t v d),
-        P c t v d e) /\
-       (forall (c : ctx) (v : var) (l : label) (d : dec)
-          (v0 : var_has c v l d), P0 c v l d v0)
-
-exp_var_has_mutind
-
-Lemma narrow_has: forall G1 G2 z ds1 ds2 p L dB,
-  ok              (G1 & z ~ typ_bind ds2 & G2) ->
-  has             (G1 & z ~ typ_bind ds2 & G2) p L dB ->
-  subdecs oktrans (G1 & z ~ typ_bind ds1     ) ds1 ds2 ->
-  exists dA, 
-    rsubdec (G1 & z ~ typ_bind ds1     ) dA dB 
-    /\ has  (G1 & z ~ typ_bind ds1 & G2) p L dA.
-Proof. Admitted.
-
-Lemma weaken_has: forall G1 G2 G3 p L d,
-  ok             (G1 & G2 & G3) ->
-  has            (G1      & G3) p L d ->
-  has            (G1 & G2 & G3) p L d.
-Proof. Admitted. (*
-  introv Hok Hhas.
-  inversion Hhas; subst.
-  refine (@has_var _ x Ds L d _ H0).
-  apply binds_weaken; assumption.
-Qed. *)
 
 Lemma subdec_mode: forall G d1 d2,
   subdec notrans G d1 d2 -> subdec oktrans G d1 d2.
@@ -1667,14 +1674,14 @@ Proof.
     introv Hhas Hst IH Hok123 Heq; subst.
     apply subtyp_mode.
     apply subtyp_sel_l with (S := S) (U := U).
-    apply weaken_has; assumption.
+    (*apply weaken_has; assumption.*) admit.
     apply (IH G1 G2 G3 Hok123).
     trivial.
   + (* case asel_r *)
     introv Hhas Hst_SU IH_SU Hst_TS IH_TS Hok123 Heq; subst.
     apply subtyp_mode.
     apply subtyp_sel_r with (S := S) (U := U).
-    apply weaken_has; assumption.
+    (*apply weaken_has; assumption.*) admit.
     apply IH_SU; auto.
     apply IH_TS; auto.
   + (* case trans *)
@@ -1689,6 +1696,9 @@ Proof.
     apply (subtyp_trans IH12 IH23).
 
   (* subdec *)
+  + (* case subdec_refl *)
+    intros.
+    apply subdec_refl.
   + (* case subdec_typ *)
     intros.
     apply subdec_typ; gen G1 G2 G3; assumption.
@@ -1749,7 +1759,7 @@ Proof.
   apply (env_add_empty (fun G0 => subtyp oktrans G0 S U) G1 Hst).
 Qed.
 
-
+(*
 Lemma subtyp_and_subdec_and_subdecs_narrow:
    (forall m G T1 T2 (Hst : subtyp m G T1 T2),
       forall G1 G2 z dsA dsB, 
@@ -1915,7 +1925,7 @@ Proof.
                              (G & z ~ typ_bind ds2) H2AB).
   assumption.
 Qed.
-
+*)
 
 (* ... transitivity in notrans mode, but no p.L in middle ... *)
 
@@ -1951,8 +1961,14 @@ Proof.
       specialize (H0 z zL).
       specialize (H4 z zL0).
       assert (Hok'': ok (G & z ~ typ_bind (open_decs z ds))) by auto.
+      (* with narrowing: *)
+      (*
       lets H4' : (subdecs_narrow_last Hok'' H4 H0). 
       apply (subdecs_trans H0 H4').
+      *)
+      (* without narrowing (i.e. narrowing baked into subdecs_trans_oktrans_n
+         which does not hold *)
+      apply (subdecs_trans_oktrans_n H0 H4).
     - (* bind <: bind <: sel  *)
       assert (H1S: subtyp oktrans G (typ_bind Ds1) S).
       apply (subtyp_trans_oktrans (subtyp_mode H12) H5).
