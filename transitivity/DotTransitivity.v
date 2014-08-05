@@ -1285,6 +1285,103 @@ Proof.
   apply (IHHfub Hok Hm Hflb).
 Qed.
 
+(*
+Lemma build_follow_ub without a wf-ness judgment
+would become build_follow_ub_and_middle because we want to 
+start from a subtype judgment
+but then also need follow_lb => full prepend chain
+
+What if we start with a has:
+*)
+
+Lemma build_follow_ub1: forall G p L Lo Hi,
+  has G p L (dec_typ Lo Hi) ->
+  exists T, follow_ub G (typ_asel p L) T /\ notsel T.
+Proof.
+  introv Has. inversions Has. induction Hi.
+  admit. admit. admit.
+  (* no IH. But what if we require wf-ness? *)
+Abort.
+
+(* We can require some kind of wf-ness by requiring that it's a subtype of {} *)
+Lemma build_follow_ub2: forall G T1 T2,
+  subtyp oktrans G T1 T2 ->
+  (exists p L, T1 = (typ_asel p L) /\ T2 = (typ_bind empty)) ->
+  exists T, follow_ub G T1 T /\ notsel T.
+Proof.
+  introv St. induction St; intro Ex; destruct Ex as [p0 [L0 [Eq1 Eq2]]].
+  (* case subtyp_refl *)
+  + subst. discriminate.
+  (* case subtyp_top *)
+  + discriminate.
+  (* case subtyp_bot *)
+  + discriminate.
+  (* case subtyp_bind *)
+  + discriminate.
+  (* case subtyp_asel_l *)
+  + symmetry in Eq1. inversions Eq1. destruct U.
+    - exists typ_top. split.
+      * apply (follow_ub_cons H (follow_ub_nil G typ_top)).
+      * apply notsel_top.
+    - exists typ_bot. split.
+      * apply (follow_ub_cons H (follow_ub_nil G typ_bot)).
+      * apply notsel_bot.
+    - exists (typ_bind e). split.
+      * apply (follow_ub_cons H (follow_ub_nil G (typ_bind e))).
+      * apply notsel_bind.
+    - rename l into L0.
+      destruct IHSt as [T [Fub Ns]].
+      * eauto.
+      * exists T. eauto.
+  (* case subtyp_asel_r *)
+  + discriminate.
+  (* case subtyp_mode *)
+  + subst. apply IHSt. eauto.
+  (* case subtyp_trans *)
+  + subst. (* need whole transitivity push back machinery *)
+Abort.
+
+Lemma build_follow_ub3: forall G T1 T2,
+  subtyp oktrans G T1 T2 ->
+  (exists p L, T1 = (typ_asel p L) /\ notsel T2) ->
+  exists T, follow_ub G T1 T /\ notsel T.
+Proof.
+ introv St. induction St; intro Ex; destruct Ex as [p0 [L0 [Eq1 Ns]]].
+  (* case subtyp_refl *)
+  + subst. inversion Ns.
+  (* case subtyp_top *)
+  + admit. (* does not work if we have typ_top *)
+  (* case subtyp_bot *)
+  + discriminate.
+  (* case subtyp_bind *)
+  + discriminate.
+  (* case subtyp_asel_l *)
+  + symmetry in Eq1. inversions Eq1. destruct U.
+    - exists typ_top. split.
+      * apply (follow_ub_cons H (follow_ub_nil G typ_top)).
+      * apply notsel_top.
+    - exists typ_bot. split.
+      * apply (follow_ub_cons H (follow_ub_nil G typ_bot)).
+      * apply notsel_bot.
+    - exists (typ_bind e). split.
+      * apply (follow_ub_cons H (follow_ub_nil G (typ_bind e))).
+      * apply notsel_bind.
+    - rename l into L0.
+      destruct IHSt as [T0 [Fub Ns0]].
+      * eauto.
+      * exists T0. eauto.
+  (* case subtyp_asel_r *)
+  + inversion Ns.
+  (* case subtyp_mode *)
+  + subst. apply IHSt. eauto.
+  (* case subtyp_trans *)
+  + subst. destruct T2.
+    - apply IHSt1. eauto.
+    - apply IHSt1. eauto.
+    - apply IHSt1. eauto.
+    - (* same problem if middle man is path and St1/St2 are oktrans *)
+Abort.
+
 (* prepend an oktrans to chain ("utrans0*") *)
 Lemma prepend_chain: forall G A1 A2 D,
   ok G ->
