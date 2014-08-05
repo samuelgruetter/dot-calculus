@@ -1,0 +1,24 @@
+
+DOT design tradeoffs
+--------------------
+
+There are several boolean choices (have/don't have it):
+
+b bb-env   bad-bounds environment: The typing environment can contain types
+           with type members whose lower bound is not a subtype of the upper bound
+t bot-env  bottom environment: The typing environment can contain (x: Bot) and
+           (x: T), where T has fields of type Bot
+u u-has    unique has: path membership is precise and thus unique
+x bot-exp  Bot expands to D_Bot, the declaration set which contains all declarations
+  sbsm     subsumption for typing
+  trans    transitivity for subtyping
+
+and many restrictions between these.
+
+If we want sbsm, we need trans in the inversion lemmas.
+trans doesn't work with bb-env.
+
+(not (x and t) or b) and (not (t and u) or x) and not b and u
+http://www.wolframalpha.com/input/?i=truth+table+%28not+%28x+and+t%29+or+b%29+and+%28not+%28t+and+u%29+or+x%29+and+not+b+and+u
+
+
