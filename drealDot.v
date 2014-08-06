@@ -27,10 +27,12 @@ Inductive pth : Type :=
   | pth_var : avar -> pth.
 
 Inductive typ : Type :=
-  | typ_top  : typ
-  | typ_bot  : typ
-  | typ_bind : decs -> typ (* { z => decs } *)
+  | typ_top : typ
+  | typ_bot : typ
+  | typ_rfn : typ -> decs -> typ (* T { z => Ds } *)
   | typ_sel : pth -> label -> typ (* p.L *)
+  | typ_and : typ -> typ -> typ
+  | typ_or  : typ -> typ -> typ
 with dec : Type :=
   | dec_typ  : typ -> typ -> dec
   | dec_fld  : typ -> dec
@@ -66,7 +68,7 @@ Definition trm_fun(T U: typ)(body: trm) := trm_new (decs_cons 0 (dec_mtd T U)  d
                                                    (defs_cons 0 (def_mtd body) defs_nil).
 Definition trm_app(func arg: trm) := trm_call func 0 arg.
 Definition trm_let(T U: typ)(rhs body: trm) := trm_app (trm_fun T U body) rhs.
-Definition typ_arrow(T1 T2: typ) := typ_bind (decs_cons 0 (dec_mtd T1 T2) decs_nil).
+Definition typ_arrow(T1 T2: typ) := typ_rfn typ_top (decs_cons 0 (dec_mtd T1 T2) decs_nil).
 
 
 (* ###################################################################### *)
@@ -118,10 +120,12 @@ Definition open_rec_pth (k: nat) (u: var) (p: pth) : pth :=
 
 Fixpoint open_rec_typ (k: nat) (u: var) (T: typ) { struct T } : typ :=
   match T with
-  | typ_top     => typ_top
-  | typ_bot     => typ_bot
-  | typ_bind Ds => typ_bind (open_rec_decs (S k) u Ds)
-  | typ_sel p L => typ_sel (open_rec_pth k u p) L
+  | typ_top       => typ_top
+  | typ_bot       => typ_bot
+  | typ_rfn T Ds  => typ_rfn (open_rec_typ k u T) (open_rec_decs (S k) u Ds)
+  | typ_sel p L   => typ_sel (open_rec_pth k u p) L
+  | typ_and T1 T2 => typ_and (open_rec_typ k u T1) (open_rec_typ k u T2)
+  | typ_or  T1 T2 => typ_or  (open_rec_typ k u T1) (open_rec_typ k u T2)
   end
 with open_rec_dec (k: nat) (u: var) (D: dec) { struct D } : dec :=
   match D with
@@ -180,10 +184,12 @@ Definition fv_pth (p: pth) : vars :=
 
 Fixpoint fv_typ (T: typ) { struct T } : vars :=
   match T with
-  | typ_top     => \{}
-  | typ_bot     => \{}
-  | typ_bind Ds => fv_decs Ds
-  | typ_sel p L => fv_pth p
+  | typ_top       => \{}
+  | typ_bot       => \{}
+  | typ_rfn T Ds  => (fv_typ T) \u (fv_decs Ds)
+  | typ_sel p L   => (fv_pth p)
+  | typ_and T1 T2 => (fv_typ T1) \u (fv_typ T2)
+  | typ_or  T1 T2 => (fv_typ T1) \u (fv_typ T2)
   end
 with fv_dec (D: dec) { struct D } : vars :=
   match D with
@@ -315,7 +321,7 @@ End Decs.
 Inductive mode : Type := notrans | oktrans.
 
 (* expansion returns a set of decs without opening them *)
-Inductive exp : ctx -> typ -> decs -> Prop :=
+Inductive exp : ctx -> typ -> decs -> Prop := (*
   | exp_top : forall G, 
       exp G typ_top decs_nil
 (*| exp_bot : typ_bot has no expansion *)
@@ -324,15 +330,17 @@ Inductive exp : ctx -> typ -> decs -> Prop :=
   | exp_sel : forall G x L Lo Hi Ds,
       var_has G x L (dec_typ Lo Hi) ->
       exp G Hi Ds ->
-      exp G (typ_sel (pth_var (avar_f x)) L) Ds
-with var_has : ctx -> var -> label -> dec -> Prop :=
+      exp G (typ_sel (pth_var (avar_f x)) L) Ds *)
+with var_has : ctx -> var -> label -> dec -> Prop := (*
   | var_has_dec : forall G x T Ds l D,
       binds x T G ->
       exp G T Ds ->
       decs_has (open_decs x Ds) l D ->
-      var_has G x l D.
+      var_has G x l D*).
 
-Inductive subtyp : mode -> ctx -> typ -> typ -> Prop :=
+Parameter has: ctx -> pth -> label -> dec -> Prop.
+
+Inductive subtyp : mode -> ctx -> typ -> typ -> Prop := (*
   | subtyp_refl : forall G T,
       subtyp notrans G T T
   | subtyp_top : forall G T,
@@ -361,8 +369,8 @@ Inductive subtyp : mode -> ctx -> typ -> typ -> Prop :=
   | subtyp_trans : forall G T1 T2 T3,
       subtyp oktrans G T1 T2 ->
       subtyp oktrans G T2 T3 ->
-      subtyp oktrans G T1 T3
-with subdec : mode -> ctx -> dec -> dec -> Prop :=
+      subtyp oktrans G T1 T3*)
+with subdec : mode -> ctx -> dec -> dec -> Prop :=(*
   | subdec_refl : forall m G D,
       subdec m G D D
   | subdec_typ : forall m G Lo1 Hi1 Lo2 Hi2,
@@ -380,8 +388,8 @@ with subdec : mode -> ctx -> dec -> dec -> Prop :=
   | subdec_mtd : forall m G S1 T1 S2 T2,
       subtyp m G S2 S1 ->
       subtyp m G T1 T2 ->
-      subdec m G (dec_mtd S1 T1) (dec_mtd S2 T2)
-with subdecs : mode -> ctx -> decs -> decs -> Prop :=
+      subdec m G (dec_mtd S1 T1) (dec_mtd S2 T2)*)
+with subdecs : mode -> ctx -> decs -> decs -> Prop :=(*
   | subdecs_empty : forall m G Ds,
       subdecs m G Ds decs_nil
   | subdecs_push : forall m G n Ds1 Ds2 D1 D2,
@@ -389,7 +397,7 @@ with subdecs : mode -> ctx -> decs -> decs -> Prop :=
       (* decs_hasnt Ds2 (label_for_dec n D2) -> (* we don't accept duplicates in rhs *)*)
       subdec m G D1 D2 ->
       subdecs m G Ds1 Ds2 ->
-      subdecs m G Ds1 (decs_cons n D2 Ds2).
+      subdecs m G Ds1 (decs_cons n D2 Ds2)*).
 
 Inductive trm_has : ctx -> trm -> label -> dec -> Prop :=
   | trm_has_dec : forall G t T l D Ds,
@@ -398,7 +406,7 @@ Inductive trm_has : ctx -> trm -> label -> dec -> Prop :=
       decs_has Ds l D ->
       (forall z, (open_dec z D) = D) ->
       trm_has G t l D
-with ty_trm : ctx -> trm -> typ -> Prop :=
+with ty_trm : ctx -> trm -> typ -> Prop := (*
   | ty_var : forall G x T,
       binds x T G ->
       ty_trm G (trm_var (avar_f x)) T
@@ -417,7 +425,7 @@ with ty_trm : ctx -> trm -> typ -> Prop :=
   | ty_sbsm : forall G t T U,
       ty_trm G t T ->
       subtyp notrans G T U ->
-      ty_trm G t U
+      ty_trm G t U*)
 with ty_def : ctx -> def -> dec -> Prop :=
   | ty_typ : forall G S T,
       ty_def G def_typ (dec_typ S T)
@@ -435,16 +443,88 @@ with ty_defs : ctx -> defs -> decs -> Prop :=
       ty_def  G d D ->
       ty_defs G (defs_cons n d ds) (decs_cons n D Ds).
 
-(** *** Well-formed store *)
+
+(* ###################################################################### *)
+(** ** Realizability *)
+
+(** dreal = "definitely realizable" (an approximation of realizability) *)
+
+(* typ_bot, typ_rfn of non-top, and typ_and are not definitely realizable *)
+Inductive dreal_typ : ctx -> typ -> Prop :=
+  | dreal_top: forall G,
+      dreal_typ G typ_top
+  | dreal_rfn: forall L G Ds,
+      (* be careful, we're putting a possibly non-dreal type into the env! *)
+      (forall z, z \notin L -> 
+                 dreal_decs (G & z ~ (typ_rfn typ_top Ds)) (open_decs z Ds)) ->
+      dreal_typ G (typ_rfn typ_top Ds)
+  | dreal_sel : forall G p L S U,
+      has G p L (dec_typ S U) ->
+      dreal_dec G (dec_typ S U) ->
+      dreal_typ G (typ_sel p L)
+  | dreal_or_l : forall G T1 T2,
+      dreal_typ G T1 ->
+      dreal_typ G (typ_or T1 T2)
+  | dreal_or_r : forall G T1 T2,
+      dreal_typ G T2 ->
+      dreal_typ G (typ_or T1 T2)
+with dreal_dec : ctx -> dec -> Prop :=
+  | dreal_tm : forall G S U,
+      subtyp oktrans G S U ->
+      dreal_typ G U ->
+      dreal_dec G (dec_typ S U)
+  | dreal_fld : forall G T,
+      dreal_typ G T ->
+      dreal_dec G (dec_fld T)
+  | dreal_mtd : forall G S U,
+      dreal_dec G (dec_mtd S U)
+with dreal_decs : ctx -> decs -> Prop :=
+  | dreal_nil : forall G,
+      dreal_decs G decs_nil
+  | dreal_cons : forall G n D Ds,
+      dreal_decs G Ds ->
+      dreal_dec G D ->
+      dreal_decs G (decs_cons n D Ds).
+
+Inductive dreal_ctx : ctx -> Prop :=
+  | dreal_empty:
+      dreal_ctx empty
+  | dreal_push: forall G x T,
+      dreal_typ G T ->
+      dreal_ctx (G & x ~ T).
+
+Inductive subctx : ctx -> ctx -> Prop :=
+  | subctx_empty:
+      subctx empty empty
+  | subctx_push: forall G1 G2 x T1 T2,
+      subctx G1 G2 ->
+      subtyp oktrans G1 T1 T2 ->
+      subctx (G1 & x ~ T1) (G2 & x ~ T2).
+
+(* a more precise definition of realizability: G can contain intersection types,
+   provided they have a dreal subtype *)
+Definition real_ctx(G: ctx): Prop := exists G', subctx G' G /\ dreal_ctx G'.
+
+(** *** Well-formed store TODO not like this *)
 Inductive wf_sto: sto -> ctx -> Prop :=
   | wf_sto_empty : wf_sto empty empty
   | wf_sto_push : forall s G x ds Ds,
       wf_sto s G ->
       x # s ->
       x # G ->
-      ty_defs (G & x ~ (typ_bind Ds)) (open_defs x ds) (open_decs x Ds) ->
-      wf_sto (s & x ~ (object Ds ds)) (G & x ~ (typ_bind Ds)).
+      (* if object has a field for each type member witnessing its realizability, 
+         we're fine, but what if we have a type member with unrealizable lower
+         and upper bound? *)
+      (forall L S U, decs_has (open_decs x Ds) L (dec_typ S U) -> 
+                     subtyp notrans (G & x ~ (typ_rfn typ_top Ds)) S U) ->
+      ty_defs (G & x ~ (typ_rfn typ_top Ds)) (open_defs x ds) (open_decs x Ds) ->
+      wf_sto (s & x ~ (object Ds ds)) (G & x ~ (typ_rfn typ_top Ds)).
 
+(* Question: When do we accept the user-provided types of trm_new ? *)
+
+Lemma wf_sto_real: forall s G,
+  wf_sto s G -> real_ctx G.
+Admitted.
 
 (* ###################################################################### *)
 (** ** Statements we want to prove *)

@@ -30,7 +30,7 @@ Inductive typ : Type :=
   | typ_top  : typ
   | typ_bot  : typ
   | typ_bind : decs -> typ (* { z => decs } *)
-  | typ_sel : pth -> label -> typ (* select on abstract type *)
+  | typ_sel : pth -> label -> typ (* p.L *)
 with dec : Type :=
   | dec_typ  : typ -> typ -> dec
   | dec_fld  : typ -> dec
