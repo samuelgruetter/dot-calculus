@@ -41,7 +41,7 @@ with decs : Type :=
 
 Inductive trm : Type :=
   | trm_var  : avar -> trm
-  | trm_new  : decs -> defs -> trm
+  | trm_new  : typ -> defs -> trm
   | trm_sel  : trm -> nat -> trm
   | trm_call : trm -> nat -> trm -> trm
 with def : Type :=
@@ -53,7 +53,7 @@ with defs : Type :=
   | defs_cons : nat -> def -> defs -> defs.
 
 Inductive obj : Type :=
-  | object : decs -> defs -> obj. (* { z => Ds }{ z => ds } *)
+  | object : typ -> defs -> obj. (* T { z => ds } *)
 
 (** *** Typing environment ("Gamma") *)
 Definition ctx := env typ.
@@ -62,8 +62,9 @@ Definition ctx := env typ.
 Definition sto := env obj.
 
 (** *** Syntactic sugar *)
-Definition trm_fun(T U: typ)(body: trm) := trm_new (decs_cons 0 (dec_mtd T U)  decs_nil)
-                                                   (defs_cons 0 (def_mtd body) defs_nil).
+Definition trm_fun(T U: typ)(body: trm) := 
+  trm_new (typ_bind (decs_cons 0 (dec_mtd T U)  decs_nil))
+                    (defs_cons 0 (def_mtd body) defs_nil).
 Definition trm_app(func arg: trm) := trm_call func 0 arg.
 Definition trm_let(T U: typ)(rhs body: trm) := trm_app (trm_fun T U body) rhs.
 Definition typ_arrow(T1 T2: typ) := typ_bind (decs_cons 0 (dec_mtd T1 T2) decs_nil).
@@ -138,7 +139,7 @@ with open_rec_decs (k: nat) (u: var) (Ds: decs) { struct Ds } : decs :=
 Fixpoint open_rec_trm (k: nat) (u: var) (t: trm) { struct t } : trm :=
   match t with
   | trm_var a      => trm_var (open_rec_avar k u a)
-  | trm_new Ds ds  => trm_new (open_rec_decs (S k) u Ds) (open_rec_defs (S k) u ds)
+  | trm_new T ds   => trm_new (open_rec_typ k u T) (open_rec_defs (S k) u ds)
   | trm_sel e n    => trm_sel (open_rec_trm k u e) n
   | trm_call o m a => trm_call (open_rec_trm k u o) m (open_rec_trm k u a)
   end
@@ -202,7 +203,7 @@ with fv_decs (Ds: decs) { struct Ds } : vars :=
 Fixpoint fv_trm (t: trm) : vars :=
   match t with
   | trm_var x        => (fv_avar x)
-  | trm_new Ds ds    => (fv_decs Ds) \u (fv_defs ds)
+  | trm_new T ds     => (fv_typ T) \u (fv_defs ds)
   | trm_sel t l      => (fv_trm t)
   | trm_call t1 m t2 => (fv_trm t1) \u (fv_trm t2)
   end
@@ -224,7 +225,7 @@ with fv_defs(ds: defs) : vars :=
 
 (** Note: Terms given by user are closed, so they only contain avar_b, no avar_f.
     Whenever we introduce a new avar_f (only happens in red_new), we choose one
-    which is not in the store, so we never have name clashes. *) 
+    which is not in the store, so we never have name clashes. *)
 Inductive red : trm -> sto -> trm -> sto -> Prop :=
   (* computation rules *)
   | red_call : forall s x y m Ds ds body,
@@ -237,10 +238,10 @@ Inductive red : trm -> sto -> trm -> sto -> Prop :=
       defs_has ds (label_fld l) (def_fld y) ->
       red (trm_sel (trm_var (avar_f x)) l) s
           (trm_var y) s
-  | red_new : forall s Ds ds x,
+  | red_new : forall s T ds x,
       x # s ->
-      red (trm_new Ds ds) s
-          (trm_var (avar_f x)) (s & x ~ (object Ds ds))
+      red (trm_new T ds) s
+          (trm_var (avar_f x)) (s & x ~ (object T ds))
   (* congruence rules *)
   | red_call1 : forall s o m a s' o',
       red o s o' s' ->
@@ -254,7 +255,6 @@ Inductive red : trm -> sto -> trm -> sto -> Prop :=
       red o s o' s' ->
       red (trm_sel o  l) s
           (trm_sel o' l) s'.
-
 
 (* ###################################################################### *)
 (** ** Specification of declaration intersection (not yet used) *)
@@ -409,11 +409,13 @@ with ty_trm : ctx -> trm -> typ -> Prop :=
       trm_has G t (label_mtd m) (dec_mtd U V) ->
       ty_trm G u U ->
       ty_trm G (trm_call t m u) V
-  | ty_new : forall L G ds Ds,
-      (forall x, x \notin L -> ty_defs (G & x ~ (typ_bind Ds))
-                                       (open_defs x ds)
-                                       (open_decs x Ds)) ->
-      ty_trm G (trm_new Ds ds) (typ_bind Ds)
+  | ty_new : forall L G T ds Ds,
+      exp G T Ds ->
+      (forall x, x \notin L ->
+                 ty_defs (G & x ~ T) (open_defs x ds) (open_decs x Ds) /\
+                 forall M S U, decs_has (open_decs x Ds) M (dec_typ S U) -> 
+                               subtyp notrans (G & x ~ T) S U) ->
+      ty_trm G (trm_new T ds) T
   | ty_sbsm : forall G t T U,
       ty_trm G t T ->
       subtyp notrans G T U ->
@@ -435,16 +437,33 @@ with ty_defs : ctx -> defs -> decs -> Prop :=
       ty_def  G d D ->
       ty_defs G (defs_cons n d ds) (decs_cons n D Ds).
 
+
 (** *** Well-formed store *)
 Inductive wf_sto: sto -> ctx -> Prop :=
   | wf_sto_empty : wf_sto empty empty
-  | wf_sto_push : forall s G x ds Ds,
+  | wf_sto_push : forall L s G x T ds Ds,
       wf_sto s G ->
       x # s ->
       x # G ->
-      ty_defs (G & x ~ (typ_bind Ds)) (open_defs x ds) (open_decs x Ds) ->
-      wf_sto (s & x ~ (object Ds ds)) (G & x ~ (typ_bind Ds)).
+      (* What's below is the same as the ty_new rule, but we don't use ty_trm,
+         because it could be subsumption *)
+      exp G T Ds ->
+      (forall x, x \notin L ->
+                 ty_defs (G & x ~ T) (open_defs x ds) (open_decs x Ds) /\
+                 forall M S U, decs_has (open_decs x Ds) M (dec_typ S U) -> 
+                               subtyp notrans (G & x ~ T) S U) ->
+      wf_sto (s & x ~ (object T ds)) (G & x ~ T).
 
+(*
+ty_trm_new does not check for good bounds recursively inside the types, but that's
+not a problem because when creating an object x which has (L: S..U), we have two cases:
+Case 1: The object x has a field x.f = y of type x.L: Then y has a type
+        Y <: x.L, and when checking the creation of y, we checked that
+        the type members of Y are good, so the those of S and U are good as well,
+        because S and U are supertypes of Y.
+Case 2: The object x has no field of type x.L: Then we can only refer to the
+        type x.L, but not to possibly bad type members of the type x.L.
+*)
 
 (* ###################################################################### *)
 (** ** Statements we want to prove *)
