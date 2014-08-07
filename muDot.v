@@ -230,12 +230,12 @@ Inductive red : trm -> sto -> trm -> sto -> Prop :=
   (* computation rules *)
   | red_call : forall s x y m Ds ds body,
       binds x (object Ds ds) s ->
-      defs_has ds (label_mtd m) (def_mtd body) ->
+      defs_has (open_defs x ds) (label_mtd m) (def_mtd body) ->
       red (trm_call (trm_var (avar_f x)) m (trm_var (avar_f y))) s
           (open_trm y body) s
   | red_sel : forall s x y l Ds ds,
       binds x (object Ds ds) s ->
-      defs_has ds (label_fld l) (def_fld y) ->
+      defs_has (open_defs x ds) (label_fld l) (def_fld y) ->
       red (trm_sel (trm_var (avar_f x)) l) s
           (trm_var y) s
   | red_new : forall s T ds x,
@@ -522,6 +522,10 @@ with   ty_def_mut  := Induction for ty_def  Sort Prop
 with   ty_defs_mut := Induction for ty_defs Sort Prop.
 Combined Scheme ty_mutind from trm_has_mut, ty_trm_mut, ty_def_mut, ty_defs_mut.
 
+Scheme trm_has_mut2 := Induction for trm_has Sort Prop
+with   ty_trm_mut2  := Induction for ty_trm  Sort Prop.
+Combined Scheme ty_trm_has_mutind from trm_has_mut2, ty_trm_mut2.
+
 
 (* ###################################################################### *)
 (** ** Tactics *)
@@ -556,6 +560,12 @@ Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
 Hint Constructors subtyp.
 Hint Constructors subdec.
 Hint Constructors notsel.
+
+
+(* ###################################################################### *)
+(** ** Realizability *)
+
+Definition real(G: ctx): Prop := exists s, wf_sto s G.
 
 
 (* ###################################################################### *)
@@ -1128,26 +1138,33 @@ Proof.
     - auto.
 Qed.
 
-(*
 Lemma invert_wf_sto: forall s G,
-  wf_sto s G -> 
-    forall x ds T, 
+  wf_sto s G ->
+    forall x ds T T',
       binds x (object T ds) s -> 
-      binds x T G ->
-      exists G1 G2, G = G1 & x ~ (typ_bind Ds) & G2 /\ 
-                    ty_defs (G1 & x ~ (typ_bind Ds)) (open_defs x ds) (open_decs x Ds).
+      binds x T' G ->
+      T' = T /\ exists L G1 G2 Ds,
+        G = G1 & x ~ T & G2 /\ 
+        exp G1 T Ds /\
+        (forall y, y \notin L ->
+                   ty_defs (G1 & y ~ T) (open_defs y ds) (open_decs y Ds) /\
+                   forall M S U, decs_has (open_decs y Ds) M (dec_typ S U) -> 
+                                 subtyp notrans (G1 & y ~ T) S U).
 Proof.
   intros s G Wf. induction Wf; intros.
   + false* binds_empty_inv.
   + unfold binds in *. rewrite get_push in *.
     case_if.
-    - inversions H2. inversions H3. exists G (@empty typ). rewrite concat_empty_r. auto.
-    - specialize (IHWf x0 ds0 Ds0 H2 H3).
-      destruct IHWf as [G1 [G2 [Eq Ty]]]. rewrite Eq.
-      exists G1 (G2 & x ~ typ_bind Ds).
-      rewrite concat_assoc. auto.
+    - inversions H3. inversions H4. split. reflexivity.
+      exists L G (@empty typ) Ds. rewrite concat_empty_r. auto.
+    - specialize (IHWf x0 ds0 T0 T' H3 H4).
+      destruct IHWf as [EqT [L0 [G1 [G2 [Ds0 [EqG [Exp F]]]]]]]. subst G T0.
+      apply (conj eq_refl).
+      exists (L \u L0) G1 (G2 & x ~ T) Ds0.
+      rewrite concat_assoc.
+      apply (conj eq_refl). apply (conj Exp). auto.
 Qed.
-*)
+
 
 (** *** Inverting [var_has] *)
 
@@ -2225,6 +2242,28 @@ Print Assumptions oktrans_to_notrans.
 
 
 (* ###################################################################### *)
+
+Lemma label_for_dec_open: forall z D n,
+  label_for_dec n (open_dec z D) = label_for_dec n D.
+Proof.
+  intros. destruct D; reflexivity.
+Qed.
+
+Lemma decs_has_open: forall Ds l D z,
+  decs_has Ds l D -> decs_has (open_decs z Ds) l (open_dec z D).
+Proof.
+  introv Has. induction Ds.
+  + inversion Has.
+  + unfold open_decs, open_rec_decs. fold open_rec_decs. fold open_rec_dec.
+    unfold decs_has, get_dec. case_if.
+    - unfold decs_has, get_dec in Has. rewrite label_for_dec_open in Has. case_if.
+      inversions Has. reflexivity.
+    - fold get_dec. apply IHDs. unfold decs_has, get_dec in Has.
+      rewrite label_for_dec_open in H. case_if. apply Has.
+Qed.
+
+
+(* ###################################################################### *)
 (* ###################################################################### *)
 (** * Soundness Proofs *)
 
@@ -2237,12 +2276,10 @@ Proof.
   set (progress_for := fun s e =>
                          (exists e' s', red e s e' s') \/
                          (exists x ds, e = (trm_var (avar_f x)) /\ binds x ds s)).
-  apply (ty_trm_mut
-    (fun G e l d (Hhas: has G e l d)         => forall s, wf_sto s G -> progress_for s e)
-    (fun G e T   (Hty: ty_trm G e T)     => forall s, wf_sto s G -> progress_for s e)
-    (fun G i d   (Htyp: ty_def G i d)    => True)
-    (fun G is Ds (Htyp: ty_defs G is Ds) => True));
-  unfold progress_for; clear progress_for; intros; try apply I; auto_specialize.
+  apply (ty_trm_has_mutind
+    (fun G e l d (Hhas: trm_has G e l d)  => forall s, wf_sto s G -> progress_for s e)
+    (fun G e T   (Hty:  ty_trm G e T)     => forall s, wf_sto s G -> progress_for s e));
+    unfold progress_for; clear progress_for; intros; auto_specialize.
   (* case has_trm *)
   + assumption. 
   (* case ty_var *)
@@ -2253,14 +2290,18 @@ Proof.
     (* receiver is an expression *)
     - destruct IH as [s' [e' IH]]. do 2 eexists. apply (red_sel1 l IH). 
     (* receiver is a var *)
-    - destruct IH as [x [is [Heq Hbv]]]. subst.
-      destruct (invert_has h) as [ds [Hty Hbd]].
+    - destruct IH as [x [[Tds ds] [Heq Hbv]]]. subst.
+      destruct (invert_trm_has t) as [TDs [Ds [Hty [Exp [Has Clo]]]]].
       lets Hbt: (invert_ty_var Hty).
-      destruct (invert_wf_sto H0 Hbv Hbt) as [G1 [G2 [Eq Hty2]]].
-      destruct (decs_has_to_defs_has Hty2 Hbd) as [i Hbi].
-      destruct (defs_has_fld_sync Hbi) as [y Heq]. subst.
-      exists (trm_var y) s.
-      apply (red_sel Hbv Hbi).
+      destruct (invert_wf_sto H0 Hbv Hbt) as [EqT [L [G1 [G2 [DsT [EqG [Exp' F]]]]]]].
+      pick_fresh y. assert (yL: y \notin L) by auto.
+      specialize (F y yL). destruct F as [Tyds _]. subst.
+      assert (Eq: DsT = Ds) by admit. (* by uniqueness of expansion *) subst.
+      apply (decs_has_open y) in Has. rewrite Clo in Has.
+      destruct (decs_has_to_defs_has Tyds Has) as [d Has'].
+      destruct (defs_has_fld_sync Has') as [z Heq]. subst.
+      exists (trm_var z) s.
+      apply (red_sel Hbv Has').
   (* case ty_call *)
   + left. destruct H as [IHrec | IHrec].
     (* case receiver is an expression *)
