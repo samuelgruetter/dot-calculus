@@ -632,6 +632,8 @@ with subst_defs (z: var) (u: var) (ds: defs) : defs :=
   | defs_cons n d rest => defs_cons n (subst_def z u d) (subst_defs z u rest)
   end.
 
+Definition subst_ctx (z: var) (u: var) (G: ctx) : ctx := map (subst_typ z u) G.
+
 
 (* ###################################################################### *)
 (** ** Lemmas for var-by-var substitution *)
@@ -2477,21 +2479,91 @@ Qed.
 
 (*
 
+without dependent types:
+
                   G, x: S |- e : T      G |- u : S
                  ----------------------------------
                             G |- [u/x]e : T
+
+with dependent types:
+
+                  G1, x: S, G2 |- t : T      G1 |- y : S
+                 ---------------------------------------
+                      G1, [y/x]G2 |- [y/x]t : [y/x]T
+
 
 Note that in general, u is a term, but for our purposes, it suffices to consider
 the special case where u is a variable.
 *)
 
+Lemma subst_binds: forall y S v T G1 G2 x,
+    binds v T (G1 & x ~ S & G2) ->
+    binds y S G1 ->
+    ok (G1 & x ~ S & G2) ->
+    binds (subst_fvar x y v) (subst_typ x y T) (G1 & (subst_ctx x y G2)).
+Proof.
+  intros y S v T G1. refine (env_ind _ _ _).
+  + intros x Biv Biy Ok. unfold subst_ctx. rewrite map_empty.
+    rewrite concat_empty_r in *. apply binds_push_inv in Biv.
+    apply ok_push_inv in Ok. destruct Ok as [Ok xG1].
+    destruct Biv as [[Eq1 Eq2] | [Ne Biv]].
+    - subst. unfold subst_fvar. case_if.
+      assert (subst_typ x y S = S) by admit. (* x # G1, so S cannot contain it *)
+      rewrite H. apply Biy.
+    - unfold subst_fvar. case_if. 
+      assert (subst_typ x y T = T) by admit. (* x # G1, so T cannot contain it *)
+      rewrite H0. apply Biv.
+  + intros G2 x0 T0 IH x Biv Biy Ok. rewrite concat_assoc in *.
+    apply ok_push_inv in Ok. destruct Ok as [Ok x0notin].
+    assert (x0x: x0 <> x) by admit.
+    apply binds_push_inv in Biv. destruct Biv as [[Eq1 Eq2] | [Ne Biv]].
+    - subst x0 T0. unfold subst_ctx. rewrite map_push. rewrite concat_assoc.
+      unfold subst_fvar. case_if. apply binds_push_eq.
+    - unfold subst_fvar. case_if.
+(* TODO...*)
+Admitted.
+
+(** Note: We use [binds y S G1] instead of [ty_trm G1 (trm_var (avar_f y)) S]
+    to exclude the subsumption case. *)
+Lemma subst_exp_var_has: forall y S,
+   (forall G T Ds, exp G T Ds -> forall G1 G2 x, G = G1 & x ~ S & G2 ->
+      binds y S G1 ->
+      ok (G1 & x ~ S & G2) ->
+      exp (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_decs x y Ds))
+/\ (forall G v l D, var_has G v l D -> forall G1 G2 x, G = G1 & x ~ S & G2 ->
+      binds y S G1 ->
+      ok (G1 & x ~ S & G2) ->
+      var_has (G1 & (subst_ctx x y G2)) (subst_fvar x y v) l (subst_dec x y D)). 
+Proof.
+  intros y S. apply exp_var_has_mutind.
+  (* case exp_top *)
+  + intros. simpl. apply exp_top.
+  (* case exp_bind *)
+  + intros. simpl. apply exp_bind.
+  (* case exp_sel *)
+  + intros G v L Lo Hi Ds Has IHHas Exp IHExp G1 G2 x EqG Tyy Ok. subst G.
+    specialize (IHHas _ _ _ eq_refl Tyy Ok).
+    specialize (IHExp _ _ _ eq_refl Tyy Ok).
+    unfold subst_typ. unfold subst_pth. unfold subst_avar. case_if.
+    - unfold subst_fvar in IHHas. case_if.
+      apply (exp_sel IHHas IHExp).
+    - unfold subst_fvar in IHHas. case_if.
+      apply (exp_sel IHHas IHExp).
+  (* case var_has_dec *)
+  + intros G v T Ds l D Bi Exp IH Has G1 G2 x EqG Tyy Ok. subst G.
+    specialize (IH _ _ _ eq_refl Tyy Ok).
+    unfold subst_fvar. case_if.
+    - refine (var_has_dec _ IH _). apply subst_binds.
+      
+Qed.
+
 Lemma raw_subst_principles: forall y S,
-  (forall (G0 : ctx) (t : trm) (l : label) (d : dec) (Hhas : has G0 t l d),
-    (fun G0 e0 l d (Hhas: has G0 e0 l d) => 
+  (forall (G0 : ctx) (t : trm) (l : label) (d : dec) (Hhas : trm_has G0 t l d),
+    (fun G0 e0 l d (Hhas: trm_has G0 e0 l d) => 
       forall G1 G2 x, G0 = (G1 & (x ~ S) & G2) ->
                       ty_trm (G1 & G2) (trm_var (avar_f y)) S ->
                       ok (G1 & (x ~ S) & G2) ->
-                      has (G1 & G2) (subst_trm x y t) l d)
+                      trm_has (G1 & G2) (subst_trm x y t) l d)
     G0 t l d Hhas) /\
   (forall (G0 : ctx) (t : trm) (T : typ) (Hty : ty_trm G0 t T),
     (fun G0 t T (Hty: ty_trm G0 t T) => 
@@ -2535,8 +2607,8 @@ Proof.
   match goal with
     | H: ok _ |- _ => rename H into Hok
   end.
-  (* case has_trm *)
-  + apply* has_trm.
+  (* case trm_has_dec *)
+  + apply* trm_has_dec.
   (* case ty_var *)
   + subst. rename x into z, x0 into x. unfold subst_trm, subst_avar. case_var.
     (* case z = x *)
