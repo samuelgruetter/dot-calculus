@@ -311,8 +311,11 @@ End Decs.
      and maybe to prove that store is wf, we need to prove what we're about to prove...
 *)
 
-(* mode = "is transitivity at top level accepted?" *)
-Inductive mode : Type := notrans | oktrans.
+(* tmode = "is transitivity at top level accepted?" *)
+Inductive tmode : Type := notrans | oktrans.
+
+(* imode = "is path bounds subtype inversion at top level accepted?" *)
+Inductive imode : Type := noinv | okinv.
 
 (* expansion returns a set of decs without opening them *)
 Inductive exp : ctx -> typ -> decs -> Prop :=
@@ -332,64 +335,71 @@ with var_has : ctx -> var -> label -> dec -> Prop :=
       decs_has (open_decs x Ds) l D ->
       var_has G x l D.
 
-Inductive subtyp : mode -> ctx -> typ -> typ -> Prop :=
+Inductive subtyp : tmode -> imode -> ctx -> typ -> typ -> Prop :=
   | subtyp_refl : forall G T,
-      subtyp notrans G T T
+      subtyp notrans noinv G T T
   | subtyp_top : forall G T,
-      subtyp notrans G T typ_top
+      subtyp notrans noinv G T typ_top
   | subtyp_bot : forall G T,
-      subtyp notrans G typ_bot T
+      subtyp notrans noinv G typ_bot T
   | subtyp_bind : forall L G Ds1 Ds2,
       (forall z, z \notin L -> 
-         subdecs oktrans 
+         subdecs oktrans okinv 
                  (G & z ~ (typ_bind (open_decs z Ds1)))
                  (open_decs z Ds1) 
                  (open_decs z Ds2)) ->
-      subtyp notrans G (typ_bind Ds1) (typ_bind Ds2)
+      subtyp notrans noinv G (typ_bind Ds1) (typ_bind Ds2)
   | subtyp_sel_l : forall G x L S U T,
       var_has G x L (dec_typ S U) ->
-      subtyp oktrans G U T ->
-      subtyp notrans G (typ_sel (pth_var (avar_f x)) L) T
+      subtyp oktrans okinv G U T ->
+      subtyp notrans noinv G (typ_sel (pth_var (avar_f x)) L) T
   | subtyp_sel_r : forall G x L S U T,
       var_has G x L (dec_typ S U) ->
-      subtyp oktrans G S U -> (* <--- makes proofs a lot easier!! *)
-      subtyp oktrans G T S ->
-      subtyp notrans G T (typ_sel (pth_var (avar_f x)) L)
-  | subtyp_mode : forall G T1 T2,
-      subtyp notrans G T1 T2 ->
-      subtyp oktrans G T1 T2
+      subtyp oktrans okinv G S U -> (* <--- makes proofs a lot easier!! *)
+      subtyp oktrans okinv G T S ->
+      subtyp notrans noinv G T (typ_sel (pth_var (avar_f x)) L)
+  | subtyp_tmode : forall im G T1 T2,
+      subtyp notrans im G T1 T2 ->
+      subtyp oktrans im G T1 T2
+  | subtyp_imode : forall tm G T1 T2,
+      subtyp tm noinv G T1 T2 ->
+      subtyp tm okinv G T1 T2
   | subtyp_trans : forall G T1 T2 T3,
-      subtyp oktrans G T1 T2 ->
-      subtyp oktrans G T2 T3 ->
-      subtyp oktrans G T1 T3
-with subdec : mode -> ctx -> dec -> dec -> Prop :=
-  | subdec_refl : forall m G D,
-      subdec m G D D
-  | subdec_typ : forall m G Lo1 Hi1 Lo2 Hi2,
+      subtyp oktrans okinv G T1 T2 ->
+      subtyp oktrans okinv G T2 T3 ->
+      subtyp oktrans noinv G T1 T3
+  | subtyp_inv : forall G x L S U,
+      var_has G x L (dec_typ S U) ->
+      subtyp notrans okinv G S U
+with subdec : tmode -> imode -> ctx -> dec -> dec -> Prop :=
+  | subdec_refl : forall tm im G D,
+      subdec tm im G D D
+  | subdec_typ : forall tm im G Lo1 Hi1 Lo2 Hi2,
       (* only allow implementable decl *)
-      subtyp m G Lo1 Hi1 ->
-      subtyp m G Lo2 Hi2 ->
+      subtyp tm im G Lo1 Hi1 ->
+      subtyp tm im G Lo2 Hi2 ->
       (* lhs narrower range than rhs *)
-      subtyp m G Lo2 Lo1 ->
-      subtyp m G Hi1 Hi2 ->
+      subtyp tm im G Lo2 Lo1 ->
+      subtyp tm im G Hi1 Hi2 ->
       (* conclusion *)
-      subdec m G (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2)
-  | subdec_fld : forall m G T1 T2,
-      subtyp m G T1 T2 ->
-      subdec m G (dec_fld T1) (dec_fld T2)
-  | subdec_mtd : forall m G S1 T1 S2 T2,
-      subtyp m G S2 S1 ->
-      subtyp m G T1 T2 ->
-      subdec m G (dec_mtd S1 T1) (dec_mtd S2 T2)
-with subdecs : mode -> ctx -> decs -> decs -> Prop :=
-  | subdecs_empty : forall m G Ds,
-      subdecs m G Ds decs_nil
-  | subdecs_push : forall m G n Ds1 Ds2 D1 D2,
+      subdec tm im G (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2)
+  | subdec_fld : forall tm im G T1 T2,
+      subtyp tm im G T1 T2 ->
+      subdec tm im G (dec_fld T1) (dec_fld T2)
+  | subdec_mtd : forall tm im G S1 T1 S2 T2,
+      subtyp tm im G S2 S1 ->
+      subtyp tm im G T1 T2 ->
+      subdec tm im G (dec_mtd S1 T1) (dec_mtd S2 T2)
+with subdecs : tmode -> imode -> ctx -> decs -> decs -> Prop :=
+  | subdecs_empty : forall tm im G Ds,
+      subdecs tm im G Ds decs_nil
+  | subdecs_push : forall tm im G n Ds1 Ds2 D1 D2,
       decs_has   Ds1 (label_for_dec n D2) D1 ->
       (* decs_hasnt Ds2 (label_for_dec n D2) -> (* we don't accept duplicates in rhs *)*)
-      subdec m G D1 D2 ->
-      subdecs m G Ds1 Ds2 ->
-      subdecs m G Ds1 (decs_cons n D2 Ds2).
+      subdec tm im G D1 D2 ->
+      subdecs tm im G Ds1 Ds2 ->
+      subdecs tm im G Ds1 (decs_cons n D2 Ds2).
+
 
 Inductive trm_has : ctx -> trm -> label -> dec -> Prop :=
   | trm_has_dec : forall G t T l D Ds,
@@ -414,11 +424,11 @@ with ty_trm : ctx -> trm -> typ -> Prop :=
       (forall x, x \notin L ->
                  ty_defs (G & x ~ T) (open_defs x ds) (open_decs x Ds) /\
                  forall M S U, decs_has (open_decs x Ds) M (dec_typ S U) -> 
-                               subtyp notrans (G & x ~ T) S U) ->
+                               subtyp notrans noinv (G & x ~ T) S U) ->
       ty_trm G (trm_new T ds) T
   | ty_sbsm : forall G t T U,
       ty_trm G t T ->
-      subtyp notrans G T U ->
+      subtyp notrans okinv G T U ->
       ty_trm G t U
 with ty_def : ctx -> def -> dec -> Prop :=
   | ty_typ : forall G S T,
@@ -451,7 +461,7 @@ Inductive wf_sto: sto -> ctx -> Prop :=
       (forall x, x \notin L ->
                  ty_defs (G & x ~ T) (open_defs x ds) (open_decs x Ds) /\
                  forall M S U, decs_has (open_decs x Ds) M (dec_typ S U) -> 
-                               subtyp notrans (G & x ~ T) S U) ->
+                               subtyp notrans noinv (G & x ~ T) S U) ->
       wf_sto (s & x ~ (object T ds)) (G & x ~ T).
 
 (*
@@ -557,6 +567,10 @@ Hint Constructors subtyp.
 Hint Constructors subdec.
 Hint Constructors notsel.
 
+(* ###################################################################### *)
+(** ** Realizability *)
+
+Definition real(G: ctx): Prop := exists s, wf_sto s G.
 
 (* ###################################################################### *)
 (** ** Definition of var-by-var substitution *)
@@ -1491,7 +1505,7 @@ Proof.
     - fold get_dec in Has. apply* IHDs2.
 Qed.
 
-(** transitivity in oktrans mode (trivial) *)
+(** transitivity in oktrans tmode (trivial) *)
 Lemma subtyp_trans_oktrans: forall G T1 T2 T3,
   subtyp oktrans G T1 T2 -> subtyp oktrans G T2 T3 -> subtyp oktrans G T1 T3.
 Proof.
@@ -1648,7 +1662,7 @@ Proof.
     apply (var_has_dec Bi' Exp' Has').
 Qed.
 
-Lemma subdec_mode: forall G d1 d2,
+Lemma subdec_tmode: forall G d1 d2,
   subdec notrans G d1 d2 -> subdec oktrans G d1 d2.
 Proof.
   intros.
@@ -1674,15 +1688,15 @@ Proof.
   (* subtyp *)
   + (* case refl *)
     introv Hok123 Heq; subst.
-    apply (subtyp_mode (subtyp_refl _ _)).
+    apply (subtyp_tmode (subtyp_refl _ _)).
   + (* case top *)
     introv Hok123 Heq; subst.
-    apply (subtyp_mode (subtyp_top _ _)).
+    apply (subtyp_tmode (subtyp_top _ _)).
   + (* case bot *)
     introv Hok123 Heq; subst.
-    apply (subtyp_mode (subtyp_bot _ _)).
+    apply (subtyp_tmode (subtyp_bot _ _)).
   + (* case bind *)
-    introv Hc IH Hok123 Heq; subst. apply subtyp_mode.
+    introv Hc IH Hok123 Heq; subst. apply subtyp_tmode.
     apply_fresh subtyp_bind as z.
     rewrite <- concat_assoc.
     refine (IH z _ G1 G2 (G3 & z ~ typ_bind (open_decs z Ds1)) _ _).
@@ -1691,14 +1705,14 @@ Proof.
     - rewrite <- concat_assoc. reflexivity.
   + (* case asel_l *)
     introv Hhas Hst IH Hok123 Heq; subst.
-    apply subtyp_mode.
+    apply subtyp_tmode.
     apply subtyp_sel_l with (S := S) (U := U).
     (*apply weaken_has; assumption.*) admit.
     apply (IH G1 G2 G3 Hok123).
     trivial.
   + (* case asel_r *)
     introv Hhas Hst_SU IH_SU Hst_TS IH_TS Hok123 Heq; subst.
-    apply subtyp_mode.
+    apply subtyp_tmode.
     apply subtyp_sel_r with (S := S) (U := U).
     (*apply weaken_has; assumption.*) admit.
     apply IH_SU; auto.
@@ -1707,8 +1721,8 @@ Proof.
     introv Hst IH Hok Heq.
     apply subtyp_trans with (T2 := T2).
     apply IH; auto.
-    apply (subtyp_mode (subtyp_refl _ T2)).
-  + (* case mode *)
+    apply (subtyp_tmode (subtyp_refl _ T2)).
+  + (* case tmode *)
     introv Hst12 IH12 Hst23 IH23 Hok123 Heq.
     specialize (IH12 G1 G2 G3 Hok123 Heq).
     specialize (IH23 G1 G2 G3 Hok123 Heq).
@@ -1804,7 +1818,7 @@ Proof.
   (* subtyp *)
   (* cases refl, top, bot: auto *)
   + (* case bind *)
-    introv Hc IH Hok123 Heq HAB; subst. apply subtyp_mode.
+    introv Hc IH Hok123 Heq HAB; subst. apply subtyp_tmode.
     apply_fresh subtyp_bind as z0.
     rewrite <- concat_assoc.
     refine (IH z0 _ G1 (G2 & z0 ~ typ_bind (open_decs z0 Ds1)) _ dsA dsB _ _ _).
@@ -1814,7 +1828,7 @@ Proof.
     - assumption.
   + (* case sel_l *)
     introv Hhas Hst IH Hok Heq HAB; subst.
-    apply subtyp_mode.
+    apply subtyp_tmode.
     lets Hn: (@narrow_has _ _ _ dsA dsB _ _ _ Hok Hhas HAB).
     destruct Hn as [dA [Hrsd Hh]].
     inversions Hrsd.
@@ -1832,7 +1846,7 @@ Proof.
       apply IH with (dsB0 := dsB); auto.
   + (* case asel_r *)
     introv Hhas Hst_SU IH_SU Hst_TS IH_TS Hok Heq HAB; subst.
-    apply subtyp_mode.
+    apply subtyp_tmode.
     assert (Hok': ok (G1 & z ~ typ_bind dsA & G2)).
     apply (ok_middle_change _ Hok).
     set (Hn := @narrow_has _ _ _ dsA dsB _ _ _ Hok Hhas HAB).
@@ -1854,8 +1868,8 @@ Proof.
   + introv Hst IH Hok Heq HAB.
     apply subtyp_trans with (T2 := T2).
     - apply IH with (dsB := dsB); auto.
-    - apply (subtyp_mode (subtyp_refl _ T2)).
-  (* case mode *)
+    - apply (subtyp_tmode (subtyp_refl _ T2)).
+  (* case tmode *)
   + introv Hst12 IH12 Hst23 IH23 Hok123 Heq HAB.
     specialize (IH12 G1 G2 z dsA dsB Hok123 Heq HAB).
     specialize (IH23 G1 G2 z dsA dsB Hok123 Heq HAB).
@@ -1946,7 +1960,7 @@ Proof.
 Qed.
 *)
 
-(* ... transitivity in notrans mode, but no p.L in middle ... *)
+(* ... transitivity in notrans tmode, but no p.L in middle ... *)
 
 Lemma subtyp_trans_notrans: forall G T1 T2 T3,
   ok G -> notsel T2 -> subtyp notrans G T1 T2 -> subtyp notrans G T2 T3 -> 
@@ -1959,12 +1973,12 @@ Proof.
   + inversion H23; subst.
     apply (subtyp_top G T1).
     apply (subtyp_top G T1).
-    apply (subtyp_sel_r H H0 (subtyp_trans (subtyp_mode H12) H1)).
+    apply (subtyp_sel_r H H0 (subtyp_trans (subtyp_tmode H12) H1)).
   (* case bot *)
   + inversion H12; subst.
     apply (subtyp_bot G T3).
     apply (subtyp_bot G T3).
-    apply (subtyp_sel_l H (subtyp_trans H0 (subtyp_mode H23))).
+    apply (subtyp_sel_l H (subtyp_trans H0 (subtyp_tmode H23))).
   (* case bind *)
   + inversion H12; inversion H23; subst; (
       assumption ||
@@ -1990,15 +2004,15 @@ Proof.
       apply (subdecs_trans_oktrans_n H0 H4).
     - (* bind <: bind <: sel  *)
       assert (H1S: subtyp oktrans G (typ_bind Ds1) S).
-      apply (subtyp_trans_oktrans (subtyp_mode H12) H5).
+      apply (subtyp_trans_oktrans (subtyp_tmode H12) H5).
       apply (subtyp_sel_r H3 H4 H1S).
     - (* sel  <: bind <: bind *)
       assert (HU2: subtyp oktrans G U (typ_bind Ds2)).
-      apply (subtyp_trans_oktrans H0 (subtyp_mode H23)).
+      apply (subtyp_trans_oktrans H0 (subtyp_tmode H23)).
       apply (subtyp_sel_l H HU2). 
     - (* sel  <: bind <: sel  *)
       apply (subtyp_sel_r H1 H5).
-      apply (subtyp_trans_oktrans (subtyp_mode H12) H6).
+      apply (subtyp_trans_oktrans (subtyp_tmode H12) H6).
 Qed.
 
 Print Assumptions subtyp_trans_notrans.
@@ -2087,7 +2101,7 @@ Proof.
   induction Hflb.
   assumption.
   apply IHHflb.
-  apply (subtyp_sel_r H H0 (subtyp_mode Hst)).
+  apply (subtyp_sel_r H H0 (subtyp_tmode Hst)).
 Qed.
 
 Lemma chain2subtyp: forall G B1 B2 C D,
@@ -2116,7 +2130,7 @@ Proof.
   induction Hfub.
   apply (chain2subtyp Hok (subtyp_refl G T) Hm Hflb).
   apply (subtyp_sel_l H).
-  apply subtyp_mode.
+  apply subtyp_tmode.
   apply (IHHfub Hok Hm Hflb).
 Qed.
 
@@ -2185,7 +2199,7 @@ Proof.
     injection HdecEq; intros; subst.
     exists B C.
     split. assumption. split. assumption. assumption.
-  (* case mode *)
+  (* case tmode *)
   apply (prepend_chain G _ _ _ Hok H (prepend_chain G _ _ _ Hok H0 Hch)).
   (* case trans *)
   apply (prepend_chain G _ _ _ Hok H (prepend_chain G _ _ _ Hok H0 Hch)).
