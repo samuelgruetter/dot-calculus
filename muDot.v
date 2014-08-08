@@ -552,10 +552,12 @@ Ltac gather_vars :=
   let D := gather_vars_with (fun x : sto       => dom x     ) in
   let E := gather_vars_with (fun x : avar      => fv_avar  x) in
   let F := gather_vars_with (fun x : trm       => fv_trm   x) in
-  let G := gather_vars_with (fun x : def      => fv_def  x) in
-  let H := gather_vars_with (fun x : defs     => fv_defs x) in
-  let I := gather_vars_with (fun x : def       => fv_def   x) in
-  constr:(A \u B \u C \u D \u E \u F \u G \u H \u I).
+  let G := gather_vars_with (fun x : def       => fv_def   x) in
+  let H := gather_vars_with (fun x : defs      => fv_defs  x) in
+  let I := gather_vars_with (fun x : typ       => fv_typ   x) in
+  let J := gather_vars_with (fun x : dec       => fv_dec   x) in
+  let K := gather_vars_with (fun x : decs      => fv_decs  x) in
+  constr:(A \u B \u C \u D \u E \u F \u G \u H \u I \u J \u K).
 
 Ltac pick_fresh x :=
   let L := gather_vars in (pick_fresh_gen L x).
@@ -769,6 +771,13 @@ Proof.
   unfold subst_fvar. case_var*.
 Qed.
 
+Lemma subst_intro_typ: forall x u T, x \notin (fv_typ T) ->
+  open_typ u T = subst_typ x u (open_typ x T).
+Proof.
+  introv Fr. unfold open_typ. rewrite* subst_open_commute_typ.
+  destruct (@subst_fresh_typ_dec_decs x u) as [Q _]. rewrite* (Q T).
+  unfold subst_fvar. case_var*.
+Qed.
 
 (* ###################################################################### *)
 (** ** Helper lemmas for definition/declaration lists *)
@@ -1682,30 +1691,30 @@ Lemma subtyp_and_subdec_and_subdecs_weaken:
    (forall m G T1 T2 (Hst : subtyp m G T1 T2),
       forall G1 G2 G3, ok (G1 & G2 & G3) ->
                        G1 & G3 = G ->
-                       subtyp oktrans (G1 & G2 & G3) T1 T2)
+                       subtyp m (G1 & G2 & G3) T1 T2)
 /\ (forall m G d1 d2 (Hsd : subdec m G d1 d2),
       forall G1 G2 G3, ok (G1 & G2 & G3) ->
                        G1 & G3 = G ->
-                       subdec oktrans (G1 & G2 & G3) d1 d2)
+                       subdec m (G1 & G2 & G3) d1 d2)
 /\ (forall m G ds1 ds2 (Hsds : subdecs m G ds1 ds2),
       forall G1 G2 G3, ok (G1 & G2 & G3) ->
                        G1 & G3 = G ->
-                       subdecs oktrans (G1 & G2 & G3) ds1 ds2).
+                       subdecs m (G1 & G2 & G3) ds1 ds2).
 Proof.
   apply subtyp_mutind.
 
   (* subtyp *)
   + (* case refl *)
     introv Hok123 Heq; subst.
-    apply (subtyp_mode (subtyp_refl _ _)).
+    apply (subtyp_refl _ _).
   + (* case top *)
     introv Hok123 Heq; subst.
-    apply (subtyp_mode (subtyp_top _ _)).
+    apply (subtyp_top _ _).
   + (* case bot *)
     introv Hok123 Heq; subst.
-    apply (subtyp_mode (subtyp_bot _ _)).
+    apply (subtyp_bot _ _).
   + (* case bind *)
-    introv Hc IH Hok123 Heq; subst. apply subtyp_mode.
+    introv Hc IH Hok123 Heq; subst.
     apply_fresh subtyp_bind as z.
     rewrite <- concat_assoc.
     refine (IH z _ G1 G2 (G3 & z ~ typ_bind Ds1) _ _).
@@ -1714,23 +1723,18 @@ Proof.
     - rewrite <- concat_assoc. reflexivity.
   + (* case asel_l *)
     introv Hhas Hst IH Hok123 Heq; subst.
-    apply subtyp_mode.
     apply subtyp_sel_l with (S := S) (U := U).
     (*apply weaken_has; assumption.*) admit.
     apply (IH G1 G2 G3 Hok123).
     trivial.
   + (* case asel_r *)
     introv Hhas Hst_SU IH_SU Hst_TS IH_TS Hok123 Heq; subst.
-    apply subtyp_mode.
     apply subtyp_sel_r with (S := S) (U := U).
     (*apply weaken_has; assumption.*) admit.
     apply IH_SU; auto.
     apply IH_TS; auto.
   + (* case trans *)
-    introv Hst IH Hok Heq.
-    apply subtyp_trans with (T2 := T2).
-    apply IH; auto.
-    apply (subtyp_mode (subtyp_refl _ T2)).
+    introv Hst IH Hok Heq. apply subtyp_mode. apply* IH.
   + (* case mode *)
     introv Hst12 IH12 Hst23 IH23 Hok123 Heq.
     specialize (IH12 G1 G2 G3 Hok123 Heq).
@@ -1762,14 +1766,16 @@ Proof.
     apply (IHsds _ _ _ Hok123 Heq).
 Qed.
 
-Lemma subtyp_weaken: forall G1 G2 G3 S U,
+Print Assumptions subtyp_and_subdec_and_subdecs_weaken.
+
+Lemma subtyp_weaken: forall m G1 G2 G3 S U,
   ok (G1 & G2 & G3) -> 
-  subtyp oktrans (G1      & G3) S U ->
-  subtyp oktrans (G1 & G2 & G3) S U.
+  subtyp m (G1      & G3) S U ->
+  subtyp m (G1 & G2 & G3) S U.
 Proof.
   destruct subtyp_and_subdec_and_subdecs_weaken as [W _].
   introv Hok123 Hst.
-  specialize (W oktrans (G1 & G3) S U Hst).
+  specialize (W m (G1 & G3) S U Hst).
   specialize (W G1 G2 G3 Hok123).
   apply W.
   trivial.
@@ -1789,16 +1795,16 @@ Proof.
   rewrite <- H0. assumption.
 Qed.
 
-Lemma subtyp_weaken_2: forall G1 G2 S U,
+Lemma subtyp_weaken_2: forall m G1 G2 S U,
   ok (G1 & G2) -> 
-  subtyp oktrans G1        S U ->
-  subtyp oktrans (G1 & G2) S U.
+  subtyp m G1        S U ->
+  subtyp m (G1 & G2) S U.
 Proof.
   introv Hok Hst.
-  apply (env_remove_empty (fun G0 => subtyp oktrans G0 S U) (G1 & G2)).
+  apply (env_remove_empty (fun G0 => subtyp m G0 S U) (G1 & G2)).
   apply subtyp_weaken.
   apply (env_add_empty (fun G0 => ok G0) (G1 & G2) Hok).
-  apply (env_add_empty (fun G0 => subtyp oktrans G0 S U) G1 Hst).
+  apply (env_add_empty (fun G0 => subtyp m G0 S U) G1 Hst).
 Qed.
 
 Lemma subtyp_and_subdec_and_subdecs_narrow:
@@ -2426,7 +2432,17 @@ Qed.
 
 Print Assumptions weakening.
 
-Lemma weaken_has: forall G1 G2 e l d,
+Lemma weaken_exp: forall G1 G2 T Ds,
+  exp G1 T Ds -> ok (G1 & G2) -> exp (G1 & G2) T Ds.
+Proof.
+  introv Exp Ok.
+  destruct weaken_exp_var_has as [P _].
+  specialize (P G1 T Ds Exp G1 G2 empty).
+  repeat (progress (rewrite concat_empty_r in P)).
+  apply* P.
+Qed.
+
+Lemma weaken_trm_has: forall G1 G2 e l d,
   trm_has G1 e l d -> ok (G1 & G2) -> trm_has (G1 & G2) e l d.
 Proof.
   intros.
@@ -2466,21 +2482,32 @@ Qed.
 (* ###################################################################### *)
 (** ** Inversion lemmas which depend on weakening *)
 
-(*
+
 Lemma invert_wf_sto_with_weakening: forall s G,
-  wf_sto s G -> 
-    forall x ds Ds, 
-      binds x ds s -> 
-      binds x (typ_bind Ds) G ->
-      ty_defs G ds Ds.
+  wf_sto s G ->
+    forall x ds T T',
+      binds x (object T ds) s -> 
+      binds x T' G ->
+      T' = T /\ exists Ds,
+        exp G T Ds /\
+        ty_defs G (open_defs x ds) (open_decs x Ds) /\
+        (forall L S U, decs_has (open_decs x Ds) L (dec_typ S U) -> 
+                       subtyp notrans G S U).
 Proof.
   introv Wf Bs BG.
   lets P: (invert_wf_sto Wf).
-  specialize (P x ds Ds Bs BG).
-  destruct P as [G1 [G2 [Eq Ty]]]. subst.
-  apply* weaken_ty_defs.
+  specialize (P x ds T T' Bs BG).
+  destruct P as [EqT [G1 [G2 [Ds [EqG [Exp [Ty F]]]]]]]. subst.
+  apply (conj eq_refl).
+  exists Ds. lets Ok: (wf_sto_to_ok_G Wf).
+  refine (conj _ (conj _ _)).
+  + rewrite <- concat_assoc. 
+    apply (weaken_exp Exp).
+    rewrite concat_assoc. exact Ok.
+  + apply (weaken_ty_defs Ty Ok).
+  + intros L S U Has. specialize (F L S U Has). apply (subtyp_weaken_2 Ok F).
 Qed.
-*)
+
 
 (* ###################################################################### *)
 (** ** The substitution principle *)
@@ -2753,21 +2780,36 @@ Proof.
     destruct Hhas as [TDs [Ds [Htyx [Exp [Hdbm Clo]]]]].
     apply invert_ty_var in Htyx. rename Htyx into Htbx.
     (* Feed "binds x" and "ctx binds x" to invert_wf_sto: *)
-    lets HdsDs: (invert_wf_sto_with_weakening Hwf Hvbx Htbx).
+    destruct (invert_wf_sto_with_weakening Hwf Hvbx Htbx) as [EqT [Ds' [Exp' [HdsDs F]]]].
+    subst.
+    assert (EqDs: Ds' = Ds) by apply TODO_holds. (* uniqueness of expansion *) subst.
+    apply (decs_has_open x) in Hdbm.
+    rewrite Clo in Hdbm.
     destruct (invert_ty_mtd_inside_ty_defs HdsDs Hibm Hdbm) as [L Hmtd].
     pick_fresh y'.
     rewrite* (@subst_intro_trm y' y body).
-    apply* (@subst_principle G y' y ((open_trm y' body)) T' U).
+    assert (CloU: forall z, open_typ z U = U) by apply TODO_detail.
+    rewrite <- (CloU y).
+    rewrite* (@subst_intro_typ y' y U).
+    lets OkG: (wf_sto_to_ok_G Hwf).
+    apply (@subst_principle G y' y (open_trm y' body) T' (open_typ y' U)).
+    - auto.
+    - rewrite CloU. apply* Hmtd.
+    - apply (invert_ty_var Htyy).
   (* red_sel *)
   + rename H into Hvbx. rename H0 into Hibl.
     exists (@empty typ). rewrite concat_empty_r. split. apply Hwf.
     apply invert_ty_sel in Hty.
-    apply invert_has in Hty.
-    destruct Hty as [Ds [Htyx Hdbl]].
+    apply invert_trm_has in Hty.
+    destruct Hty as [TDs [Ds [Htyx [Exp [Has Clo]]]]].
     apply invert_ty_var in Htyx. rename Htyx into Htbx.
     (* Feed "binds x" and "ctx binds x" to invert_wf_sto: *)
-    lets HdsDs: (invert_wf_sto_with_weakening Hwf Hvbx Htbx).
-    apply (invert_ty_fld_inside_ty_defs HdsDs Hibl Hdbl).
+    destruct (invert_wf_sto_with_weakening Hwf Hvbx Htbx) as [EqT [Ds' [Exp' [HdsDs F]]]].
+    subst.
+    assert (EqDs: Ds' = Ds) by apply TODO_holds. (* uniqueness of expansion *) subst.
+    apply (decs_has_open x) in Has.
+    rewrite Clo in Has.
+    apply (invert_ty_fld_inside_ty_defs HdsDs Hibl Has).
   (* red_new *)
   + rename H into Hvux.
     apply invert_ty_new in Hty.
