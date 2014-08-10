@@ -1332,7 +1332,7 @@ Qed.
 (** ** Uniqueness *)
 
 Lemma exp_phas_unique:
-  (forall G T Ds1 , exp G T Ds1      -> forall Ds2, exp G T Ds2      -> Ds1 = Ds2) /\ 
+  (forall G T Ds1 , exp G T Ds1   -> forall Ds2, exp G T Ds2   -> Ds1 = Ds2) /\ 
   (forall G v l D1, phas G v l D1 -> forall D2 , phas G v l D2 -> D1  = D2 ).
 Proof.
   apply exp_phas_mutind; intros.
@@ -1368,6 +1368,221 @@ Proof.
     inversion Has1. reflexivity.
 Qed. (* Error: Cannot guess decreasing argument of fix. *)
 *)
+
+
+(* ###################################################################### *)
+(** ** The substitution principle *)
+
+
+(*
+
+without dependent types:
+
+                  G, x: S |- e : T      G |- u : S
+                 ----------------------------------
+                            G |- [u/x]e : T
+
+with dependent types:
+
+                  G1, x: S, G2 |- t : T      G1 |- y : S
+                 ---------------------------------------
+                      G1, [y/x]G2 |- [y/x]t : [y/x]T
+
+
+Note that in general, u is a term, but for our purposes, it suffices to consider
+the special case where u is a variable.
+*)
+
+Lemma subst_label_for_dec: forall n x y D,
+  label_for_dec n (subst_dec x y D) = label_for_dec n D.
+Proof.
+  intros. destruct D; reflexivity.
+Qed.
+
+Lemma subst_decs_has: forall x y Ds l D,
+  decs_has Ds l D ->
+  decs_has (subst_decs x y Ds) l (subst_dec x y D).
+Proof.
+  introv Has. induction Ds.
+  + inversion Has.
+  + unfold subst_decs, decs_has, get_dec. fold subst_decs subst_dec get_dec.
+    rewrite subst_label_for_dec.
+    unfold decs_has, get_dec in Has. fold get_dec in Has. case_if.
+    - inversions Has. reflexivity.
+    - apply* IHDs.
+Qed.
+
+Lemma subst_binds: forall y S v T G1 G2 x,
+    binds v T (G1 & x ~ S & G2) ->
+    binds y S G1 ->
+    ok (G1 & x ~ S & G2) ->
+    binds (subst_fvar x y v) (subst_typ x y T) (G1 & (subst_ctx x y G2)).
+Proof.
+  intros y S v T G1. refine (env_ind _ _ _).
+  + intros x Biv Biy Ok. unfold subst_ctx. rewrite map_empty.
+    rewrite concat_empty_r in *. apply binds_push_inv in Biv.
+    apply ok_push_inv in Ok. destruct Ok as [Ok xG1].
+    destruct Biv as [[Eq1 Eq2] | [Ne Biv]].
+    - subst. unfold subst_fvar. case_if.
+      assert (subst_typ x y S = S) by admit. (* x # G1, so S cannot contain it *)
+      rewrite H. apply Biy.
+    - unfold subst_fvar. case_if. 
+      assert (subst_typ x y T = T) by admit. (* x # G1, so T cannot contain it *)
+      rewrite H0. apply Biv.
+  + intros G2 x0 T0 IH x Biv Biy Ok. rewrite concat_assoc in *.
+    apply ok_push_inv in Ok. destruct Ok as [Ok x0notin].
+    assert (x0x: x0 <> x) by admit.
+    apply binds_push_inv in Biv. destruct Biv as [[Eq1 Eq2] | [Ne Biv]].
+    - subst x0 T0. unfold subst_ctx. rewrite map_push. rewrite concat_assoc.
+      unfold subst_fvar. case_if. apply binds_push_eq.
+    - unfold subst_fvar. case_if.
+(* TODO...*)
+Admitted.
+
+(** Note: We use [binds y S G1] instead of [ty_trm G1 (trm_var (avar_f y)) S]
+    to exclude the subsumption case. *)
+Lemma subst_exp_phas: forall y S,
+   (forall G T Ds, exp G T Ds -> forall G1 G2 x, G = G1 & x ~ S & G2 ->
+      binds y S G1 ->
+      ok (G1 & x ~ S & G2) ->
+      exp (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_decs x y Ds))
+/\ (forall G v l D, phas G v l D -> forall G1 G2 x, G = G1 & x ~ S & G2 ->
+      binds y S G1 ->
+      ok (G1 & x ~ S & G2) ->
+      phas (G1 & (subst_ctx x y G2)) (subst_fvar x y v) l (subst_dec x y D)). 
+Proof.
+  intros y S. apply exp_phas_mutind.
+  (* case exp_top *)
+  + intros. simpl. apply exp_top.
+  (* case exp_bind *)
+  + intros. simpl. apply exp_bind.
+  (* case exp_sel *)
+  + intros G v L Lo Hi Ds Has IHHas Exp IHExp G1 G2 x EqG Tyy Ok. subst G.
+    specialize (IHHas _ _ _ eq_refl Tyy Ok).
+    specialize (IHExp _ _ _ eq_refl Tyy Ok).
+    unfold subst_typ. unfold subst_pth. unfold subst_avar. case_if.
+    - unfold subst_fvar in IHHas. case_if.
+      apply (exp_sel IHHas IHExp).
+    - unfold subst_fvar in IHHas. case_if.
+      apply (exp_sel IHHas IHExp).
+  (* case phas_var *)
+  + intros G v T Ds l D Bi Exp IH Has G1 G2 x EqG Tyy Ok. subst G.
+    specialize (IH _ _ _ eq_refl Tyy Ok).
+    unfold subst_fvar. case_if.
+    - refine (phas_var _ IH _). 
+      
+Admitted.
+
+Lemma trm_subst_principles: forall y S,
+   (forall G t l D, has G t l D -> forall G1 G2 x,
+     G = (G1 & (x ~ S) & G2) ->
+     binds y S G1 ->
+     ok (G1 & (x ~ S) & G2) ->
+     has (G1 & (subst_ctx x y G2)) (subst_trm x y t) l (subst_dec x y D))
+/\ (forall G t T, ty_trm G t T -> forall G1 G2 x,
+     G = (G1 & (x ~ S) & G2) ->
+     binds y S G1 ->
+     ok (G1 & (x ~ S) & G2) ->
+     ty_trm (G1 & (subst_ctx x y G2)) (subst_trm x y t) (subst_typ x y T))
+/\ (forall G d D, ty_def G d D -> forall G1 G2 x,
+     G = (G1 & (x ~ S) & G2) ->
+     binds y S G1 ->
+     ok (G1 & (x ~ S) & G2) ->
+     ty_def (G1 & (subst_ctx x y G2)) (subst_def x y d) (subst_dec x y D))
+/\ (forall G ds Ds, ty_defs G ds Ds -> forall G1 G2 x,
+     G = (G1 & (x ~ S) & G2) ->
+     binds y S G1 ->
+     ok (G1 & (x ~ S) & G2) ->
+     ty_defs (G1 & (subst_ctx x y G2)) (subst_defs x y ds) (subst_decs x y Ds)).
+Proof.
+  intros y S.
+  apply ty_mutind.
+  + (* case has_trm *)
+    intros G t T l D Ds Ty IH Exp Has Clo G1 G2 x EqG Bi Ok.
+    subst G. specialize (IH _ _ _ eq_refl Bi Ok).
+    apply has_trm with (subst_typ x y T) (subst_decs x y Ds).
+    - exact IH.
+    - apply* subst_exp_phas.
+    - apply* subst_decs_has.
+    - intro z. specialize (Clo z). apply TODO_detail.
+  + (* case ty_var *)
+    intros G z T Biz G1 G2 x EqG Biy Ok.
+    subst G. unfold subst_trm, subst_avar. case_var.
+    - (* case z = x *)
+      assert (EqST: T = S) by apply (binds_middle_eq_inv Biz Ok). subst. 
+      apply ty_var.
+      assert (yG2: y # (subst_ctx x y G2)) by apply TODO_detail.
+      refine (binds_concat_left _ yG2).
+      assert (xG1: x # G1) by apply TODO_detail.
+      assert (Eq: (subst_typ x y S) = S) by apply TODO_holds.
+      rewrite Eq. assumption.
+    - (* case z <> x *)
+      apply ty_var. apply TODO_holds.
+  (* case ty_sel *)
+  + intros G t l T Has IH G1 G2 x Eq Bi Ok. apply* ty_sel.
+  (* case ty_call *)
+  + intros G t m U V u Has IHt Tyu IHu G1 G2 x Eq Bi Ok. apply* ty_call.
+  (* case ty_new *)
+  + intros L G T ds Ds Exp Tyds IH F G1 G2 x Eq Bi Ok. subst G.
+    apply_fresh ty_new as z.
+    - apply* subst_exp_phas.
+    - fold subst_defs.
+      lets C: (@subst_open_commute_defs x y z ds).
+      unfolds open_defs. unfold subst_fvar in C. case_var.
+      rewrite <- C.
+      lets D: (@subst_open_commute_decs x y z Ds).
+      unfolds open_defs. unfold subst_fvar in D. case_var.
+      rewrite <- D.
+      rewrite <- concat_assoc.
+      assert (zL: z \notin L) by auto.
+      specialize (IH z zL G1 (G2 & z ~ T) x). rewrite concat_assoc in IH.
+      specialize (IH eq_refl Bi).
+      unfold subst_ctx in IH. rewrite map_push in IH. unfold subst_ctx.
+      apply IH. auto.
+    - intros M Lo Hi Has.
+      assert (zL: z \notin L) by auto. specialize (F z zL M Lo Hi).
+      apply TODO_holds.
+  (* case ty_sbsm *)
+  + intros G t T U Ty IH St G1 G2 x Eq Bi Ok. subst.
+    apply ty_sbsm with (subst_typ x y T).
+    - apply* IH.
+    - apply TODO_holds.
+  (* case ty_typ *)
+  + intros. simpl. apply ty_typ.
+  (* case ty_fld *)
+  + intros. apply* ty_fld.
+  (* case ty_mtd *)
+  + intros L G T U t Ty IH G1 G2 x Eq Bi Ok. subst.
+    apply_fresh ty_mtd as z. fold subst_trm. fold subst_typ.
+    lets C: (@subst_open_commute_trm x y z t).
+    unfolds open_trm. unfold subst_fvar in C. case_var.
+    rewrite <- C.
+    rewrite <- concat_assoc.
+    assert (zL: z \notin L) by auto.
+    specialize (IH z zL G1 (G2 & z ~ T) x). rewrite concat_assoc in IH.
+    specialize (IH eq_refl Bi).
+    unfold subst_ctx in IH. rewrite map_push in IH. unfold subst_ctx.
+    apply IH. auto.
+  (* case ty_dsnil *)
+  + intros. apply ty_dsnil.
+  (* case ty_dscons *)
+  + intros. apply* ty_dscons.
+Qed.
+
+Print Assumptions trm_subst_principles.
+
+Lemma subst_principle: forall G x y t S T,
+  ok (G & x ~ S) ->
+  ty_trm (G & x ~ S) t T ->
+  binds y S G ->
+  ty_trm G (subst_trm x y t) (subst_typ x y T).
+Proof.
+  introv Hok tTy yTy. destruct (trm_subst_principles y S) as [_ [P _]].
+  specialize (P _ t T tTy G empty x).
+  unfold subst_ctx in P. rewrite map_empty in P.
+  repeat (progress (rewrite concat_empty_r in P)).
+  apply* P.
+Qed.
 
 (* ###################################################################### *)
 (** ** Transitivity *)
@@ -2306,10 +2521,12 @@ Lemma invert_ty_sel_var: forall G x l T,
   has G (trm_var (avar_f x)) (label_fld l) (dec_fld T).
 Proof.
   introv Ty. gen_eq t0: (trm_sel (trm_var (avar_f x)) l). gen x l.
-  induction Ty; intros t' l' Eq; try (solve [ discriminate ]).
-  + inversions Eq. assumption.
-  + subst. rename t' into t, l' into l. specialize (IHTy _ _ eq_refl).
-    
+  induction Ty; try (solve [ intros; discriminate ]).
+  + intros x l0 Eq. inversions Eq. assumption.
+  + intros x l Eq. subst. specialize (IHTy _ _ eq_refl).
+    apply invert_has_var in IHTy.
+    destruct IHTy as [X [Ds [Tyx [Exp Has]]]].
+
 Qed.
 
 Lemma invert_ty_sel: forall G t l T,
@@ -2582,221 +2799,6 @@ Proof.
     rewrite concat_assoc. exact Ok.
   + apply (weaken_ty_defs Ty Ok).
   + intros L S U Has. specialize (F L S U Has). apply (subtyp_weaken_2 Ok F).
-Qed.
-
-
-(* ###################################################################### *)
-(** ** The substitution principle *)
-
-
-(*
-
-without dependent types:
-
-                  G, x: S |- e : T      G |- u : S
-                 ----------------------------------
-                            G |- [u/x]e : T
-
-with dependent types:
-
-                  G1, x: S, G2 |- t : T      G1 |- y : S
-                 ---------------------------------------
-                      G1, [y/x]G2 |- [y/x]t : [y/x]T
-
-
-Note that in general, u is a term, but for our purposes, it suffices to consider
-the special case where u is a variable.
-*)
-
-Lemma subst_label_for_dec: forall n x y D,
-  label_for_dec n (subst_dec x y D) = label_for_dec n D.
-Proof.
-  intros. destruct D; reflexivity.
-Qed.
-
-Lemma subst_decs_has: forall x y Ds l D,
-  decs_has Ds l D ->
-  decs_has (subst_decs x y Ds) l (subst_dec x y D).
-Proof.
-  introv Has. induction Ds.
-  + inversion Has.
-  + unfold subst_decs, decs_has, get_dec. fold subst_decs subst_dec get_dec.
-    rewrite subst_label_for_dec.
-    unfold decs_has, get_dec in Has. fold get_dec in Has. case_if.
-    - inversions Has. reflexivity.
-    - apply* IHDs.
-Qed.
-
-Lemma subst_binds: forall y S v T G1 G2 x,
-    binds v T (G1 & x ~ S & G2) ->
-    binds y S G1 ->
-    ok (G1 & x ~ S & G2) ->
-    binds (subst_fvar x y v) (subst_typ x y T) (G1 & (subst_ctx x y G2)).
-Proof.
-  intros y S v T G1. refine (env_ind _ _ _).
-  + intros x Biv Biy Ok. unfold subst_ctx. rewrite map_empty.
-    rewrite concat_empty_r in *. apply binds_push_inv in Biv.
-    apply ok_push_inv in Ok. destruct Ok as [Ok xG1].
-    destruct Biv as [[Eq1 Eq2] | [Ne Biv]].
-    - subst. unfold subst_fvar. case_if.
-      assert (subst_typ x y S = S) by admit. (* x # G1, so S cannot contain it *)
-      rewrite H. apply Biy.
-    - unfold subst_fvar. case_if. 
-      assert (subst_typ x y T = T) by admit. (* x # G1, so T cannot contain it *)
-      rewrite H0. apply Biv.
-  + intros G2 x0 T0 IH x Biv Biy Ok. rewrite concat_assoc in *.
-    apply ok_push_inv in Ok. destruct Ok as [Ok x0notin].
-    assert (x0x: x0 <> x) by admit.
-    apply binds_push_inv in Biv. destruct Biv as [[Eq1 Eq2] | [Ne Biv]].
-    - subst x0 T0. unfold subst_ctx. rewrite map_push. rewrite concat_assoc.
-      unfold subst_fvar. case_if. apply binds_push_eq.
-    - unfold subst_fvar. case_if.
-(* TODO...*)
-Admitted.
-
-(** Note: We use [binds y S G1] instead of [ty_trm G1 (trm_var (avar_f y)) S]
-    to exclude the subsumption case. *)
-Lemma subst_exp_phas: forall y S,
-   (forall G T Ds, exp G T Ds -> forall G1 G2 x, G = G1 & x ~ S & G2 ->
-      binds y S G1 ->
-      ok (G1 & x ~ S & G2) ->
-      exp (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_decs x y Ds))
-/\ (forall G v l D, phas G v l D -> forall G1 G2 x, G = G1 & x ~ S & G2 ->
-      binds y S G1 ->
-      ok (G1 & x ~ S & G2) ->
-      phas (G1 & (subst_ctx x y G2)) (subst_fvar x y v) l (subst_dec x y D)). 
-Proof.
-  intros y S. apply exp_phas_mutind.
-  (* case exp_top *)
-  + intros. simpl. apply exp_top.
-  (* case exp_bind *)
-  + intros. simpl. apply exp_bind.
-  (* case exp_sel *)
-  + intros G v L Lo Hi Ds Has IHHas Exp IHExp G1 G2 x EqG Tyy Ok. subst G.
-    specialize (IHHas _ _ _ eq_refl Tyy Ok).
-    specialize (IHExp _ _ _ eq_refl Tyy Ok).
-    unfold subst_typ. unfold subst_pth. unfold subst_avar. case_if.
-    - unfold subst_fvar in IHHas. case_if.
-      apply (exp_sel IHHas IHExp).
-    - unfold subst_fvar in IHHas. case_if.
-      apply (exp_sel IHHas IHExp).
-  (* case phas_var *)
-  + intros G v T Ds l D Bi Exp IH Has G1 G2 x EqG Tyy Ok. subst G.
-    specialize (IH _ _ _ eq_refl Tyy Ok).
-    unfold subst_fvar. case_if.
-    - refine (phas_var _ IH _). 
-      
-Admitted.
-
-Lemma trm_subst_principles: forall y S,
-   (forall G t l D, has G t l D -> forall G1 G2 x,
-     G = (G1 & (x ~ S) & G2) ->
-     binds y S G1 ->
-     ok (G1 & (x ~ S) & G2) ->
-     has (G1 & (subst_ctx x y G2)) (subst_trm x y t) l (subst_dec x y D))
-/\ (forall G t T, ty_trm G t T -> forall G1 G2 x,
-     G = (G1 & (x ~ S) & G2) ->
-     binds y S G1 ->
-     ok (G1 & (x ~ S) & G2) ->
-     ty_trm (G1 & (subst_ctx x y G2)) (subst_trm x y t) (subst_typ x y T))
-/\ (forall G d D, ty_def G d D -> forall G1 G2 x,
-     G = (G1 & (x ~ S) & G2) ->
-     binds y S G1 ->
-     ok (G1 & (x ~ S) & G2) ->
-     ty_def (G1 & (subst_ctx x y G2)) (subst_def x y d) (subst_dec x y D))
-/\ (forall G ds Ds, ty_defs G ds Ds -> forall G1 G2 x,
-     G = (G1 & (x ~ S) & G2) ->
-     binds y S G1 ->
-     ok (G1 & (x ~ S) & G2) ->
-     ty_defs (G1 & (subst_ctx x y G2)) (subst_defs x y ds) (subst_decs x y Ds)).
-Proof.
-  intros y S.
-  apply ty_mutind.
-  + (* case has_trm *)
-    intros G t T l D Ds Ty IH Exp Has Clo G1 G2 x EqG Bi Ok.
-    subst G. specialize (IH _ _ _ eq_refl Bi Ok).
-    apply has_trm with (subst_typ x y T) (subst_decs x y Ds).
-    - exact IH.
-    - apply* subst_exp_phas.
-    - apply* subst_decs_has.
-    - intro z. specialize (Clo z). apply TODO_detail.
-  + (* case ty_var *)
-    intros G z T Biz G1 G2 x EqG Biy Ok.
-    subst G. unfold subst_trm, subst_avar. case_var.
-    - (* case z = x *)
-      assert (EqST: T = S) by apply (binds_middle_eq_inv Biz Ok). subst. 
-      apply ty_var.
-      assert (yG2: y # (subst_ctx x y G2)) by apply TODO_detail.
-      refine (binds_concat_left _ yG2).
-      assert (xG1: x # G1) by apply TODO_detail.
-      assert (Eq: (subst_typ x y S) = S) by apply TODO_holds.
-      rewrite Eq. assumption.
-    - (* case z <> x *)
-      apply ty_var. apply TODO_holds.
-  (* case ty_sel *)
-  + intros G t l T Has IH G1 G2 x Eq Bi Ok. apply* ty_sel.
-  (* case ty_call *)
-  + intros G t m U V u Has IHt Tyu IHu G1 G2 x Eq Bi Ok. apply* ty_call.
-  (* case ty_new *)
-  + intros L G T ds Ds Exp Tyds IH F G1 G2 x Eq Bi Ok. subst G.
-    apply_fresh ty_new as z.
-    - apply* subst_exp_phas.
-    - fold subst_defs.
-      lets C: (@subst_open_commute_defs x y z ds).
-      unfolds open_defs. unfold subst_fvar in C. case_var.
-      rewrite <- C.
-      lets D: (@subst_open_commute_decs x y z Ds).
-      unfolds open_defs. unfold subst_fvar in D. case_var.
-      rewrite <- D.
-      rewrite <- concat_assoc.
-      assert (zL: z \notin L) by auto.
-      specialize (IH z zL G1 (G2 & z ~ T) x). rewrite concat_assoc in IH.
-      specialize (IH eq_refl Bi).
-      unfold subst_ctx in IH. rewrite map_push in IH. unfold subst_ctx.
-      apply IH. auto.
-    - intros M Lo Hi Has.
-      assert (zL: z \notin L) by auto. specialize (F z zL M Lo Hi).
-      apply TODO_holds.
-  (* case ty_sbsm *)
-  + intros G t T U Ty IH St G1 G2 x Eq Bi Ok. subst.
-    apply ty_sbsm with (subst_typ x y T).
-    - apply* IH.
-    - apply TODO_holds.
-  (* case ty_typ *)
-  + intros. simpl. apply ty_typ.
-  (* case ty_fld *)
-  + intros. apply* ty_fld.
-  (* case ty_mtd *)
-  + intros L G T U t Ty IH G1 G2 x Eq Bi Ok. subst.
-    apply_fresh ty_mtd as z. fold subst_trm. fold subst_typ.
-    lets C: (@subst_open_commute_trm x y z t).
-    unfolds open_trm. unfold subst_fvar in C. case_var.
-    rewrite <- C.
-    rewrite <- concat_assoc.
-    assert (zL: z \notin L) by auto.
-    specialize (IH z zL G1 (G2 & z ~ T) x). rewrite concat_assoc in IH.
-    specialize (IH eq_refl Bi).
-    unfold subst_ctx in IH. rewrite map_push in IH. unfold subst_ctx.
-    apply IH. auto.
-  (* case ty_dsnil *)
-  + intros. apply ty_dsnil.
-  (* case ty_dscons *)
-  + intros. apply* ty_dscons.
-Qed.
-
-Print Assumptions trm_subst_principles.
-
-Lemma subst_principle: forall G x y t S T,
-  ok (G & x ~ S) ->
-  ty_trm (G & x ~ S) t T ->
-  binds y S G ->
-  ty_trm G (subst_trm x y t) (subst_typ x y T).
-Proof.
-  introv Hok tTy yTy. destruct (trm_subst_principles y S) as [_ [P _]].
-  specialize (P _ t T tTy G empty x).
-  unfold subst_ctx in P. rewrite map_empty in P.
-  repeat (progress (rewrite concat_empty_r in P)).
-  apply* P.
 Qed.
 
 (*
