@@ -2050,16 +2050,9 @@ So we need an expansion for Bot.
    [S1] and both of them are typ_bind. This allows us to exclude some sel cases,
    and we don't even need mutual induction with expansion. *)
 
-Lemma narrow_phas: forall v L G1 G2 DB z Ds1 Ds2,
-  subdecs oktrans   (G1 & z ~ typ_bind Ds1     ) Ds1 Ds2 ->
-  ok                (G1 & z ~ typ_bind Ds2 & G2) ->
-  phas              (G1 & z ~ typ_bind Ds2 & G2) v L DB ->
-  exists DA, 
-     subdec oktrans (G1 & z ~ typ_bind Ds1     ) DA DB
-            /\ phas (G1 & z ~ typ_bind Ds1 & G2) v L DA.
-Admitted.
-
 (*
+check narrow_phas statement at the end of these!
+
 Lemma narrow_phas: forall v L G DB z Ds1 Ds2,
   subdecs oktrans   (G & z ~ typ_bind Ds1) Ds1 Ds2 ->
   ok                (G & z ~ typ_bind Ds2) ->
@@ -2471,25 +2464,31 @@ Proof.
   apply (env_add_empty (fun G0 => subtyp m G0 S U) G1 Hst).
 Qed.
 
+Lemma narrow_phas: forall v L G1 G2 DB z Ds1 Ds2,
+  subdecs oktrans   (G1 & z ~ typ_bind Ds1     ) (open_decs z Ds1) (open_decs z Ds2) ->
+  ok                (G1 & z ~ typ_bind Ds2 & G2) ->
+  phas              (G1 & z ~ typ_bind Ds2 & G2) v L DB ->
+  exists DA, 
+     subdec oktrans (G1 & z ~ typ_bind Ds1     ) DA DB
+            /\ phas (G1 & z ~ typ_bind Ds1 & G2) v L DA.
+Admitted.
+
 Lemma subtyp_and_subdec_and_subdecs_narrow:
-   (forall m G T1 T2 (Hst : subtyp m G T1 T2),
-      forall G1 G2 z DsA DsB, 
-         ok              (G1 & z ~ (typ_bind DsB) & G2)         ->
-         G       =       (G1 & z ~ (typ_bind DsB) & G2)         ->
-         subdecs oktrans (G1 & z ~ (typ_bind DsA)     ) DsA DsB ->
-         subtyp  oktrans (G1 & z ~ (typ_bind DsA) & G2) T1 T2)
-/\ (forall m G D1 D2 (Hsd : subdec m G D1 D2),
-      forall G1 G2 z DsA DsB, 
-         ok              (G1 & z ~ (typ_bind DsB) & G2)         ->
-         G       =       (G1 & z ~ (typ_bind DsB) & G2)         ->
-         subdecs oktrans (G1 & z ~ (typ_bind DsA)     ) DsA DsB ->
-         subdec  oktrans (G1 & z ~ (typ_bind DsA) & G2) D1 D2)
-/\ (forall m G Ds1 Ds2 (Hsds : subdecs m G Ds1 Ds2),
-      forall G1 G2 z DsA DsB, 
-         ok              (G1 & z ~ (typ_bind DsB) & G2)         ->
-         G       =       (G1 & z ~ (typ_bind DsB) & G2)         ->
-         subdecs oktrans (G1 & z ~ (typ_bind DsA)     ) DsA DsB ->
-         subdecs oktrans (G1 & z ~ (typ_bind DsA) & G2) Ds1 Ds2).
+   (forall m G T1 T2 (Hst : subtyp m G T1 T2), forall G1 G2 z DsA DsB, 
+     ok              (G1 & z ~ typ_bind DsB & G2) ->
+     G       =       (G1 & z ~ typ_bind DsB & G2) ->
+     subdecs oktrans (G1 & z ~ typ_bind DsA     ) (open_decs z DsA) (open_decs z DsB) ->
+     subtyp  oktrans (G1 & z ~ typ_bind DsA & G2) T1 T2)
+/\ (forall m G D1 D2 (Hsd : subdec m G D1 D2), forall G1 G2 z DsA DsB, 
+     ok              (G1 & z ~ typ_bind DsB & G2) ->
+     G       =       (G1 & z ~ typ_bind DsB & G2) ->
+     subdecs oktrans (G1 & z ~ typ_bind DsA     ) (open_decs z DsA) (open_decs z  DsB) ->
+     subdec  oktrans (G1 & z ~ typ_bind DsA & G2) D1 D2)
+/\ (forall m G Ds1 Ds2 (Hsds : subdecs m G Ds1 Ds2), forall G1 G2 z DsA DsB, 
+     ok              (G1 & z ~ typ_bind DsB & G2) ->
+     G       =       (G1 & z ~ typ_bind DsB & G2) ->
+     subdecs oktrans (G1 & z ~ typ_bind DsA     ) (open_decs z DsA) (open_decs z DsB) ->
+     subdecs oktrans (G1 & z ~ typ_bind DsA & G2) Ds1 Ds2).
 Proof.
   apply subtyp_mutind; try (intros; solve [auto]).
 
@@ -2575,7 +2574,7 @@ Qed.
 Lemma subdec_narrow: forall G1 G2 z Ds1 Ds2 DA DB,
   ok              (G1 & z ~ typ_bind Ds2 & G2) ->
   subdec  oktrans (G1 & z ~ typ_bind Ds2 & G2) DA DB ->
-  subdecs oktrans (G1 & z ~ typ_bind Ds1     ) Ds1 Ds2 ->
+  subdecs oktrans (G1 & z ~ typ_bind Ds1     ) (open_decs z Ds1) (open_decs z Ds2) ->
   subdec  oktrans (G1 & z ~ typ_bind Ds1 & G2) DA DB.
 Proof.
   introv Hok HAB Hsds.
@@ -2590,7 +2589,7 @@ Qed.
 Lemma subdecs_narrow: forall G1 G2 z Ds1 Ds2 DsA DsB,
   ok              (G1 & z ~ typ_bind Ds2 & G2) ->
   subdecs oktrans (G1 & z ~ typ_bind Ds2 & G2) DsA DsB ->
-  subdecs oktrans (G1 & z ~ typ_bind Ds1     ) Ds1 Ds2 ->
+  subdecs oktrans (G1 & z ~ typ_bind Ds1     ) (open_decs z Ds1) (open_decs z Ds2) ->
   subdecs oktrans (G1 & z ~ typ_bind Ds1 & G2) DsA DsB.
 Proof.
   introv Hok HAB Hsds.
@@ -2605,7 +2604,7 @@ Qed.
 Lemma subdec_narrow_last: forall G z Ds1 Ds2 DA DB,
   ok              (G & z ~ typ_bind Ds2) ->
   subdec  oktrans (G & z ~ typ_bind Ds2) DA DB ->
-  subdecs oktrans (G & z ~ typ_bind Ds1) Ds1 Ds2 ->
+  subdecs oktrans (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2) ->
   subdec  oktrans (G & z ~ typ_bind Ds1) DA DB.
 Proof.
   introv Hok HAB H12.
@@ -2622,7 +2621,7 @@ Print Assumptions subdec_narrow_last.
 Lemma subdecs_narrow_last: forall G z Ds1 Ds2 DsA DsB,
   ok              (G & z ~ typ_bind Ds2) ->
   subdecs oktrans (G & z ~ typ_bind Ds2) DsA DsB ->
-  subdecs oktrans (G & z ~ typ_bind Ds1) Ds1 Ds2 ->
+  subdecs oktrans (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2) ->
   subdecs oktrans (G & z ~ typ_bind Ds1) DsA DsB.
 Proof.
   introv Hok H2AB H112.
@@ -2674,10 +2673,6 @@ Proof.
       assert (Hok' : ok (G & z ~ typ_bind Ds1)) by auto.
       assert (Hok'': ok (G & z ~ typ_bind Ds2)) by auto.
       lets H4' : (subdecs_narrow_last Hok'' H4 H0). 
-  apply (subdecs_trans H0 H4').
-
-      lets H12' : (subtyp_weaken_2 Hok' (subtyp_mode H12)).
-      lets H4' : (subdecs_narrow_last Hok'' H4 H12'). 
       apply (subdecs_trans_oktrans H0 H4').
     - (* bind <: bind <: sel  *)
       assert (H1S: subtyp oktrans G (typ_bind Ds1) S).
