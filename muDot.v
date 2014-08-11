@@ -1385,6 +1385,15 @@ Proof.
 Qed. (* Error: Cannot guess decreasing argument of fix. *)
 *)
 
+(* ###################################################################### *)
+
+Lemma subdec_mode: forall G d1 d2,
+  subdec notrans G d1 d2 -> subdec oktrans G d1 d2.
+Proof.
+  intros.
+  inversion H; subst; auto.
+Qed.
+
 
 (* ###################################################################### *)
 (** ** The substitution principle *)
@@ -1521,11 +1530,102 @@ Proof.
           apply TODO_holds. }
       * apply (subst_decs_has _ _ Has).
 Qed.
- 
+
+Lemma subst_phas: forall G1 G2 x y S v l D,
+  phas (G1 & x ~ S & G2) v l D ->
+  binds y S G1 ->
+  ok (G1 & x ~ S & G2) ->
+  phas (G1 & (subst_ctx x y G2)) (subst_fvar x y v) l (subst_dec x y D).
+Proof.
+  intros. apply* subst_exp_phas.
+Qed.
+
 Lemma if_same: forall (T: Type) (P: Prop) (t: T), (If P then t else t) = t.
 Proof.
   intros. case_if; reflexivity.
 Qed.
+
+Lemma subst_subtyp: forall y S,
+   (forall m G T U, subtyp m G T U -> forall G1 G2 x,
+     G = (G1 & (x ~ S) & G2) ->
+     binds y S G1 ->
+     ok (G1 & (x ~ S) & G2) ->
+     subtyp m (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_typ x y U))
+/\ (forall m G D1 D2, subdec m G D1 D2 -> forall G1 G2 x,
+     G = (G1 & (x ~ S) & G2) ->
+     binds y S G1 ->
+     ok (G1 & (x ~ S) & G2) ->
+     subdec m (G1 & (subst_ctx x y G2)) (subst_dec x y D1) (subst_dec x y D2))
+/\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> forall G1 G2 x,
+     G = (G1 & (x ~ S) & G2) ->
+     binds y S G1 ->
+     ok (G1 & (x ~ S) & G2) ->
+     subdecs m (G1 & (subst_ctx x y G2)) (subst_decs x y Ds1) (subst_decs x y Ds2)).
+Proof.
+  intros y S. apply subtyp_mutind.
+  + (* case subtyp_refl *)
+    intros. apply subtyp_refl.
+  + (* case subtyp_top *)
+    intros. simpl. apply subtyp_top.
+  + (* case subtyp_bot *)
+    intros. simpl. apply subtyp_bot.
+  + (* case subtyp_bind *)
+    intros L G Ds1 Ds2 Sds IH G1 G2 x Eq Bi Ok. subst.
+    apply_fresh subtyp_bind as z. fold subst_decs.
+    assert (zL: z \notin L) by auto.
+    specialize (IH z zL G1 (G2 & z ~ typ_bind Ds1) x).
+    rewrite concat_assoc in IH.
+    specialize (IH eq_refl Bi).
+    unfold subst_ctx in IH. rewrite map_push in IH. simpl in IH.
+    rewrite concat_assoc in IH.
+    rewrite (subst_open_commute_decs x y z Ds1) in IH.
+    rewrite (subst_open_commute_decs x y z Ds2) in IH.
+    unfold subst_fvar in IH.
+    assert (x <> z) by auto. case_if.
+    unfold subst_ctx. apply IH. apply TODO_detail.
+  + (* case subtyp_sel_l *)
+    intros G v L Lo Hi T Has St IH G1 G2 x Eq Bi Ok. subst.
+    specialize (IH _ _ _ eq_refl Bi Ok).
+    simpl.
+    lets P: (subst_phas Has Bi Ok). simpl in P. unfold subst_fvar in P.
+    case_if; case_if; apply (subtyp_sel_l P IH).
+  + (* case subtyp_sel_r *)
+    intros G v L Lo Hi T Has St1 IH1 St2 IH2 G1 G2 x Eq Bi Ok. subst.
+    specialize (IH1 _ _ _ eq_refl Bi Ok).
+    specialize (IH2 _ _ _ eq_refl Bi Ok).
+    simpl.
+    lets P: (subst_phas Has Bi Ok). simpl in P. unfold subst_fvar in P.
+    case_if; case_if; apply (subtyp_sel_r P IH1 IH2).
+  + (* case subtyp_mode *)
+    intros G T1 T2 St IH G1 G2 x Eq Bi Ok. subst.
+    specialize (IH _ _ _ eq_refl Bi Ok).
+    apply (subtyp_mode IH).
+  + (* case subtyp_trans *)
+    intros G T1 T2 T3 St12 IH12 St23 IH23 G1 G2 x Eq Bi Ok. subst.
+    apply* subtyp_trans.
+  + (* case subdec_refl *)
+    intros. destruct m. 
+    - apply subdec_refl.
+    - apply subdec_mode. apply subdec_refl.
+  + (* case subdec_typ *)
+    intros. apply* subdec_typ.
+  + (* case subdec_fld *)
+    intros. apply* subdec_fld.
+  + (* case subdec_mtd *)
+    intros. apply* subdec_mtd.
+  + (* case subdecs_empty *)
+    intros. apply subdecs_empty.
+  + (* case subdecs_push *)
+    intros m G n Ds1 Ds2 D1 D2 Has Sd IH1 Sds IH2 G1 G2 x Eq Bi Ok. subst.
+    specialize (IH1 _ _ _ eq_refl Bi Ok).
+    specialize (IH2 _ _ _ eq_refl Bi Ok).
+    apply (subst_decs_has x y) in Has.
+    rewrite <- (subst_label_for_dec n x y D2) in Has.
+    apply subdecs_push with (subst_dec x y D1); 
+      fold subst_dec; fold subst_decs; assumption.
+Qed.
+
+Print Assumptions subst_subtyp.
 
 Lemma trm_subst_principles: forall y S,
    (forall G t l D, has G t l D -> forall G1 G2 x,
@@ -1615,7 +1715,7 @@ Proof.
   + intros G t T U Ty IH St G1 G2 x Eq Bi Ok. subst.
     apply ty_sbsm with (subst_typ x y T).
     - apply* IH.
-    - apply TODO_holds.
+    - apply* subst_subtyp.
   (* case ty_typ *)
   + intros. simpl. apply ty_typ.
   (* case ty_fld *)
@@ -1969,13 +2069,6 @@ Lemma narrow_has: forall G1 G2 z S1 S2 x L DB,
 Proof.
   introv Ok Has Sd. destruct narrow_exp_phas as [_ P].
   apply (P (G1 & z ~ S2 & G2) _ _ _ Has _ _ _ S1 S2 eq_refl Ok Sd).
-Qed.
-
-Lemma subdec_mode: forall G d1 d2,
-  subdec notrans G d1 d2 -> subdec oktrans G d1 d2.
-Proof.
-  intros.
-  inversion H; subst; auto.
 Qed.
 
 Lemma subtyp_and_subdec_and_subdecs_weaken:
