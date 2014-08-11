@@ -329,8 +329,8 @@ with phas : ctx -> var -> label -> dec -> Prop :=
   | phas_var : forall G x T Ds l D,
       binds x T G ->
       exp G T Ds ->
-      decs_has (open_decs x Ds) l D ->
-      phas G x l D.
+      decs_has Ds l D ->
+      phas G x l (open_dec x D).
 
 Inductive subtyp : mode -> ctx -> typ -> typ -> Prop :=
   | subtyp_refl : forall G T,
@@ -401,8 +401,8 @@ Inductive has : ctx -> trm -> label -> dec -> Prop :=
   | has_var : forall G v T Ds l D,
       ty_trm G (trm_var (avar_f v)) T ->
       exp G T Ds ->
-      decs_has (open_decs v Ds) l D ->
-      has G (trm_var (avar_f v)) l D
+      decs_has Ds l D ->
+      has G (trm_var (avar_f v)) l (open_dec v D)
 with ty_trm : ctx -> trm -> typ -> Prop :=
   | ty_var : forall G x T,
       binds x T G ->
@@ -748,6 +748,12 @@ Qed.
 
 Lemma subst_open_commute_typ: forall x y u T,
   subst_typ x y (open_typ u T) = open_typ (subst_fvar x y u) (subst_typ x y T).
+Proof.
+  intros. apply* subst_open_commute_typ_dec_decs.
+Qed.
+
+Lemma subst_open_commute_dec: forall x y u D,
+  subst_dec x y (open_dec u D) = open_dec (subst_fvar x y u) (subst_dec x y D).
 Proof.
   intros. apply* subst_open_commute_typ_dec_decs.
 Qed.
@@ -1219,14 +1225,16 @@ Qed.
 
 (** *** Inverting [phas] *)
 
+(*
 Lemma invert_phas: forall G x l D,
   phas G x l D ->
-  exists T Ds, binds x T G /\
-               exp G T Ds /\
-               decs_has (open_decs x Ds) l D.
+  exists T Ds D', binds x T G /\
+                  exp G T Ds /\
+                  decs_has Ds l (open_dec x D').
 Proof.
-  intros. inversion H. eauto.
+  intros. inversion H. subst. exists T Ds D0. auto.
 Qed.
+*)
 
 (*** Inverting [subdec] *)
 
@@ -1420,7 +1428,7 @@ Proof.
     - apply* IHDs.
 Qed.
 
-Lemma subst_binds: forall y S v T G1 G2 x,
+Lemma subst_binds0: forall y S v T G1 G2 x,
     binds v T (G1 & x ~ S & G2) ->
     binds y S G1 ->
     ok (G1 & x ~ S & G2) ->
@@ -1445,7 +1453,22 @@ Proof.
       unfold subst_fvar. case_if. apply binds_push_eq.
     - unfold subst_fvar. case_if.
 (* TODO...*)
-Admitted.
+Abort.
+
+Lemma subst_binds1: forall v T G1 x y S G2,
+  binds v T (G1 & x ~ S & G2) ->
+  binds y S G1 ->
+  x <> v ->
+  binds v (subst_typ x y T) (G1 & subst_ctx x y G2).
+Proof.
+Abort.
+
+Lemma subst_binds: forall x y v T G,
+  binds v T G ->
+  binds v (subst_typ x y T) (subst_ctx x y G).
+Proof.
+  introv Bi. unfold subst_ctx. apply binds_map. exact Bi.
+Qed.
 
 (** Note: We use [binds y S G1] instead of [ty_trm G1 (trm_var (avar_f y)) S]
     to exclude the subsumption case. *)
@@ -1477,10 +1500,28 @@ Proof.
   + intros G v T Ds l D Bi Exp IH Has G1 G2 x EqG Tyy Ok. subst G.
     specialize (IH _ _ _ eq_refl Tyy Ok).
     unfold subst_fvar. case_if.
-    - refine (phas_var _ IH _). 
-      
-Admitted.
-
+    - (* case x = v *)
+      apply (fun b => binds_middle_eq_inv b Ok) in Bi. subst.
+      rewrite (subst_open_commute_dec v y v D). unfold subst_fvar. case_if.
+      refine (phas_var _ IH _).
+      * (* v is after G1, so it cannot occur in S *)
+        assert (Eq: (subst_typ v y S) = S) by apply TODO_holds. rewrite Eq.
+        apply (binds_concat_left Tyy).
+        rewrite <- concat_assoc in Ok. assert (y # G2) by apply TODO_holds.
+        apply TODO_holds.
+      * apply (subst_decs_has _ _ Has).
+    - (* case x <> v *)
+      rewrite (subst_open_commute_dec x y v D). unfold subst_fvar. case_if.
+      refine (phas_var _ IH _).
+      * apply binds_concat_inv in Bi. destruct Bi as [Bi | [vG2 Bi]].
+        { apply binds_concat_right. apply (subst_binds _ _ Bi). }
+        { assert (Ne: v <> x) by auto. apply (fun b => binds_push_neq_inv b Ne) in Bi.
+          assert (Eq: (subst_typ x y T) = T) by apply TODO_holds. rewrite Eq.
+          apply (binds_concat_left Bi).
+          apply TODO_holds. }
+      * apply (subst_decs_has _ _ Has).
+Qed.
+ 
 Lemma if_same: forall (T: Type) (P: Prop) (t: T), (If P then t else t) = t.
 Proof.
   intros. case_if; reflexivity.
@@ -1522,22 +1563,17 @@ Proof.
     intros G z T Ds l D Ty IH Exp Has G1 G2 x EqG Bi Ok.
     subst G. specialize (IH _ _ _ eq_refl Bi Ok). simpl in *. case_if.
     - (* case z = x *)
-      assert (ST: subtyp oktrans (G1 & x ~ S & G2) S T) by apply TODO_holds. (* from Ty *)
+      rewrite (subst_open_commute_dec x y x D). unfold subst_fvar. case_if.
       apply has_var with (subst_typ x y T) (subst_decs x y Ds).
       * exact IH.
       * apply* subst_exp_phas.
-      * lets Eq: (subst_open_commute_decs x y y Ds). unfold subst_fvar in Eq.
-        simpl in Eq. rewrite if_same in Eq.
-        rewrite <- Eq. apply (subst_decs_has x y).
-
-
-      * lets Eq: (@subst_intro_decs x y Ds). 
-
-
- subst_intro_decs apply* subst_decs_has.
-
+      * apply (subst_decs_has x y Has).
     - (* case z <> x *)
-      admit.
+      rewrite (subst_open_commute_dec x y z D). unfold subst_fvar. case_if.
+      apply has_var with (subst_typ x y T) (subst_decs x y Ds).
+      * exact IH.
+      * apply* subst_exp_phas.
+      * apply (subst_decs_has x y Has).
   + (* case ty_var *)
     intros G z T Biz G1 G2 x EqG Biy Ok.
     subst G. unfold subst_trm, subst_avar. case_var.
