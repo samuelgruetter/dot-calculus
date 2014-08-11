@@ -1394,6 +1394,43 @@ Proof.
   inversion H; subst; auto.
 Qed.
 
+Lemma label_for_dec_open: forall z D n,
+  label_for_dec n (open_dec z D) = label_for_dec n D.
+Proof.
+  intros. destruct D; reflexivity.
+Qed.
+
+
+(* The converse does not hold because
+   [(open_dec z D1) = (open_dec z D2)] does not imply [D1 = D2]. *)
+Lemma decs_has_open: forall Ds l D z,
+  decs_has Ds l D -> decs_has (open_decs z Ds) l (open_dec z D).
+Proof.
+  introv Has. induction Ds.
+  + inversion Has.
+  + unfold open_decs, open_rec_decs. fold open_rec_decs. fold open_rec_dec.
+    unfold decs_has, get_dec. case_if.
+    - unfold decs_has, get_dec in Has. rewrite label_for_dec_open in Has. case_if.
+      inversions Has. reflexivity.
+    - fold get_dec. apply IHDs. unfold decs_has, get_dec in Has.
+      rewrite label_for_dec_open in H. case_if. apply Has.
+Qed.
+
+Lemma decs_has_open_backwards: forall Ds l D z, z \notin fv_decs Ds ->
+  decs_has (open_decs z Ds) l (open_dec z D) -> decs_has Ds l D.
+Proof.
+  introv Fr Has. induction Ds.
+  + inversion Has.
+  + unfold open_decs, open_rec_decs in Has.
+    fold open_rec_decs in Has. fold open_rec_dec in Has.
+    unfold decs_has, get_dec in Has. fold get_dec in Has. case_if.
+    - unfold decs_has, get_dec. fold get_dec. rewrite label_for_dec_open. case_if.
+      unfold open_dec in Has. inversions Has.
+Admitted. (* reflexivity.
+    - fold get_dec. apply IHDs. unfold decs_has, get_dec in Has.
+      rewrite label_for_dec_open in H. case_if. apply Has.
+Qed.*)
+
 
 (* ###################################################################### *)
 (** ** The substitution principle *)
@@ -1886,6 +1923,21 @@ Proof.
     - fold get_dec in Has. apply* IHDs2.
 Qed.
 
+Print Assumptions narrow_decs_has.
+
+Lemma narrow_decs_has_with_open_decs: forall G Ds1 Ds2 l D2 x,
+  decs_has (open_decs x Ds2) l (open_dec x D2) ->
+  subdecs oktrans G (open_decs x Ds1) (open_decs x Ds2) ->
+  exists D1, decs_has (open_decs x Ds1) l (open_dec x D1) /\ 
+             subdec oktrans G (open_dec x D1) (open_dec x D2).
+Proof. Admitted. (*
+  introv Has Sds. induction Ds2.
+  + inversion Has.
+  + unfold decs_has, get_dec in Has. inversions Sds. case_if.
+    - inversions Has. exists D1. auto.
+    - fold get_dec in Has. apply* IHDs2.
+Qed.*)
+
 (** transitivity in oktrans mode (trivial) *)
 Lemma subtyp_trans_oktrans: forall G T1 T2 T3,
   subtyp oktrans G T1 T2 -> subtyp oktrans G T2 T3 -> subtyp oktrans G T1 T3.
@@ -1994,6 +2046,214 @@ Note that imprecise has means non-unique has => problems in transitivity pushing
 So we need an expansion for Bot.
 *)
 
+(* We only prove a limited form of narrowing, where we're narrowing from an [S2] to an
+   [S1] and both of them are typ_bind. This allows us to exclude some sel cases,
+   and we don't even need mutual induction with expansion. *)
+
+Lemma narrow_phas: forall v L G1 G2 DB z Ds1 Ds2,
+  subdecs oktrans   (G1 & z ~ typ_bind Ds1     ) Ds1 Ds2 ->
+  ok                (G1 & z ~ typ_bind Ds2 & G2) ->
+  phas              (G1 & z ~ typ_bind Ds2 & G2) v L DB ->
+  exists DA, 
+     subdec oktrans (G1 & z ~ typ_bind Ds1     ) DA DB
+            /\ phas (G1 & z ~ typ_bind Ds1 & G2) v L DA.
+Admitted.
+
+(*
+Lemma narrow_phas: forall v L G DB z Ds1 Ds2,
+  subdecs oktrans   (G & z ~ typ_bind Ds1) Ds1 Ds2 ->
+  ok                (G & z ~ typ_bind Ds2) ->
+  phas              (G & z ~ typ_bind Ds2) v L DB ->
+  exists DA, 
+     subdec oktrans (G & z ~ typ_bind Ds1) DA DB
+            /\ phas (G & z ~ typ_bind Ds1) v L DA.
+Proof.
+  intros v L. refine (env_ind _ _ _).
+  + intros DB z Ds1 Ds2 Sds Ok Has. rewrite concat_empty_l in *.
+    (* since typing only holds for locally closed expressions: *)
+    assert (CloDs2: forall z, open_decs z Ds2 = Ds2) by apply TODO_holds.
+    inversions Has.
+    rename H into Bi, H0 into Exp, H1 into Has.
+    apply binds_single_inv in Bi. destruct Bi as [Eq1 Eq2]. subst.
+    inversions Exp.
+    assert (CloD: forall z, open_dec z D = D) by apply TODO_holds.
+    destruct (narrow_decs_has Has Sds) as [DA [Has' Sd]].
+    assert (CloDs1: forall z, open_decs z Ds1 = Ds1) by apply TODO_holds.
+    assert (CloDA: forall z, open_dec z DA = DA) by apply TODO_holds.
+    exists DA.
+    rewrite CloD. apply (conj Sd). rewrite <- (CloDA z).
+    apply phas_var with (typ_bind Ds1) Ds1.
+    - apply binds_single_eq.
+    - apply exp_bind.
+    - apply Has'.
+  + intros G z0 T0 IH DB z Ds1 Ds2 Sds Ok Has.
+    inversions Has. rename H into Bi, H0 into Exp, H1 into Has.
+    apply binds_push_inv in Bi. destruct Bi as [[Eq1 Eq2] | [Ne Bi]].
+    - subst. inversions Exp.
+      specialize (IH (open_dec z D) z Ds1 Ds).
+      admit.
+    - specialize (IH (open_dec z D) z Ds1 Ds).
+
+Admitted.
+
+Lemma narrow_phas: forall v L G0 G DB z Ds1 Ds2,
+  G0 =              (G & z ~ typ_bind Ds2) ->
+  subdecs oktrans   (G & z ~ typ_bind Ds1) Ds1 Ds2 ->
+  ok                (G & z ~ typ_bind Ds2) ->
+  phas              (G & z ~ typ_bind Ds2) v L DB ->
+  exists DA, 
+     subdec oktrans (G & z ~ typ_bind Ds1) DA DB
+            /\ phas (G & z ~ typ_bind Ds1) v L DA.
+Proof.
+  intros v L. refine (env_ind _ _ _).
+  + introv Eq Sds Ok Has. false (empty_push_inv Eq).
+  + intros G0 z0 T0 IH G DB z Ds1 Ds2 Eq Sds Ok Has.
+    apply eq_push_inv in Eq. destruct Eq as [Eq1 [Eq2 Eq3]]. subst.
+    (* can use IH only if G non-empty --> no point in using G0 and equalitiy *)
+    specialize (IH G DB z Ds1 Ds2). eq_refl).
+    subst G x l. clear Has.
+    rename H into Bi, H0 into Exp, H1 into Has, H5 into Eq.
+    apply binds_single_inv in Bi. destruct Bi as [Eq1 Eq2]. subst v T.
+    inversion Exp. subst G Ds0 Ds.
+    destruct (narrow_decs_has Has Sds) as [DA [Has' Sd]].
+
+    apply (decs_has_open z) in Has.
+    destruct (narrow_decs_has Has Sds) as [DA [Has' Sd]].
+
+
+
+Lemma invert_subdec_sync_left: forall G D Lo2 Hi2,
+   subdec oktrans G           D       (dec_typ Lo2 Hi2) -> exists Lo1 Hi1,
+   subdec oktrans G (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2)
+/\ D = (dec_typ Lo1 Hi1).
+Proof.
+  introv Sd. inversions Sd.
+  + exists Lo2 Hi2. auto.
+  + exists Lo1 Hi1. auto.
+Qed.
+
+
+Lemma narrow_exp_phas:
+   (forall G0 T DsB, exp G0 T DsB -> forall G z Ds1 Ds2, 
+      G0    =         (G & z ~ typ_bind Ds2) -> 
+      ok              (G & z ~ typ_bind Ds2) ->
+      subdecs oktrans (G & z ~ typ_bind Ds1) Ds1 Ds2 -> exists DsA, 
+      subdecs oktrans (G & z ~ typ_bind Ds1) DsA DsB
+               /\ exp (G & z ~ typ_bind Ds1) T DsA)
+/\ (forall G0 v l DB, phas G0 v l DB -> forall G z Ds1 Ds2,
+      G0    =         (G & z ~ typ_bind Ds2) -> 
+      ok              (G & z ~ typ_bind Ds2) ->
+      subdecs oktrans (G & z ~ typ_bind Ds1) Ds1 Ds2 -> exists DA,
+      subdec  oktrans (G & z ~ typ_bind Ds1) DA DB
+              /\ phas (G & z ~ typ_bind Ds1) v l DA).
+Proof.
+  apply exp_phas_mutind.
+  + (* case exp_top *)
+    intros. exists decs_nil. auto.
+  + (* case exp_bind *)
+    intros. exists Ds. split.
+    - apply subdecs_refl.
+    - apply exp_bind.
+  + (* case exp_sel *)
+    intros G0 x L Lo Hi DsB Has IH1 Exp IH2 G z Ds1 Ds2 Eq Ok Sds. subst G0.
+    specialize (IH1 G z Ds1 Ds2 eq_refl Ok Sds).
+    specialize (IH2 G z Ds1 Ds2 eq_refl Ok Sds).
+    destruct IH1 as [DA [Sd' Has']].
+    destruct IH2 as [DsA [Sds' Exp']]. exists DsA. apply (conj Sds').
+    apply invert_subdec_sync_left in Sd'.
+    destruct Sd' as [Lo' [Hi' [Sd' Eq]]]. subst DA.
+    apply (exp_sel Has').
+    admit. (* ??? *)
+  + (* case phas_var *)
+    intros G0 v T DsB l DB Bi Exp IH Has G z Ds1 Ds2 Eq Ok Sds. subst G0.
+    specialize (IH G z Ds1 Ds2 eq_refl Ok Sds).
+    destruct IH as [DsA [Sds' Exp']].
+    destruct (narrow_decs_has Has Sds') as [DA [Has' Sd]].
+    exists (open_dec v DA).
+
+   apply (decs_has_open x) in Has.
+    destruct (narrow_decs_has Has Sds) as [DA [Has' Sd]].
+    assert (E: exists DA', open_dec x DA' = DA). admit. destruct E as [DA' Eq]. subst.
+    exists (open_dec x DA'). split. assumption.
+    assert (Ne: x <> y) by admit. (* contradicts Ok *)
+    lets Bi': (narrow_binds S1 Ne Bi).
+    apply (phas_var Bi' Exp').
+
+
+
+Qed.
+
+
+Lemma narrow_exp:
+  forall G0 T DsB, exp G0 T DsB -> forall G z Ds1 Ds2, 
+    G0    =         (G & z ~ typ_bind Ds2) -> 
+    ok              (G & z ~ typ_bind Ds2) ->
+    subdecs oktrans (G & z ~ typ_bind Ds1) Ds1 Ds2 -> exists DsA, 
+    subdecs oktrans (G & z ~ typ_bind Ds1) DsA DsB
+             /\ exp (G & z ~ typ_bind Ds1) T DsA.
+Proof.
+  refine (exp_ind _ _ _ _).
+  + (* case exp_top *)
+    intros. exists decs_nil. auto.
+  + (* case exp_bind *)
+    intros. exists Ds. split.
+    - apply subdecs_refl.
+    - apply exp_bind.
+  + (* case exp_sel *)
+    intros G0 x L Lo Hi DsB Has Exp IH G z Ds1 Ds2 Eq Ok Sds. subst G0.
+    specialize (IH G z Ds1 Ds2 eq_refl Ok Sds).
+    destruct IH as [DsA [Sds' Exp']]. exists DsA. apply (conj Sds').
+    apply exp_sel with Lo Hi.
+
+Qed.
+
+
+
+    exp             (G & z ~ typ_bind Ds1) T
+
+Lemma narrow_exp: forall G z Ds1 Ds2 T DsB,
+  subdecs oktrans   (G & z ~ typ_bind Ds1) Ds1 Ds2 ->
+  ok                (G & z ~ typ_bind Ds2) ->
+  exp               (G & z ~ typ_bind Ds2) T DsB ->
+  exists DsA, 
+    subdecs oktrans (G & z ~ typ_bind Ds1) DsA DsB
+             /\ exp (G & z ~ typ_bind Ds1) T DsA.
+Proof.
+  introv Sds Ok Exp. induction Exp.
+  + (* case exp_top *)
+    exists decs_nil. auto.
+  + (* case exp_bind *)
+    exists Ds. split.
+    - apply subdecs_refl.
+    - apply exp_bind.
+  + (* case exp_sel *)
+    rename H into Has.
+
+Qed.
+
+
+Lemma narrow_phas: forall G z Ds1 Ds2 p L DB,
+  subdecs oktrans   (G & z ~ typ_bind Ds1) Ds1 Ds2 ->
+  ok                (G & z ~ typ_bind Ds2) ->
+  phas              (G & z ~ typ_bind Ds2) p L DB ->
+  exists DA, 
+     subdec oktrans (G & z ~ typ_bind Ds1) DA DB
+            /\ phas (G & z ~ typ_bind Ds1) p L DA.
+Proof.
+  introv Sds Ok Has. inversions Has. rename H into Bi, H0 into Exp, H1 into Has.
+  
+Qed.
+
+Lemma narrow_has: forall G x S1 S2 v l D2,
+  phas (G1 & x ~ S2 & G2) v l D2 ->
+  ok (G1 & x ~ S2 & G2) ->
+  subtyp oktrans (G1 & x ~ S1) S1 S2 -> 
+  exists D1, subdec oktrans (G1 & x ~ S1) D1 D2 /\
+             phas (G1 & x ~ S1 & G2) v l D1.
+Proof.
+  introv Has Ok St. 
+Qed.
+
 Lemma narrow_exp_phas:
    (forall G T DsB, exp G T DsB -> 
      forall G1 G2 x S1 S2, 
@@ -2030,18 +2290,38 @@ Proof.
     (* case subdec_typ *)
     - exists DsA. split. assumption.
       apply (exp_sel Has'). (* apply Exp'.*) admit.
-  
+
   (* case phas_var *)
   + intros G x T Ds l D Bi Exp IH Has G1 G2 y S1 S2 Eq OkG SubS1S2. subst G.
     specialize (IH G1 G2 y S1 S2 eq_refl OkG SubS1S2).
     destruct IH as [DsA [Sds Exp']].
     specialize (Sds x).
+    apply (decs_has_open x) in Has.
     destruct (narrow_decs_has Has Sds) as [DA [Has' Sd]].
-    exists DA. split. assumption.
+    assert (E: exists DA', open_dec x DA' = DA). admit. destruct E as [DA' Eq]. subst.
+    exists (open_dec x DA'). split. assumption.
+    assert (Ne: x <> y) by admit. (* contradicts Ok *)
+    lets Bi': (narrow_binds S1 Ne Bi).
+    apply (phas_var Bi' Exp').
+
+
+  (* case phas_var *)
+  + intros G x T Ds l D Bi Exp IH Has G1 G2 y S1 S2 Eq OkG SubS1S2. subst G.
+    specialize (IH G1 G2 y S1 S2 eq_refl OkG SubS1S2).
+    destruct IH as [DsA [Sds Exp']].
+    specialize (Sds x).
+    apply (decs_has_open x) in Has.
+    destruct (narrow_decs_has_with_open_decs _ _ _ x Has Sds) as [DA [Has' Sd]].
+    exists (open_dec x DA). split. assumption.
     assert (Ne: x <> y) by admit.
     lets Bi': (narrow_binds S1 Ne Bi).
-    apply (phas_var Bi' Exp' Has').
+    apply (phas_var Bi' Exp').
+
+
+    destruct (narrow_decs_has Has Sds) as [DA0 [Has0 Sd0]].
+ Has').
 Qed.
+*)
 
 (*
 subdecs with only one specific z does not work
@@ -2057,7 +2337,6 @@ Proof.
   refine (P (G1 & z ~ (typ_bind Ds2) & G2) _ _ _ Has _ _ _ 
             (typ_bind Ds1) (typ_bind Ds2) eq_refl Ok _).
   apply subtyp_mode. apply subtyp_bind.
-*)
 
 Lemma narrow_has: forall G1 G2 z S1 S2 x L DB,
   ok             (G1 & z ~ S2 & G2) ->
@@ -2070,6 +2349,7 @@ Proof.
   introv Ok Has Sd. destruct narrow_exp_phas as [_ P].
   apply (P (G1 & z ~ S2 & G2) _ _ _ Has _ _ _ S1 S2 eq_refl Ok Sd).
 Qed.
+*)
 
 Lemma subtyp_and_subdec_and_subdecs_weaken:
    (forall m G T1 T2 (Hst : subtyp m G T1 T2),
@@ -2193,23 +2473,23 @@ Qed.
 
 Lemma subtyp_and_subdec_and_subdecs_narrow:
    (forall m G T1 T2 (Hst : subtyp m G T1 T2),
-      forall G1 G2 z A B, 
-         ok              (G1 & z ~ B & G2)         ->
-         G       =       (G1 & z ~ B & G2)         ->
-         subtyp  oktrans (G1 & z ~ A     ) A B     ->
-         subtyp  oktrans (G1 & z ~ A & G2) T1 T2)
+      forall G1 G2 z DsA DsB, 
+         ok              (G1 & z ~ (typ_bind DsB) & G2)         ->
+         G       =       (G1 & z ~ (typ_bind DsB) & G2)         ->
+         subdecs oktrans (G1 & z ~ (typ_bind DsA)     ) DsA DsB ->
+         subtyp  oktrans (G1 & z ~ (typ_bind DsA) & G2) T1 T2)
 /\ (forall m G D1 D2 (Hsd : subdec m G D1 D2),
-      forall G1 G2 z A B, 
-         ok              (G1 & z ~ B & G2)         ->
-         G       =       (G1 & z ~ B & G2)         ->
-         subtyp  oktrans (G1 & z ~ A     ) A B     ->
-         subdec  oktrans (G1 & z ~ A & G2) D1 D2)
+      forall G1 G2 z DsA DsB, 
+         ok              (G1 & z ~ (typ_bind DsB) & G2)         ->
+         G       =       (G1 & z ~ (typ_bind DsB) & G2)         ->
+         subdecs oktrans (G1 & z ~ (typ_bind DsA)     ) DsA DsB ->
+         subdec  oktrans (G1 & z ~ (typ_bind DsA) & G2) D1 D2)
 /\ (forall m G Ds1 Ds2 (Hsds : subdecs m G Ds1 Ds2),
-      forall G1 G2 z A B, 
-         ok              (G1 & z ~ B & G2)         ->
-         G       =       (G1 & z ~ B & G2)         ->
-         subtyp  oktrans (G1 & z ~ A     ) A B     ->
-         subdecs oktrans (G1 & z ~ A & G2) Ds1 Ds2).
+      forall G1 G2 z DsA DsB, 
+         ok              (G1 & z ~ (typ_bind DsB) & G2)         ->
+         G       =       (G1 & z ~ (typ_bind DsB) & G2)         ->
+         subdecs oktrans (G1 & z ~ (typ_bind DsA)     ) DsA DsB ->
+         subdecs oktrans (G1 & z ~ (typ_bind DsA) & G2) Ds1 Ds2).
 Proof.
   apply subtyp_mutind; try (intros; solve [auto]).
 
@@ -2219,7 +2499,7 @@ Proof.
     introv Hc IH Hok123 Heq HAB; subst. apply subtyp_mode.
     apply_fresh subtyp_bind as z0.
     rewrite <- concat_assoc.
-    refine (IH z0 _ G1 (G2 & z0 ~ typ_bind Ds1) _ A B _ _ _).
+    refine (IH z0 _ G1 (G2 & z0 ~ typ_bind Ds1) _ DsA DsB _ _ _).
     - auto. 
     - rewrite concat_assoc. auto.
     - rewrite <- concat_assoc. reflexivity. 
@@ -2227,60 +2507,60 @@ Proof.
   + (* case sel_l *)
     introv Hhas Hst IH Hok Heq HAB; subst.
     apply subtyp_mode.
-    lets Hn: (@narrow_has _ _ _ (A) (B) _ _ _ Hok Hhas HAB).
+    lets Hn: (@narrow_phas _ _ _ _ _ _ DsA DsB HAB Hok Hhas).
     destruct Hn as [dA [Hrsd Hh]].
     inversions Hrsd.
     - (* case refl *)
       apply subtyp_sel_l with (S := S) (U := U).
       * assumption.
-      * apply IH with (B0 := B); auto.
+      * apply IH with (DsB0 := DsB); auto.
     - (* case not-refl *)
       apply subtyp_sel_l with (S := Lo1) (U := Hi1).
       assumption.
-      assert (Hok': ok (G1 & z ~ A & G2)).
+      assert (Hok': ok (G1 & z ~ (typ_bind DsA) & G2)).
       apply (ok_middle_change _ Hok).
       refine (subtyp_trans (subtyp_weaken_2 Hok' H7) _).
-      apply IH with (B0 := B); auto.
+      apply IH with (DsB0 := DsB); auto.
   + (* case asel_r *)
     introv Hhas Hst_SU IH_SU Hst_TS IH_TS Hok Heq HAB; subst.
     apply subtyp_mode.
-    assert (Hok': ok (G1 & z ~ A & G2)).
+    assert (Hok': ok (G1 & z ~ (typ_bind DsA) & G2)).
     apply (ok_middle_change _ Hok).
-    set (Hn := @narrow_has _ _ _ A B _ _ _ Hok Hhas HAB).
+    lets Hn: (@narrow_phas _ _ _ _ _ _ DsA DsB HAB Hok Hhas).
     destruct Hn as [dA [Hrsd Hh]].
     inversions Hrsd.
     (* case refl *)
     - apply subtyp_sel_r with (S := S) (U := U).
       * assumption.
-      * apply IH_SU with (B0 := B); auto.
-      * apply IH_TS with (B0 := B); auto.
+      * apply IH_SU with (DsB0 := DsB); auto.
+      * apply IH_TS with (DsB0 := DsB); auto.
     (* case not-refl *)
     - apply subtyp_sel_r with (S := Lo1) (U := Hi1).
       assumption.
       apply (subtyp_weaken_2 Hok' H1).
       refine (subtyp_trans _ (subtyp_weaken_2 Hok' H6)).
-      apply IH_TS with (B0 := B); auto.
+      apply IH_TS with (DsB0 := DsB); auto.
   (* case trans *)
   + introv Hst IH Hok Heq HAB.
     apply subtyp_trans with (T2 := T2).
-    - apply IH with (B := B); auto.
+    - apply IH with (DsB := DsB); auto.
     - apply (subtyp_mode (subtyp_refl _ T2)).
   (* case mode *)
   + introv Hst12 IH12 Hst23 IH23 Hok123 Heq HAB.
-    specialize (IH12 G1 G2 z A B Hok123 Heq HAB).
-    specialize (IH23 G1 G2 z A B Hok123 Heq HAB).
+    specialize (IH12 G1 G2 z DsA DsB Hok123 Heq HAB).
+    specialize (IH23 G1 G2 z DsA DsB Hok123 Heq HAB).
     apply (subtyp_trans IH12 IH23).
 
   (* subdec *)
   (* case subdec_typ *)
   + intros.
-    apply subdec_typ; gen G1 G2 z A B; assumption.
+    apply subdec_typ; gen G1 G2 z DsA DsB; assumption.
   (* case subdec_fld *)
   + intros.
-    apply subdec_fld; gen G1 G2 z A B; assumption.
+    apply subdec_fld; gen G1 G2 z DsA DsB; assumption.
   (* case subdec_mtd *)
   + intros.
-    apply subdec_mtd; gen G1 G2 z A B; assumption.
+    apply subdec_mtd; gen G1 G2 z DsA DsB; assumption.
 
   (* subdecs *)
   (* case subdecs_empty: auto *)
@@ -2291,67 +2571,70 @@ Proof.
     apply (IHsds _ _ _ _ _ Hok123 Heq HAB).
 Qed.
 
-Lemma subdec_narrow: forall G1 G2 z S1 S2 DA DB,
-  ok              (G1 & z ~ S2 & G2) ->
-  subdec  oktrans (G1 & z ~ S2 & G2) DA DB ->
-  subtyp  oktrans (G1 & z ~ S1     ) S1 S2 ->
-  subdec  oktrans (G1 & z ~ S1 & G2) DA DB.
+
+Lemma subdec_narrow: forall G1 G2 z Ds1 Ds2 DA DB,
+  ok              (G1 & z ~ typ_bind Ds2 & G2) ->
+  subdec  oktrans (G1 & z ~ typ_bind Ds2 & G2) DA DB ->
+  subdecs oktrans (G1 & z ~ typ_bind Ds1     ) Ds1 Ds2 ->
+  subdec  oktrans (G1 & z ~ typ_bind Ds1 & G2) DA DB.
 Proof.
-  introv Hok HAB HsDs.
+  introv Hok HAB Hsds.
   destruct subtyp_and_subdec_and_subdecs_narrow as [_ [N _]].
-  specialize (N oktrans (G1 & z ~ S2 & G2) DA DB).
-  specialize (N HAB G1 G2 z S1 S2 Hok).
+  specialize (N oktrans (G1 & z ~ typ_bind Ds2 & G2) DA DB).
+  specialize (N HAB G1 G2 z Ds1 Ds2 Hok).
   apply N.
   trivial.
   assumption.
 Qed.
 
-Lemma subdecs_narrow: forall G1 G2 z S1 S2 DsA DsB,
-  ok              (G1 & z ~ S2 & G2) ->
-  subdecs oktrans (G1 & z ~ S2 & G2) DsA DsB ->
-  subtyp  oktrans (G1 & z ~ S1     ) S1 S2 ->
-  subdecs oktrans (G1 & z ~ S1 & G2) DsA DsB.
+Lemma subdecs_narrow: forall G1 G2 z Ds1 Ds2 DsA DsB,
+  ok              (G1 & z ~ typ_bind Ds2 & G2) ->
+  subdecs oktrans (G1 & z ~ typ_bind Ds2 & G2) DsA DsB ->
+  subdecs oktrans (G1 & z ~ typ_bind Ds1     ) Ds1 Ds2 ->
+  subdecs oktrans (G1 & z ~ typ_bind Ds1 & G2) DsA DsB.
 Proof.
-  introv Hok HAB HsDs.
+  introv Hok HAB Hsds.
   destruct subtyp_and_subdec_and_subdecs_narrow as [_ [_ N]].
-  specialize (N oktrans (G1 & z ~ S2 & G2) DsA DsB).
-  specialize (N HAB G1 G2 z S1 S2 Hok).
+  specialize (N oktrans (G1 & z ~ typ_bind Ds2 & G2) DsA DsB).
+  specialize (N HAB G1 G2 z Ds1 Ds2 Hok).
   apply N.
   trivial.
   assumption.
 Qed.
 
-Lemma subdec_narrow_last: forall G z S1 S2 DA DB,
-  ok              (G & z ~ S2) ->
-  subdec  oktrans (G & z ~ S2) DA DB ->
-  subtyp  oktrans (G & z ~ S1) S1 S2 ->
-  subdec  oktrans (G & z ~ S1) DA DB.
+Lemma subdec_narrow_last: forall G z Ds1 Ds2 DA DB,
+  ok              (G & z ~ typ_bind Ds2) ->
+  subdec  oktrans (G & z ~ typ_bind Ds2) DA DB ->
+  subdecs oktrans (G & z ~ typ_bind Ds1) Ds1 Ds2 ->
+  subdec  oktrans (G & z ~ typ_bind Ds1) DA DB.
 Proof.
   introv Hok HAB H12.
-  apply (env_remove_empty (fun G0 => subdec oktrans G0 DA DB) (G & z ~ S1)).
-  apply subdec_narrow with (S2 := S2).
-  apply (env_add_empty (fun G0 => ok G0) (G & z ~ S2) Hok).
+  apply (env_remove_empty (fun G0 => subdec oktrans G0 DA DB) (G & z ~ typ_bind Ds1)).
+  apply subdec_narrow with (Ds2 := Ds2).
+  apply (env_add_empty (fun G0 => ok G0) (G & z ~ typ_bind Ds2) Hok).
   apply (env_add_empty (fun G0 => subdec oktrans G0 DA DB)
-                             (G & z ~ S2) HAB).
-  assumption.
-Qed.
-
-Lemma subdecs_narrow_last: forall G z S1 S2 DsA DsB,
-  ok              (G & z ~ S2) ->
-  subdecs oktrans (G & z ~ S2) DsA DsB ->
-  subtyp  oktrans (G & z ~ S1) S1 S2 ->
-  subdecs oktrans (G & z ~ S1) DsA DsB.
-Proof.
-  introv Hok H2AB H112.
-  apply (env_remove_empty (fun G0 => subdecs oktrans G0 DsA DsB) (G & z ~ S1)).
-  apply subdecs_narrow with (S2 := S2).
-  apply (env_add_empty (fun G0 => ok G0) (G & z ~ S2) Hok).
-  apply (env_add_empty (fun G0 => subdecs oktrans G0 DsA DsB)
-                             (G & z ~ S2) H2AB).
+                             (G & z ~ typ_bind Ds2) HAB).
   assumption.
 Qed.
 
 Print Assumptions subdec_narrow_last.
+
+Lemma subdecs_narrow_last: forall G z Ds1 Ds2 DsA DsB,
+  ok              (G & z ~ typ_bind Ds2) ->
+  subdecs oktrans (G & z ~ typ_bind Ds2) DsA DsB ->
+  subdecs oktrans (G & z ~ typ_bind Ds1) Ds1 Ds2 ->
+  subdecs oktrans (G & z ~ typ_bind Ds1) DsA DsB.
+Proof.
+  introv Hok H2AB H112.
+  apply (env_remove_empty (fun G0 => subdecs oktrans G0 DsA DsB) (G & z ~ typ_bind Ds1)).
+  apply subdecs_narrow with (Ds2 := Ds2).
+  apply (env_add_empty (fun G0 => ok G0) (G & z ~ typ_bind Ds2) Hok).
+  apply (env_add_empty (fun G0 => subdecs oktrans G0 DsA DsB)
+                             (G & z ~ typ_bind Ds2) H2AB).
+  assumption.
+Qed.
+
+Print Assumptions subdecs_narrow_last.
 
 
 (* ... transitivity in notrans mode, but no p.L in middle ... *)
@@ -2390,6 +2673,9 @@ Proof.
       specialize (H4 z zL0).
       assert (Hok' : ok (G & z ~ typ_bind Ds1)) by auto.
       assert (Hok'': ok (G & z ~ typ_bind Ds2)) by auto.
+      lets H4' : (subdecs_narrow_last Hok'' H4 H0). 
+  apply (subdecs_trans H0 H4').
+
       lets H12' : (subtyp_weaken_2 Hok' (subtyp_mode H12)).
       lets H4' : (subdecs_narrow_last Hok'' H4 H12'). 
       apply (subdecs_trans_oktrans H0 H4').
@@ -2605,28 +2891,6 @@ Proof.
 Qed.
 
 Print Assumptions oktrans_to_notrans.
-
-
-(* ###################################################################### *)
-
-Lemma label_for_dec_open: forall z D n,
-  label_for_dec n (open_dec z D) = label_for_dec n D.
-Proof.
-  intros. destruct D; reflexivity.
-Qed.
-
-Lemma decs_has_open: forall Ds l D z,
-  decs_has Ds l D -> decs_has (open_decs z Ds) l (open_dec z D).
-Proof.
-  introv Has. induction Ds.
-  + inversion Has.
-  + unfold open_decs, open_rec_decs. fold open_rec_decs. fold open_rec_dec.
-    unfold decs_has, get_dec. case_if.
-    - unfold decs_has, get_dec in Has. rewrite label_for_dec_open in Has. case_if.
-      inversions Has. reflexivity.
-    - fold get_dec. apply IHDs. unfold decs_has, get_dec in Has.
-      rewrite label_for_dec_open in H. case_if. apply Has.
-Qed.
 
 
 (* ###################################################################### *)
