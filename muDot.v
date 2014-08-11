@@ -784,6 +784,14 @@ Proof.
   unfold subst_fvar. case_var*.
 Qed.
 
+Lemma subst_intro_decs: forall x u Ds, x \notin (fv_decs Ds) ->
+  open_decs u Ds = subst_decs x u (open_decs x Ds).
+Proof.
+  introv Fr. unfold open_trm. rewrite* subst_open_commute_decs.
+  destruct (@subst_fresh_typ_dec_decs x u) as [_ [_ Q]]. rewrite* (Q Ds).
+  unfold subst_fvar. case_var*.
+Qed.
+
 (* ###################################################################### *)
 (** ** Helper lemmas for definition/declaration lists *)
 
@@ -1473,6 +1481,11 @@ Proof.
       
 Admitted.
 
+Lemma if_same: forall (T: Type) (P: Prop) (t: T), (If P then t else t) = t.
+Proof.
+  intros. case_if; reflexivity.
+Qed.
+
 Lemma trm_subst_principles: forall y S,
    (forall G t l D, has G t l D -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
@@ -1498,13 +1511,33 @@ Proof.
   intros y S.
   apply ty_mutind.
   + (* case has_trm *)
-    intros G t T l D Ds Ty IH Exp Has Clo G1 G2 x EqG Bi Ok.
+    intros G t T Ds l D Ty IH Exp Has Clo G1 G2 x EqG Bi Ok.
     subst G. specialize (IH _ _ _ eq_refl Bi Ok).
     apply has_trm with (subst_typ x y T) (subst_decs x y Ds).
     - exact IH.
     - apply* subst_exp_phas.
     - apply* subst_decs_has.
     - intro z. specialize (Clo z). apply TODO_detail.
+  + (* case has_var *)
+    intros G z T Ds l D Ty IH Exp Has G1 G2 x EqG Bi Ok.
+    subst G. specialize (IH _ _ _ eq_refl Bi Ok). simpl in *. case_if.
+    - (* case z = x *)
+      assert (ST: subtyp oktrans (G1 & x ~ S & G2) S T) by apply TODO_holds. (* from Ty *)
+      apply has_var with (subst_typ x y T) (subst_decs x y Ds).
+      * exact IH.
+      * apply* subst_exp_phas.
+      * lets Eq: (subst_open_commute_decs x y y Ds). unfold subst_fvar in Eq.
+        simpl in Eq. rewrite if_same in Eq.
+        rewrite <- Eq. apply (subst_decs_has x y).
+
+
+      * lets Eq: (@subst_intro_decs x y Ds). 
+
+
+ subst_intro_decs apply* subst_decs_has.
+
+    - (* case z <> x *)
+      admit.
   + (* case ty_var *)
     intros G z T Biz G1 G2 x EqG Biy Ok.
     subst G. unfold subst_trm, subst_avar. case_var.
