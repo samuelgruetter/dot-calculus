@@ -3222,6 +3222,51 @@ Lemma invert_subtyp_bind: forall G Ds1 Ds2,
 Proof.
 Abort.
 
+Lemma invert_wf_sto_with_weakening: forall s G,
+  wf_sto s G ->
+  forall x ds T T',
+    binds x (object T ds) s -> 
+    binds x T' G 
+    -> T' = T 
+    /\ exists Ds, exp G T Ds /\
+                  ty_defs G (open_defs x ds) (open_decs x Ds) /\
+                  (forall L S U, decs_has (open_decs x Ds) L (dec_typ S U) -> 
+                                 subtyp notrans G S U).
+Proof.
+  introv Wf Bs BG.
+  lets P: (invert_wf_sto Wf).
+  specialize (P x ds T T' Bs BG).
+  destruct P as [EqT [G1 [G2 [Ds [EqG [Exp [Ty F]]]]]]]. subst.
+  apply (conj eq_refl).
+  exists Ds. lets Ok: (wf_sto_to_ok_G Wf).
+  refine (conj _ (conj _ _)).
+  + rewrite <- concat_assoc. 
+    apply (weaken_exp_end Exp).
+    rewrite concat_assoc. exact Ok.
+  + apply (weaken_ty_defs Ty Ok).
+  + intros L S U Has. specialize (F L S U Has). apply (subtyp_weaken_end Ok F).
+Qed.
+
+Lemma invert_wf_sto_with_sbsm: forall s G,
+  wf_sto s G ->
+  forall x ds T T', 
+    binds x (object T ds) s ->
+    ty_trm G (trm_var (avar_f x)) T' (* <- instead of binds *)
+    -> subtyp oktrans G T T'
+    /\ exists Ds, exp G T Ds /\
+                  ty_defs G (open_defs x ds) (open_decs x Ds) /\
+                  (forall L S U, decs_has (open_decs x Ds) L (dec_typ S U) -> 
+                                 subtyp notrans G S U).
+Proof.
+  introv Wf Bis Tyx.
+  apply invert_ty_var in Tyx. destruct Tyx as [T'' [St BiG]].
+  destruct (invert_wf_sto_with_weakening Wf Bis BiG) as [EqT [Ds [Exp [Tyds F]]]].
+  subst T''.
+  lets Ok: (wf_sto_to_ok_G Wf).
+  apply (conj St).
+  exists Ds. auto.
+Qed.
+
 
 (* ###################################################################### *)
 
@@ -3420,6 +3465,47 @@ Lemma exp_preserves_sub2: forall G T1 T2 Ds1 Ds2,
   subdecs oktrans G Ds1 Ds2.
 Admitted. (* TODO does not hold (need to open Ds1 and Ds2! *)
 
+(*
+Lemma has_sound: forall,
+  has G (trm_var (avar_f x)) l D ->
+  binds x (object T ds) s ->
+  wf_sto s G ->
+  exists Ds d,
+    exp G T Ds /\
+    ty_defs G (open_defs x ds) (open_decs x Ds) /\
+    ty_def G (open_def x d) (open_dec x D) /\
+    decs_has (open_decs x Ds) l D /\
+    defs_has (open_defs x ds) l d
+dsHas
+
+
+Bis : binds x (object Tds ds) s
+Wf : wf_sto s G
+Has : has G (trm_var (avar_f x)) l D
+______________________________________
+Tyd : ty_def (G1 & x ~ X') (open_def x d) (open_decs x DX')
+DsHas : decs_has (open_decs x DsX') l D
+dsHas
+
+
+Bis : binds x (object Tds ds) s
+Wf : wf_sto s G
+Has : has G (trm_var (avar_f x)) l D
+______________________________________
+Tyds : ty_defs (G1 & x ~ X') (open_defs x ds) (open_decs x DsX')
+Has' : decs_has (open_decs x DsX') l D
+
+
+
+Bis : binds x (object Tds ds) s
+Wf : wf_sto s G
+Has : has G (trm_var (avar_f x)) (label_fld l) (dec_fld T)
+______________________________________
+Tyds : ty_defs (G1 & x ~ X') (open_defs x ds) (open_decs x DsX')
+Has' : decs_has (open_decs x DsX') (label_fld l) D
+
+*)
+
 
 (* ###################################################################### *)
 (* ###################################################################### *)
@@ -3529,36 +3615,6 @@ Proof.
 Qed.
 
 Print Assumptions progress_result.
-
-
-(* ###################################################################### *)
-(** ** Inversion lemmas which depend on weakening *)
-
-
-Lemma invert_wf_sto_with_weakening: forall s G,
-  wf_sto s G ->
-    forall x ds T T',
-      binds x (object T ds) s -> 
-      binds x T' G ->
-      T' = T /\ exists Ds,
-        exp G T Ds /\
-        ty_defs G (open_defs x ds) (open_decs x Ds) /\
-        (forall L S U, decs_has (open_decs x Ds) L (dec_typ S U) -> 
-                       subtyp notrans G S U).
-Proof.
-  introv Wf Bs BG.
-  lets P: (invert_wf_sto Wf).
-  specialize (P x ds T T' Bs BG).
-  destruct P as [EqT [G1 [G2 [Ds [EqG [Exp [Ty F]]]]]]]. subst.
-  apply (conj eq_refl).
-  exists Ds. lets Ok: (wf_sto_to_ok_G Wf).
-  refine (conj _ (conj _ _)).
-  + rewrite <- concat_assoc. 
-    apply (weaken_exp_end Exp).
-    rewrite concat_assoc. exact Ok.
-  + apply (weaken_ty_defs Ty Ok).
-  + intros L S U Has. specialize (F L S U Has). apply (subtyp_weaken_end Ok F).
-Qed.
 
 (*
 Lemma ty_open_trm_change_var: forall x y G e S T,
