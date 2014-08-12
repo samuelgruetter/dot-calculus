@@ -2464,6 +2464,46 @@ Proof.
   apply (env_add_empty (fun G0 => subtyp m G0 S U) G1 Hst).
 Qed.
 
+Definition only_typ_bind(G: ctx): Prop :=
+  forall x T, binds x T G -> exists Ds, T = typ_bind Ds.
+
+Lemma narrow_phas_1: forall v L G1 G2 DB z Ds1 Ds2,
+  subdecs oktrans   (G1 & z ~ typ_bind Ds1     ) (open_decs z Ds1) (open_decs z Ds2) ->
+  ok                (G1 & z ~ typ_bind Ds2 & G2) ->
+  only_typ_bind                              G2  ->
+  phas              (G1 & z ~ typ_bind Ds2 & G2) v L DB ->
+  exists DA, 
+     subdec oktrans (G1 & z ~ typ_bind Ds1     ) DA DB
+            /\ phas (G1 & z ~ typ_bind Ds1 & G2) v L DA.
+Proof.
+  introv Sds Ok Only Has. inversions Has. rename H into Bi, H0 into Exp, H1 into Has.
+  unfold only_typ_bind in Only.
+  apply binds_middle_inv in Bi. destruct Bi as [Bi | [[vG2 [Eq1 Eq2]] | [vG2 [Ne Bi]]]].
+  + (* v in G2 *)
+    specialize (Only v T Bi). destruct Only as [Ds' Eq]. subst.
+    inversions Exp.
+    exists (open_dec v D). apply (conj (subdec_refl _ _ _)).
+    apply phas_var with (typ_bind Ds) Ds; auto.
+  + (* v = z *)
+    subst. inversions Exp.
+    apply (decs_has_open z) in Has.
+    destruct (narrow_decs_has_with_open_decs _ _ _ _ Has Sds) as [DA [Has' Sd]].
+    exists (open_dec z DA). apply (conj Sd). apply phas_var with (typ_bind Ds1) Ds1.
+    - auto.
+    - apply exp_bind.
+    - assert (z \notin fv_decs Ds1). admit.
+      apply (decs_has_open_backwards _ _ H Has'). 
+  + (* v in G1 *)
+    exists (open_dec v D). apply (conj (subdec_refl _ _ _)).
+    assert (Exp': exp G1 T Ds) by admit. (* because T is wf in G1 *)
+    rewrite <- concat_assoc.
+    assert (weaken_phas:
+      phas (G1                          ) v L (open_dec v D) ->
+      phas (G1 & (z ~ typ_bind Ds1 & G2)) v L (open_dec v D)) by admit.
+    apply weaken_phas.
+    apply phas_var with T Ds; assumption.
+Qed.
+
 Lemma narrow_phas: forall v L G1 G2 DB z Ds1 Ds2,
   subdecs oktrans   (G1 & z ~ typ_bind Ds1     ) (open_decs z Ds1) (open_decs z Ds2) ->
   ok                (G1 & z ~ typ_bind Ds2 & G2) ->
