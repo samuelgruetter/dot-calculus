@@ -3541,34 +3541,27 @@ Proof.
     (* receiver is an expression *)
     - destruct IH as [s' [e' IH]]. do 2 eexists. apply (red_sel1 l IH). 
     (* receiver is a var *)
-    - destruct IH as [x [[Tds ds] [Eq Bis]]]. subst.
+    - destruct IH as [x [[X1 ds] [Eq Bis]]]. subst.
       apply invert_var_has_fld in Has.
-      destruct Has as [X [DsX [T' [Tyx [Exp [Has Eq]]]]]].
-      apply invert_ty_var in Tyx. destruct Tyx as [X' [St BiG]].
-      destruct (invert_wf_sto Wf Bis BiG) as [EqT [G1 [G2 [DsX' [EqG [Exp' [Tyds F]]]]]]].
-      subst Tds G.
+      destruct Has as [X2 [Ds2 [T' [Tyx [Exp [Has Eq]]]]]]. subst.
+      lets P: (invert_wf_sto_with_sbsm Wf Bis Tyx).
+      destruct P as [St [Ds1 [Exp1 [Tyds F]]]].
       lets Ok: (wf_sto_to_ok_G Wf).
-      assert (Exp'': exp (G1 & x ~ X' & G2) X' DsX') by (
-        rewrite <- concat_assoc;
-        apply (weaken_exp_end Exp');
-        rewrite -> concat_assoc;
-        apply Ok).
-      lets Sds: (exp_preserves_sub St Exp'' Exp).
+      lets Sds: (exp_preserves_sub St Exp1 Exp).
       destruct Sds as [L Sds].
       pick_fresh z. assert (zL: z \notin L) by auto. specialize (Sds z zL).
-      assert (Ok': ok (G1 & x ~ X' & G2 & z ~ X')) by auto.
-      assert (Sds': subdecs oktrans (G1 & x ~ X' & G2 & z ~ X')
-                         (open_decs z DsX') (open_decs z DsX)) by admit.
-        (* by narrowing, since X' <: typ_bind DsX' *)
-      lets P: (@subdecs_subst_principle oktrans _ z x X' 
-        (open_decs z DsX') (open_decs z DsX) Ok' Sds' BiG).
-      assert (zDsX': z \notin fv_decs DsX') by auto.
-      assert (zDsX: z \notin fv_decs DsX) by auto.
-      rewrite <- (@subst_intro_decs z x DsX' zDsX') in P.
-      rewrite <- (@subst_intro_decs z x DsX  zDsX) in P.
+      assert (BiG: binds x X1 G) by admit.
+      assert (Sds': subdecs oktrans (G & z ~ X1) (open_decs z Ds1)
+        (open_decs z Ds2)) by admit. (* narrowing to type X1 (which expands) *)
+      assert (Ok': ok (G & z ~ X1)) by auto.
+      lets P: (@subdecs_subst_principle oktrans _ z x X1 
+        (open_decs z Ds1) (open_decs z Ds2) Ok' Sds' BiG).
+      assert (zDs1: z \notin fv_decs Ds1) by auto.
+      assert (zDs2: z \notin fv_decs Ds2) by auto.
+      rewrite <- (@subst_intro_decs z x Ds1 zDs1) in P.
+      rewrite <- (@subst_intro_decs z x Ds2 zDs2) in P.
       apply (decs_has_open x) in Has.
       destruct (decs_has_preserves_sub Has P) as [D [Has' Sd]].
-      (*destruct D as [Lo Hi|T''|T1 T2]; try solve [inversion Sd]. <- not needed *)
       destruct (decs_has_to_defs_has Tyds Has') as [d dsHas].
       destruct (defs_has_fld_sync dsHas) as [r Eqd]. subst.
       exists (trm_var r) s.
