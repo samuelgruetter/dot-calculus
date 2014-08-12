@@ -2011,13 +2011,6 @@ Proof.
     - apply (IHDs3 H23c).
 Abort. (* does not work because it doesn't work for types *)
 
-Lemma exp_preserves_sub: forall G T1 T2 Ds2,
-  subtyp oktrans G T1 T2 ->
-  exp G T2 Ds2 ->
-  exists Ds1, exp G T1 Ds1 /\ subdecs oktrans G Ds1 Ds2.
-Proof.
-Abort. (* what if T1 is bottom? *)
-
 (* 
 narrowing expansion does not work if we have precise phas, Bot in upper bounds 
 and no expansion for Bot
@@ -2931,35 +2924,34 @@ Print Assumptions oktrans_to_notrans.
 (* ###################################################################### *)
 (** ** More inversion lemmas *)
 
-Lemma invert_has_var: forall G x l D,
+Lemma invert_var_has_dec: forall G x l D,
   has G (trm_var (avar_f x)) l D ->
-  exists T Ds, ty_trm G (trm_var (avar_f x)) T /\
-               exp G T Ds /\
-               decs_has (open_decs x Ds) l D.
+  exists T Ds D', ty_trm G (trm_var (avar_f x)) T /\
+                  exp G T Ds /\
+                  decs_has Ds l D' /\
+                  open_dec x D' = D.
 Proof.
   introv Has. inversions Has.
-  + subst. exists T Ds. apply (decs_has_open x) in H1. rewrite H2 in H1. auto.
-  + exists T Ds. auto.
+  (* case has_trm *)
+  + subst. exists T Ds D. auto.
+  (* case has_var *)
+  + exists T Ds D0. auto.
 Qed.
 
-(*
-Lemma invert_has: forall G t l D,
-  has G (trm_var (avar_f x)) l D ->
-  exists T Ds, ty_trm G t T /\
-               exp G T Ds /\
-               decs_has (open_decs x Ds) l D.
-
- ty_trm G t T ->
-              exp G T Ds ->
-              decs_has Ds l D ->
-              (forall z : var, open_dec z D = D) -> has G t l D
-
+Lemma invert_var_has_fld: forall G x l T,
+  has G (trm_var (avar_f x)) l (dec_fld T) ->
+  exists X Ds T', ty_trm G (trm_var (avar_f x)) X /\
+                  exp G X Ds /\
+                  decs_has Ds l (dec_fld T') /\
+                  open_typ x T' = T.
 Proof.
-  introv Has. inversions Has.
-  + subst. exists T Ds. apply (decs_has_open x) in H1. rewrite H2 in H1. auto.
-  + exists T Ds. auto.
+  introv Has. apply invert_var_has_dec in Has.
+  destruct Has as [X [Ds [D [Tyx [Exp [Has Eq]]]]]].
+  destruct D as [ Lo Hi | T' | T1 T2 ]; try solve [ inversion Eq ].
+  unfold open_dec, open_rec_dec in Eq. fold open_rec_typ in Eq.
+  inversion Eq as [Eq'].
+  exists X Ds T'. auto.
 Qed.
-*)
 
 
 (** *** Inverting [ty_trm] *)
@@ -2983,12 +2975,19 @@ Lemma invert_ty_sel_var: forall G x l T,
 Proof.
   introv Ty. gen_eq t0: (trm_sel (trm_var (avar_f x)) l). gen x l.
   induction Ty; try (solve [ intros; discriminate ]).
+  (* base case: no subsumption *)
   + intros x l0 Eq. inversions Eq. assumption.
+  (* step: subsumption *)
   + intros x l Eq. subst. specialize (IHTy _ _ eq_refl).
-    apply invert_has_var in IHTy.
-    destruct IHTy as [X [Ds [Tyx [Exp Has]]]].
-
-Qed.
+    apply invert_var_has_fld in IHTy.
+    destruct IHTy as [X [Ds [T' [Tyx [Exp [Has Eq]]]]]].
+    (*
+    assert Tyx': ty_trm G (trm_var (avar_f x)) (ty_or X (typ_bind (dec_fld U)))
+      by subsumption
+    then the expansion of (ty_or X (typ_bind (dec_fld U))) has (dec_fld (t_or T U))
+    since T <: U, (t_or T U) is kind of the same as U <-- but not enough!
+    *)
+Abort.
 
 Lemma invert_ty_sel: forall G t l T,
   ty_trm G (trm_sel t l) T ->
@@ -3037,6 +3036,16 @@ Proof.
 Qed.
 *)
 
+(* ###################################################################### *)
+
+Lemma exp_preserves_sub: forall G T1 T2 Ds1 Ds2,
+  subtyp oktrans G T1 T2 ->
+  exp G T1 Ds1 ->
+  exp G T2 Ds2 ->
+  subdecs oktrans G Ds1 Ds2.
+Proof.
+Admitted.
+
 
 (* ###################################################################### *)
 (* ###################################################################### *)
@@ -3073,9 +3082,21 @@ Proof.
     - destruct IH as [s' [e' IH]]. do 2 eexists. apply (red_sel1 l IH). 
     (* receiver is a var *)
     - destruct IH as [x [[Tds ds] [Eq Bis]]]. subst.
-      destruct (invert_has Has) as [TDs [Ds [Hty [Exp [Has Clo]]]]].
-      lets Hbt: (invert_ty_var Hty).
-      destruct (invert_wf_sto H0 Hbv Hbt) as [EqT [G1 [G2 [DsT [EqG [Exp' [Tyds F]]]]]]].
+      apply invert_var_has_fld in Has.
+      destruct Has as [X [DsX [T' [Tyx [Exp [Has Eq]]]]]].
+      apply invert_ty_var in Tyx. destruct Tyx as [X' [St BiG]].
+      destruct (invert_wf_sto Wf Bis BiG) as [EqT [G1 [G2 [DsX' [EqG [Exp' [Tyds F]]]]]]].
+      subst Tds G.
+      apply (decs_has_open x) in Has.
+      assert (Exp'': exp (G1 & x ~ X' & G2) X' DsX') by apply* weaken_exp_phas.
+
+      destruct (decs_has_to_defs_has Tyds Has) as [d Has'].
+      destruct (defs_has_fld_sync Has') as [z Heq]. subst.
+      exists (trm_var z) s.
+      apply (red_sel Hbv Has').
+
+
+
       assert (Eq: DsT = Ds) by admit. (* by uniqueness of expansion *) subst.
       apply (decs_has_open x) in Has. rewrite Clo in Has.
       destruct (decs_has_to_defs_has Tyds Has) as [d Has'].
