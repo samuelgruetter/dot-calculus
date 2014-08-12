@@ -1433,6 +1433,267 @@ Qed.*)
 
 
 (* ###################################################################### *)
+(** ** Weakening *)
+
+Lemma weaken_exp_phas:
+   (forall G T Ds, exp G T Ds -> 
+      forall G1 G2 G3, G = G1 & G3 -> ok (G1 & G2 & G3) -> exp (G1 & G2 & G3) T Ds)
+/\ (forall G x l D, phas G x l D ->
+      forall G1 G2 G3, G = G1 & G3 -> ok (G1 & G2 & G3) -> phas (G1 & G2 & G3) x l D).
+Proof.
+  apply exp_phas_mutind; intros; subst.
+  + apply exp_top.
+  + apply exp_bind.
+  + apply* exp_sel.
+  + apply* phas_var. apply* binds_weaken.
+Qed.
+
+Lemma weaken_exp_middle: forall G1 G2 G3 T Ds,
+  exp (G1 & G3) T Ds -> ok (G1 & G2 & G3) -> exp (G1 & G2 & G3) T Ds.
+Proof.
+  intros. apply* weaken_exp_phas.
+Qed.
+
+Lemma weaken_exp_end: forall G1 G2 T Ds,
+  exp G1 T Ds -> ok (G1 & G2) -> exp (G1 & G2) T Ds.
+Proof.
+  introv Exp Ok.
+  assert (Eq1: G1 = G1 & empty) by (rewrite concat_empty_r; reflexivity).
+  assert (Eq2: G1 & G2 = G1 & G2 & empty) by (rewrite concat_empty_r; reflexivity).
+  rewrite Eq1 in Exp. rewrite Eq2 in Ok. rewrite Eq2.
+  apply (weaken_exp_middle Exp Ok).
+Qed.
+
+Lemma weaken_phas_middle: forall G1 G2 G3 v l D,
+  phas (G1 & G3) v l D -> ok (G1 & G2 & G3) -> phas (G1 & G2 & G3) v l D.
+Proof.
+  intros. apply* weaken_exp_phas.
+Qed.
+
+Lemma weaken_phas_end: forall G1 G2 v l D,
+  phas G1 v l D -> ok (G1 & G2) -> phas (G1 & G2) v l D.
+Proof.
+  introv Exp Ok.
+  assert (Eq1: G1 = G1 & empty) by (rewrite concat_empty_r; reflexivity).
+  assert (Eq2: G1 & G2 = G1 & G2 & empty) by (rewrite concat_empty_r; reflexivity).
+  rewrite Eq1 in Exp. rewrite Eq2 in Ok. rewrite Eq2.
+  apply (weaken_phas_middle Exp Ok).
+Qed.
+
+Lemma subtyp_and_subdec_and_subdecs_weaken:
+   (forall m G T1 T2 (Hst : subtyp m G T1 T2),
+      forall G1 G2 G3, ok (G1 & G2 & G3) ->
+                       G1 & G3 = G ->
+                       subtyp m (G1 & G2 & G3) T1 T2)
+/\ (forall m G d1 d2 (Hsd : subdec m G d1 d2),
+      forall G1 G2 G3, ok (G1 & G2 & G3) ->
+                       G1 & G3 = G ->
+                       subdec m (G1 & G2 & G3) d1 d2)
+/\ (forall m G ds1 ds2 (Hsds : subdecs m G ds1 ds2),
+      forall G1 G2 G3, ok (G1 & G2 & G3) ->
+                       G1 & G3 = G ->
+                       subdecs m (G1 & G2 & G3) ds1 ds2).
+Proof.
+  apply subtyp_mutind.
+
+  (* subtyp *)
+  + (* case refl *)
+    introv Hok123 Heq; subst.
+    apply (subtyp_refl _ _).
+  + (* case top *)
+    introv Hok123 Heq; subst.
+    apply (subtyp_top _ _).
+  + (* case bot *)
+    introv Hok123 Heq; subst.
+    apply (subtyp_bot _ _).
+  + (* case bind *)
+    introv Hc IH Hok123 Heq; subst.
+    apply_fresh subtyp_bind as z.
+    rewrite <- concat_assoc.
+    refine (IH z _ G1 G2 (G3 & z ~ typ_bind Ds1) _ _).
+    - auto.
+    - rewrite concat_assoc. auto.
+    - rewrite <- concat_assoc. reflexivity.
+  + (* case asel_l *)
+    introv Hhas Hst IH Hok123 Heq; subst.
+    apply subtyp_sel_l with (S := S) (U := U).
+    - apply weaken_phas_middle; assumption.
+    - apply (IH G1 G2 G3 Hok123 eq_refl).
+  + (* case asel_r *)
+    introv Hhas Hst_SU IH_SU Hst_TS IH_TS Hok123 Heq; subst.
+    apply subtyp_sel_r with (S := S) (U := U).
+    - apply weaken_phas_middle; assumption.
+    - apply IH_SU; auto.
+    - apply IH_TS; auto.
+  + (* case trans *)
+    introv Hst IH Hok Heq. apply subtyp_mode. apply* IH.
+  + (* case mode *)
+    introv Hst12 IH12 Hst23 IH23 Hok123 Heq.
+    specialize (IH12 G1 G2 G3 Hok123 Heq).
+    specialize (IH23 G1 G2 G3 Hok123 Heq).
+    apply (subtyp_trans IH12 IH23).
+
+  (* subdec *)
+  + (* case subdec_refl *)
+    intros.
+    apply subdec_refl.
+  + (* case subdec_typ *)
+    intros.
+    apply subdec_typ; gen G1 G2 G3; assumption.
+  + (* case subdec_fld *)
+    intros.
+    apply subdec_fld; gen G1 G2 G3; assumption.
+  + (* case subdec_mtd *)
+    intros.
+    apply subdec_mtd; gen G1 G2 G3; assumption.
+
+  (* subdecs *)
+  + (* case subdecs_empty *)
+    intros.
+    apply subdecs_empty.
+  + (* case subdecs_push *)
+    introv Hb Hsd IHsd Hsds IHsds Hok123 Heq.
+    apply (subdecs_push n Hb).
+    apply (IHsd _ _ _ Hok123 Heq).
+    apply (IHsds _ _ _ Hok123 Heq).
+Qed.
+
+Print Assumptions subtyp_and_subdec_and_subdecs_weaken.
+
+Lemma subtyp_weaken_middle: forall m G1 G2 G3 S U,
+  ok (G1 & G2 & G3) -> 
+  subtyp m (G1      & G3) S U ->
+  subtyp m (G1 & G2 & G3) S U.
+Proof.
+  destruct subtyp_and_subdec_and_subdecs_weaken as [W _].
+  introv Hok123 Hst.
+  specialize (W m (G1 & G3) S U Hst).
+  specialize (W G1 G2 G3 Hok123).
+  apply W.
+  trivial.
+Qed.
+
+Lemma env_add_empty: forall (P: ctx -> Prop) (G: ctx), P G -> P (G & empty).
+Proof.
+  intros.
+  assert ((G & empty) = G) by apply concat_empty_r.
+  rewrite -> H0. assumption.
+Qed.  
+
+Lemma env_remove_empty: forall (P: ctx -> Prop) (G: ctx), P (G & empty) -> P G.
+Proof.
+  intros.
+  assert ((G & empty) = G) by apply concat_empty_r.
+  rewrite <- H0. assumption.
+Qed.
+
+Lemma subtyp_weaken_end: forall m G1 G2 S U,
+  ok (G1 & G2) -> 
+  subtyp m G1        S U ->
+  subtyp m (G1 & G2) S U.
+Proof.
+  introv Hok Hst.
+  apply (env_remove_empty (fun G0 => subtyp m G0 S U) (G1 & G2)).
+  apply subtyp_weaken_middle.
+  apply (env_add_empty (fun G0 => ok G0) (G1 & G2) Hok).
+  apply (env_add_empty (fun G0 => subtyp m G0 S U) G1 Hst).
+Qed.
+
+(* If we only weaken at the end, i.e. from [G1] to [G1 & G2], the IH for the 
+   [ty_new] case adds G2 to the end, so it takes us from [G1, x: Ds] 
+   to [G1, x: Ds, G2], but we need [G1, G2, x: Ds].
+   So we need to weaken in the middle, i.e. from [G1 & G3] to [G1 & G2 & G3].
+   Then, the IH for the [ty_new] case inserts G2 in the middle, so it
+   takes us from [G1 & G3, x: Ds] to [G1 & G2 & G3, x: Ds], which is what we
+   need. *)
+
+Lemma weakening:
+   (forall G e l d (Hhas: has G e l d)
+           G1 G2 G3 (Heq: G = G1 & G3) (Hok123: ok (G1 & G2 & G3)),
+           has (G1 & G2 & G3) e l d ) 
+/\ (forall G e T (Hty: ty_trm G e T)
+           G1 G2 G3 (Heq: G = G1 & G3) (Hok123: ok (G1 & G2 & G3)),
+           ty_trm (G1 & G2 & G3) e T) 
+/\ (forall G i d (Hty: ty_def G i d)
+           G1 G2 G3 (Heq: G = G1 & G3) (Hok123: ok (G1 & G2 & G3)), 
+           ty_def (G1 & G2 & G3) i d)
+/\ (forall G is Ds (Hisds: ty_defs G is Ds)
+           G1 G2 G3 (Heq: G = G1 & G3) (Hok123: ok (G1 & G2 & G3)), 
+           ty_defs (G1 & G2 & G3) is Ds).
+Proof.
+  apply ty_mutind; intros; subst.
+  + assert (exp (G1 & G2 & G3) T Ds) by apply* weaken_exp_middle.
+    apply* has_trm.
+  + assert (exp (G1 & G2 & G3) T Ds) by apply* weaken_exp_middle.
+    apply* has_var.
+  + apply ty_var. apply* binds_weaken.
+  + apply* ty_sel.
+  + apply* ty_call.
+  + apply_fresh ty_new as x.
+    - apply* weaken_exp_phas.
+    - rewrite <- concat_assoc. apply H.
+      * auto.
+      * rewrite concat_assoc. reflexivity.
+      * rewrite concat_assoc. auto.
+    - introv Has. rewrite <- concat_assoc. apply subtyp_weaken_middle.
+      * rewrite concat_assoc. auto.
+      * rewrite concat_assoc. apply* s.
+  + apply ty_sbsm with T.
+    - apply* H.
+    - apply* subtyp_weaken_middle.
+  + apply ty_typ. 
+  + apply* ty_fld.
+  + rename H into IH.
+    apply_fresh ty_mtd as x.
+    rewrite <- concat_assoc.
+    refine (IH x _ G1 G2 (G3 & x ~ S) _ _).
+    - auto.
+    - symmetry. apply concat_assoc.
+    - rewrite concat_assoc. auto.
+  + apply ty_dsnil.
+  + apply* ty_dscons.
+Qed.
+
+Print Assumptions weakening.
+
+Lemma weaken_has: forall G1 G2 e l d,
+  has G1 e l d -> ok (G1 & G2) -> has (G1 & G2) e l d.
+Proof.
+  intros.
+  destruct weakening as [W _].
+  rewrite <- (concat_empty_r (G1 & G2)).
+  apply (W (G1 & empty)); rewrite* concat_empty_r.
+Qed.
+
+Lemma weaken_ty_trm: forall G1 G2 e T,
+  ty_trm G1 e T -> ok (G1 & G2) -> ty_trm (G1 & G2) e T.
+Proof.
+  intros.
+  destruct weakening as [_ [W _]].
+  rewrite <- (concat_empty_r (G1 & G2)).
+  apply (W (G1 & empty)); rewrite* concat_empty_r.
+Qed.
+
+Lemma weaken_ty_def: forall G1 G2 i d,
+  ty_def G1 i d -> ok (G1 & G2) -> ty_def (G1 & G2) i d.
+Proof.
+  intros.
+  destruct weakening as [_ [_ [W _]]].
+  rewrite <- (concat_empty_r (G1 & G2)).
+  apply (W (G1 & empty)); rewrite* concat_empty_r.
+Qed.
+
+Lemma weaken_ty_defs: forall G1 G2 is Ds,
+  ty_defs G1 is Ds -> ok (G1 & G2) -> ty_defs (G1 & G2) is Ds.
+Proof.
+  intros.
+  destruct weakening as [_ [_ [_ W]]].
+  rewrite <- (concat_empty_r (G1 & G2)).
+  apply (W (G1 & empty)); rewrite* concat_empty_r.
+Qed.
+
+
+(* ###################################################################### *)
 (** ** The substitution principle *)
 
 
@@ -1789,6 +2050,7 @@ Proof.
   repeat (progress (rewrite concat_empty_r in P)).
   apply* P.
 Qed.
+
 
 (* ###################################################################### *)
 (** ** Transitivity *)
@@ -2337,125 +2599,9 @@ Proof.
 Qed.
 *)
 
-Lemma subtyp_and_subdec_and_subdecs_weaken:
-   (forall m G T1 T2 (Hst : subtyp m G T1 T2),
-      forall G1 G2 G3, ok (G1 & G2 & G3) ->
-                       G1 & G3 = G ->
-                       subtyp m (G1 & G2 & G3) T1 T2)
-/\ (forall m G d1 d2 (Hsd : subdec m G d1 d2),
-      forall G1 G2 G3, ok (G1 & G2 & G3) ->
-                       G1 & G3 = G ->
-                       subdec m (G1 & G2 & G3) d1 d2)
-/\ (forall m G ds1 ds2 (Hsds : subdecs m G ds1 ds2),
-      forall G1 G2 G3, ok (G1 & G2 & G3) ->
-                       G1 & G3 = G ->
-                       subdecs m (G1 & G2 & G3) ds1 ds2).
-Proof.
-  apply subtyp_mutind.
 
-  (* subtyp *)
-  + (* case refl *)
-    introv Hok123 Heq; subst.
-    apply (subtyp_refl _ _).
-  + (* case top *)
-    introv Hok123 Heq; subst.
-    apply (subtyp_top _ _).
-  + (* case bot *)
-    introv Hok123 Heq; subst.
-    apply (subtyp_bot _ _).
-  + (* case bind *)
-    introv Hc IH Hok123 Heq; subst.
-    apply_fresh subtyp_bind as z.
-    rewrite <- concat_assoc.
-    refine (IH z _ G1 G2 (G3 & z ~ typ_bind Ds1) _ _).
-    - auto.
-    - rewrite concat_assoc. auto.
-    - rewrite <- concat_assoc. reflexivity.
-  + (* case asel_l *)
-    introv Hhas Hst IH Hok123 Heq; subst.
-    apply subtyp_sel_l with (S := S) (U := U).
-    (*apply weaken_has; assumption.*) admit.
-    apply (IH G1 G2 G3 Hok123).
-    trivial.
-  + (* case asel_r *)
-    introv Hhas Hst_SU IH_SU Hst_TS IH_TS Hok123 Heq; subst.
-    apply subtyp_sel_r with (S := S) (U := U).
-    (*apply weaken_has; assumption.*) admit.
-    apply IH_SU; auto.
-    apply IH_TS; auto.
-  + (* case trans *)
-    introv Hst IH Hok Heq. apply subtyp_mode. apply* IH.
-  + (* case mode *)
-    introv Hst12 IH12 Hst23 IH23 Hok123 Heq.
-    specialize (IH12 G1 G2 G3 Hok123 Heq).
-    specialize (IH23 G1 G2 G3 Hok123 Heq).
-    apply (subtyp_trans IH12 IH23).
-
-  (* subdec *)
-  + (* case subdec_refl *)
-    intros.
-    apply subdec_refl.
-  + (* case subdec_typ *)
-    intros.
-    apply subdec_typ; gen G1 G2 G3; assumption.
-  + (* case subdec_fld *)
-    intros.
-    apply subdec_fld; gen G1 G2 G3; assumption.
-  + (* case subdec_mtd *)
-    intros.
-    apply subdec_mtd; gen G1 G2 G3; assumption.
-
-  (* subdecs *)
-  + (* case subdecs_empty *)
-    intros.
-    apply subdecs_empty.
-  + (* case subdecs_push *)
-    introv Hb Hsd IHsd Hsds IHsds Hok123 Heq.
-    apply (subdecs_push n Hb).
-    apply (IHsd _ _ _ Hok123 Heq).
-    apply (IHsds _ _ _ Hok123 Heq).
-Qed.
-
-Print Assumptions subtyp_and_subdec_and_subdecs_weaken.
-
-Lemma subtyp_weaken: forall m G1 G2 G3 S U,
-  ok (G1 & G2 & G3) -> 
-  subtyp m (G1      & G3) S U ->
-  subtyp m (G1 & G2 & G3) S U.
-Proof.
-  destruct subtyp_and_subdec_and_subdecs_weaken as [W _].
-  introv Hok123 Hst.
-  specialize (W m (G1 & G3) S U Hst).
-  specialize (W G1 G2 G3 Hok123).
-  apply W.
-  trivial.
-Qed.
-
-Lemma env_add_empty: forall (P: ctx -> Prop) (G: ctx), P G -> P (G & empty).
-Proof.
-  intros.
-  assert ((G & empty) = G) by apply concat_empty_r.
-  rewrite -> H0. assumption.
-Qed.  
-
-Lemma env_remove_empty: forall (P: ctx -> Prop) (G: ctx), P (G & empty) -> P G.
-Proof.
-  intros.
-  assert ((G & empty) = G) by apply concat_empty_r.
-  rewrite <- H0. assumption.
-Qed.
-
-Lemma subtyp_weaken_2: forall m G1 G2 S U,
-  ok (G1 & G2) -> 
-  subtyp m G1        S U ->
-  subtyp m (G1 & G2) S U.
-Proof.
-  introv Hok Hst.
-  apply (env_remove_empty (fun G0 => subtyp m G0 S U) (G1 & G2)).
-  apply subtyp_weaken.
-  apply (env_add_empty (fun G0 => ok G0) (G1 & G2) Hok).
-  apply (env_add_empty (fun G0 => subtyp m G0 S U) G1 Hst).
-Qed.
+(* ###################################################################### *)
+(** ** Narrowing *)
 
 Definition only_typ_bind(G: ctx): Prop :=
   forall x T, binds x T G -> exists Ds, T = typ_bind Ds.
@@ -2551,7 +2697,7 @@ Proof.
       assumption.
       assert (Hok': ok (G1 & z ~ (typ_bind DsA) & G2)).
       apply (ok_middle_change _ Hok).
-      refine (subtyp_trans (subtyp_weaken_2 Hok' H7) _).
+      refine (subtyp_trans (subtyp_weaken_end Hok' H7) _).
       apply IH with (DsB0 := DsB); auto.
   + (* case asel_r *)
     introv Hhas Hst_SU IH_SU Hst_TS IH_TS Hok Heq HAB; subst.
@@ -2569,8 +2715,8 @@ Proof.
     (* case not-refl *)
     - apply subtyp_sel_r with (S := Lo1) (U := Hi1).
       assumption.
-      apply (subtyp_weaken_2 Hok' H1).
-      refine (subtyp_trans _ (subtyp_weaken_2 Hok' H6)).
+      apply (subtyp_weaken_end Hok' H1).
+      refine (subtyp_trans _ (subtyp_weaken_end Hok' H6)).
       apply IH_TS with (DsB0 := DsB); auto.
   (* case trans *)
   + introv Hst IH Hok Heq HAB.
@@ -3088,7 +3234,7 @@ Proof.
       destruct (invert_wf_sto Wf Bis BiG) as [EqT [G1 [G2 [DsX' [EqG [Exp' [Tyds F]]]]]]].
       subst Tds G.
       apply (decs_has_open x) in Has.
-      assert (Exp'': exp (G1 & x ~ X' & G2) X' DsX') by apply* weaken_exp_phas.
+      assert (Exp'': exp (G1 & (x ~ X' & G2)) X' DsX'). apply* weaken_exp_end.
 
       destruct (decs_has_to_defs_has Tyds Has) as [d Has'].
       destruct (defs_has_fld_sync Has') as [z Heq]. subst.
@@ -3133,125 +3279,6 @@ Proof.
 Qed.
 
 Print Assumptions progress_result.
-
-
-(* ###################################################################### *)
-(** ** Weakening lemmas *)
-
-(* If we only weaken at the end, i.e. from [G1] to [G1 & G2], the IH for the 
-   [ty_new] case adds G2 to the end, so it takes us from [G1, x: Ds] 
-   to [G1, x: Ds, G2], but we need [G1, G2, x: Ds].
-   So we need to weaken in the middle, i.e. from [G1 & G3] to [G1 & G2 & G3].
-   Then, the IH for the [ty_new] case inserts G2 in the middle, so it
-   takes us from [G1 & G3, x: Ds] to [G1 & G2 & G3, x: Ds], which is what we
-   need. *)
-
-Lemma weaken_exp_phas:
-   (forall G T Ds, exp G T Ds -> 
-      forall G1 G2 G3, G = G1 & G3 -> ok (G1 & G2 & G3) -> exp (G1 & G2 & G3) T Ds)
-/\ (forall G x l D, phas G x l D ->
-      forall G1 G2 G3, G = G1 & G3 -> ok (G1 & G2 & G3) -> phas (G1 & G2 & G3) x l D).
-Proof.
-  apply exp_phas_mutind; intros; subst.
-  + apply exp_top.
-  + apply exp_bind.
-  + apply* exp_sel.
-  + apply* phas_var. apply* binds_weaken.
-Qed.
-
-Lemma weakening:
-   (forall G e l d (Hhas: has G e l d)
-           G1 G2 G3 (Heq: G = G1 & G3) (Hok123: ok (G1 & G2 & G3)),
-           has (G1 & G2 & G3) e l d ) 
-/\ (forall G e T (Hty: ty_trm G e T)
-           G1 G2 G3 (Heq: G = G1 & G3) (Hok123: ok (G1 & G2 & G3)),
-           ty_trm (G1 & G2 & G3) e T) 
-/\ (forall G i d (Hty: ty_def G i d)
-           G1 G2 G3 (Heq: G = G1 & G3) (Hok123: ok (G1 & G2 & G3)), 
-           ty_def (G1 & G2 & G3) i d)
-/\ (forall G is Ds (Hisds: ty_defs G is Ds)
-           G1 G2 G3 (Heq: G = G1 & G3) (Hok123: ok (G1 & G2 & G3)), 
-           ty_defs (G1 & G2 & G3) is Ds).
-Proof.
-  apply ty_mutind; intros; subst.
-  + specialize (H G1 G2 G3 eq_refl Hok123).
-    assert (exp (G1 & G2 & G3) T Ds) by apply* weaken_exp_phas.
-    apply* has_trm.
-  + apply ty_var. apply* binds_weaken.
-  + apply* ty_sel.
-  + apply* ty_call.
-  + apply_fresh ty_new as x.
-    - apply* weaken_exp_phas.
-    - rewrite <- concat_assoc. apply H.
-      * auto.
-      * rewrite concat_assoc. reflexivity.
-      * rewrite concat_assoc. auto.
-    - introv Has. rewrite <- concat_assoc. apply subtyp_weaken.
-      * rewrite concat_assoc. auto.
-      * rewrite concat_assoc. apply* s.
-  + apply ty_sbsm with T.
-    - apply* H.
-    - apply* subtyp_weaken.
-  + apply ty_typ. 
-  + apply* ty_fld.
-  + rename H into IH.
-    apply_fresh ty_mtd as x.
-    rewrite <- concat_assoc.
-    refine (IH x _ G1 G2 (G3 & x ~ S) _ _).
-    - auto.
-    - symmetry. apply concat_assoc.
-    - rewrite concat_assoc. auto.
-  + apply ty_dsnil.
-  + apply* ty_dscons.
-Qed.
-
-Print Assumptions weakening.
-
-Lemma weaken_exp: forall G1 G2 T Ds,
-  exp G1 T Ds -> ok (G1 & G2) -> exp (G1 & G2) T Ds.
-Proof.
-  introv Exp Ok.
-  destruct weaken_exp_phas as [P _].
-  specialize (P G1 T Ds Exp G1 G2 empty).
-  repeat (progress (rewrite concat_empty_r in P)).
-  apply* P.
-Qed.
-
-Lemma weaken_has: forall G1 G2 e l d,
-  has G1 e l d -> ok (G1 & G2) -> has (G1 & G2) e l d.
-Proof.
-  intros.
-  destruct weakening as [W _].
-  rewrite <- (concat_empty_r (G1 & G2)).
-  apply (W (G1 & empty)); rewrite* concat_empty_r.
-Qed.
-
-Lemma weaken_ty_trm: forall G1 G2 e T,
-  ty_trm G1 e T -> ok (G1 & G2) -> ty_trm (G1 & G2) e T.
-Proof.
-  intros.
-  destruct weakening as [_ [W _]].
-  rewrite <- (concat_empty_r (G1 & G2)).
-  apply (W (G1 & empty)); rewrite* concat_empty_r.
-Qed.
-
-Lemma weaken_ty_def: forall G1 G2 i d,
-  ty_def G1 i d -> ok (G1 & G2) -> ty_def (G1 & G2) i d.
-Proof.
-  intros.
-  destruct weakening as [_ [_ [W _]]].
-  rewrite <- (concat_empty_r (G1 & G2)).
-  apply (W (G1 & empty)); rewrite* concat_empty_r.
-Qed.
-
-Lemma weaken_ty_defs: forall G1 G2 is Ds,
-  ty_defs G1 is Ds -> ok (G1 & G2) -> ty_defs (G1 & G2) is Ds.
-Proof.
-  intros.
-  destruct weakening as [_ [_ [_ W]]].
-  rewrite <- (concat_empty_r (G1 & G2)).
-  apply (W (G1 & empty)); rewrite* concat_empty_r.
-Qed.
 
 
 (* ###################################################################### *)
