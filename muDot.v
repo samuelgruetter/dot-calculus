@@ -3715,6 +3715,8 @@ Proof.
     apply invert_subdec_mtd_sync_left in Sd. fold open_rec_typ in Sd.
     destruct Sd as [T [U [Eq [StT StU]]]]. subst D.
     destruct (invert_ty_mtd_inside_ty_defs Tyds dsHas DsHas') as [L0 Tybody].
+    apply invert_ty_var in Tyy.
+    destruct Tyy as [T'' [StT'' Biy]].
     remember (open_typ x U') as Ux.
     pick_fresh y'.
     rewrite* (@subst_intro_trm y' y body).
@@ -3723,13 +3725,18 @@ Proof.
     assert (Eqsubst: (subst_typ y' y (open_typ x U')) = (open_typ x U'))
       by apply* subst_fresh_typ_dec_decs.
     rewrite <- Eqsubst.
-    apply (@trm_subst_principle G y' y (open_trm y' body) T _).
+    apply (@trm_subst_principle G y' y (open_trm y' body) T'' _).
     - auto.
     - assert (y'L0: y' \notin L0) by auto. specialize (Tybody y' y'L0).
       apply ty_sbsm with U.
-      * exact Tybody.
+      * assert (subtyp oktrans G T'' T ->
+                ty_trm (G & y' ~ T  ) (open_trm y' body) U ->
+                ty_trm (G & y' ~ T'') (open_trm y' body) U)
+           by admit. (* narrowing *)
+        refine (H _ Tybody).
+        apply (subtyp_trans StT'' StT).
       * apply subtyp_weaken_end. auto. apply StU.
-    - admit. (* TODO invert Tyy, but there will come out a more precise type! *)
+    - exact Biy.
   (* red_sel *)
   + rename H into Hvbx. rename H0 into Hibl.
     exists (@empty typ). rewrite concat_empty_r. split. apply Hwf.
