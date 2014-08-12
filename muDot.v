@@ -3662,18 +3662,17 @@ Theorem preservation_proof:
   forall e s e' s' (Hred: red e s e' s') G T (Hwf: wf_sto s G) (Hty: ty_trm G e T),
   (exists H, wf_sto s' (G & H) /\ ty_trm (G & H) e' T).
 Proof.
-  intros s e s' e' Hred. induction Hred; intros.
+  intros s e s' e' Red. induction Red.
   (* red_call *)
-  + rename H into Hvbx. rename H0 into Hibm. rename T0 into U.
-    exists (@empty typ). rewrite concat_empty_r. split. apply Hwf.
-    (* Grab "ctx binds x" hypothesis: *)
-    apply invert_ty_call in Hty. 
-    destruct Hty as [T' [Hhas Htyy]].
-    apply invert_has in Hhas.
-    destruct Hhas as [TDs [Ds [Htyx [Exp [Hdbm Clo]]]]].
-    apply invert_ty_var in Htyx. rename Htyx into Htbx.
-    (* Feed "binds x" and "ctx binds x" to invert_wf_sto: *)
-    destruct (invert_wf_sto_with_weakening Hwf Hvbx Htbx) as [EqT [Ds' [Exp' [HdsDs F]]]].
+  + intros G U Wf TyCall. rename H into Bis, H0 into dsHas.
+    exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
+    apply invert_ty_call in TyCall. 
+    destruct TyCall as [T' [Has Tyy]].
+    apply invert_var_has_mtd in Has.
+    destruct Has as [X [Ds [T'' [U' [Tyx [Exp [DsHas [EqT EqU]]]]]]]].
+    subst. rename T'' into T'.
+    apply invert_ty_var in Tyx. destruct Tyx as [X' [St BiG]].
+    destruct (invert_wf_sto_with_weakening Wf Bis BiG) as [EqT [Ds' [Exp' [HdsDs F]]]].
     subst.
     assert (EqDs: Ds' = Ds) by apply TODO_holds. (* uniqueness of expansion *) subst.
     apply (decs_has_open x) in Hdbm.
