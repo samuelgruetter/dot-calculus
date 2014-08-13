@@ -1190,13 +1190,25 @@ Hint Resolve wf_sto_to_ok_s wf_sto_to_ok_G.
 Lemma ctx_binds_to_sto_binds: forall s G x T,
   wf_sto s G ->
   binds x T G ->
-  exists ds, binds x ds s.
+  exists o, binds x o s.
 Proof.
   introv Wf Bi. gen x T Bi. induction Wf; intros.
   + false* binds_empty_inv.
   + unfolds binds. rewrite get_push in *. case_if.
     - eauto.
     - eauto.
+Qed.
+
+Lemma sto_binds_to_ctx_binds: forall s G x T ds,
+  wf_sto s G ->
+  binds x (object T ds) s ->
+  binds x T G.
+Proof.
+  introv Wf Bi. gen x T Bi. induction Wf; intros.
+  + false* binds_empty_inv.
+  + unfolds binds. rewrite get_push in *. case_if.
+    - inversions Bi. reflexivity.
+    - auto.
 Qed.
 
 Lemma fresh_push_eq_inv: forall A x a (E: env A),
@@ -3496,7 +3508,51 @@ Lemma exp_preserves_sub2: forall G T1 T2 Ds1 Ds2,
   subdecs oktrans G Ds1 Ds2.
 Admitted. (* TODO does not hold (need to open Ds1 and Ds2! *)
 
+Lemma precise_decs_subdecs_of_imprecise_decs: forall s G x ds X1 X2 Ds1 Ds2, 
+  wf_sto s G ->
+  binds x (object X1 ds) s ->
+  ty_trm G (trm_var (avar_f x)) X2 ->
+  exp G X1 Ds1 ->
+  exp G X2 Ds2 ->
+  subdecs oktrans G (open_decs x Ds1) (open_decs x Ds2).
+Proof.
+  introv Wf Bis Tyx Exp1 Exp2.
+  lets Ok: (wf_sto_to_ok_G Wf).
+  destruct (invert_wf_sto_with_sbsm Wf Bis Tyx) as [St _].
+  lets Sds: (exp_preserves_sub St Exp1 Exp2).
+  destruct Sds as [L Sds].
+  pick_fresh z. assert (zL: z \notin L) by auto. specialize (Sds z zL).
+  lets BiG: (sto_binds_to_ctx_binds Wf Bis).
+  assert (Sds': subdecs oktrans (G & z ~ X1) (open_decs z Ds1) (open_decs z Ds2))
+    by admit. (* narrowing to type X1 (which expands) *)
+  assert (Ok': ok (G & z ~ X1)) by auto.
+  lets P: (@subdecs_subst_principle oktrans _ z x X1 
+              (open_decs z Ds1) (open_decs z Ds2) Ok' Sds' BiG).
+  assert (zDs1: z \notin fv_decs Ds1) by auto.
+  assert (zDs2: z \notin fv_decs Ds2) by auto.
+  rewrite <- (@subst_intro_decs z x Ds1 zDs1) in P.
+  rewrite <- (@subst_intro_decs z x Ds2 zDs2) in P.
+  exact P.
+Qed.
+
 (*
+
+wf_sto s G
+binds x (object X1 ds) s
+ty_trm G (trm_var (avar_f x)) X2
+exp G X1 Ds1
+exp G X2 Ds2
+______________________________________
+subdecs oktrans G (open_decs x Ds1) (open_decs x Ds2)
+
+
+subtyp oktrans G X1 X2
+exp G X1 Ds1
+exp G X2 Ds2
+______________________________________
+subdecs oktrans G (open_decs x Ds1) (open_decs x Ds2)  <-- where does x come from??
+
+
 Lemma has_sound: forall,
   has G (trm_var (avar_f x)) l D ->
   binds x (object T ds) s ->
@@ -3575,9 +3631,9 @@ Proof.
     - destruct IH as [x [[X1 ds] [Eq Bis]]]. subst.
       apply invert_var_has_fld in Has.
       destruct Has as [X2 [Ds2 [T' [Tyx [Exp [Has Eq]]]]]]. subst.
-      lets P: (invert_wf_sto_with_sbsm Wf Bis Tyx).
+      lets P: (invert_wf_sto_with_sbsm Wf Bis Tyx).          (**)
       destruct P as [St [Ds1 [Exp1 [Tyds F]]]].
-      lets Ok: (wf_sto_to_ok_G Wf).
+      lets Ok: (wf_sto_to_ok_G Wf).                          (**)
       lets Sds: (exp_preserves_sub St Exp1 Exp).
       destruct Sds as [L Sds].
       pick_fresh z. assert (zL: z \notin L) by auto. specialize (Sds z zL).
@@ -3590,7 +3646,7 @@ Proof.
       assert (zDs1: z \notin fv_decs Ds1) by auto.
       assert (zDs2: z \notin fv_decs Ds2) by auto.
       rewrite <- (@subst_intro_decs z x Ds1 zDs1) in P.
-      rewrite <- (@subst_intro_decs z x Ds2 zDs2) in P.
+      rewrite <- (@subst_intro_decs z x Ds2 zDs2) in P.        (**)
       apply (decs_has_open x) in Has.
       destruct (decs_has_preserves_sub Has P) as [D [Has' Sd]].
       destruct (decs_has_to_defs_has Tyds Has') as [d dsHas].
