@@ -3735,35 +3735,21 @@ Proof.
   (* case ty_call *)
   + intros G t m U V u Has IHrec Tyu IHarg s Wf. left.
     specialize (IHrec s Wf). destruct IHrec as [IHrec | IHrec].
-    (* case receiver is an expression *) {
+    - (* case receiver is an expression *)
       destruct IHrec as [s' [e' IHrec]]. do 2 eexists. apply (red_call1 m _ IHrec).
-    } 
-    (* case receiver is  a var *) {
+    - (* case receiver is  a var *)
       destruct IHrec as [x [[Tds ds] [Eq Bis]]]. subst.
       specialize (IHarg s Wf). destruct IHarg as [IHarg | IHarg].
       (* arg is an expression *)
-      - destruct IHarg as [s' [e' IHarg]]. do 2 eexists. apply (red_call2 x m IHarg).
+      * destruct IHarg as [s' [e' IHarg]]. do 2 eexists. apply (red_call2 x m IHarg).
       (* arg is a var *)
-      - destruct IHarg as [y [o [Eq Bisy]]]. subst.
-        apply invert_var_has_mtd in Has.
-        destruct Has as [X [DsX [U' [V' [Tyx [Exp [Has [EqU EqV]]]]]]]].
-        apply invert_ty_var in Tyx. destruct Tyx as [X' [St BiG]].
-        destruct (invert_wf_sto Wf Bis BiG) as [EqT [G1 [G2 [DsX' [EqG [Exp' [Tyds F]]]]]]].
-        subst Tds G.
-        lets Ok: (wf_sto_to_ok_G Wf).
-        assert (Exp'': exp (G1 & x ~ X' & G2) X' DsX') by (
-          rewrite <- concat_assoc;
-          apply (weaken_exp_end Exp');
-          rewrite -> concat_assoc;
-          apply Ok).
-        lets Sds: (exp_preserves_sub2 St Exp'' Exp).
-        destruct (decs_has_preserves_sub Has Sds) as [D [Has' Sd]].
-        apply (decs_has_open x) in Has'.
-        destruct (decs_has_to_defs_has Tyds Has') as [d dsHas].
+      * destruct IHarg as [y [o [Eq Bisy]]]. subst.
+        lets P: (has_sound Wf Bis Has).
+        destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
+        destruct (decs_has_to_defs_has Tyds Ds1Has) as [d dsHas].
         destruct (defs_has_mtd_sync dsHas) as [body Eqd]. subst.
         exists (open_trm y body) s.
         apply (red_call y Bis dsHas).
-    }
   (* case ty_new *)
   + intros L G T ds Ds Exp Tyds F s Wf.
     left. pick_fresh x.
