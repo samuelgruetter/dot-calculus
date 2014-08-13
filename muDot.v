@@ -2691,6 +2691,69 @@ Definition only_typ_bind(G: ctx): Prop :=
 Definition only_exp_types(G1: ctx)(z: var)(U: typ)(G2: ctx): Prop :=
   forall G2a G2b x T, G2 = G2a & x ~ T & G2b -> exists Ds, exp (G1 & z ~ U & G2a) T Ds.
 
+(*
+Definition only_exp_types(G1: ctx)(z: var)(U: typ)(G2: ctx): Prop :=
+   (exists Ds, exp G1 U Ds)
+/\ (forall G2a G2b x T, G2 = G2a & x ~ T & G2b -> exists Ds, exp (G1 & z ~ U & G2a) T Ds).
+*)
+
+(*
+Lemma narrow_phas: forall v L G1 G2 DB z Ds1 Ds2 S1,
+  subdecs oktrans   (G1 & z ~ (typ_bind Ds1)) (open_decs z Ds1) (open_decs z Ds2) ->
+  ok                (G1 & z ~ (typ_bind Ds2) & G2) ->
+  only_exp_types     G1   z   S1               G2  ->
+  phas              (G1 & z ~ (typ_bind Ds2) & G2) v L DB ->
+  exp G1 S1 Ds1 ->
+  exists DA, 
+     subdec oktrans (G1 & z ~ S1     ) DA DB
+            /\ phas (G1 & z ~ S1 & G2) v L DA.
+Proof.
+  introv Sds Ok Only Has Exp1. inversions Has. rename H into Bi, H0 into Exp, H1 into Has.
+  unfold only_exp_types in Only.
+  apply binds_middle_inv in Bi. destruct Bi as [Bi | [[vG2 [Eq1 Eq2]] | [vG2 [Ne Bi]]]].
+  + (* v in G2 *)
+    assert (Bi': exists G2a G2b, G2 = G2a & v ~ T & G2b) by admit.
+    destruct Bi' as [G2a [G2b Eq]]. subst.
+    specialize (Only G2a G2b v T eq_refl). destruct Only as [Ds' Exp']. subst.
+    repeat progress (rewrite concat_assoc in * ).
+    assert (Ok': ok (G1 & z ~ S1 & G2a & (v ~ T & G2b))) by admit.
+    lets Exp'': (weaken_exp_end Exp' Ok').
+    repeat progress (rewrite concat_assoc in * ).
+    assert (Ds' = Ds) by admit. (* uniqueness of exp *) subst.
+    exists (open_dec v D). apply (conj (subdec_refl _ _ _)).
+    apply phas_var with T Ds; auto. apply binds_middle_eq. admit.
+
+  + (* v in G2 *)
+    assert (Bi': exists G2a G2b, G2 = G2a & v ~ T & G2b) by admit.
+    destruct Bi' as [G2a [G2b Eq]]. subst.
+    destruct Only as [Only1 Only2].
+    specialize (Only2 G2a G2b v T eq_refl). destruct Only2 as [Ds' Exp']. subst.
+    repeat progress (rewrite concat_assoc in * ).
+    assert (Ok': ok (G1 & z ~ S1 & G2a & (v ~ T & G2b))) by admit.
+    lets Exp'': (weaken_exp_end Exp' Ok').
+    repeat progress (rewrite concat_assoc in * ).
+    assert (Ds' = Ds) by admit. (* uniqueness of exp *) subst.
+    exists (open_dec v D). apply (conj (subdec_refl _ _ _)).
+    apply phas_var with T Ds; auto. apply binds_middle_eq. admit.
+  + (* v = z *)
+    subst. destruct Only as [[Ds' Exp'] Only].
+    apply (decs_has_open z) in Has. inversions Exp. rename Ds into Ds2.
+    destruct (decs_has_preserves_sub_with_open_decs _ _ _ _ Has Sds) as [DA [Has' Sd]].
+    exists (open_dec z DA). apply (conj Sd). apply phas_var with S1 Ds'.
+    - auto.
+    - rewrite <- concat_assoc. apply (weaken_exp_end Exp'). admit.
+    - assert (z \notin fv_decs Ds'). admit.
+      apply (decs_has_open_backwards _ _ H Has'). 
+  + (* v in G1 *)
+    exists (open_dec v D). apply (conj (subdec_refl _ _ _)).
+    assert (Exp': exp G1 T Ds) by admit. (* because T is wf in G1 *)
+    rewrite <- concat_assoc.
+    apply weaken_phas_end.
+    - apply phas_var with T Ds; assumption.
+    - rewrite concat_assoc. admit.
+Qed.
+*)
+
 Lemma narrow_phas: forall v L G1 G2 DB z Ds1 Ds2,
   subdecs oktrans   (G1 & z ~ (typ_bind Ds1)     ) (open_decs z Ds1) (open_decs z Ds2) ->
   ok                (G1 & z ~ (typ_bind Ds2) & G2) ->
