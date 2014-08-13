@@ -3622,14 +3622,16 @@ Proof.
       destruct IHWf as [Ds1 IH]. exists Ds1. apply (weaken_exp_end IH Ok').
 Qed.
 
-Lemma exp_preserves_sub: forall m G T1 T2 Ds1 Ds2,
+Lemma exp_preserves_sub: forall m G T1 T2 s Ds1 Ds2,
   subtyp m G T1 T2 ->
+  wf_sto s G ->
   exp G T1 Ds1 ->
   exp G T2 Ds2 ->
   exists L, forall z : var, z \notin L ->
     subdecs oktrans (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
 Proof.
-  introv St. gen Ds1 Ds2. induction St; introv Exp1 Exp2.
+  introv St. gen s Ds1 Ds2.
+  induction St; introv Wf Exp1 Exp2; lets Ok: (wf_sto_to_ok_G Wf).
   + (* case subtyp_refl *)
     assert (Eq: Ds1 = Ds2) by apply (exp_unique Exp1 Exp2).
     subst. exists vars_empty. intros. apply subdecs_refl.
@@ -3642,23 +3644,31 @@ Proof.
     inversions Exp1. inversions Exp2. exists L. exact H.
   + (* case subtyp_sel_l *)
     inversions Exp1. lets Eq: (phas_unique H H3). inversions Eq.
-    specialize (IHSt Ds1 Ds2 H5 Exp2).
+    specialize (IHSt s Ds1 Ds2 Wf H5 Exp2).
     destruct IHSt as [L0 IHSt]. exists L0. intros z zL0. specialize (IHSt z zL0).
     apply IHSt; assumption.
   + (* case subtyp_sel_r *)
     inversions Exp2. lets Eq: (phas_unique H H3). inversions Eq.
-    admit.
+    assert (Exp: exists Ds, exp G Lo Ds) by admit.
+    destruct Exp as [Ds Exp].
+    specialize (IHSt1 s Ds  Ds2 Wf Exp  H5 ). destruct IHSt1 as [L1 IHSt1]. 
+    specialize (IHSt2 s Ds1 Ds  Wf Exp1 Exp). destruct IHSt2 as [L2 IHSt2].
+    exists (L1 \u L2 \u dom G). intros z zL1L2.
+    auto_specialize.
+    assert (Ok': ok (G & z ~ typ_bind Ds)) by auto.
+    lets IHSt1': (subdecs_narrow_last Ok' IHSt1 IHSt2).
+    apply (subdecs_trans_oktrans IHSt2 IHSt1').
   + (* case subtyp_mode *)
     apply* IHSt.
   + (* case subtyp_trans *)
     rename Ds2 into Ds3. rename Exp2 into Exp3.
     assert (Exp2: exists Ds2, exp G T2 Ds2) by admit. (* only in realizable env! *)
     destruct Exp2 as [Ds2 Exp2].
-    specialize (IHSt1 _ _ Exp1 Exp2). destruct IHSt1 as [L1 IHSt1].
-    specialize (IHSt2 _ _ Exp2 Exp3). destruct IHSt2 as [L2 IHSt2].
-    exists (L1 \u L2). intros z zL1L2.
+    specialize (IHSt1 _ _ _ Wf Exp1 Exp2). destruct IHSt1 as [L1 IHSt1].
+    specialize (IHSt2 _ _ _ Wf Exp2 Exp3). destruct IHSt2 as [L2 IHSt2].
+    exists (L1 \u L2 \u dom G). intros z zL1L2.
     auto_specialize.
-    assert (Ok': ok (G & z ~ typ_bind Ds2)) by admit.
+    assert (Ok': ok (G & z ~ typ_bind Ds2)) by auto.
     lets IHSt2': (subdecs_narrow_last Ok' IHSt2 IHSt1).
     apply (subdecs_trans_oktrans IHSt1 IHSt2').
 Qed.
@@ -3748,7 +3758,7 @@ Proof.
   introv Wf Bis Tyx Exp1 Exp2.
   lets Ok: (wf_sto_to_ok_G Wf).
   destruct (invert_wf_sto_with_sbsm Wf Bis Tyx) as [St _].
-  lets Sds: (exp_preserves_sub St Exp1 Exp2).
+  lets Sds: (exp_preserves_sub St Wf Exp1 Exp2).
   destruct Sds as [L Sds].
   pick_fresh z. assert (zL: z \notin L) by auto. specialize (Sds z zL).
   lets BiG: (sto_binds_to_ctx_binds Wf Bis).
