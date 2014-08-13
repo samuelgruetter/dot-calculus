@@ -3715,6 +3715,21 @@ Proof.
   exact P.
 Qed.
 
+Lemma ty_def_sbsm: forall G d D1 D2,
+  ty_def G d D1 ->
+  subdec oktrans G D1 D2 ->
+  ty_def G d D2.
+Proof.
+  introv Ty Sd. destruct Ty; inversion Sd; try discriminate; subst; clear Sd.
+  + apply ty_typ.
+  + apply ty_typ.
+  + apply (ty_fld H).
+  + apply (ty_fld (ty_sbsm H H3)).
+  + apply (ty_mtd _ H).
+  + apply ty_mtd with L. intros x xL. specialize (H x xL).
+    (* again, we need narrowing, but this time, S2 might even be unrealizable! *)
+Abort.
+
 Lemma has_sound: forall s G x X1 ds l D2,
   wf_sto s G ->
   binds x (object X1 ds) s ->
