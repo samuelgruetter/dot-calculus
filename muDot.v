@@ -2688,7 +2688,51 @@ Qed.
 Definition only_typ_bind(G: ctx): Prop :=
   forall x T, binds x T G -> exists Ds, T = typ_bind Ds.
 
+Definition only_exp_types(G1: ctx)(z: var)(U: typ)(G2: ctx): Prop :=
+  forall G2a G2b x T, G2 = G2a & x ~ T & G2b -> exists Ds, exp (G1 & z ~ U & G2a) T Ds.
+
 Lemma narrow_phas: forall v L G1 G2 DB z Ds1 Ds2,
+  subdecs oktrans   (G1 & z ~ (typ_bind Ds1)     ) (open_decs z Ds1) (open_decs z Ds2) ->
+  ok                (G1 & z ~ (typ_bind Ds2) & G2) ->
+  only_exp_types     G1   z   (typ_bind Ds1)   G2  ->
+  phas              (G1 & z ~ (typ_bind Ds2) & G2) v L DB ->
+  exists DA, 
+     subdec oktrans (G1 & z ~ (typ_bind Ds1)     ) DA DB
+            /\ phas (G1 & z ~ (typ_bind Ds1) & G2) v L DA.
+Proof.
+  introv Sds Ok Only Has. inversions Has. rename H into Bi, H0 into Exp, H1 into Has.
+  unfold only_exp_types in Only.
+  apply binds_middle_inv in Bi. destruct Bi as [Bi | [[vG2 [Eq1 Eq2]] | [vG2 [Ne Bi]]]].
+  + (* v in G2 *)
+    assert (Bi': exists G2a G2b, G2 = G2a & v ~ T & G2b) by admit.
+    destruct Bi' as [G2a [G2b Eq]]. subst.
+    specialize (Only G2a G2b v T eq_refl). destruct Only as [Ds' Exp']. subst.
+    repeat progress (rewrite concat_assoc in *).
+    assert (Ok': ok (G1 & z ~ typ_bind Ds1 & G2a & (v ~ T & G2b))) by admit.
+    lets Exp'': (weaken_exp_end Exp' Ok').
+    repeat progress (rewrite concat_assoc in *).
+    assert (Ds' = Ds) by admit. (* uniqueness of exp *) subst.
+    exists (open_dec v D). apply (conj (subdec_refl _ _ _)).
+    apply phas_var with T Ds; auto. apply binds_middle_eq. admit.
+  + (* v = z *)
+    subst. inversions Exp.
+    apply (decs_has_open z) in Has.
+    destruct (decs_has_preserves_sub_with_open_decs _ _ _ _ Has Sds) as [DA [Has' Sd]].
+    exists (open_dec z DA). apply (conj Sd). apply phas_var with (typ_bind Ds1) Ds1.
+    - auto.
+    - apply exp_bind.
+    - assert (z \notin fv_decs Ds1). admit.
+      apply (decs_has_open_backwards _ _ H Has'). 
+  + (* v in G1 *)
+    exists (open_dec v D). apply (conj (subdec_refl _ _ _)).
+    assert (Exp': exp G1 T Ds) by admit. (* because T is wf in G1 *)
+    rewrite <- concat_assoc.
+    apply weaken_phas_end.
+    - apply phas_var with T Ds; assumption.
+    - rewrite concat_assoc. admit.
+Qed.
+
+Lemma narrow_phas_0: forall v L G1 G2 DB z Ds1 Ds2,
   subdecs oktrans   (G1 & z ~ typ_bind Ds1     ) (open_decs z Ds1) (open_decs z Ds2) ->
   ok                (G1 & z ~ typ_bind Ds2 & G2) ->
   only_typ_bind                              G2  ->
@@ -2738,19 +2782,19 @@ Lemma subtyp_and_subdec_and_subdecs_narrow:
    (forall m G T1 T2 (Hst : subtyp m G T1 T2), forall G1 G2 z DsA DsB, 
      ok              (G1 & z ~ typ_bind DsB & G2) ->
      G       =       (G1 & z ~ typ_bind DsB & G2) ->
-     only_typ_bind                            G2  ->
+     only_exp_types   G1   z  (typ_bind DsA)  G2  ->
      subdecs oktrans (G1 & z ~ typ_bind DsA     ) (open_decs z DsA) (open_decs z DsB) ->
      subtyp  oktrans (G1 & z ~ typ_bind DsA & G2) T1 T2)
 /\ (forall m G D1 D2 (Hsd : subdec m G D1 D2), forall G1 G2 z DsA DsB, 
      ok              (G1 & z ~ typ_bind DsB & G2) ->
      G       =       (G1 & z ~ typ_bind DsB & G2) ->
-     only_typ_bind                            G2  ->
+     only_exp_types   G1   z  (typ_bind DsA)  G2  ->
      subdecs oktrans (G1 & z ~ typ_bind DsA     ) (open_decs z DsA) (open_decs z  DsB) ->
      subdec  oktrans (G1 & z ~ typ_bind DsA & G2) D1 D2)
 /\ (forall m G Ds1 Ds2 (Hsds : subdecs m G Ds1 Ds2), forall G1 G2 z DsA DsB, 
      ok              (G1 & z ~ typ_bind DsB & G2) ->
      G       =       (G1 & z ~ typ_bind DsB & G2) ->
-     only_typ_bind                            G2  ->
+     only_exp_types   G1   z  (typ_bind DsA)  G2  ->
      subdecs oktrans (G1 & z ~ typ_bind DsA     ) (open_decs z DsA) (open_decs z DsB) ->
      subdecs oktrans (G1 & z ~ typ_bind DsA & G2) Ds1 Ds2).
 Proof.
@@ -2762,14 +2806,20 @@ Proof.
     introv Hc IH Hok123 Heq Only HAB; subst. apply subtyp_mode.
     apply_fresh subtyp_bind as z0.
     rewrite <- concat_assoc.
-    refine (IH z0 _ G1 (G2 & z0 ~ typ_bind Ds1) _ DsA DsB _ _ _ _).
+    refine (IH z0 _ G1 (G2 & z0 ~ typ_bind Ds1) _ DsA DsB _ _ _ _); clear IH.
     - auto. 
     - rewrite concat_assoc. auto.
     - rewrite <- concat_assoc. reflexivity. 
-    - unfold only_typ_bind in *. intros x T Bi.
-      apply binds_push_inv in Bi. destruct Bi as [[Eq1 Eq2] | [Ne Bi]].
-      * subst. exists Ds1. reflexivity.
-      * apply* Only.
+    - unfold only_exp_types in *.
+      intros G2a G2b x T Eq. destruct (env_case G2b) as [Eq'|[z0' [Z0' [G2c Eq']]]]; subst.
+      * rewrite concat_empty_r in Eq. 
+        (*assert (G2a = G2) by admit.
+        assert (x = z0) by admit.*)
+        assert (T = typ_bind Ds1) by admit. subst.
+        exists Ds1. apply exp_bind.
+      * rewrite concat_assoc in Eq.
+        assert (Eq': G2 = G2a & x ~ T & G2c) by admit.
+        apply (Only _ _ _ _ Eq').
     - assumption.
   + (* case sel_l *)
     introv Hhas Hst IH Hok Heq Only HAB; subst.
@@ -2838,7 +2888,7 @@ Qed.
 
 Lemma subdec_narrow: forall G1 G2 z Ds1 Ds2 DA DB,
   ok              (G1 & z ~ typ_bind Ds2 & G2) ->
-  only_typ_bind                            G2  ->
+  only_exp_types   G1   z  (typ_bind Ds1)  G2  ->
   subdec  oktrans (G1 & z ~ typ_bind Ds2 & G2) DA DB ->
   subdecs oktrans (G1 & z ~ typ_bind Ds1     ) (open_decs z Ds1) (open_decs z Ds2) ->
   subdec  oktrans (G1 & z ~ typ_bind Ds1 & G2) DA DB.
@@ -2851,7 +2901,7 @@ Qed.
 
 Lemma subdecs_narrow: forall G1 G2 z Ds1 Ds2 DsA DsB,
   ok              (G1 & z ~ typ_bind Ds2 & G2) ->
-  only_typ_bind                            G2  ->
+  only_exp_types   G1   z  (typ_bind Ds1)  G2  ->
   subdecs oktrans (G1 & z ~ typ_bind Ds2 & G2) DsA DsB ->
   subdecs oktrans (G1 & z ~ typ_bind Ds1     ) (open_decs z Ds1) (open_decs z Ds2) ->
   subdecs oktrans (G1 & z ~ typ_bind Ds1 & G2) DsA DsB.
@@ -2872,7 +2922,7 @@ Proof.
   apply (env_remove_empty (fun G0 => subdec oktrans G0 DA DB) (G & z ~ typ_bind Ds1)).
   apply subdec_narrow with (Ds2 := Ds2).
   + apply (env_add_empty (fun G0 => ok G0) (G & z ~ typ_bind Ds2) Hok).
-  + unfold only_typ_bind. introv Bi. false (binds_empty_inv Bi).
+  + unfold only_exp_types. introv Eq. false (empty_middle_inv Eq).
   + apply (env_add_empty (fun G0 => subdec oktrans G0 DA DB)
                              (G & z ~ typ_bind Ds2) HAB).
   + assumption.
@@ -2890,7 +2940,7 @@ Proof.
   apply (env_remove_empty (fun G0 => subdecs oktrans G0 DsA DsB) (G & z ~ typ_bind Ds1)).
   apply subdecs_narrow with (Ds2 := Ds2).
   + apply (env_add_empty (fun G0 => ok G0) (G & z ~ typ_bind Ds2) Hok).
-  + unfold only_typ_bind. introv Bi. false (binds_empty_inv Bi).
+  + unfold only_exp_types. introv Eq. false (empty_middle_inv Eq).
   + apply (env_add_empty (fun G0 => subdecs oktrans G0 DsA DsB)
                              (G & z ~ typ_bind Ds2) H2AB).
   + assumption.
