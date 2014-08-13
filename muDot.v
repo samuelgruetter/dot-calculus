@@ -3535,7 +3535,37 @@ Proof.
   exact P.
 Qed.
 
+Lemma has_sound: forall s G x X1 ds l D2,
+  wf_sto s G ->
+  binds x (object X1 ds) s ->
+  has G (trm_var (avar_f x)) l D2 ->
+  exists Ds1 D1,
+    ty_defs G (open_defs x ds) (open_decs x Ds1) /\
+    decs_has (open_decs x Ds1) l D1 /\
+    subdec oktrans G D1 D2.
+Proof.
+  introv Wf Bis Has.
+  apply invert_var_has_dec in Has.
+  destruct Has as [X2 [Ds2 [T [Tyx [Exp2 [Ds2Has Eq]]]]]]. subst.
+  destruct (invert_wf_sto_with_sbsm Wf Bis Tyx) as [St [Ds1 [Exp1 [Tyds _]]]].
+  lets Sds: (precise_decs_subdecs_of_imprecise_decs Wf Bis Tyx Exp1 Exp2).
+  apply (decs_has_open x) in Ds2Has.
+  destruct (decs_has_preserves_sub Ds2Has Sds) as [D1 [Ds1Has Sd]].
+  exists Ds1 D1.
+  apply (conj Tyds (conj Ds1Has Sd)).
+Qed.
+
 (*
+
+
+wf_sto s G
+has G (trm_var (avar_f x)) l D2
+______________________________________
+binds x (object X1 ds) s
+ty_defs G (open_defs x ds) (open_decs x Ds1)
+decs_has Ds1 l D1
+subdec oktrans G D1 D2
+
 
 wf_sto s G
 binds x (object X1 ds) s
@@ -3733,7 +3763,7 @@ Proof.
   + intros G U Wf TyCall. rename H into Bis, H0 into dsHas, T into X1.
     exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
     apply invert_ty_call in TyCall.
-    destruct TyCall as [T [Has Tyy]].
+    destruct TyCall as [T [Has Tyy]]. (**)
     apply invert_var_has_mtd in Has.
     destruct Has as [X2 [Ds2 [T' [U' [Tyx [Exp2 [Ds2Has [EqT EqU]]]]]]]]. subst.
     destruct (invert_wf_sto_with_sbsm Wf Bis Tyx) as [St [Ds1 [Exp1 [Tyds F]]]].
