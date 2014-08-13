@@ -3573,6 +3573,55 @@ Proof.
     *)
 Abort.
 
+(* * typ_top and typ_bind have a trivial expansion
+   * typ_bot has no expansion
+   * for typ_sel, we prove a lemma: *)
+
+Lemma typ_sel_expands: forall s G v L Lo Hi,
+  wf_sto s G -> (* to get Lo<:Hi *)
+  phas G v L (dec_typ Lo Hi) ->
+  exists Ds, exp G (typ_sel (pth_var (avar_f v)) L) Ds.
+Abort. (* does not hold if Hi is Bot, which can even be the case in realizable envs *)
+
+Lemma typ_sel_expands: forall s G v L Lo Hi,
+  wf_sto s G -> (* to get Lo<:Hi *)
+  ~ subtyp oktrans G Hi typ_bot ->
+  phas G v L (dec_typ Lo Hi) ->
+  exists Ds, exp G (typ_sel (pth_var (avar_f v)) L) Ds.
+Proof.
+  introv Wf. gen v L Lo Hi. induction Wf; introv Not Has.
+  + inversions Has. false (binds_empty_inv H0).
+  + inversion Has. subst.
+    lets Ok: (wf_sto_to_ok_G Wf). assert (Ok': ok (G & x ~ T)) by auto.
+    destruct D as [Lo' Hi' | T' | U V];
+      unfold open_dec, open_rec_dec in H4; try discriminate.
+    fold open_rec_typ in H4. inversions H4.
+    apply binds_push_inv in H5. destruct H5 as [[Eq1 Eq2] | [Ne Bi]].
+    - subst. apply (decs_has_open x) in H10.
+      unfold open_dec, open_rec_dec in H10. fold open_rec_typ in H10.
+      destruct Hi' as [ | | Ds2 | y M].
+      * exists decs_nil. apply (exp_sel Has). simpl. apply exp_top.
+      * false. apply Not. simpl. apply subtyp_mode. apply subtyp_bot.
+      * exists (open_rec_decs 1 x Ds2). apply (exp_sel Has). simpl. apply exp_bind.
+      * admit. (* TODO induction doesn't work because we y might be avar_b so 
+        y = x, i.e. upper bound of x.L is x.M and we cannot remove x from the
+        ctx/sto
+        ---> how can we prevent cycles like x.L: Bot .. x.M // x.M: Bot .. x.L ?? *)
+    - assert (Not': ~ subtyp oktrans G (open_typ v Hi') typ_bot). {
+        intro St. apply Not.
+        apply (subtyp_weaken_end Ok' St).
+      }
+      assert (Has': phas G v L (open_dec v (dec_typ Lo' Hi'))). {
+        apply phas_var with T0 Ds0.
+        - assumption.
+        - assert (Impl: binds v T0 G -> exp (G & x ~ T) T0 Ds0 -> exp G T0 Ds0) by admit.
+          apply* Impl.
+        - assumption.
+      }
+      specialize (IHWf v L (open_typ v Lo') (open_typ v Hi') Not' Has').
+      destruct IHWf as [Ds1 IH]. exists Ds1. apply (weaken_exp_end IH Ok').
+Qed.
+
 Lemma exp_preserves_sub: forall m G T1 T2 Ds1 Ds2,
   subtyp m G T1 T2 ->
   exp G T1 Ds1 ->
