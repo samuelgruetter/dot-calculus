@@ -574,10 +574,6 @@ Hint Constructors subtyp.
 Hint Constructors subdec.
 Hint Constructors notsel.
 
-Axiom TODO_detail: forall P: Prop, P.
-Axiom TODO_holds: forall P: Prop, P.
-Axiom TODO_wrong: forall P: Prop, P.
-
 
 (* ###################################################################### *)
 (** ** Realizability *)
@@ -1869,10 +1865,10 @@ Proof.
       rewrite (subst_open_commute_dec v y v D). unfold subst_fvar. case_if.
       refine (phas_var _ IH _).
       * (* v is after G1, so it cannot occur in S *)
-        assert (Eq: (subst_typ v y S) = S) by apply TODO_holds. rewrite Eq.
+        assert (Eq: (subst_typ v y S) = S) by admit. rewrite Eq.
         apply (binds_concat_left Tyy).
-        rewrite <- concat_assoc in Ok. assert (y # G2) by apply TODO_holds.
-        apply TODO_holds.
+        rewrite <- concat_assoc in Ok. assert (y # G2) by admit.
+        admit.
       * apply (subst_decs_has _ _ Has).
     - (* case x <> v *)
       rewrite (subst_open_commute_dec x y v D). unfold subst_fvar. case_if.
@@ -1880,9 +1876,9 @@ Proof.
       * apply binds_concat_inv in Bi. destruct Bi as [Bi | [vG2 Bi]].
         { apply binds_concat_right. apply (subst_binds _ _ Bi). }
         { assert (Ne: v <> x) by auto. apply (fun b => binds_push_neq_inv b Ne) in Bi.
-          assert (Eq: (subst_typ x y T) = T) by apply TODO_holds. rewrite Eq.
+          assert (Eq: (subst_typ x y T) = T) by admit. rewrite Eq.
           apply (binds_concat_left Bi).
-          apply TODO_holds. }
+          admit. }
       * apply (subst_decs_has _ _ Has).
 Qed.
 
@@ -1937,7 +1933,7 @@ Proof.
     rewrite (subst_open_commute_decs x y z Ds2) in IH.
     unfold subst_fvar in IH.
     assert (x <> z) by auto. case_if.
-    unfold subst_ctx. apply IH. apply TODO_detail.
+    unfold subst_ctx. apply IH. admit.
   + (* case subtyp_sel_l *)
     intros G v L Lo Hi T Has St IH G1 G2 x Eq Bi Ok. subst.
     specialize (IH _ _ _ eq_refl Bi Ok).
@@ -2026,7 +2022,7 @@ Proof.
     - exact IH.
     - apply* subst_exp_phas.
     - apply* subst_decs_has.
-    - intro z. specialize (Clo z). apply TODO_detail.
+    - intro z. specialize (Clo z). admit.
   + (* case has_var *)
     intros G z T Ds l D Ty IH Exp Has G1 G2 x EqG Bi Ok.
     subst G. specialize (IH _ _ _ eq_refl Bi Ok). simpl in *. case_if.
@@ -2048,13 +2044,13 @@ Proof.
     - (* case z = x *)
       assert (EqST: T = S) by apply (binds_middle_eq_inv Biz Ok). subst. 
       apply ty_var.
-      assert (yG2: y # (subst_ctx x y G2)) by apply TODO_detail.
+      assert (yG2: y # (subst_ctx x y G2)) by admit.
       refine (binds_concat_left _ yG2).
-      assert (xG1: x # G1) by apply TODO_detail.
-      assert (Eq: (subst_typ x y S) = S) by apply TODO_holds.
+      assert (xG1: x # G1) by admit.
+      assert (Eq: (subst_typ x y S) = S) by admit.
       rewrite Eq. assumption.
     - (* case z <> x *)
-      apply ty_var. apply TODO_holds.
+      apply ty_var. admit.
   (* case ty_sel *)
   + intros G t l T Has IH G1 G2 x Eq Bi Ok. apply* ty_sel.
   (* case ty_call *)
@@ -2078,7 +2074,7 @@ Proof.
       apply IH. auto.
     - intros M Lo Hi Has.
       assert (zL: z \notin L) by auto. specialize (F z zL M Lo Hi).
-      apply TODO_holds.
+      admit.
   (* case ty_sbsm *)
   + intros G t T U Ty IH St G1 G2 x Eq Bi Ok. subst.
     apply ty_sbsm with (subst_typ x y T).
@@ -2389,15 +2385,15 @@ Proof.
   intros v L. refine (env_ind _ _ _).
   + intros DB z Ds1 Ds2 Sds Ok Has. rewrite concat_empty_l in *.
     (* since typing only holds for locally closed expressions: *)
-    assert (CloDs2: forall z, open_decs z Ds2 = Ds2) by apply TODO_holds.
+    assert (CloDs2: forall z, open_decs z Ds2 = Ds2) by admit.
     inversions Has.
     rename H into Bi, H0 into Exp, H1 into Has.
     apply binds_single_inv in Bi. destruct Bi as [Eq1 Eq2]. subst.
     inversions Exp.
-    assert (CloD: forall z, open_dec z D = D) by apply TODO_holds.
+    assert (CloD: forall z, open_dec z D = D) by admit.
     destruct (decs_has_preserves_sub Has Sds) as [DA [Has' Sd]].
-    assert (CloDs1: forall z, open_decs z Ds1 = Ds1) by apply TODO_holds.
-    assert (CloDA: forall z, open_dec z DA = DA) by apply TODO_holds.
+    assert (CloDs1: forall z, open_decs z Ds1 = Ds1) by admit.
+    assert (CloDA: forall z, open_dec z DA = DA) by admit.
     exists DA.
     rewrite CloD. apply (conj Sd). rewrite <- (CloDA z).
     apply phas_var with (typ_bind Ds1) Ds1.
@@ -3796,7 +3792,7 @@ Proof.
     (* Feed "binds x" and "ctx binds x" to invert_wf_sto: *)
     destruct (invert_wf_sto_with_weakening Hwf Hvbx Htbx) as [EqT [Ds' [Exp' [HdsDs F]]]].
     subst.
-    assert (EqDs: Ds' = Ds) by apply TODO_holds. (* uniqueness of expansion *) subst.
+    assert (EqDs: Ds' = Ds) by admit. (* uniqueness of expansion *) subst.
     apply (decs_has_open x) in Has.
     rewrite Clo in Has.
     apply (invert_ty_fld_inside_ty_defs HdsDs Hibl Has).
