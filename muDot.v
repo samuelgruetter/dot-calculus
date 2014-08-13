@@ -3659,12 +3659,8 @@ Proof.
     - destruct IH as [s' [e' IH]]. do 2 eexists. apply (red_sel1 l IH). 
     (* receiver is a var *)
     - destruct IH as [x [[X1 ds] [Eq Bis]]]. subst.
-      apply invert_var_has_fld in Has.
-      destruct Has as [X2 [Ds2 [T' [Tyx [Exp2 [Ds2Has Eq]]]]]]. subst.
-      destruct (invert_wf_sto_with_sbsm Wf Bis Tyx) as [St [Ds1 [Exp1 [Tyds F]]]].
-      lets Sds: (precise_decs_subdecs_of_imprecise_decs Wf Bis Tyx Exp1 Exp2).
-      apply (decs_has_open x) in Ds2Has.
-      destruct (decs_has_preserves_sub Ds2Has Sds) as [D [Ds1Has Sd]].
+      lets P: (has_sound Wf Bis Has).
+      destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
       destruct (decs_has_to_defs_has Tyds Ds1Has) as [d dsHas].
       destruct (defs_has_fld_sync dsHas) as [r Eqd]. subst.
       exists (trm_var r) s.
@@ -3760,40 +3756,34 @@ Theorem preservation_proof:
 Proof.
   intros s e s' e' Red. induction Red.
   (* red_call *)
-  + intros G U Wf TyCall. rename H into Bis, H0 into dsHas, T into X1.
+  + intros G U2 Wf TyCall. rename H into Bis, H0 into dsHas, T into X1.
     exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
     apply invert_ty_call in TyCall.
-    destruct TyCall as [T [Has Tyy]]. (**)
-    apply invert_var_has_mtd in Has.
-    destruct Has as [X2 [Ds2 [T' [U' [Tyx [Exp2 [Ds2Has [EqT EqU]]]]]]]]. subst.
-    destruct (invert_wf_sto_with_sbsm Wf Bis Tyx) as [St [Ds1 [Exp1 [Tyds F]]]].
-    lets Sds: (precise_decs_subdecs_of_imprecise_decs Wf Bis Tyx Exp1 Exp2).
-    apply (decs_has_open x) in Ds2Has.
-    destruct (decs_has_preserves_sub Ds2Has Sds) as [D [Ds1Has Sd]].
+    destruct TyCall as [T2 [Has Tyy]].
+    lets P: (has_sound Wf Bis Has).
+    destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
     apply invert_subdec_mtd_sync_left in Sd. fold open_rec_typ in Sd.
-    destruct Sd as [T [U [Eq [StT StU]]]]. subst D.
+    destruct Sd as [T1 [U1 [Eq [StT StU]]]]. subst D1.
     destruct (invert_ty_mtd_inside_ty_defs Tyds dsHas Ds1Has) as [L0 Tybody].
     apply invert_ty_var in Tyy.
-    destruct Tyy as [T'' [StT'' Biy]].
-    remember (open_typ x U') as Ux.
+    destruct Tyy as [T3 [StT3 Biy]].
     pick_fresh y'.
     rewrite* (@subst_intro_trm y' y body).
-    assert (Fry': y' \notin fv_typ Ux) by auto.
-    subst Ux.
-    assert (Eqsubst: (subst_typ y' y (open_typ x U')) = (open_typ x U'))
+    assert (Fry': y' \notin fv_typ U2) by auto.
+    assert (Eqsubst: (subst_typ y' y U2) = U2)
       by apply* subst_fresh_typ_dec_decs.
     rewrite <- Eqsubst.
     lets Ok: (wf_sto_to_ok_G Wf).
-    apply (@trm_subst_principle G y' y (open_trm y' body) T'' _).
+    apply (@trm_subst_principle G y' y (open_trm y' body) T3 _).
     - auto.
     - assert (y'L0: y' \notin L0) by auto. specialize (Tybody y' y'L0).
-      apply ty_sbsm with U.
-      * assert (subtyp oktrans G T'' T ->
-                ty_trm (G & y' ~ T  ) (open_trm y' body) U ->
-                ty_trm (G & y' ~ T'') (open_trm y' body) U)
+      apply ty_sbsm with U1.
+      * assert (subtyp oktrans G T3 T1 ->
+                ty_trm (G & y' ~ T1) (open_trm y' body) U1 ->
+                ty_trm (G & y' ~ T3) (open_trm y' body) U1)
            by admit. (* narrowing *)
         refine (H _ Tybody).
-        apply (subtyp_trans StT'' StT).
+        apply (subtyp_trans StT3 StT).
       * apply subtyp_weaken_end. auto. apply StU.
     - exact Biy.
   (* red_sel *)
