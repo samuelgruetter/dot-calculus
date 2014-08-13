@@ -3630,26 +3630,12 @@ Proof.
     (* receiver is a var *)
     - destruct IH as [x [[X1 ds] [Eq Bis]]]. subst.
       apply invert_var_has_fld in Has.
-      destruct Has as [X2 [Ds2 [T' [Tyx [Exp [Has Eq]]]]]]. subst.
-      lets P: (invert_wf_sto_with_sbsm Wf Bis Tyx).          (**)
-      destruct P as [St [Ds1 [Exp1 [Tyds F]]]].
-      lets Ok: (wf_sto_to_ok_G Wf).                          (**)
-      lets Sds: (exp_preserves_sub St Exp1 Exp).
-      destruct Sds as [L Sds].
-      pick_fresh z. assert (zL: z \notin L) by auto. specialize (Sds z zL).
-      assert (BiG: binds x X1 G) by admit.
-      assert (Sds': subdecs oktrans (G & z ~ X1) (open_decs z Ds1)
-        (open_decs z Ds2)) by admit. (* narrowing to type X1 (which expands) *)
-      assert (Ok': ok (G & z ~ X1)) by auto.
-      lets P: (@subdecs_subst_principle oktrans _ z x X1 
-        (open_decs z Ds1) (open_decs z Ds2) Ok' Sds' BiG).
-      assert (zDs1: z \notin fv_decs Ds1) by auto.
-      assert (zDs2: z \notin fv_decs Ds2) by auto.
-      rewrite <- (@subst_intro_decs z x Ds1 zDs1) in P.
-      rewrite <- (@subst_intro_decs z x Ds2 zDs2) in P.        (**)
-      apply (decs_has_open x) in Has.
-      destruct (decs_has_preserves_sub Has P) as [D [Has' Sd]].
-      destruct (decs_has_to_defs_has Tyds Has') as [d dsHas].
+      destruct Has as [X2 [Ds2 [T' [Tyx [Exp2 [Ds2Has Eq]]]]]]. subst.
+      destruct (invert_wf_sto_with_sbsm Wf Bis Tyx) as [St [Ds1 [Exp1 [Tyds F]]]].
+      lets Sds: (precise_decs_subdecs_of_imprecise_decs Wf Bis Tyx Exp1 Exp2).
+      apply (decs_has_open x) in Ds2Has.
+      destruct (decs_has_preserves_sub Ds2Has Sds) as [D [Ds1Has Sd]].
+      destruct (decs_has_to_defs_has Tyds Ds1Has) as [d dsHas].
       destruct (defs_has_fld_sync dsHas) as [r Eqd]. subst.
       exists (trm_var r) s.
       apply (red_sel Bis dsHas).
@@ -3749,28 +3735,14 @@ Proof.
     apply invert_ty_call in TyCall.
     destruct TyCall as [T [Has Tyy]].
     apply invert_var_has_mtd in Has.
-    destruct Has as [X2 [Ds2 [T' [U' [Tyx [Exp [DsHas [EqT EqU]]]]]]]]. subst.
-    lets P: (invert_wf_sto_with_sbsm Wf Bis Tyx).
-    destruct P as [St [Ds1 [Exp1 [Tyds F]]]].
-    lets Ok: (wf_sto_to_ok_G Wf).
-    lets Sds: (exp_preserves_sub St Exp1 Exp).
-    destruct Sds as [L Sds].
-    pick_fresh z. assert (zL: z \notin L) by auto. specialize (Sds z zL).
-    assert (BiG: binds x X1 G) by admit.
-    assert (Sds': subdecs oktrans (G & z ~ X1) (open_decs z Ds1)
-      (open_decs z Ds2)) by admit. (* narrowing to type X1 (which expands) *)
-    assert (Ok': ok (G & z ~ X1)) by auto.
-    lets P: (@subdecs_subst_principle oktrans _ z x X1 
-        (open_decs z Ds1) (open_decs z Ds2) Ok' Sds' BiG).
-    assert (zDs1: z \notin fv_decs Ds1) by auto.
-    assert (zDs2: z \notin fv_decs Ds2) by auto.
-    rewrite <- (@subst_intro_decs z x Ds1 zDs1) in P.
-    rewrite <- (@subst_intro_decs z x Ds2 zDs2) in P.
-    apply (decs_has_open x) in DsHas.
-    destruct (decs_has_preserves_sub DsHas P) as [D [DsHas' Sd]].
+    destruct Has as [X2 [Ds2 [T' [U' [Tyx [Exp2 [Ds2Has [EqT EqU]]]]]]]]. subst.
+    destruct (invert_wf_sto_with_sbsm Wf Bis Tyx) as [St [Ds1 [Exp1 [Tyds F]]]].
+    lets Sds: (precise_decs_subdecs_of_imprecise_decs Wf Bis Tyx Exp1 Exp2).
+    apply (decs_has_open x) in Ds2Has.
+    destruct (decs_has_preserves_sub Ds2Has Sds) as [D [Ds1Has Sd]].
     apply invert_subdec_mtd_sync_left in Sd. fold open_rec_typ in Sd.
     destruct Sd as [T [U [Eq [StT StU]]]]. subst D.
-    destruct (invert_ty_mtd_inside_ty_defs Tyds dsHas DsHas') as [L0 Tybody].
+    destruct (invert_ty_mtd_inside_ty_defs Tyds dsHas Ds1Has) as [L0 Tybody].
     apply invert_ty_var in Tyy.
     destruct Tyy as [T'' [StT'' Biy]].
     remember (open_typ x U') as Ux.
@@ -3781,6 +3753,7 @@ Proof.
     assert (Eqsubst: (subst_typ y' y (open_typ x U')) = (open_typ x U'))
       by apply* subst_fresh_typ_dec_decs.
     rewrite <- Eqsubst.
+    lets Ok: (wf_sto_to_ok_G Wf).
     apply (@trm_subst_principle G y' y (open_trm y' body) T'' _).
     - auto.
     - assert (y'L0: y' \notin L0) by auto. specialize (Tybody y' y'L0).
