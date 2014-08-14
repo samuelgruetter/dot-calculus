@@ -1,0 +1,33 @@
+
+The problem with precise expansion
+----------------------------------
+
+In preservation/case red_call, we have
+
+G, y': T2 |- body : U
+
+and
+
+G |- y : T2      i.e.   (y:T1) in G  and G |- T1 <: T2
+
+and we want to go to
+
+G |- [y/y']body : U
+
+We can achieve this in two ways:
+
+1) Using a substitution lemma which takes the precise [(y:T1) in G],
+   but then we have to narrow [G, y': T2 |- body : U] to [G, y': T1 |- body : U]
+   before we can use it.
+
+2) Trying to avoid narrowing, we could use a substitution lemma which accepts
+   an imprecise [G |- y : T2].
+
+In both cases, we might have to replace a [y'.L <z Ds2] judgment (in which the precise
+type of y' is T2) by a [y.L <z Ds1] judgment (in which the precise type of y is T1).
+
+But if there are intersection types, the existence of an expansion can be lost through
+narrowing, because narrowing can introduce cyclic upper bounds (see FOOL'12 paper).
+
+So none of the two ways works, and we cannot use a precise expansion judgment.
+
