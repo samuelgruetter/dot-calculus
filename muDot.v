@@ -319,6 +319,21 @@ with subtyp : ctx -> typ -> typ -> Prop :=
       subtyp G T1 T2 ->
       subtyp G T2 T3 ->
       subtyp G T1 T3
+  | subtyp_inv_typ_lo : forall G Lo1 Hi1 Lo2 Hi2,
+      subdec G (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2) ->
+      subtyp G Lo2 Lo1
+  | subtyp_inv_typ_hi : forall G Lo1 Hi1 Lo2 Hi2,
+      subdec G (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2) ->
+      subtyp G Hi1 Hi2
+  | subtyp_inv_fld : forall G T1 T2,
+      subdec G (dec_fld T1) (dec_fld T2) ->
+      subtyp G T1 T2
+  | subtyp_inv_mtd_arg : forall G T1 U1 T2 U2,
+      subdec G (dec_mtd T1 U1) (dec_mtd T2 U2) ->
+      subtyp G T2 T1
+  | subtyp_inv_mtd_ret : forall G T1 U1 T2 U2,
+      subdec G (dec_mtd T1 U1) (dec_mtd T2 U2) ->
+      subtyp G U1 U2
 with subdec : ctx -> dec -> dec -> Prop :=
   | subdec_typ : forall G Lo1 Hi1 Lo2 Hi2,
       (* only allow implementable decl *)
@@ -336,6 +351,11 @@ with subdec : ctx -> dec -> dec -> Prop :=
       subtyp G S2 S1 ->
       subtyp G T1 T2 ->
       subdec G (dec_mtd S1 T1) (dec_mtd S2 T2)
+  | subdec_inv : forall G Ds1 Ds2 l D1 D2,
+      subdecs G Ds1 Ds2 ->
+      decs_has Ds1 l D1 ->
+      decs_has Ds2 l D2 ->
+      subdec G D1 D2
 with subdecs : ctx -> decs -> decs -> Prop :=
   | subdecs_empty : forall G Ds,
       subdecs G Ds decs_nil
@@ -344,6 +364,10 @@ with subdecs : ctx -> decs -> decs -> Prop :=
       subdec  G D1 D2 ->
       subdecs G Ds1 Ds2 ->
       subdecs G Ds1 (decs_cons n D2 Ds2)
+  | subdecs_inv : forall G z Ds1 Ds2,
+      subtyp G (typ_bind Ds1) (typ_bind Ds2) ->
+      z # G ->
+      subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2)
 with ty_trm : ctx -> trm -> typ -> Prop :=
   | ty_var : forall G x T,
       binds x T G ->
@@ -747,6 +771,16 @@ Proof.
     - apply* IHds.
 Qed.
 
+Lemma decs_has_typ_sync: forall n D Ds,
+  decs_has Ds (label_typ n) D -> exists Lo Hi, D = (dec_typ Lo Hi).
+Proof.
+  introv Hhas. induction Ds; unfolds decs_has, get_dec. 
+  + discriminate.
+  + case_if.
+    - inversions Hhas. unfold label_for_dec in H. destruct* D; discriminate.
+    - apply* IHDs.
+Qed.
+
 Lemma decs_has_fld_sync: forall n d ds,
   decs_has ds (label_fld n) d -> exists x, d = (dec_fld x).
 Proof.
@@ -783,13 +817,48 @@ Qed.
 (* ###################################################################### *)
 (** ** Trivial inversion lemmas *)
 
+Lemma decs_has_preserves_sub_0: forall G Ds1 Ds2 l D1 D2,
+  subdecs G Ds1 Ds2 ->
+  decs_has Ds1 l D1 ->
+  decs_has Ds2 l D2 ->
+  subdec G D1 D2.
+Proof.
+  introv Sds. gen l D1 D2. induction Sds; introv Has1 Has2.
+  + inversion Has2.
+  + unfold decs_has, get_dec in Has2. fold get_dec in Has2. case_if.
+    - inversions Has2. unfold decs_has in H, Has1.
+      rewrite Has1 in H. inversions H. assumption.
+    - apply* IHSds.
+  + destruct l.
+    - destruct (decs_has_typ_sync Has1) as [Lo1 [Hi1 Eq]]. subst.
+      destruct (decs_has_typ_sync Has2) as [Lo2 [Hi2 Eq]]. subst.
+      lets Sds: (subdecs_inv H H0).
+      apply (subdec_inv Sds Has1 Has2).
+    - destruct (decs_has_fld_sync Has1) as [T1 Eq]. subst.
+      destruct (decs_has_fld_sync Has2) as [T2 Eq]. subst.
+      lets Sds: (subdecs_inv H H0).
+      apply (subdec_inv Sds Has1 Has2).
+    - destruct (decs_has_mtd_sync Has1) as [T1 [U1 Eq]]. subst.
+      destruct (decs_has_mtd_sync Has2) as [T2 [U2 Eq]]. subst.
+      lets Sds: (subdecs_inv H H0).
+      apply (subdec_inv Sds Has1 Has2).
+Qed.
+
+Print Assumptions decs_has_preserves_sub_0.
+
 Lemma invert_subdec_typ_sync_left: forall G D T2 U2,
    subdec G D (dec_typ T2 U2) ->
    exists T1 U1, D = (dec_typ T1 U1) /\
                  subtyp G T2 T1 /\
                  subtyp G U1 U2.
 Proof.
-  introv Sd. inversions Sd. exists Lo1 Hi1. apply (conj eq_refl). auto.
+  introv Sd. inversions Sd.
+  + exists Lo1 Hi1. apply (conj eq_refl). auto.
+  + destruct l.
+    - destruct (decs_has_typ_sync H0) as [Lo1 [Hi1 Eq]]. subst.
+      destruct (decs_has_typ_sync H1) as [Lo2 [Hi2 Eq]]. inversions Eq.
+      lets Sd: (decs_has_preserves_sub_0 H H0 H1).
+
 Qed.
 
 Lemma invert_subdec_fld_sync_left: forall G D T2,
