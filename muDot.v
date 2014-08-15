@@ -1620,6 +1620,11 @@ Proof.
     *)
 Abort.
 
+Lemma exp_to_subtyp: forall G T Ds,
+  exp G T Ds ->
+  subtyp G T (typ_bind Ds).
+Admitted.
+
 Lemma invert_ty_sel: forall G t l T,
   ty_trm G (trm_sel t l) T ->
   has G t (label_fld l) (dec_fld T).
@@ -1628,11 +1633,33 @@ Proof.
   induction Ty; intros t' l' Eq; try (solve [ discriminate ]).
   + inversions Eq. assumption.
   + subst. rename t' into t, l' into l. specialize (IHTy _ _ eq_refl).
-    inversions IHTy.
-    - apply has_trm with T0 Ds. (* requires imprecise expansion *)
-Abort.
+    apply invert_has in IHTy.
+    destruct IHTy as [IHTy | IHTy].
+    (* case has_trm *)
+    - destruct IHTy as [X [Ds [Tyt [Exp [DsHas CloT]]]]].
+      (* U occurs in a subtype judgment, so it's closed: *)
+      assert (CloU: forall z, open_typ z U = U) by admit.
+      lets St1: (exp_to_subtyp Exp).
+      assert (St2: subtyp G (typ_bind Ds) (typ_bind (decs_cons l (dec_fld U) decs_nil))). {
+        apply_fresh subtyp_bind as z.
+        apply subdecs_push with (dec_fld T); fold open_rec_typ; simpl.
+        * rewrite <- (CloT z). apply (decs_has_open z DsHas).
+        * unfold open_dec, open_rec_dec. fold open_rec_typ. apply subdec_fld.
+          rewrite -> CloU. refine (weaken_subtyp_end _ H). admit.
+        * apply subdecs_empty.
+      }
+      apply has_trm with (typ_bind (decs_cons l (dec_fld U) decs_nil))
+                                   (decs_cons l (dec_fld U) decs_nil).
+      * refine (ty_sbsm _ St2). apply (ty_sbsm Tyt St1).
+      * apply exp_bind.
+      * unfold decs_has, get_dec. simpl. case_if. reflexivity.
+      * intro z. specialize (CloU z). unfold open_dec, open_rec_dec. 
+        fold open_rec_typ. f_equal. apply CloU.
+    (* case has_var *)
+    - admit. (* probably similar *)
+Qed.
 
-Lemma invert_ty_sel: forall G t l T,
+Lemma invert_ty_sel_old: forall G t l T,
   ty_trm G (trm_sel t l) T ->
   exists T', subtyp G T' T /\ has G t (label_fld l) (dec_fld T').
 Proof.
@@ -1779,11 +1806,6 @@ Lemma ty_defs_sbsm: forall L G ds Ds1 Ds2,
   (forall x, x \notin L -> 
      subdecs (G & x ~ typ_bind Ds1) (open_decs x Ds1) (open_decs x Ds2)) ->
   ty_defs G ds Ds2.
-Admitted.
-
-Lemma exp_to_subtyp: forall G T Ds,
-  exp G T Ds ->
-  subtyp G T (typ_bind Ds).
 Admitted.
 
 (*
