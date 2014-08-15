@@ -969,6 +969,20 @@ Qed.
 
 Print Assumptions decs_has_to_defs_has.
 
+Lemma defs_has_to_decs_has: forall G l ds Ds d,
+  ty_defs G ds Ds ->
+  defs_has ds l d ->
+  exists D, decs_has Ds l D.
+Proof.
+  introv Ty dsHas. induction Ty; unfolds defs_has, get_def. 
+  + discriminate.
+  + unfold decs_has. folds get_def. rewrite get_dec_cons. case_if.
+    - exists D. reflexivity.
+    - rewrite -> (ty_def_to_label_for_eq n H) in dsHas. case_if. apply (IHTy dsHas).
+Qed.
+
+Print Assumptions defs_has_to_decs_has.
+
 Lemma label_for_dec_open: forall z D n,
   label_for_dec n (open_dec z D) = label_for_dec n D.
 Proof.
@@ -2033,9 +2047,32 @@ Proof.
       apply weaken_subtyp_end. auto. apply StU.
     - refine (ty_sbsm _ StT). refine (ty_sbsm _ StT3). apply (ty_var Biy).
   (* red_sel *)
+  + intros G T3 Wf TySel. rename H into Bis, H0 into dsHas. rename T into Ds.
+    exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
+    apply invert_ty_sel in TySel. rename TySel into Has.
+    lets BiG: (sto_binds_to_ctx_binds Wf Bis).
+    lets P: (invert_wf_sto_with_weakening Wf Bis BiG).
+    destruct P as [_ [Tyds F]].
+    destruct (defs_has_to_decs_has Tyds dsHas) as [D DsHas].
+    apply invert_var_has_fld in Has.
+    destruct Has as [X [Ds0 [T' [Ty [Exp [DsHas' Eq]]]]]].
+    apply (invert_ty_fld_inside_ty_defs Tyds dsHas DsHas).
+
+
+ decs_has_to_defs_has
+    apply invert_var_has_fld in Has.
+    destruct TySel as [T2 [StT23 Has]].
+    lets P: (has_sound Wf Bis Has).
+    destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
+    apply invert_subdec_fld_sync_left in Sd.
+    destruct Sd as [T1 [Eq StT12]]. subst D1.
+    refine (ty_sbsm _ StT23).
+    refine (ty_sbsm _ StT12).
+    apply (invert_ty_fld_inside_ty_defs Tyds dsHas Ds1Has).
+  (* red_sel *)
   + intros G T3 Wf TySel. rename H into Bis, H0 into dsHas.
     exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
-    apply invert_ty_sel in TySel.
+    apply invert_ty_sel_old in TySel.
     destruct TySel as [T2 [StT23 Has]].
     lets P: (has_sound Wf Bis Has).
     destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
