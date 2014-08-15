@@ -1154,7 +1154,7 @@ Proof.
 Qed.
 
 Lemma weaken_has_end: forall G1 G2 t l d,
-  has G1 t l d -> ok (G1 & G2) -> has (G1 & G2) t l d.
+  ok (G1 & G2) -> has G1 t l d -> has (G1 & G2) t l d.
 Proof.
   intros.
   destruct weakening as [_ [W _]].
@@ -1163,7 +1163,7 @@ Proof.
 Qed.
 
 Lemma weaken_ty_trm_end: forall G1 G2 e T,
-  ty_trm G1 e T -> ok (G1 & G2) -> ty_trm (G1 & G2) e T.
+  ok (G1 & G2) -> ty_trm G1 e T -> ty_trm (G1 & G2) e T.
 Proof.
   intros.
   destruct weakening as [_ [_ [_ [_ [_ [W _]]]]]].
@@ -1172,7 +1172,7 @@ Proof.
 Qed.
 
 Lemma weaken_ty_def_end: forall G1 G2 i d,
-  ty_def G1 i d -> ok (G1 & G2) -> ty_def (G1 & G2) i d.
+  ok (G1 & G2) -> ty_def G1 i d -> ty_def (G1 & G2) i d.
 Proof.
   intros.
   destruct weakening as [_ [_ [_ [_ [_ [_ [W _]]]]]]].
@@ -1181,12 +1181,24 @@ Proof.
 Qed.
 
 Lemma weaken_ty_defs_end: forall G1 G2 is Ds,
-  ty_defs G1 is Ds -> ok (G1 & G2) -> ty_defs (G1 & G2) is Ds.
+  ok (G1 & G2) -> ty_defs G1 is Ds -> ty_defs (G1 & G2) is Ds.
 Proof.
   intros.
   destruct weakening as [_ [_ [_ [_ [_ [_ [_ W]]]]]]].
   rewrite <- (concat_empty_r (G1 & G2)).
   apply (W (G1 & empty)); rewrite* concat_empty_r.
+Qed.
+
+Lemma weaken_ty_trm_middle: forall G1 G2 G3 t T,
+  ok (G1 & G2 & G3) -> ty_trm (G1 & G3) t T -> ty_trm (G1 & G2 & G3) t T.
+Proof.
+  intros. apply* weakening.
+Qed.
+
+Lemma weaken_ty_def_middle: forall G1 G2 G3 d D,
+  ty_def (G1 & G3) d D -> ok (G1 & G2 & G3) -> ty_def (G1 & G2 & G3) d D.
+Proof.
+  intros. apply* weakening.
 Qed.
 
 Lemma weaken_ty_defs_middle: forall G1 G2 G3 ds Ds,
@@ -1244,7 +1256,7 @@ Proof.
   introv Bi. unfold subst_ctx. apply binds_map. exact Bi.
 Qed.
 
-Lemma substitution_principles: forall y S,
+Lemma subst_principles: forall y S,
    (forall G T Ds, exp G T Ds -> forall G1 G2 x, G = G1 & x ~ S & G2 ->
       ty_trm G1 (trm_var (avar_f y)) S ->
       ok (G1 & x ~ S & G2) ->
@@ -1381,8 +1393,8 @@ Proof.
       assert (Eq: (subst_typ x y S) = S) by admit.
       rewrite Eq. 
       apply weaken_ty_trm_end.
-      * assumption.
       * unfold subst_ctx. auto.
+      * assumption.
     - (* case z <> x *)
       apply ty_var. admit. (* TODO! *)
   (* case ty_sel *)
@@ -1435,7 +1447,56 @@ Proof.
   + intros. apply* ty_dscons.
 Qed.
 
-Print Assumptions substitution_principles.
+Print Assumptions subst_principles.
+
+Lemma trm_subst_principle: forall G x y t S T,
+  ok (G & x ~ S) ->
+  ty_trm (G & x ~ S) t T ->
+  ty_trm G (trm_var (avar_f y)) S ->
+  ty_trm G (subst_trm x y t) (subst_typ x y T).
+Proof.
+  introv Hok tTy yTy. destruct (subst_principles y S) as [_ [_ [_ [_ [_ [P _]]]]]].
+  specialize (P _ t T tTy G empty x).
+  unfold subst_ctx in P. rewrite map_empty in P.
+  repeat (progress (rewrite concat_empty_r in P)).
+  apply* P.
+Qed.
+
+
+(* ###################################################################### *)
+(** ** Narrowing *)
+
+Lemma subst_trm_undo: forall x y t, (subst_trm y x (subst_trm x y t)) = t.
+Admitted.
+
+Lemma subst_typ_undo: forall x y T, (subst_typ y x (subst_typ x y T)) = T.
+Admitted.
+
+Lemma narrow_ty_trm: forall G y T1 T2 u U,
+  ok (G & y ~ T2) ->
+  subtyp G T1 T2 ->
+  ty_trm (G & y ~ T2) u U ->
+  ty_trm (G & y ~ T1) u U.
+Proof.
+  introv Ok St Tyu.
+  (* Step 1: rename *)
+  pick_fresh z.
+  assert (Okzy: ok (G & z ~ T2 & y ~ T2)) by admit.
+  apply (weaken_ty_trm_middle Okzy) in Tyu.
+  assert (Biz: binds z T2 (G & z ~ T2)) by auto.
+  lets Tyz: (ty_var Biz).
+  lets Tyu': (trm_subst_principle Okzy Tyu Tyz).
+  (* Step 2: the actual substitution *)
+  assert (Biy: binds y T1 (G & y ~ T1)) by auto.
+  assert (Ok': ok (G & y ~ T1)) by admit.
+  apply (weaken_subtyp_end Ok') in St.
+  lets Tyy: (ty_sbsm (ty_var Biy) St).
+  assert (Okyz: ok (G & y ~ T1 & z ~ T2)) by auto.
+  apply (weaken_ty_trm_middle Okyz) in Tyu'.
+  lets Tyu'': (trm_subst_principle Okyz Tyu' Tyy).
+  rewrite subst_trm_undo, subst_typ_undo in Tyu''.
+  exact Tyu''.
+Qed.
 
 
 (* ###################################################################### *)
