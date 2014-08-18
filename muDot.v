@@ -1744,6 +1744,14 @@ Proof.
   introv Has. inversions Has. exists T Ds D0. auto.
 Qed.
 
+Lemma invert_exp_sel: forall m G v L Ds,
+  exp m G (typ_sel (pth_var (avar_f v)) L) Ds ->
+  exists Lo Hi, has m G (trm_var (avar_f v)) L (dec_typ Lo Hi) /\
+                exp m G Hi Ds.
+Proof.
+  introv Exp. inversions Exp. exists Lo Hi. auto.
+Qed.
+
 Lemma subtyp_refl_all: forall m2 G T, subtyp ip m2 G T T.
 Admitted.
 
@@ -1949,6 +1957,55 @@ Proof.
     - fold get_dec in Has. apply* IHDs2.
 Qed.
 
+(* note: if second Exp is ip, the subtyp_refl case is as hard as the whole lemma,
+   but we don't have any IH *)
+
+Lemma exp_preserves_sub: forall m G T1 T2 Ds1 Ds2,
+  ok G ->
+  subtyp ip m G T1 T2 ->
+  exp pr G T1 Ds1 ->
+  exp pr G T2 Ds2 ->
+  exists L, forall z, z \notin L -> 
+            subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
+Proof.
+  (* We don't use the [induction] tactic because we want to intro everything ourselves: *)
+  intros m2 G T1 T2 Ds1 Ds2 Ok St. gen_eq m1: ip. gen m1 m2 G T1 T2 St Ds1 Ds2 Ok.
+  apply (subtyp_ind (fun m1 m2 G T1 T2 => forall Ds1 Ds2,
+    ok G ->
+    m1 = ip ->
+    exp pr G T1 Ds1 ->
+    exp pr G T2 Ds2 ->
+    exists L, forall z : var, z \notin L ->
+              subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2))).
+  + (* case subtyp_refl *)
+    intros m G x L Lo Hi Has Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
+    assert (Eq: Ds1 = Ds2) by admit. (* precise is unique *)
+    exists vars_empty. intros z zL. subst. apply subdecs_refl.
+  + (* case subtyp_top *)
+    intros m G T Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
+    inversions Exp2.
+    exists vars_empty. intros z zL. unfold open_decs, open_rec_decs. apply subdecs_empty.
+  + (* case subtyp_bot *)
+    intros m G T Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
+    inversions Exp1.
+  + (* case subtyp_bind *)
+    intros L m G Ds1' Ds2' Sds Ds1 Ds2 Ok Eq Exp1 Exp2. inversions Exp1. inversions Exp2.
+    exists L. intros z zL. apply (Sds z zL).
+  + (* case subtyp_sel_l *)
+    intros m G x L Lo2 Hi2 T Has2 St IHSt Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
+    apply invert_exp_sel in Exp1. destruct Exp1 as [Lo1 [Hi1 [Has1 Exp1]]].
+    assert (Exp21: exists Ds21, exp pr G Hi2 Ds21) by admit. (* <-- *)
+    destruct Exp21 as [Ds21 Exp21].
+    lets IH': (IHSt Ds21 Ds2 Ok eq_refl Exp21 Exp2).
+    specialize (IHSt Ds1 Ds21 Ok eq_refl).
+    (* We need an IH to go from Ds1 to Ds21, i.e. an IH for Hi1 <: Hi2, i.e. one
+       which takes an [Exp1: exp pr G Hi1 Ds1] and [Exp21: exp pr G Hi2 Ds21]. 
+       But again, Has1 (pr) and Has2 (ip) might be related through a subtyp_bind
+       in ty_sbsm, and we would have to invert the subtyp_bind to relate Hi1 and Hi2.
+    *)
+Abort.
+
+(* exp_preserves_sub is approx the same as invert_subtyp_bind *)
 Lemma exp_preserves_sub: forall G T1 T2 Ds1 Ds2,
   subtyp ip oktrans G T1 T2 ->
   exp pr G T1 Ds1 ->
@@ -2055,7 +2112,6 @@ Proof.
       (typ_bind Ds1) <: (typ_bind Ds2) into a D1 <: D2,
       without knowing D1, and without using invert_subtyp_bind.
       *)
-
     admit.
   + (* case has_var *)
     admit.
