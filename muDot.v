@@ -8,6 +8,22 @@ Since has is imprecise, it's not unique, so we can't do the transitivity
 push-back, but we hope that we won't need it. However, we need transitivity
 in many places, so we add it as a rule. This also allows us to simplify the
 subtyp_sel_l/r rules: There's no need to "bake in" transitivity.
+
+Moreover, since invert_subtyp_bind seems difficult to prove, we just add it
+as a subdecs rule. This also requires additional subdec and subtyp rules.
+The rules work and weakening and substitution seems to work as well, but
+it doesn't help a lot, because decs_has_preserves_sub, which was trivial
+before, doesn't hold any more: If we're in a contradictory environment,
+and the subdecs judgment was obtained from a subtyp_bind using the inversion
+rule, there's no way we can "invent" a D1.
+Preservation doesn't need decs_has_preserves_sub and becomes simpler, but
+progress needs something like decs_has_preserves_sub, in order to assert
+that if we get a subsumed member in the imprecise typing judgment, there
+exists a (precise) member in the store. And doing this requires a real
+invert_subtyp_bind.
+So it seems that the inversion rules just avoid the problem, but it still
+has to be solved. And they don't push it to another place where it's easier
+to solve, so they're useless.
 *)
 
 Set Implicit Arguments.
