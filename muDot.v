@@ -1661,9 +1661,9 @@ Qed.
 (** ** More inversion lemmas *)
 
 Lemma invert_var_has_dec: forall G x l D,
-  has G (trm_var (avar_f x)) l D ->
+  has ip G (trm_var (avar_f x)) l D ->
   exists T Ds D', ty_trm G (trm_var (avar_f x)) T /\
-                  exp G T Ds /\
+                  exp ip G T Ds /\
                   decs_has Ds l D' /\
                   open_dec x D' = D.
 Proof.
@@ -1675,14 +1675,14 @@ Proof.
 Qed.
 
 Lemma invert_has: forall G t l D,
-   has G t l D ->
+   has ip G t l D ->
    (exists T Ds,      ty_trm G t T /\
-                      exp G T Ds /\
+                      exp ip G T Ds /\
                       decs_has Ds l D /\
                       (forall z : var, open_dec z D = D))
 \/ (exists x T Ds D', t = (trm_var (avar_f x)) /\
                       ty_trm G (trm_var (avar_f x)) T /\
-                      exp G T Ds /\
+                      exp ip G T Ds /\
                       decs_has Ds l D' /\
                       open_dec x D' = D).
 Proof.
@@ -1694,9 +1694,9 @@ Proof.
 Qed.
 
 Lemma invert_var_has_fld: forall G x l T,
-  has G (trm_var (avar_f x)) l (dec_fld T) ->
+  has ip G (trm_var (avar_f x)) l (dec_fld T) ->
   exists X Ds T', ty_trm G (trm_var (avar_f x)) X /\
-                  exp G X Ds /\
+                  exp ip G X Ds /\
                   decs_has Ds l (dec_fld T') /\
                   open_typ x T' = T.
 Proof.
@@ -1709,9 +1709,9 @@ Proof.
 Qed.
 
 Lemma invert_var_has_mtd: forall G x l S U,
-  has G (trm_var (avar_f x)) l (dec_mtd S U) ->
+  has ip G (trm_var (avar_f x)) l (dec_mtd S U) ->
   exists X Ds S' U', ty_trm G (trm_var (avar_f x)) X /\
-                     exp G X Ds /\
+                     exp ip G X Ds /\
                      decs_has Ds l (dec_mtd S' U') /\
                      open_typ x S' = S /\
                      open_typ x U' = U.
@@ -1724,16 +1724,16 @@ Proof.
   exists X Ds S' U'. auto.
 Qed.
 
-Lemma subtyp_refl_all: forall G T, subtyp G T T.
+Lemma subtyp_refl_all: forall m2 G T, subtyp ip m2 G T T.
 Admitted.
 
 Lemma invert_ty_var: forall G x T,
   ty_trm G (trm_var (avar_f x)) T ->
-  exists T', subtyp G T' T /\ binds x T' G.
+  exists T', subtyp ip oktrans G T' T /\ binds x T' G.
 Proof.
   introv Ty. gen_eq t: (trm_var (avar_f x)). gen x.
   induction Ty; intros x' Eq; try (solve [ discriminate ]).
-  + inversions Eq. exists T. apply (conj (subtyp_refl_all _ _)). auto.
+  + inversions Eq. exists T. apply (conj (subtyp_refl_all _ _ _)). auto.
   + subst. specialize (IHTy _ eq_refl). destruct IHTy as [T' [St Bi]].
     exists T'. split.
     - apply subtyp_trans with T; assumption.
@@ -1742,7 +1742,7 @@ Qed.
 
 Lemma invert_ty_sel_var: forall G x l T,
   ty_trm G (trm_sel (trm_var (avar_f x)) l) T ->
-  has G (trm_var (avar_f x)) (label_fld l) (dec_fld T).
+  has ip G (trm_var (avar_f x)) (label_fld l) (dec_fld T).
 Proof.
   introv Ty. gen_eq t0: (trm_sel (trm_var (avar_f x)) l). gen x l.
   induction Ty; try (solve [ intros; discriminate ]).
@@ -1761,13 +1761,14 @@ Proof.
 Abort.
 
 Lemma exp_to_subtyp: forall G T Ds,
-  exp G T Ds ->
-  subtyp G T (typ_bind Ds).
+  exp ip G T Ds ->
+  subtyp ip oktrans G T (typ_bind Ds).
 Admitted.
 
+(*
 Lemma invert_ty_sel: forall G t l T,
   ty_trm G (trm_sel t l) T ->
-  has G t (label_fld l) (dec_fld T).
+  has ip G t (label_fld l) (dec_fld T).
 Proof.
   introv Ty. gen_eq t0: (trm_sel t l). gen t l.
   induction Ty; intros t' l' Eq; try (solve [ discriminate ]).
@@ -1798,14 +1799,15 @@ Proof.
     (* case has_var *)
     - admit. (* probably similar *)
 Qed.
+*)
 
-Lemma invert_ty_sel_old: forall G t l T,
+Lemma invert_ty_sel: forall G t l T,
   ty_trm G (trm_sel t l) T ->
-  exists T', subtyp G T' T /\ has G t (label_fld l) (dec_fld T').
+  exists T', subtyp ip oktrans G T' T /\ has ip G t (label_fld l) (dec_fld T').
 Proof.
   introv Ty. gen_eq t0: (trm_sel t l). gen t l.
   induction Ty; intros t' l' Eq; try (solve [ discriminate ]).
-  + inversions Eq. exists T. apply (conj (subtyp_refl_all _ _)). auto.
+  + inversions Eq. exists T. apply (conj (subtyp_refl_all _ _ _)). auto.
   + subst. rename t' into t, l' into l. specialize (IHTy _ _ eq_refl).
     destruct IHTy as [T' [St Has]]. exists T'. split.
     - apply subtyp_trans with T; assumption.
@@ -1814,7 +1816,7 @@ Qed.
 
 Lemma invert_ty_call: forall G t m V u,
   ty_trm G (trm_call t m u) V ->
-  exists U, has G t (label_mtd m) (dec_mtd U V) /\ ty_trm G u U.
+  exists U, has ip G t (label_mtd m) (dec_mtd U V) /\ ty_trm G u U.
 Proof.
   introv Ty. gen_eq e: (trm_call t m u). gen t m u.
   induction Ty; intros t0 m0 u0 Eq; try solve [ discriminate ]; symmetry in Eq.
@@ -1829,7 +1831,7 @@ Abort.
 
 Lemma invert_ty_call: forall G t m V u,
   ty_trm G (trm_call t m u) V ->
-  exists U, has G t (label_mtd m) (dec_mtd U V) /\ ty_trm G u U.
+  exists U, has ip G t (label_mtd m) (dec_mtd U V) /\ ty_trm G u U.
 Proof.
   intros. inversions H.
   + eauto.
@@ -1839,17 +1841,17 @@ Qed. (* TODO we don't want to depend on this! *)
 
 Lemma invert_ty_new: forall G ds Ds T2,
   ty_trm G (trm_new Ds ds) T2 ->
-  subtyp G (typ_bind Ds) T2 /\
+  subtyp ip oktrans G (typ_bind Ds) T2 /\
   exists L, (forall x, x \notin L ->
                ty_defs (G & x ~ typ_bind Ds) (open_defs x ds) (open_decs x Ds)) /\
             (forall x, x \notin L ->
                forall M S U, decs_has (open_decs x Ds) M (dec_typ S U) ->
-                             subtyp (G & x ~ typ_bind Ds) S U).
+                             subtyp ip oktrans (G & x ~ typ_bind Ds) S U).
 Proof.
   introv Ty. gen_eq t0: (trm_new Ds ds). gen Ds ds.
   induction Ty; intros Ds' ds' Eq; try (solve [ discriminate ]); symmetry in Eq.
   + (* case ty_new *)
-    inversions Eq. apply (conj (subtyp_refl_all _ _)).
+    inversions Eq. apply (conj (subtyp_refl_all _ _ _)).
     exists L. auto.
   + (* case ty_sbsm *)
     subst. rename Ds' into Ds, ds' into ds. specialize (IHTy _ _ eq_refl).
@@ -1859,7 +1861,7 @@ Qed.
 
 (* We cannot prove this one because of transitivity! *)
 Lemma invert_subtyp_bind: forall G Ds1 Ds2,
-  subtyp G (typ_bind Ds1) (typ_bind Ds2) ->
+  subtyp ip oktrans G (typ_bind Ds1) (typ_bind Ds2) ->
   exists L, forall z : var, z \notin L ->
     subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
 Proof.
@@ -1872,7 +1874,7 @@ Lemma invert_wf_sto_with_weakening: forall s G,
     binds x T G 
     -> T = (typ_bind Ds) 
     /\ ty_defs G (open_defs x ds) (open_decs x Ds)
-    /\ (forall L S U, decs_has (open_decs x Ds) L (dec_typ S U) -> subtyp G S U).
+    /\ (forall L S U, decs_has (open_decs x Ds) L (dec_typ S U) -> subtyp ip oktrans G S U).
 Proof.
   introv Wf Bs BG.
   lets P: (invert_wf_sto Wf).
@@ -1890,9 +1892,9 @@ Lemma invert_wf_sto_with_sbsm: forall s G,
   forall x ds Ds T, 
     binds x (object Ds ds) s ->
     ty_trm G (trm_var (avar_f x)) T (* <- instead of binds *)
-    -> subtyp G (typ_bind Ds) T
+    -> subtyp ip oktrans G (typ_bind Ds) T
     /\ ty_defs G (open_defs x ds) (open_decs x Ds)
-    /\ (forall L S U, decs_has (open_decs x Ds) L (dec_typ S U) -> subtyp G S U).
+    /\ (forall L S U, decs_has (open_decs x Ds) L (dec_typ S U) -> subtyp ip oktrans G S U).
 Proof.
   introv Wf Bis Tyx.
   apply invert_ty_var in Tyx. destruct Tyx as [T'' [St BiG]].
@@ -2065,7 +2067,7 @@ Qed.
 Lemma has_sound: forall s G x Ds1 ds l D2,
   wf_sto s G ->
   binds x (object Ds1 ds) s ->
-  has G (trm_var (avar_f x)) l D2 ->
+  has ip G (trm_var (avar_f x)) l D2 ->
   exists Ds1 D1,
     ty_defs G (open_defs x ds) (open_decs x Ds1) /\
     decs_has (open_decs x Ds1) l D1 /\
@@ -2107,8 +2109,8 @@ Proof.
                          (exists e' s', red e s e' s') \/
                          (exists x o, e = (trm_var (avar_f x)) /\ binds x o s)).
   apply (ty_has_mutind
-    (fun G e l d (Hhas: has G e l d)  => forall s, wf_sto s G -> progress_for s e)
-    (fun G e T   (Hty:  ty_trm G e T) => forall s, wf_sto s G -> progress_for s e));
+    (fun m G e l d Has => forall s, wf_sto s G -> m = ip -> progress_for s e)
+    (fun G e T Ty      => forall s, wf_sto s G ->           progress_for s e));
     unfold progress_for; clear progress_for.
   (* case has_trm *)
   + intros. auto.
@@ -2117,13 +2119,15 @@ Proof.
     right. apply invert_ty_var in Ty. destruct Ty as [T' [St BiG]].
     destruct (ctx_binds_to_sto_binds Wf BiG) as [o Bis].
     exists v o. auto.
+  (* case has_pr *)
+  + intros. discriminate.
   (* case ty_var *)
   + intros G x T BiG s Wf.
     right. destruct (ctx_binds_to_sto_binds Wf BiG) as [o Bis].
     exists x o. auto.
   (* case ty_sel *)
   + intros G t l T Has IH s Wf.
-    left. specialize (IH s Wf). destruct IH as [IH | IH].
+    left. specialize (IH s Wf eq_refl). destruct IH as [IH | IH].
     (* receiver is an expression *)
     - destruct IH as [s' [e' IH]]. do 2 eexists. apply (red_sel1 l IH).
     (* receiver is a var *)
@@ -2136,7 +2140,7 @@ Proof.
       apply (red_sel Bis dsHas).
   (* case ty_call *)
   + intros G t m U V u Has IHrec Tyu IHarg s Wf. left.
-    specialize (IHrec s Wf). destruct IHrec as [IHrec | IHrec].
+    specialize (IHrec s Wf eq_refl). destruct IHrec as [IHrec | IHrec].
     - (* case receiver is an expression *)
       destruct IHrec as [s' [e' IHrec]]. do 2 eexists. apply (red_call1 m _ IHrec).
     - (* case receiver is  a var *)
