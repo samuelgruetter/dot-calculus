@@ -2115,7 +2115,76 @@ Proof.
     admit.
   + (* case has_var *)
     admit.
-  + (* case has_pr *)
+  + (* case subtyp_refl *)
+    admit.
+  + (* case subtyp_top *)
+    admit.
+  + (* case subtyp_bot *)
+    admit.
+  + (* case subtyp_bind *)
+    admit.
+  + (* case subtyp_sel_l *)
+    admit.
+  + (* case subtyp_sel_r *)
+    admit.
+  + (* case subtyp_tmode *)
+    admit.
+  + (* case subtyp_trans *)
+    admit.
+  + (* case ty_var *)
+    admit.
+  + (* case ty_sbsm *)
+    admit.
+Abort.
+
+Lemma many_ihs_we_need:
+   (forall m G T Ds2, exp m G T Ds2 -> forall s Ds1,
+      wf_sto s G ->
+      m = ip ->
+      (*T = (typ_sel (pth_var (avar_f v)) L) -> 
+               bad idea, but removes exp_top/exp_bind cases *)
+      exp pr G T Ds1 ->
+      exists L, forall z, z \notin L ->
+                subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2))
+/\ (forall m G t L D2, has m G t L D2 -> forall s v D1,
+      wf_sto s G ->
+      m = ip ->
+      t = (trm_var (avar_f v)) ->
+      has pr G (trm_var (avar_f v)) L D1 ->
+      subdec G D1 D2)
+/\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 -> forall s Ds1 Ds2,
+      wf_sto s G ->
+      m1 = ip ->
+      exp pr G T1 Ds1 ->
+      exp pr G T2 Ds2 ->
+      exists L, forall z, z \notin L -> 
+                subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2))
+/\ (forall G t T2, ty_trm G t T2 -> forall s v T1 Ds1 Ds2,
+      wf_sto s G ->
+      t = (trm_var (avar_f v)) ->
+      binds v T1 G ->
+      exp pr G T1 Ds1 ->
+      exp pr G T2 Ds2 ->
+      exists L, forall z, z \notin L -> 
+                subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2)).
+Proof.
+  apply has_mutind; try (intros; discriminate).
+  + (* case exp_top *)
+    intros. exists vars_empty.
+    intros z zL. unfold open_decs, open_rec_decs. apply subdecs_empty.
+  + (* case exp_bind *)
+    intros m G Ds2 s Ds1 Wf Eq Exp. inversions Exp.
+    exists vars_empty.
+    intros. apply subdecs_refl.
+  + (* case exp_sel *)
+    intros m G v L Lo2 Hi2 Ds2 Has2 IHHas Exp2 IHExp s Ds1 Wf Eqm Exp1. subst.
+    assert (Lo1: typ) by admit. assert (Hi1: typ) by admit.
+    specialize (IHHas _ _ (dec_typ Lo1 Hi1) Wf eq_refl eq_refl). (*can't get precise has*)
+    apply (IHExp s Ds1 Wf eq_refl). (* Hi2 doesn't expand to Ds1! *)
+    admit. (* ??? *)
+  + (* case has_trm *)
+    admit.
+  + (* case has_var *)
     admit.
   + (* case subtyp_refl *)
     admit.
