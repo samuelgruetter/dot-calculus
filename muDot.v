@@ -531,7 +531,7 @@ Definition vars_empty: vars := \{}. (* because tactic [exists] cannot infer type
     substitution. That's why we don't need a judgment asserting that a term
     is locally closed. *)
 
-Fixpoint subst_avar (z: var) (u: var) (a: avar) { struct a } : avar :=
+Definition subst_avar (z: var) (u: var) (a: avar) : avar :=
   match a with
   | avar_b i => avar_b i
   | avar_f x => If x = z then (avar_f u) else (avar_f x)
@@ -733,6 +733,56 @@ Proof.
   introv Fr. unfold open_trm. rewrite* subst_open_commute_decs.
   destruct (@subst_fresh_typ_dec_decs x u) as [_ [_ Q]]. rewrite* (Q Ds).
   unfold subst_fvar. case_var*.
+Qed.
+
+Lemma subst_undo_avar: forall x y,
+  (forall a, y \notin fv_avar a -> (subst_avar y x (subst_avar x y a)) = a).
+Proof.
+  intros. unfold subst_avar, subst_fvar, open_avar, open_rec_avar; destruct a.
+  + reflexivity.
+  + unfold fv_avar in H. assert (y <> v) by auto. repeat case_if; reflexivity.
+Qed.
+
+Lemma subst_undo_pth: forall x y,
+  (forall p, y \notin fv_pth p -> (subst_pth y x (subst_pth x y p)) = p).
+Proof.
+  intros. destruct p. unfold subst_pth. f_equal.
+  unfold fv_pth in H.
+  apply* subst_undo_avar.
+Qed.
+
+Lemma subst_undo_typ_dec_decs: forall x y,
+   (forall T , y \notin fv_typ  T  -> (subst_typ  y x (subst_typ  x y T )) = T )
+/\ (forall D , y \notin fv_dec  D  -> (subst_dec  y x (subst_dec  x y D )) = D )
+/\ (forall Ds, y \notin fv_decs Ds -> (subst_decs y x (subst_decs x y Ds)) = Ds).
+Proof.
+  intros.
+  apply typ_mutind; intros; simpl; unfold fv_typ, fv_dec, fv_decs in *; f_equal*.
+  apply* subst_undo_pth.
+Qed.
+
+Lemma subst_undo_trm_def_defs: forall x y,
+   (forall t , y \notin fv_trm  t  -> (subst_trm  y x (subst_trm  x y t )) = t )
+/\ (forall d , y \notin fv_def  d  -> (subst_def  y x (subst_def  x y d )) = d )
+/\ (forall ds, y \notin fv_defs ds -> (subst_defs y x (subst_defs x y ds)) = ds).
+Proof.
+  intros.
+  apply trm_mutind; intros; simpl; unfold fv_trm, fv_def, fv_defs in *; f_equal*.
+  + apply* subst_undo_avar.
+  + apply* subst_undo_typ_dec_decs.
+  + apply* subst_undo_avar.
+Qed.
+
+Lemma subst_typ_undo: forall x y T,
+  y \notin fv_typ T -> (subst_typ y x (subst_typ x y T)) = T.
+Proof.
+  apply* subst_undo_typ_dec_decs.
+Qed.
+
+Lemma subst_trm_undo: forall x y t,
+  y \notin fv_trm t -> (subst_trm y x (subst_trm x y t)) = t.
+Proof.
+  apply* subst_undo_trm_def_defs.
 Qed.
 
 
@@ -1618,12 +1668,6 @@ Qed.
 (* ###################################################################### *)
 (** ** Narrowing *)
 
-Lemma subst_trm_undo: forall x y t, (subst_trm y x (subst_trm x y t)) = t.
-Admitted.
-
-Lemma subst_typ_undo: forall x y T, (subst_typ y x (subst_typ x y T)) = T.
-Admitted.
-
 Lemma narrow_ty_trm: forall G y T1 T2 u U,
   ok (G & y ~ T2) ->
   subtyp ip oktrans G T1 T2 ->
@@ -1646,8 +1690,7 @@ Proof.
   assert (Okyz: ok (G & y ~ T1 & z ~ T2)) by auto.
   apply (weaken_ty_trm_middle Okyz) in Tyu'.
   lets Tyu'': (trm_subst_principle Okyz Tyu' Tyy).
-  rewrite subst_trm_undo, subst_typ_undo in Tyu''.
-  exact Tyu''.
+  rewrite subst_trm_undo, subst_typ_undo in Tyu''; auto.
 Qed.
 
 
