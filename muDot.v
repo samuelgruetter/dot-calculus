@@ -4,6 +4,10 @@ In trm_new and in object, we only allow Ds, not any type, because that's the
 simplest thing which has a stable expansion under narrowing.
 Thus, expansion is only needed as a "helper" for has.
 We allow subsumption in all judgments, including expansion and has.
+The mode "tmode" (notrans or oktrans) controls if transitivity at the top level
+is accepted, and the mode "pmode" (precise or imprecise) controls if the "has"
+judgments inside the subtyping judgments (deeply) must be precise (i.e. without
+subsumption.
 *)
 
 Set Implicit Arguments.
@@ -2397,12 +2401,12 @@ Proof.
   rewrite <- (@subst_intro_decs z x Ds1 zDs1) in Sds'.
   rewrite <- (@subst_intro_decs z x Ds2 zDs2) in Sds'.
   apply (decs_has_open x) in Ds2Has.
-  apply (subdecs_to_subdecs_alt Wf) in Sds'.
   destruct (decs_has_preserves_sub Ds2Has Sds') as [D1 [Ds1Has Sd]].
   exists Ds1 D1.
   apply (conj Tyds (conj Ds1Has Sd)).
 Qed.
 
+Print Assumptions has_sound.
 
 (* ###################################################################### *)
 (** ** Progress *)
@@ -2514,9 +2518,8 @@ Proof.
     destruct TyCall as [T2 [Has Tyy]].
     lets P: (has_sound Wf Bis Has).
     destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
-    subdec_sync_for Sd; try discriminate. symmetry in Eq2. inversions Eq2.
-    lets StT: (subtyp_inv_mtd_arg Sd).
-    lets StU: (subtyp_inv_mtd_ret Sd).
+    apply invert_subdec_mtd_sync_left in Sd.
+    destruct Sd as [T1 [U1 [Eq [StT StU]]]]. subst D1.
     destruct (invert_ty_mtd_inside_ty_defs Tyds dsHas Ds1Has) as [L0 Tybody].
     apply invert_ty_var in Tyy.
     destruct Tyy as [T3 [StT3 Biy]].
@@ -2536,12 +2539,12 @@ Proof.
   (* red_sel *)
   + intros G T3 Wf TySel. rename H into Bis, H0 into dsHas.
     exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
-    apply invert_ty_sel_old in TySel.
+    apply invert_ty_sel in TySel.
     destruct TySel as [T2 [StT23 Has]].
     lets P: (has_sound Wf Bis Has).
     destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
-    subdec_sync_for Sd; try discriminate. symmetry in Eq2. inversions Eq2.
-    lets StT12: (subtyp_inv_fld Sd).
+    apply invert_subdec_fld_sync_left in Sd.
+    destruct Sd as [T1 [Eq StT12]]. subst D1.
     refine (ty_sbsm _ StT23).
     refine (ty_sbsm _ StT12).
     apply (invert_ty_fld_inside_ty_defs Tyds dsHas Ds1Has).
@@ -2591,7 +2594,7 @@ Proof.
   (* red_sel1 *)
   + intros G T2 Wf TySel.
     apply invert_ty_sel in TySel.
-    rename TySel into Has.
+    destruct TySel as [T1 [St Has]].
     apply invert_has in Has.
     destruct Has as [Has | Has].
     - (* case has_trm *)
@@ -2599,7 +2602,8 @@ Proof.
       specialize (IHRed G To Wf Tyo). destruct IHRed as [H [Wf' Tyo']].
       lets Ok: (wf_sto_to_ok_G Wf').
       exists H. apply (conj Wf').
-      apply (@ty_sel (G & H) o' l T2).
+      apply (weaken_subtyp_end Ok) in St.
+      refine (ty_sbsm _ St). apply (@ty_sel (G & H) o' l T1).
       refine (has_trm Tyo' _ DsHas Clo).
       apply (weaken_exp_end Ok Exp).
     - (* case has_var *)
@@ -2615,4 +2619,3 @@ Proof.
 Qed.
 
 Print Assumptions preservation_result.
-
