@@ -1957,10 +1957,86 @@ Proof.
     - fold get_dec in Has. apply* IHDs2.
 Qed.
 
+(* proving it for notrans only doesn't work, because the IH needs to accept oktrans,
+   because that's what comes out of subtyp_sel_l/r *)
+
+Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
+  ok G ->
+  subtyp pr m2 G T1 T2 ->
+  exp pr G T1 Ds1 ->
+  exp pr G T2 Ds2 ->
+  exists L, forall z, z \notin L -> 
+            subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
+Proof.
+  (* We don't use the [induction] tactic because we want to intro everything ourselves: *)
+  intros m2 G T1 T2 Ds1 Ds2 Ok St.
+  gen_eq m1: pr. gen m1 m2 G T1 T2 St Ds1 Ds2 Ok.
+  apply (subtyp_ind (fun m1 m2 G T1 T2 => forall Ds1 Ds2,
+    ok G ->
+    m1 = pr ->
+    exp m1 G T1 Ds1 ->
+    exp m1 G T2 Ds2 ->
+    exists L, forall z : var, z \notin L ->
+              subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2))).
+  + (* case subtyp_refl *)
+    intros m G x L Lo Hi Has Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
+    assert (Eq: Ds1 = Ds2) by admit. (* precise is unique *)
+    exists vars_empty. intros z zL. subst. apply subdecs_refl.
+  + (* case subtyp_top *)
+    intros m G T Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
+    inversions Exp2.
+    exists vars_empty. intros z zL. unfold open_decs, open_rec_decs. apply subdecs_empty.
+  + (* case subtyp_bot *)
+    intros m G T Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
+    inversions Exp1.
+  + (* case subtyp_bind *)
+    intros L m G Ds1' Ds2' Sds Ds1 Ds2 Ok Eq Exp1 Exp2.
+    inversions Exp1. inversions Exp2.
+    exists L. intros z zL. apply (Sds z zL).
+  + (* case subtyp_sel_l *)
+    intros m G x L Lo2 Hi2 T Has2 St IHSt Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
+    apply invert_exp_sel in Exp1. destruct Exp1 as [Lo1 [Hi1 [Has1 Exp1]]].
+    assert (Eq: (dec_typ Lo2 Hi2) = (dec_typ Lo1 Hi1)) by admit. (* uniqueness of pr has *)
+    inversions Eq.
+    apply* IHSt.
+  + (* case subtyp_sel_r *)
+    intros m G x L Lo Hi T Has St1 IHSt1 St2 IHSt2 Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
+    apply invert_exp_sel in Exp2. destruct Exp2 as [Lo' [Hi' [Has' Exp2]]].
+    assert (Eq: (dec_typ Lo' Hi') = (dec_typ Lo Hi)) by admit. (* uniqueness of pr has *)
+    inversions Eq.
+    assert (ExpLo: exists DsLo, exp pr G Lo DsLo) by admit. (* <----- *)
+    destruct ExpLo as [DsLo ExpLo].
+    specialize (IHSt1 DsLo Ds2 Ok eq_refl ExpLo Exp2). destruct IHSt1 as [L1 IHSt1].
+    specialize (IHSt2 Ds1 DsLo Ok eq_refl Exp1 ExpLo). destruct IHSt2 as [L2 IHSt2].
+    exists (L1 \u L2 \u dom G). intros z zL1L2.
+    auto_specialize.
+    assert (Ok': ok (G & z ~ typ_bind DsLo)) by auto.
+    admit. (* subdecs_transitivity *) (*
+    lets IHSt1': (subdecs_narrow_last Ok' IHSt1 IHSt2).
+    apply (subdecs_trans_oktrans IHSt2 IHSt1').
+    *)
+  + (* case subtyp_mode *)
+    intros. apply* H0.
+  + (* case subtyp_trans *)
+    intros m G T1 T2 T3 St12 IH12 St23 IH23 Ds1 Ds3 Ok Eq Exp1 Exp3. subst.
+    assert (Exp2: exists Ds2, exp pr G T2 Ds2) by admit. (* <----- *)
+    destruct Exp2 as [Ds2 Exp2].
+    specialize (IH12 _ _ Ok eq_refl Exp1 Exp2). destruct IH12 as [L1 IH12].
+    specialize (IH23 _ _ Ok eq_refl Exp2 Exp3). destruct IH23 as [L2 IHS23].
+    exists (L1 \u L2 \u dom G). intros z zL1L2.
+    auto_specialize.
+    assert (Ok': ok (G & z ~ typ_bind Ds2)) by auto.
+    admit. (* subdecs transitivity *) (*
+    lets IH2': (subdecs_narrow_last Ok' IHSt2 IHSt1).
+    apply (subdecs_trans_oktrans IHSt1 IHSt2').
+    *)
+Qed.
+
+
 (* note: if second Exp is ip, the subtyp_refl case is as hard as the whole lemma,
    but we don't have any IH *)
 
-Lemma exp_preserves_sub: forall m G T1 T2 Ds1 Ds2,
+Lemma exp_preserves_sub_ip: forall m G T1 T2 Ds1 Ds2,
   ok G ->
   subtyp ip m G T1 T2 ->
   exp pr G T1 Ds1 ->
