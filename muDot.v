@@ -855,38 +855,6 @@ Qed.
 (* ###################################################################### *)
 (** ** Trivial inversion lemmas *)
 
-(*
-Lemma decs_has_preserves_sub_0: forall G Ds1 Ds2 l D1 D2,
-  subdecs G Ds1 Ds2 ->
-  decs_has Ds1 l D1 ->
-  decs_has Ds2 l D2 ->
-  subdec G D1 D2.
-Proof.
-  introv Sds. gen l D1 D2. induction Sds; introv Has1 Has2.
-  + inversion Has2.
-  + unfold decs_has, get_dec in Has2. fold get_dec in Has2. case_if.
-    - inversions Has2. unfold decs_has in H, Has1.
-      rewrite Has1 in H. inversions H. assumption.
-    - apply* IHSds.
-  + destruct l.
-    - destruct (decs_has_typ_sync Has1) as [Lo1 [Hi1 Eq]]. subst.
-      destruct (decs_has_typ_sync Has2) as [Lo2 [Hi2 Eq]]. subst.
-      lets Sds: (subdecs_inv H H0).
-      apply (subdec_inv Sds Has1 Has2).
-    - destruct (decs_has_fld_sync Has1) as [T1 Eq]. subst.
-      destruct (decs_has_fld_sync Has2) as [T2 Eq]. subst.
-      lets Sds: (subdecs_inv H H0).
-      apply (subdec_inv Sds Has1 Has2).
-    - destruct (decs_has_mtd_sync Has1) as [T1 [U1 Eq]]. subst.
-      destruct (decs_has_mtd_sync Has2) as [T2 [U2 Eq]]. subst.
-      lets Sds: (subdecs_inv H H0).
-      apply (subdec_inv Sds Has1 Has2).
-Qed.
-
-Print Assumptions decs_has_preserves_sub_0.
-
-*)
-
 Lemma invert_subdec_typ_sync_left: forall G D Lo2 Hi2,
    subdec G D (dec_typ Lo2 Hi2) ->
    exists Lo1 Hi1, D = (dec_typ Lo1 Hi1) /\
@@ -1978,7 +1946,7 @@ Qed.
 
 
 (* ###################################################################### *)
-(** Making [has] precise *)
+(** Soundness helper lemmas *)
 
 (* subdecs_refl does not hold, because subdecs requires that for each dec in rhs
    (including hidden ones), there is an unhidden one in lhs *)
@@ -2327,32 +2295,6 @@ Proof.
     admit.
 Qed.
 
-
-(* ###################################################################### *)
-(** Soundness helper lemmas *)
-
-(* Alternative definition of subdecs which can be inverted easily *)
-Definition subdecs_alt(G: ctx)(Ds1 Ds2: decs): Prop :=
-  forall l D2, decs_has Ds2 l D2 -> 
-               (exists D1, decs_has Ds1 l D1 /\ subdec G D1 D2).
-
-Lemma decs_has_preserves_sub: forall G Ds1 Ds2 l D2,
-  decs_has Ds2 l D2 ->
-  subdecs_alt G Ds1 Ds2 ->
-  exists D1, decs_has Ds1 l D1 /\ subdec G D1 D2.
-Proof.
-  introv Has Sds. unfold subdecs_alt in Sds. apply (Sds _ _ Has).
-Qed.
-
-(* The key lemma of the whole proof. Note that wf_sto guarantees that we're in a
-   realizable environment. *)
-Lemma subdecs_to_subdecs_alt: forall s G Ds1 Ds2,
-  wf_sto s G ->
-  subdecs G Ds1 Ds2 ->
-  subdecs_alt G Ds1 Ds2.
-Admitted.
-
-(*
 Lemma ty_def_sbsm: forall G d D1 D2,
   ok G ->
   ty_def G d D1 ->
@@ -2371,6 +2313,7 @@ Proof.
     auto.
 Qed.
 
+(*
 Lemma ty_defs_sbsm: forall L G ds Ds1 Ds2,
   ok G ->
   ty_defs G ds Ds1 ->
@@ -2381,19 +2324,6 @@ Admitted.
 *)
 
 (*
-Lemma subtyp_has_same: forall
-  typ_trm G t T1 ->
-  typ_trm G t T2 ->
-  subtyp G T1 T2 ->
-  has G t l D ->
-  has G t l 
-  
-
-  exp G T2 Ds ->
-  subtyp G T1 T2 ->
-  exp G T1 Ds.
-
-
 Lemma subtyp_expands_same: forall G T1 T2 Ds,
   exp G T2 Ds ->
   subtyp G T1 T2 ->
@@ -2408,39 +2338,8 @@ Proof.
     -z inversions St.
 
 Qed.
-
-Lemma exp_preserves_sub: forall G T1 T2 s Ds1 Ds2,
-  subtyp G T1 T2 ->
-  wf_sto s G ->
-  exp G T1 Ds1 ->
-  exp G T2 Ds2 ->
-  exists L, forall z : var, z \notin L ->
-    subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
-Proof.
-Abort. (* does not hold with imprecise expansion *)
-
-Lemma exp_preserves_sub: forall G Ds1 T2 s Ds2,
-  subtyp G (typ_bind Ds1) T2 ->
-  wf_sto s G ->
-  exp G T2 Ds2 ->
-  exists L, forall z : var, z \notin L ->
-    subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
-Proof.
-  introv St. gen_eq T1: (typ_bind Ds1). gen s Ds1 Ds2.
-  induction St; introv Eq Wf Exp2; try discriminate; lets Ok: (wf_sto_to_ok_G Wf).
-  + (* case subtyp_top *)
-    subst. inversions Exp2. exists vars_empty. intros.
-    unfold open_decs, open_rec_decs. apply subdecs_empty.
-  + (* case subtyp_bind *)
-    inversions Eq. inversions Exp2. exists L. exact H.
-  + (* case subtyp_sel_r *)
-    subst.
-    lets St1: (subtyp_sel_r H).
-    admit. (*???*)
-  + (* case subtyp_trans *)
-    rename Ds2 into Ds3. rename Exp2 into Exp3.
-Abort.
 *)
+
 (*
 Lemma precise_decs_subdecs_of_imprecise_decs: forall s G x ds X2 Ds1 Ds2, 
   wf_sto s G ->
@@ -2469,7 +2368,6 @@ Proof.
   exact P.
 Qed.
 *)
-
 
 Lemma has_sound: forall s G x Ds1 ds l D2,
   wf_sto s G ->
