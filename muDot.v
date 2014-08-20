@@ -1803,10 +1803,19 @@ Proof.
     *)
 Abort.
 
+(* TODO does not hold currently! *)
+Axiom top_subtyp_of_empty_bind: forall m1 m2 G, 
+  subtyp m1 m2 G typ_top (typ_bind decs_nil).
+
 Lemma exp_to_subtyp: forall G T Ds,
   exp ip G T Ds ->
   subtyp ip oktrans G T (typ_bind Ds).
-Admitted.
+Proof.
+  introv Exp. gen_eq m: ip. induction Exp; intro Eq; subst.
+  + apply top_subtyp_of_empty_bind.
+  + apply subtyp_refl_all.
+  + specialize (IHExp eq_refl). apply subtyp_tmode. apply (subtyp_sel_l H IHExp).
+Qed.
 
 (*
 Lemma invert_ty_sel: forall G t l T,
@@ -1857,6 +1866,7 @@ Proof.
     - exact Has.
 Qed.
 
+(*
 Lemma invert_ty_call: forall G t m V u,
   ty_trm G (trm_call t m u) V ->
   exists U, has ip G t (label_mtd m) (dec_mtd U V) /\ ty_trm G u U.
@@ -1866,11 +1876,17 @@ Proof.
   + (* case ty_call *)
     inversions Eq. exists U. auto.
   + (* case ty_sbsm *)
-    subst t. specialize (IHTy _ _ _ eq_refl).
+    subst t. specialize (IHTy _ _ _ eq_refl). rename t0 into t, m0 into m, u0 into u.
+    destruct IHTy as [V [Has Tyu]].
+    exists V. refine (conj _ Tyu).
+    apply invert_has in Has.
+    destruct Has as [IHTy | IHTy].
+
     (* need to turn (dec_mtd U0 T) into (dec_mtd U0 U) using T <: U, but there's
        no subsumption in has, so we would need to do the subsumption when
        typing t0 --> tricky *)
 Abort.
+*)
 
 Lemma invert_ty_call: forall G t m V u,
   ty_trm G (trm_call t m u) V ->
@@ -1879,8 +1895,26 @@ Proof.
   intros. inversions H.
   + eauto.
   + admit. (* subsumption case *)
-Qed. (* TODO we don't want to depend on this! *)
+Abort.
 
+Lemma invert_ty_call: forall G t m V2 u,
+  ty_trm G (trm_call t m u) V2 ->
+  exists U V1, has ip G t (label_mtd m) (dec_mtd U V1)
+               /\ subtyp ip oktrans G V1 V2
+               /\ ty_trm G u U.
+Proof.
+  introv Ty. gen_eq e: (trm_call t m u). gen t m u.
+  induction Ty; intros t0 m0 u0 Eq; try solve [ discriminate ]; symmetry in Eq.
+  + (* case ty_call *)
+    inversions Eq. exists U V. lets StV: (subtyp_refl_all oktrans G V). auto.
+  + (* case ty_sbsm *)
+    subst t. specialize (IHTy _ _ _ eq_refl).
+    rename t0 into t, m0 into m, u0 into u, U into V3, T into V2.
+    destruct IHTy as [U [V1 [Has [St12 Tyu]]]].
+    exists U V1.
+    lets St13: (subtyp_trans St12 H).
+    auto.
+Qed.
 
 Lemma invert_ty_new: forall G ds Ds T2,
   ty_trm G (trm_new Ds ds) T2 ->
@@ -1900,6 +1934,16 @@ Proof.
     subst. rename Ds' into Ds, ds' into ds. specialize (IHTy _ _ eq_refl).
     destruct IHTy as [St IHTy].
     apply (conj (subtyp_trans St H) IHTy).
+Qed.
+
+(* Note: This is only for notrans mode. Proving it for oktrans mode is the main
+   challenge of the whole proof. *)
+Lemma invert_subtyp_bind: forall G Ds1 Ds2,
+  subtyp ip notrans G (typ_bind Ds1) (typ_bind Ds2) ->
+  exists L, forall z, z \notin L ->
+            subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
+Proof.
+  introv St. inversions St. exists L. assumption.
 Qed.
 
 Lemma invert_wf_sto_with_weakening: forall s G,
@@ -1964,13 +2008,11 @@ Proof.
     - fold get_dec in Has. apply* IHDs2.
 Qed.
 
-(* We cannot prove this one because of transitivity! *)
-Lemma invert_subtyp_bind: forall G Ds1 Ds2,
-  subtyp ip oktrans G (typ_bind Ds1) (typ_bind Ds2) ->
-  exists L, forall z : var, z \notin L ->
-    subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
-Proof.
-Admitted. (* <- !!! *)
+(* This is the big fat TODO of the proof ;-) 
+   So far we know how to do it in precise mode, but we don't know how to do it
+   in imprecise mode. *)
+Axiom oktrans_to_notrans: forall G T1 T2,
+  subtyp ip oktrans G T1 T2 -> subtyp ip notrans G T1 T2.
 
 Lemma has_sound: forall s G x Ds1 ds l D2,
   wf_sto s G ->
@@ -1986,7 +2028,7 @@ Proof.
   destruct Has as [X2 [Ds2 [T [Tyx [Exp2 [Ds2Has Eq]]]]]]. subst.
   destruct (invert_wf_sto_with_sbsm Wf Bis Tyx) as [St [Tyds _]].
   lets St': (exp_to_subtyp Exp2).
-  lets Sds: (invert_subtyp_bind (subtyp_trans St St')).
+  lets Sds: (invert_subtyp_bind (oktrans_to_notrans (subtyp_trans St St'))).
   destruct Sds as [L Sds].
   pick_fresh z. assert (zL: z \notin L) by auto. specialize (Sds z zL).
   lets BiG: (sto_binds_to_ctx_binds Wf Bis).
@@ -2111,21 +2153,21 @@ Theorem preservation_proof:
 Proof.
   intros s e s' e' Red. induction Red.
   (* red_call *)
-  + intros G U2 Wf TyCall. rename H into Bis, H0 into dsHas, T into X1.
+  + intros G U3 Wf TyCall. rename H into Bis, H0 into dsHas, T into X1.
     exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
     apply invert_ty_call in TyCall.
-    destruct TyCall as [T2 [Has Tyy]].
+    destruct TyCall as [T2 [U2 [Has [StU23 Tyy]]]].
     lets P: (has_sound Wf Bis Has).
     destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
     apply invert_subdec_mtd_sync_left in Sd.
-    destruct Sd as [T1 [U1 [Eq [StT StU]]]]. subst D1.
+    destruct Sd as [T1 [U1 [Eq [StT StU12]]]]. subst D1.
     destruct (invert_ty_mtd_inside_ty_defs Tyds dsHas Ds1Has) as [L0 Tybody].
     apply invert_ty_var in Tyy.
     destruct Tyy as [T3 [StT3 Biy]].
     pick_fresh y'.
     rewrite* (@subst_intro_trm y' y body).
-    assert (Fry': y' \notin fv_typ U2) by auto.
-    assert (Eqsubst: (subst_typ y' y U2) = U2)
+    assert (Fry': y' \notin fv_typ U3) by auto.
+    assert (Eqsubst: (subst_typ y' y U3) = U3)
       by apply* subst_fresh_typ_dec_decs.
     rewrite <- Eqsubst.
     lets Ok: (wf_sto_to_ok_G Wf).
@@ -2133,7 +2175,7 @@ Proof.
     - auto.
     - assert (y'L0: y' \notin L0) by auto. specialize (Tybody y' y'L0).
       apply (ty_sbsm Tybody).
-      apply weaken_subtyp_end. auto. apply StU.
+      apply weaken_subtyp_end. auto. apply (subtyp_trans StU12 StU23).
     - refine (ty_sbsm _ StT). refine (ty_sbsm _ StT3). apply (ty_var Biy).
   (* red_sel *)
   + intros G T3 Wf TySel. rename H into Bis, H0 into dsHas.
@@ -2164,16 +2206,19 @@ Proof.
       apply (weaken_subtyp_end Okx) in StT12.
       refine (ty_sbsm _ StT12). apply ty_var. apply binds_push_eq.
   (* red_call1 *)
-  + intros G Tr Wf Ty.
-    apply invert_ty_call in Ty.
-    destruct Ty as [Ta [Has Tya]].
+  + intros G Tr2 Wf TyCall.
+    apply invert_ty_call in TyCall.
+    destruct TyCall as [Ta [Tr1 [Has [St Tya]]]].
     apply invert_has in Has.
     destruct Has as [Has | Has].
     - (* case has_trm *)
       destruct Has as [To [Ds [Tyo [Exp [DsHas Clo]]]]].
       specialize (IHRed G To Wf Tyo). destruct IHRed as [H [Wf' Tyo']].
       lets Ok: (wf_sto_to_ok_G Wf').
-      exists H. apply (conj Wf'). apply (@ty_call (G & H) o' m Ta Tr a).
+      exists H. apply (conj Wf').
+      apply (weaken_subtyp_end Ok) in St.
+      refine (ty_sbsm _ St).
+      apply (@ty_call (G & H) o' m Ta Tr1 a).
       * refine (has_trm Tyo' _ DsHas Clo).
         apply (weaken_exp_end Ok Exp).
       * apply (weaken_ty_trm_end Ok Tya).
@@ -2181,14 +2226,17 @@ Proof.
       destruct Has as [x [Tx [Ds [D' [Eqx _]]]]]. subst.
       inversion Red. (* contradiction: vars don't step *)
   (* red_call2 *)
-  + intros G Tr Wf Ty.
-    apply invert_ty_call in Ty.
-    destruct Ty as [Ta [Has Tya]].
+  + intros G Tr2 Wf TyCall.
+    apply invert_ty_call in TyCall.
+    destruct TyCall as [Ta [Tr1 [Has [St Tya]]]].
     specialize (IHRed G Ta Wf Tya).
     destruct IHRed as [H [Wf' Tya']].
-    exists H. apply (conj Wf'). apply (@ty_call (G & H) _ m Ta Tr a').
-    - lets Ok: wf_sto_to_ok_G Wf'.
-      apply (weaken_has_end Ok Has).
+    exists H. apply (conj Wf').
+    lets Ok: wf_sto_to_ok_G Wf'.
+    apply (weaken_subtyp_end Ok) in St.
+    refine (ty_sbsm _ St).
+    apply (@ty_call (G & H) _ m Ta Tr1 a').
+    - apply (weaken_has_end Ok Has).
     - assumption.
   (* red_sel1 *)
   + intros G T2 Wf TySel.
