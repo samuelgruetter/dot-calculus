@@ -1,5 +1,7 @@
 
 (*
+slightly outdated comment:
+
 In trm_new and in object, we only allow Ds, not any type, because that's the
 simplest thing which has a stable expansion under narrowing.
 Thus, expansion is only needed as a "helper" for has.
@@ -367,8 +369,10 @@ with subdec : ctx -> dec -> dec -> Prop :=
       subtyp G S2 S1 ->
       subtyp G T1 T2 ->
       subdec G (dec_mtd S1 T1) (dec_mtd S2 T2)
-  | subdec_inv : forall G Ds1 Ds2 l D1 D2,
-      subdecs G Ds1 Ds2 ->
+  | subdec_inv : forall G T1 T2 Ds1 Ds2 l D1 D2,
+      subtyp G T1 T2 ->
+      exp G T1 Ds1 ->
+      exp G T2 Ds2 ->
       decs_has Ds1 l D1 ->
       decs_has Ds2 l D2 ->
       subdec G D1 D2
@@ -380,10 +384,6 @@ with subdecs : ctx -> decs -> decs -> Prop :=
       subdec  G D1 D2 ->
       subdecs G Ds1 Ds2 ->
       subdecs G Ds1 (decs_cons n D2 Ds2)
-  | subdecs_inv : forall G z Ds1 Ds2,
-      subtyp G (typ_bind Ds1) (typ_bind Ds2) ->
-      ty_trm G (trm_var (avar_f z)) (typ_bind Ds1) ->
-      subdecs G (open_decs z Ds1) (open_decs z Ds2)
 with ty_trm : ctx -> trm -> typ -> Prop :=
   | ty_var : forall G x T,
       binds x T G ->
@@ -1004,6 +1004,7 @@ Proof.
       * destruct (decs_has_mtd_sync Has1) as [T1 [U1 Eq]]. subst.
         right. right. do 4 eexists. eauto.
     - apply* IHSds.
+(*
   + destruct l.
     - destruct (decs_has_typ_sync Has1) as [Lo1 [Hi1 Eq]]. subst.
       destruct (decs_has_typ_sync Has2) as [Lo2 [Hi2 Eq]]. subst.
@@ -1020,6 +1021,7 @@ Proof.
       lets Sds: (subdecs_inv H H0).
       apply (conj (subdec_inv Sds Has1 Has2)).
       right. right. do 4 eexists. eauto.
+*)
 Qed.
 
 Lemma subdec_sync: forall G D1 D2,
@@ -1032,8 +1034,11 @@ Proof.
   + left. do 4 eexists. eauto.
   + right. left. eauto.
   + right. right. do 4 eexists. eauto.
+  + apply (fun G Ds1 Ds2 l D1 D2 Sds H1 H2 => (proj2 (@decs_has_preserves_sub_with_sync
+               G Ds1 Ds2 l D1 D2 Sds H1 H2))) with G Ds1 Ds2 l.
+Admitted. (* not sure...*) (*
   + apply* decs_has_preserves_sub_with_sync.
-Qed.
+Qed.*)
 
 Ltac subdec_sync_for Hyp :=
   let Lo1 := fresh "Lo1" in
@@ -1262,10 +1267,12 @@ Proof.
     apply (subdecs_push n Hb).
     apply (IHsd _ _ _ Hok123 Heq).
     apply (IHsds _ _ _ Hok123 Heq).
+(*
   + (* case subdecs_inv *)
     intros. subst. apply subdecs_inv.
     - apply* H.
     - apply* H0.
+*)
   + (* case ty_var *)
     intros. subst. apply ty_var. apply* binds_weaken.
   + (* case ty_sel *)
@@ -1601,10 +1608,21 @@ Proof.
   + (* case subdec_mtd *)
     intros. apply* subdec_mtd.
   + (* case subdec_inv *)
+    intros G T1 T2 Ds1 Ds2 l D1 D2 St IHSt Exp1 IHExp1 Exp2 IHExp2.
+    intros Ds1Has Ds2Has G1 G2 x Eq Ty Ok. subst.
+    apply subdec_inv with T1 T2 Ds1 Ds2 l.
+    - specialize (IHSt _ _ _ eq_refl). admit.
+    - admit.
+    - admit.
+    - admit.
+    - admit.
+(*
+  + (* case subdec_inv *)
     intros. subst. apply subdec_inv with (subst_decs x y Ds1) (subst_decs x y Ds2) l.
     - specialize (H _ _ _ eq_refl). apply* H.
     - apply* subst_decs_has.
     - apply* subst_decs_has.
+*)
   + (* case subdecs_empty *)
     intros. apply subdecs_empty.
   + (* case subdecs_push *)
@@ -1615,6 +1633,7 @@ Proof.
     rewrite <- (subst_label_for_dec n x y D2) in Has.
     apply subdecs_push with (subst_dec x y D1); 
       fold subst_dec; fold subst_decs; assumption.
+(*
   + (* case subdecs_inv *)
     intros G z Ds1 Ds2 St IHSt Tyz IHTyz G1 G2 x EqG Tyy Ok. subst.
     rewrite (subst_open_commute_decs x y z Ds1).
@@ -1638,6 +1657,7 @@ Proof.
       * apply* IHSt.
       * specialize (IHTyz _ _ _ eq_refl Tyy Ok).
         simpl in IHTyz. case_if. exact IHTyz.
+*)
   + (* case ty_var *)
     intros G z T Biz G1 G2 x EqG Biy Ok.
     subst G. unfold subst_trm, subst_avar. case_var.
@@ -2017,9 +2037,6 @@ Qed.
 (* ###################################################################### *)
 (** Soundness helper lemmas *)
 
-(* Does not hold: If we're in a contradictory environment, and the subdecs
-   judgment was obtained from a subtyp_bind using the inversion rule,
-   there's no way we can "invent" a D1 *)
 Lemma decs_has_preserves_sub: forall G Ds1 Ds2 l D2,
   decs_has Ds2 l D2 ->
   subdecs G Ds1 Ds2 ->
@@ -2030,7 +2047,7 @@ Proof.
   + unfold decs_has, get_dec in Has. inversions Sds. case_if.
     - inversions Has. exists D1. auto.
     - fold get_dec in Has. apply* IHDs2.
-Abort.
+Qed.
 
 (* Alternative definition of subdecs which can be inverted easily *)
 Definition subdecs_alt(G: ctx)(Ds1 Ds2: decs): Prop :=
