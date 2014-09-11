@@ -1987,12 +1987,59 @@ Proof.
     apply (conj (subtyp_trans St H) IHTy).
 Qed.
 
+Lemma subdecs_trans: forall G z Ds1 Ds2 Ds3,
+  subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2) ->
+  subdecs (G & z ~ typ_bind Ds2) (open_decs z Ds2) (open_decs z Ds3) ->
+  subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds3).
+Admitted.
+
 (* Key lemma of the whole proof: How to prove it??? *)
 Lemma invert_subtyp_bind: forall G Ds1 Ds2,
   subtyp G (typ_bind Ds1) (typ_bind Ds2) ->
   exists L, forall z : var, z \notin L ->
     subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
 Proof.
+  introv St. gen_eq T2: (typ_bind Ds2). gen_eq T1: (typ_bind Ds1).
+  gen G T1 T2 St Ds1 Ds2.
+  (* We don't use the [induction] tactic because we want to intro everything ourselves: *)
+  apply (subtyp_ind (fun G T1 T2 => forall Ds1 Ds2,
+    T1 = typ_bind Ds1 ->
+    T2 = typ_bind Ds2 ->
+    exists L, forall z : var, z \notin L ->
+              subdecs (G & z ~ T1) (open_decs z Ds1) (open_decs z Ds2)));
+  try (intros; subst; discriminate).
+  (* case subtyp_bind *)
+  + intros L G Ds1' Ds2' Sds Ds1 Ds2 Eq1 Eq2. inversions Eq1; inversions Eq2.
+    exists L. assumption.
+  (* case subtyp_trans: *)
+  + intros G T1 T2 T3 St12 IH12 St23 IH23 Ds1 Ds3 Eq1 Eq3. subst T1 T3.
+    (* inversion St12; inversion St23; subst; try discriminate. *)
+    destruct T2 as [ | | Ds2 | p M ].
+    - admit. (* St23 is a contradiction *)
+    - admit. (* St12 is a contradiction *)
+    - specialize (IH12 _ _ eq_refl eq_refl). destruct IH12 as [L12 IH12].
+      specialize (IH23 _ _ eq_refl eq_refl). destruct IH23 as [L23 IH23].
+      exists (L12 \u L23).
+      intros z zL123.
+      assert (zL12: z \notin L12) by auto. specialize (IH12 z zL12).
+      assert (zL23: z \notin L23) by auto. specialize (IH23 z zL23).
+      apply (subdecs_trans _ IH12 IH23).
+    - (* The famous case with p.L in the middle !!
+         Need stronger IH, maybe something with expansions instead of typ_bind? *)
+Abort.
+
+Lemma invert_subtyp_bind: forall G Ds1 Ds2,
+  subtyp G (typ_bind Ds1) (typ_bind Ds2) ->
+  exists L, forall z : var, z \notin L ->
+    subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
+Proof.
+  introv St. inversions St.
+  (* case subtyp_bind *)
+  + exists L. assumption.
+  (* case subtyp_trans: ??? *)
+  + admit.
+  (* inversion cases: ??? *)
+  + inversions H. 
 Admitted. (* <- !!! *)
 
 Lemma invert_wf_sto_with_weakening: forall s G,
