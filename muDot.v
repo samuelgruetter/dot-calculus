@@ -2271,6 +2271,13 @@ Print Assumptions preservation_result.
 (* ###################################################################### *)
 (** Exploring helper lemmas for ip->pr and oktrans->notrans *)
 
+
+
+
+
+
+(* ###################################################################### *)
+
 (* proving it for notrans only doesn't work, because the IH needs to accept oktrans,
    because that's what comes out of subtyp_sel_l/r *)
 
@@ -2416,7 +2423,22 @@ with   subtyp_mut4  := Induction for subtyp  Sort Prop
 with   ty_trm_mut4  := Induction for ty_trm  Sort Prop.
 Combined Scheme has_mutind from exp_mut4, has_mut4, subtyp_mut4, ty_trm_mut4.
 
-Lemma make_has_precise:
+(*
+Definition exists_precise_exp G T Ds2 :=
+  exists L Ds1, exp pr G T Ds1 /\
+                forall z, z \notin L ->
+                subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
+
+Definition exists_precise_has G v L D2 :=
+  exists D1, has pr G (trm_var (avar_f v)) L D1 /\ subdec G D1 D2.
+
+Definition exists_notrans_subtyp m1 G T1 T2 :=
+  subtyp m1 notrans G T1 T2.
+
+Definition exists_precise_ty_path := ...
+*)
+
+Lemma ip2pr_and_oktrans2notrans:
    (forall m G T Ds2, exp m G T Ds2 -> forall s,
       m = ip ->
       wf_sto s G ->
@@ -2432,7 +2454,7 @@ Lemma make_has_precise:
 /\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 -> forall s,
       m1 = ip ->
       wf_sto s G ->
-      subtyp pr oktrans G T1 T2)
+      subtyp pr notrans G T1 T2)
 /\ (forall G t T2, ty_trm G t T2 -> forall s v,
       wf_sto s G ->
       t = (trm_var (avar_f v)) ->
@@ -2455,19 +2477,6 @@ Proof.
     specialize (IHExp _ eq_refl Wf). destruct IHExp as [L0 [Ds1 [ExpHi2 Sds12]]].
     apply invert_subdec_typ_sync_left in IHSd.
     destruct IHSd as [Lo1 [Hi1 [Eq [StLo StHi]]]]. subst.
-    (*
-    apply invert_has_pr in IHHas.
-    destruct IHHas as [V [DsV [D [Bi [ExpV [DsVHas Eq]]]]]].
-
-    apply invert_var_has_dec_typ in Has.
-    destruct Has as [V' [DsV' [Lo2' [Hi2' [Tyv [ExpV' [DsVHas' [EqLo EqHi]]]]]]]].
-    subst Lo2 Hi2. rename Lo2' into Lo2, Hi2' into Hi2.
-    apply (decs_has_open v) in DsVHas. rewrite <- Eq in *. clear Eq. clear D.
-    apply invert_ty_var in Tyv. destruct Tyv as [V'' [StV Bi']].
-    lets Eq: (binds_func Bi' Bi). subst V''. clear Bi'.
-    lets SdsV: (exp_preserves_sub StV ExpV ExpV').
-    *)
-
     assert (E: exists Ds0, exp pr G Hi1 Ds0) by admit. (* hopefully by wf_sto... *)
     destruct E as [Ds0 ExpHi1].
     assert (Sds01: forall z : var, z \notin L0 ->
@@ -2478,6 +2487,7 @@ Proof.
       specialize (Sds01 z zL0).
       specialize (Sds12 z zL0).
       apply (subdecs_trans _ Sds01 Sds12).
+
   + (* case has_trm *)
     intros G t V2 Ds22 l D22 Ty IHTy Exp2 IHExp Ds22Has Clo s v _ Wf Eq. subst.
     specialize (IHExp s eq_refl Wf). destruct IHExp as [L [Ds21 [Exp21 Sds]]].
@@ -2501,10 +2511,17 @@ Proof.
       The problem is always the same: We need to "project" a
       (typ_bind Ds1) <: (typ_bind Ds2) into a D1 <: D2,
       without knowing D1, and without using invert_subtyp_bind.
+
+      Want to apply oktrans2notrans IH on St, but St is a conclusion obtained
+      by applying IHTy and thus might be bigger...
+
+      Suppose we have a height measure (ok).
+      And suppose oktrans2notrans preserves height (probably not ok!).
       *)
     admit.
   + (* case has_var *)
     admit.
+
   + (* case subtyp_refl *)
     admit.
   + (* case subtyp_top *)
@@ -2521,11 +2538,12 @@ Proof.
     admit.
   + (* case subtyp_trans *)
     admit.
+
   + (* case ty_var *)
     admit.
   + (* case ty_sbsm *)
     admit.
-Abort.
+Qed.
 
 Lemma many_ihs_we_need:
    (forall m G T Ds2, exp m G T Ds2 -> forall s Ds1,
