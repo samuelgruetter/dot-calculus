@@ -1987,7 +1987,7 @@ Proof.
     apply (conj (subtyp_trans St H) IHTy).
 Qed.
 
-(* We cannot prove this one because of transitivity! *)
+(* Key lemma of the whole proof: How to prove it??? *)
 Lemma invert_subtyp_bind: forall G Ds1 Ds2,
   subtyp G (typ_bind Ds1) (typ_bind Ds2) ->
   exists L, forall z : var, z \notin L ->
@@ -2048,27 +2048,6 @@ Proof.
     - inversions Has. exists D1. auto.
     - fold get_dec in Has. apply* IHDs2.
 Qed.
-
-(* Alternative definition of subdecs which can be inverted easily *)
-Definition subdecs_alt(G: ctx)(Ds1 Ds2: decs): Prop :=
-  forall l D2, decs_has Ds2 l D2 -> 
-               (exists D1, decs_has Ds1 l D1 /\ subdec G D1 D2).
-
-Lemma decs_has_preserves_sub: forall G Ds1 Ds2 l D2,
-  decs_has Ds2 l D2 ->
-  subdecs_alt G Ds1 Ds2 ->
-  exists D1, decs_has Ds1 l D1 /\ subdec G D1 D2.
-Proof.
-  introv Has Sds. unfold subdecs_alt in Sds. apply (Sds _ _ Has).
-Qed.
-
-(* The key lemma of the whole proof. Note that wf_sto guarantees that we're in a
-   realizable environment. *)
-Lemma subdecs_to_subdecs_alt: forall s G Ds1 Ds2,
-  wf_sto s G ->
-  subdecs G Ds1 Ds2 ->
-  subdecs_alt G Ds1 Ds2.
-Admitted.
 
 (*
 Lemma ty_def_sbsm: forall G d D1 D2,
@@ -2217,7 +2196,7 @@ Proof.
   rewrite <- (@subst_intro_decs z x Ds1 zDs1) in Sds'.
   rewrite <- (@subst_intro_decs z x Ds2 zDs2) in Sds'.
   apply (decs_has_open x) in Ds2Has.
-  apply (subdecs_to_subdecs_alt Wf) in Sds'.
+  (* apply (subdecs_to_subdecs_alt Wf) in Sds'. *)
   destruct (decs_has_preserves_sub Ds2Has Sds') as [D1 [Ds1Has Sd]].
   exists Ds1 D1.
   apply (conj Tyds (conj Ds1Has Sd)).
