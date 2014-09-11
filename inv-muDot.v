@@ -2172,7 +2172,7 @@ Lemma has_sound: forall s G x Ds1 ds l D2,
   wf_sto s G ->
   binds x (object Ds1 ds) s ->
   has G (trm_var (avar_f x)) l D2 ->
-  exists Ds1 D1,
+  exists D1,
     ty_defs G (open_defs x ds) (open_decs x Ds1) /\
     decs_has (open_decs x Ds1) l D1 /\
     subdec G D1 D2.
@@ -2198,7 +2198,7 @@ Proof.
   apply (decs_has_open x) in Ds2Has.
   (* apply (subdecs_to_subdecs_alt Wf) in Sds'. *)
   destruct (decs_has_preserves_sub Ds2Has Sds') as [D1 [Ds1Has Sd]].
-  exists Ds1 D1.
+  exists D1.
   apply (conj Tyds (conj Ds1Has Sd)).
 Qed.
 
@@ -2233,9 +2233,9 @@ Proof.
     (* receiver is an expression *)
     - destruct IH as [s' [e' IH]]. do 2 eexists. apply (red_sel1 l IH).
     (* receiver is a var *)
-    - destruct IH as [x [[X1 ds] [Eq Bis]]]. subst.
+    - destruct IH as [x [[Ds1 ds] [Eq Bis]]]. subst.
       lets P: (has_sound Wf Bis Has).
-      destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
+      destruct P as [D1 [Tyds [Ds1Has Sd]]].
       destruct (decs_has_to_defs_has Tyds Ds1Has) as [d dsHas].
       destruct (defs_has_fld_sync dsHas) as [r Eqd]. subst.
       exists (trm_var r) s.
@@ -2246,15 +2246,15 @@ Proof.
     - (* case receiver is an expression *)
       destruct IHrec as [s' [e' IHrec]]. do 2 eexists. apply (red_call1 m _ IHrec).
     - (* case receiver is  a var *)
-      destruct IHrec as [x [[Tds ds] [Eq Bis]]]. subst.
+      destruct IHrec as [x [[Ds ds] [Eq Bis]]]. subst.
       specialize (IHarg s Wf). destruct IHarg as [IHarg | IHarg].
       (* arg is an expression *)
       * destruct IHarg as [s' [e' IHarg]]. do 2 eexists. apply (red_call2 x m IHarg).
       (* arg is a var *)
       * destruct IHarg as [y [o [Eq Bisy]]]. subst.
         lets P: (has_sound Wf Bis Has).
-        destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
-        destruct (decs_has_to_defs_has Tyds Ds1Has) as [d dsHas].
+        destruct P as [D [Tyds [DsHas Sd]]].
+        destruct (decs_has_to_defs_has Tyds DsHas) as [d dsHas].
         destruct (defs_has_mtd_sync dsHas) as [body Eqd]. subst.
         exists (open_trm y body) s.
         apply (red_call y Bis dsHas).
@@ -2305,12 +2305,12 @@ Theorem preservation_proof:
 Proof.
   intros s e s' e' Red. induction Red.
   (* red_call *)
-  + intros G U2 Wf TyCall. rename H into Bis, H0 into dsHas, T into X1.
+  + intros G U2 Wf TyCall. rename H into Bis, H0 into dsHas, T into Ds1.
     exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
     apply invert_ty_call in TyCall.
     destruct TyCall as [T2 [Has Tyy]].
     lets P: (has_sound Wf Bis Has).
-    destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
+    destruct P as [D1 [Tyds [Ds1Has Sd]]].
     subdec_sync_for Sd; try discriminate. symmetry in Eq2. inversions Eq2.
     lets StT: (subtyp_inv_mtd_arg Sd).
     lets StU: (subtyp_inv_mtd_ret Sd).
@@ -2331,12 +2331,12 @@ Proof.
       apply weaken_subtyp_end. auto. apply StU.
     - refine (ty_sbsm _ StT). refine (ty_sbsm _ StT3). apply (ty_var Biy).
   (* red_sel *)
-  + intros G T3 Wf TySel. rename H into Bis, H0 into dsHas.
+  + intros G T3 Wf TySel. rename H into Bis, H0 into dsHas, T into Ds1.
     exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
     apply invert_ty_sel_old in TySel.
     destruct TySel as [T2 [StT23 Has]].
     lets P: (has_sound Wf Bis Has).
-    destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
+    destruct P as [D1 [Tyds [Ds1Has Sd]]].
     subdec_sync_for Sd; try discriminate. symmetry in Eq2. inversions Eq2.
     lets StT12: (subtyp_inv_fld Sd).
     refine (ty_sbsm _ StT23).
