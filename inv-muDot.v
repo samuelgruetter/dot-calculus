@@ -337,21 +337,41 @@ with subtyp : ctx -> typ -> typ -> Prop :=
       subtyp G T1 T2 ->
       subtyp G T2 T3 ->
       subtyp G T1 T3
-  | subtyp_inv_typ_lo : forall G Lo1 Hi1 Lo2 Hi2,
-      subdec G (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2) ->
+  | subtyp_inv_typ_lo : forall G T1 T2 Ds1 Ds2 l Lo1 Hi1 Lo2 Hi2,
+      subtyp G T1 T2 ->
+      exp G T1 Ds1 -> (* <-- TODO this one needs to be precise! *)
+      exp G T2 Ds2 ->
+      decs_has Ds1 l (dec_typ Lo1 Hi1) ->
+      decs_has Ds2 l (dec_typ Lo2 Hi2) ->
       subtyp G Lo2 Lo1
-  | subtyp_inv_typ_hi : forall G Lo1 Hi1 Lo2 Hi2,
-      subdec G (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2) ->
+  | subtyp_inv_typ_hi : forall G T1 T2 Ds1 Ds2 l Lo1 Hi1 Lo2 Hi2,
+      subtyp G T1 T2 ->
+      exp G T1 Ds1 ->
+      exp G T2 Ds2 ->
+      decs_has Ds1 l (dec_typ Lo1 Hi1) ->
+      decs_has Ds2 l (dec_typ Lo2 Hi2) ->
       subtyp G Hi1 Hi2
-  | subtyp_inv_fld : forall G T1 T2,
-      subdec G (dec_fld T1) (dec_fld T2) ->
-      subtyp G T1 T2
-  | subtyp_inv_mtd_arg : forall G T1 U1 T2 U2,
-      subdec G (dec_mtd T1 U1) (dec_mtd T2 U2) ->
-      subtyp G T2 T1
-  | subtyp_inv_mtd_ret : forall G T1 U1 T2 U2,
-      subdec G (dec_mtd T1 U1) (dec_mtd T2 U2) ->
+  | subtyp_inv_fld : forall G T1 T2 Ds1 Ds2 l U1 U2,
+      subtyp G T1 T2 ->
+      exp G T1 Ds1 ->
+      exp G T2 Ds2 ->
+      decs_has Ds1 l (dec_fld U1) ->
+      decs_has Ds2 l (dec_fld U2) ->
       subtyp G U1 U2
+  | subtyp_inv_mtd_arg : forall G T1 T2 Ds1 Ds2 l A1 R1 A2 R2,
+      subtyp G T1 T2 ->
+      exp G T1 Ds1 ->
+      exp G T2 Ds2 ->
+      decs_has Ds1 l (dec_mtd A1 R1) ->
+      decs_has Ds2 l (dec_mtd A2 R2) ->
+      subtyp G A2 A1
+  | subtyp_inv_mtd_ret : forall G T1 T2 Ds1 Ds2 l A1 R1 A2 R2,
+      subtyp G T1 T2 ->
+      exp G T1 Ds1 ->
+      exp G T2 Ds2 ->
+      decs_has Ds1 l (dec_mtd A1 R1) ->
+      decs_has Ds2 l (dec_mtd A2 R2) ->
+      subtyp G R1 R2
 with subdec : ctx -> dec -> dec -> Prop :=
   | subdec_typ : forall G Lo1 Hi1 Lo2 Hi2,
       (* only allow implementable decl *)
@@ -369,13 +389,6 @@ with subdec : ctx -> dec -> dec -> Prop :=
       subtyp G S2 S1 ->
       subtyp G T1 T2 ->
       subdec G (dec_mtd S1 T1) (dec_mtd S2 T2)
-  | subdec_inv : forall G T1 T2 Ds1 Ds2 l D1 D2,
-      subtyp G T1 T2 ->
-      exp G T1 Ds1 ->
-      exp G T2 Ds2 ->
-      decs_has Ds1 l D1 ->
-      decs_has Ds2 l D2 ->
-      subdec G D1 D2
 with subdecs : ctx -> decs -> decs -> Prop :=
   | subdecs_empty : forall G Ds,
       subdecs G Ds decs_nil
@@ -1034,11 +1047,7 @@ Proof.
   + left. do 4 eexists. eauto.
   + right. left. eauto.
   + right. right. do 4 eexists. eauto.
-  + apply (fun G Ds1 Ds2 l D1 D2 Sds H1 H2 => (proj2 (@decs_has_preserves_sub_with_sync
-               G Ds1 Ds2 l D1 D2 Sds H1 H2))) with G Ds1 Ds2 l.
-Admitted. (* not sure...*) (*
-  + apply* decs_has_preserves_sub_with_sync.
-Qed.*)
+Qed.
 
 Ltac subdec_sync_for Hyp :=
   let Lo1 := fresh "Lo1" in
@@ -1257,8 +1266,6 @@ Proof.
   + (* case subdec_mtd *)
     intros.
     apply subdec_mtd; gen G1 G2 G3; assumption.
-  + (* case subdec_inv *)
-    intros. subst. apply* subdec_inv.
   + (* case subdecs_empty *)
     intros.
     apply subdecs_empty.
@@ -1583,9 +1590,27 @@ Proof.
     intros G T1 T2 T3 St12 IH12 St23 IH23 G1 G2 x Eq Bi Ok. subst.
     apply* subtyp_trans.
   + (* case subtyp_inv_typ_lo *)
-    intros. subst.
-    apply subtyp_inv_typ_lo with (subst_typ x y Hi1) (subst_typ x y Hi2).
-    apply* H.
+    intros G T1 T2 Ds1 Ds2 l Lo1 Hi1 Lo2 Hi2 St IHSt Exp1 IHExp1 Exp2 IHExp2.
+    intros Ds1Has Ds2Has G1 G2 x Eq Ty Ok. subst.
+    apply subtyp_inv_typ_lo with (subst_typ x y T1) (subst_typ x y T2)
+      (subst_decs x y Ds1) (subst_decs x y Ds2) l (subst_typ x y Hi1) (subst_typ x y Hi2).
+    - apply* IHSt.
+    - apply* IHExp1.
+    - apply* IHExp2.
+    - assert (Eq: (dec_typ (subst_typ x y Lo1) (subst_typ x y Hi1)
+                = (subst_dec x y (dec_typ Lo1 Hi1)))) by reflexivity.
+      rewrite Eq.
+      apply* subst_decs_has.
+    - assert (Eq: (dec_typ (subst_typ x y Lo2) (subst_typ x y Hi2)
+                = (subst_dec x y (dec_typ Lo2 Hi2)))) by reflexivity.
+      rewrite Eq.
+      apply* subst_decs_has.
+  (* other inv cases: similar *)
+  + admit.
+  + admit.
+  + admit.
+  + admit.
+  (*
   + (* case subtyp_inv_typ_hi *)
     intros. subst.
     apply subtyp_inv_typ_hi with (subst_typ x y Lo1) (subst_typ x y Lo2).
@@ -1601,28 +1626,13 @@ Proof.
     intros. subst.
     apply subtyp_inv_mtd_ret with (subst_typ x y T1) (subst_typ x y T2).
     apply* H.
+  *)
   + (* case subdec_typ *)
     intros. apply* subdec_typ.
   + (* case subdec_fld *)
     intros. apply* subdec_fld.
   + (* case subdec_mtd *)
     intros. apply* subdec_mtd.
-  + (* case subdec_inv *)
-    intros G T1 T2 Ds1 Ds2 l D1 D2 St IHSt Exp1 IHExp1 Exp2 IHExp2.
-    intros Ds1Has Ds2Has G1 G2 x Eq Ty Ok. subst.
-    apply subdec_inv with T1 T2 Ds1 Ds2 l.
-    - specialize (IHSt _ _ _ eq_refl). admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-(*
-  + (* case subdec_inv *)
-    intros. subst. apply subdec_inv with (subst_decs x y Ds1) (subst_decs x y Ds2) l.
-    - specialize (H _ _ _ eq_refl). apply* H.
-    - apply* subst_decs_has.
-    - apply* subst_decs_has.
-*)
   + (* case subdecs_empty *)
     intros. apply subdecs_empty.
   + (* case subdecs_push *)
@@ -1633,31 +1643,6 @@ Proof.
     rewrite <- (subst_label_for_dec n x y D2) in Has.
     apply subdecs_push with (subst_dec x y D1); 
       fold subst_dec; fold subst_decs; assumption.
-(*
-  + (* case subdecs_inv *)
-    intros G z Ds1 Ds2 St IHSt Tyz IHTyz G1 G2 x EqG Tyy Ok. subst.
-    rewrite (subst_open_commute_decs x y z Ds1).
-    rewrite (subst_open_commute_decs x y z Ds2).
-    unfold subst_fvar. case_if.
-    (* case x = z *)
-    - assert (Impl: ty_trm (G1 & z ~ S & G2) (trm_var (avar_f z)) (typ_bind Ds1) ->
-                    ok (G1 & z ~ S & G2) ->
-                    S = typ_bind Ds1) by admit.
-      specialize (Impl Tyz Ok). subst S.
-      apply subdecs_inv.
-      * apply* IHSt.
-      * assert (zG1: z # G1) by admit. (* because of ok *)
-        assert (Frz: z \notin (fv_decs Ds1)) by admit. (* because Ds1 wf in G1 *)
-        assert (Eq: subst_decs z y Ds1 = Ds1) by admit.
-        rewrite Eq.
-        assert (Ok': ok (G1 & subst_ctx z y G2)) by admit.
-        apply (weaken_ty_trm_end Ok' Tyy).
-    (* case x <> z *)
-    - apply subdecs_inv.
-      * apply* IHSt.
-      * specialize (IHTyz _ _ _ eq_refl Tyy Ok).
-        simpl in IHTyz. case_if. exact IHTyz.
-*)
   + (* case ty_var *)
     intros G z T Biz G1 G2 x EqG Biy Ok.
     subst G. unfold subst_trm, subst_avar. case_var.
@@ -2359,8 +2344,7 @@ Proof.
     lets P: (has_sound Wf Bis Has).
     destruct P as [D1 [Tyds [Ds1Has Sd]]].
     subdec_sync_for Sd; try discriminate. symmetry in Eq2. inversions Eq2.
-    lets StT: (subtyp_inv_mtd_arg Sd).
-    lets StU: (subtyp_inv_mtd_ret Sd).
+    inversions Sd. rename H3 into StT, H5 into StU.
     destruct (invert_ty_mtd_inside_ty_defs Tyds dsHas Ds1Has) as [L0 Tybody].
     apply invert_ty_var in Tyy.
     destruct Tyy as [T3 [StT3 Biy]].
@@ -2385,7 +2369,7 @@ Proof.
     lets P: (has_sound Wf Bis Has).
     destruct P as [D1 [Tyds [Ds1Has Sd]]].
     subdec_sync_for Sd; try discriminate. symmetry in Eq2. inversions Eq2.
-    lets StT12: (subtyp_inv_fld Sd).
+    inversions Sd. rename H2 into StT12.
     refine (ty_sbsm _ StT23).
     refine (ty_sbsm _ StT12).
     apply (invert_ty_fld_inside_ty_defs Tyds dsHas Ds1Has).
