@@ -477,6 +477,10 @@ Scheme has_mut2    := Induction for has    Sort Prop
 with   ty_trm_mut2 := Induction for ty_trm Sort Prop.
 Combined Scheme ty_has_mutind from has_mut2, ty_trm_mut2.
 
+Scheme exp_mut20  := Induction for exp Sort Prop
+with   has_mut20  := Induction for has Sort Prop.
+Combined Scheme exp_has_mutind from exp_mut20, has_mut20.
+
 (* ###################################################################### *)
 (** ** Tactics *)
 
@@ -883,6 +887,20 @@ Lemma invert_subdec_mtd_sync_left: forall G D T2 U2,
                  subtyp ip oktrans G U1 U2.
 Proof.
   introv Sd. inversions Sd. exists S1 T1. auto.
+Qed.
+
+Lemma invert_subdecs: forall G Ds1 Ds2,
+  subdecs G Ds1 Ds2 -> 
+  forall l D2, decs_has Ds2 l D2 -> 
+               (exists D1, decs_has Ds1 l D1 /\ subdec G D1 D2).
+Proof.
+  introv Sds. induction Ds2; introv Has.
+  + inversion Has.
+  + inversions Sds.
+    unfold decs_has, get_dec in Has. case_if.
+    - inversions Has.
+      exists D1. split; assumption.
+    - fold get_dec in Has. apply IHDs2; assumption.
 Qed.
 
 Lemma wf_sto_to_ok_s: forall s G,
@@ -1665,6 +1683,20 @@ Proof.
   rewrite subst_trm_undo, subst_typ_undo in Tyu''; auto.
 Qed.
 
+Lemma narrow_subdec: forall G y T1 T2 D1 D2,
+  ok (G & y ~ T2) ->
+  subtyp ip oktrans G T1 T2 ->
+  subdec (G & y ~ T2) D1 D2 ->
+  subdec (G & y ~ T1) D1 D2.
+Admitted.
+
+Lemma narrow_subdecs: forall G y T1 T2 Ds1 Ds2,
+  ok (G & y ~ T2) ->
+  subtyp ip oktrans G T1 T2 ->
+  subdecs (G & y ~ T2) Ds1 Ds2 ->
+  subdecs (G & y ~ T1) Ds1 Ds2.
+Admitted.
+
 
 (* ###################################################################### *)
 (** ** More inversion lemmas *)
@@ -2267,16 +2299,255 @@ Qed.
 
 Print Assumptions preservation_result.
 
+(* ------------------------------------------------------------------------- *)
+(* ------------------------------------------------------------------------- *)
+(* ------------------------------------------------------------------------- *)
 
+(* ... transitivity in notrans mode, but no p.L in middle ... *)
+
+Inductive notsel: typ -> Prop :=
+  | notsel_top  : notsel typ_top
+  | notsel_bot  : notsel typ_bot
+  | notsel_bind : forall Ds, notsel (typ_bind Ds).
+
+Lemma subdec_trans: forall G D1 D2 D3,
+  subdec G D1 D2 -> subdec G D2 D3 -> subdec G D1 D3.
+Proof.
+  introv H12 H23. inversions H12; inversions H23; constructor;
+  solve [ assumption | (eapply subtyp_trans; eassumption)].
+Qed.
+
+Lemma subdecs_trans: forall G Ds1 Ds2 Ds3,
+  subdecs G Ds1 Ds2 ->
+  subdecs G Ds2 Ds3 ->
+  subdecs G Ds1 Ds3.
+Proof.
+  introv H12 H23.
+  induction Ds3.
+  + apply subdecs_empty.
+  + rename d into D3.
+    apply invert_subdecs_push in H23.
+    destruct H23 as [D2 [H23a [H23b H23c]]].
+    lets H12': (invert_subdecs H12).
+    specialize (H12' _ _ H23a).
+    destruct H12' as [D1 [Has Sd]].
+    apply subdecs_push with D1.
+    - assumption.
+    - apply subdec_trans with D2; assumption.
+    - apply (IHDs3 H23c).
+Qed.
+
+Lemma subtyp_trans_notrans: forall G T1 T2 T3,
+  ok G -> notsel T2 -> subtyp ip notrans G T1 T2 -> subtyp ip notrans G T2 T3 -> 
+  subtyp ip notrans G T1 T3.
+Proof.
+  introv Hok Hnotsel H12 H23.
+
+  inversion Hnotsel; subst.
+  (* case top *)
+  + inversion H23; subst.
+    - apply (subtyp_top ip G T1).
+    - apply (subtyp_sel_r H H0 (subtyp_trans (subtyp_tmode H12) H1)).
+  (* case bot *)
+  + inversion H12; subst.
+    - apply (subtyp_bot ip G T3).
+    - apply (subtyp_sel_l H (subtyp_trans H0 (subtyp_tmode H23))).
+  (* case bind *)
+  + inversion H12; inversion H23; subst; (
+      assumption ||
+      apply subtyp_refl ||
+      apply subtyp_top ||
+      apply subtyp_bot ||
+      idtac
+    ).
+    (* bind <: bind <: bind *)
+    - rename Ds into Ds2.
+      apply_fresh subtyp_bind as z.
+      assert (zL: z \notin L) by auto.
+      assert (zL0: z \notin L0) by auto.
+      rename H1 into Sds12, H6 into Sds23.
+      specialize (Sds12 z zL).
+      specialize (Sds23 z zL0).
+      assert (Hok' : ok (G & z ~ typ_bind Ds1)) by auto.
+      assert (Hok'': ok (G & z ~ typ_bind Ds2)) by auto.
+      lets Sds23' : (narrow_subdecs Hok'' (subtyp_tmode H12) Sds23).
+      apply (subdecs_trans Sds12 Sds23').
+    - (* bind <: bind <: sel  *)
+      assert (H1S: subtyp ip oktrans G (typ_bind Ds1) S) by
+        apply (subtyp_trans (subtyp_tmode H12) H6).
+      apply (subtyp_sel_r H4 H5 H1S).
+    - (* sel  <: bind <: bind *)
+      assert (HU2: subtyp ip oktrans G U (typ_bind Ds2))
+        by apply (subtyp_trans H0 (subtyp_tmode H23)).
+      apply (subtyp_sel_l H HU2). 
+    - (* sel  <: bind <: sel  *)
+      apply (subtyp_sel_r H2 H6).
+      apply (subtyp_trans (subtyp_tmode H12) H7).
+Qed.
+
+Print Assumptions subtyp_trans_notrans.
+
+(**
+(follow_ub G p1.X1 T) means that there exists a chain
+
+    (p1.X1: _ .. p2.X2), (p2.X2: _ .. p3.X3), ... (pN.XN: _ .. T)
+
+which takes us from p1.X1 to T
+*)
+Inductive follow_ub : ctx -> typ -> typ -> Prop :=
+  | follow_ub_nil : forall G T,
+      follow_ub G T T
+  | follow_ub_cons : forall G v X Lo Hi T,
+      has pr G (trm_var (avar_f v)) X (dec_typ Lo Hi) ->
+      follow_ub G Hi T ->
+      follow_ub G (typ_sel (pth_var (avar_f v)) X) T.
+
+(**
+(follow_lb G T pN.XN) means that there exists a chain
+
+    (p1.X1: T .. _), (p2.X2: p1.X1 .. _), (p3.X3: p2.X2 .. _),  (pN.XN: pN-1.XN-1 .. _)
+
+which takes us from T to pN.XN
+*)
+Inductive follow_lb: ctx -> typ -> typ -> Prop :=
+  | follow_lb_nil : forall G T,
+      follow_lb G T T
+  | follow_lb_cons : forall G v X Lo Hi U,
+      has pr G (trm_var (avar_f v)) X (dec_typ Lo Hi) ->
+      subtyp ip oktrans G Lo Hi -> (* <-- realizable bounds *)
+      follow_lb G (typ_sel (pth_var (avar_f v)) X) U ->
+      follow_lb G Lo U.
+
+Hint Constructors follow_ub.
+Hint Constructors follow_lb.
+
+Lemma invert_follow_lb: forall G T1 T2,
+  follow_lb G T1 T2 -> 
+  T1 = T2 \/ 
+    exists v1 X1 v2 X2 Hi, (typ_sel (pth_var (avar_f v2)) X2) = T2 /\
+      has pr G (trm_var (avar_f v1)) X1 (dec_typ T1 Hi) /\
+      subtyp ip oktrans G T1 Hi /\
+      follow_lb G (typ_sel (pth_var (avar_f v1)) X1) (typ_sel (pth_var (avar_f v2)) X2).
+Proof.
+  intros.
+  induction H.
+  auto.
+  destruct IHfollow_lb as [IH | IH].
+  subst.
+  right. exists v X v X Hi. auto.
+  right.
+  destruct IH as [p1 [X1 [p2 [X2 [Hi' [Heq [IH1 [IH2 IH3]]]]]]]].
+  subst.  
+  exists v X p2 X2 Hi.
+  auto.
+Qed.
+
+(* Note: No need for a invert_follow_ub lemma because inversion is smart enough. *)
+
+Definition st_middle (G: ctx) (B C: typ): Prop :=
+  B = C \/
+  subtyp ip notrans G typ_top C \/
+  (notsel B /\ subtyp ip notrans G B C). (* TODO can we replace this subtyp by a subdecs? *)
+
+(* linearize a derivation that uses transitivity *)
+
+Definition chain (G: ctx) (A D: typ): Prop :=
+   (exists B C, follow_ub G A B /\ st_middle G B C /\ follow_lb G C D).
+
+Lemma empty_chain: forall G T, chain G T T.
+Proof.
+  intros.
+  unfold chain. unfold st_middle.
+  exists T T.
+  auto.
+Qed.
+
+Lemma exp_and_has_pr2ip:
+   (forall m G T Ds , exp m G T Ds  -> exp ip G T Ds )
+/\ (forall m G t l D, has m G t l D -> has ip G t l D).
+Proof.
+  apply exp_has_mutind.
+  + intros. apply exp_top.
+  + intros. apply exp_bind.
+  + introv mHas ipHas mExp ipExp. destruct m; apply* exp_sel.
+  + introv Ty Exp _ DsHas Clo. apply* has_trm.
+  + introv Ty Exp _ DsHas. apply* has_var.
+  + introv Bi prExp ipExp DsHas. apply has_var with T Ds.
+    - apply (ty_var Bi).
+    - assumption.
+    - assumption.
+Qed.
+
+Definition exp_pr2ip := proj1 exp_and_has_pr2ip.
+Definition has_pr2ip := proj2 exp_and_has_pr2ip.
+
+Lemma chain3subtyp: forall G C1 C2 D, 
+  subtyp ip notrans G C1 C2 ->
+  follow_lb G C2 D -> 
+  subtyp ip notrans G C1 D.
+Proof.
+  introv Hst Hflb.
+  induction Hflb.
+  assumption.
+  apply IHHflb.
+  apply (subtyp_sel_r (has_pr2ip H) H0 (subtyp_tmode Hst)).
+Qed.
+
+Lemma chain2subtyp: forall G B1 B2 C D,
+  ok G ->
+  subtyp ip notrans G B1 B2 ->
+  st_middle G B2 C ->
+  follow_lb G C D ->
+  subtyp ip notrans G B1 D.
+Proof.
+  introv Hok Hst Hm Hflb.
+  unfold st_middle in Hm.
+  destruct Hm as [Hm | [Hm | [Hm1 Hm2]]]; subst.
+  apply (chain3subtyp Hst Hflb).
+  apply (chain3subtyp (subtyp_trans_notrans Hok notsel_top (subtyp_top ip G B1) Hm) Hflb).
+  apply (chain3subtyp (subtyp_trans_notrans Hok Hm1 Hst Hm2) Hflb).
+Qed.
+
+Lemma chain1subtyp: forall G A B C D,
+  ok G ->
+  follow_ub G A B ->
+  st_middle G B C ->
+  follow_lb G C D ->
+  subtyp ip notrans G A D.
+Proof.
+  introv Hok Hfub Hm Hflb.
+  induction Hfub.
+  apply (chain2subtyp Hok (subtyp_refl_all notrans G T) Hm Hflb).
+  apply (subtyp_sel_l (has_pr2ip H)).
+  apply subtyp_tmode.
+  apply (IHHfub Hok Hm Hflb).
+Qed.
+
+Print Assumptions chain1subtyp.
+
+Lemma oktrans_to_chain: forall G T1 T2,
+  subtyp ip oktrans G T1 T2 ->
+  chain G T1 T2.
+Admitted.
+
+Lemma oktrans2notrans: forall G T1 T3,
+  ok G -> subtyp ip oktrans G T1 T3 -> subtyp ip notrans G T1 T3.
+Proof.
+  introv Hok Hst.
+  lets Hch: (oktrans_to_chain Hst).
+  unfold chain in Hch.
+  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+  apply (chain1subtyp Hok Hch1 Hch2 Hch3).
+Qed.
+
+Print Assumptions oktrans2notrans.
+
+Stop here.
+
+(* ###################################################################### *)
+(* ###################################################################### *)
 (* ###################################################################### *)
 (** Exploring helper lemmas for ip->pr and oktrans->notrans *)
-
-
-
-
-
-
-(* ###################################################################### *)
 
 (* proving it for notrans only doesn't work, because the IH needs to accept oktrans,
    because that's what comes out of subtyp_sel_l/r *)
