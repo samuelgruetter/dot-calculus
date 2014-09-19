@@ -2678,6 +2678,7 @@ Proof.
     (* H (notrans) is contained in oktrans judgment *)
     apply (exp_preserves_sub _ _ _ _ _ _ Ok H Exp1 Exp2).
   + (* case subtyp_trans *)
+    (*
     rename Ds2 into Ds3, T3 into T3temp,  T3 into T2.
     assert (Exp2: exists Ds2, exp pr G T2 Ds2) by admit. (* <----- *)
     destruct Exp2 as [Ds2 Exp2].
@@ -2686,11 +2687,11 @@ Proof.
     exists (L1 \u L2 \u dom G). intros z zL1L2.
     auto_specialize.
     assert (Ok': ok (G & z ~ typ_bind Ds2)) by auto.
-    admit. (* subdecs transitivity *) (*
-
+    admit. (* subdecs transitivity *)
+    *)
+    admit.
 }
-Qed.
-
+(*Qed.*)Abort.
 
 Lemma oktrans_to_chain: forall G T1 T2,
   subtyp ip oktrans G T1 T2 ->
@@ -2705,7 +2706,6 @@ Qed.
 
 Print Assumptions oktrans2notrans.
 
-Stop here.
 
 (* ###################################################################### *)
 (* ###################################################################### *)
@@ -2845,12 +2845,6 @@ Lemma exp_preserves_sub: forall G T1 T2 Ds1 Ds2,
             subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
 Admitted.
 
-Lemma subdecs_trans: forall G z Ds1 Ds2 Ds3,
-  subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2) ->
-  subdecs (G & z ~ typ_bind Ds2) (open_decs z Ds2) (open_decs z Ds3) ->
-  subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds3).
-Admitted.
-
 Scheme exp_mut4     := Induction for exp     Sort Prop
 with   has_mut4     := Induction for has     Sort Prop
 with   subtyp_mut4  := Induction for subtyp  Sort Prop
@@ -2872,7 +2866,7 @@ Definition exists_notrans_subtyp m1 G T1 T2 :=
 Definition exists_precise_ty_path := ...
 *)
 
-Lemma ip2pr_and_oktrans2notrans:
+Lemma ip2pr(*_and_oktrans2notrans*):
    (forall m G T Ds2, exp m G T Ds2 -> forall s,
       m = ip ->
       wf_sto s G ->
@@ -2888,7 +2882,7 @@ Lemma ip2pr_and_oktrans2notrans:
 /\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 -> forall s,
       m1 = ip ->
       wf_sto s G ->
-      subtyp pr notrans G T1 T2)
+      subtyp pr oktrans G T1 T2)
 /\ (forall G t T2, ty_trm G t T2 -> forall s v,
       wf_sto s G ->
       t = (trm_var (avar_f v)) ->
@@ -2918,10 +2912,13 @@ Proof.
     exists L0 Ds0. split.
     - apply (exp_sel IHHas ExpHi1).
     - intros z zL0.
+      lets Sds01': Sds01.
       specialize (Sds01 z zL0).
       specialize (Sds12 z zL0).
-      apply (subdecs_trans _ Sds01 Sds12).
-
+      lets Ok: (wf_sto_to_ok_G Wf).
+      assert (Ok' : ok (G & z ~ typ_bind Ds1)) by admit. (* TODO L0 \u dom G stuff *)
+      lets Sds12' : (narrow_subdecs Ok' (subtyp_tmode (subtyp_bind ip _ Sds01')) Sds12).
+      apply (subdecs_trans Sds01 Sds12').
   + (* case has_trm *)
     intros G t V2 Ds22 l D22 Ty IHTy Exp2 IHExp Ds22Has Clo s v _ Wf Eq. subst.
     specialize (IHExp s eq_refl Wf). destruct IHExp as [L [Ds21 [Exp21 Sds]]].
@@ -2934,6 +2931,45 @@ Proof.
     destruct (ctx_binds_to_sto_binds Wf BiG) as [[Ds1 ds] Bis].
     lets P: (invert_wf_sto_with_weakening Wf Bis BiG).
     destruct P as [Eq _]. subst.
+(*
+Some more thoughts about the idea to first prove a "make_subtyp_precise" lemma,
+which removes all subsumption steps in a subtyping judgment, and then just feed this
+precise subtyping judgment to the transitivity push-back proof:
+
+Let's prove make_subtyp_precise by simple induction on the subtyping judgment. But
+then, in the subtyp_sel_l/r cases, we have a "has" judgment which we must make precise,
+but we only have IHs for subtype judgments, not for "has" judgments, so that doesn't work.
+
+So we have to do mutual induction on "has" and subtyp, and we also have to include
+expansion and type assignment for vars, because they are used by "has".
+The statement we want to prove then looks like this (simplifying boring details):
+
+  (forall G T Ds2,
+      exp ip G T Ds2 ->
+      exists Ds1, exp pr G T Ds1 /\ subdecs G Ds1 Ds2)
+/\ (forall G v L D2,
+      has ip G v L D2 ->
+      exists D1, has pr G v L D1 /\ subdec G D1 D2)
+/\ (forall G T1 T2, 
+      subtyp ip G T1 T2 ->
+      subtyp pr G T1 T2)
+/\ (forall G v T2,
+      ty_trm G v T2 ->
+      exists T1, (v: T1) in G /\ subtyp pr G T1 T2).
+
+where pr means precise, and ip means imprecise.
+
+Now consider the case has_var: We get a ...
+
+So the hope we had this afternoon, that we get a precise "has" for free by induction,
+is gone...
+
+*)
+(*
+Point was: don't prove make_has_precise, but deal with the "has" inside subtyp_sel_l/r
+in a more ad-hoc way.
+*)
+
     (* We have
 
       (typ_bind Ds1) <: V2 <z Ds21 <: Ds22
@@ -2957,6 +2993,17 @@ Proof.
     admit.
 
   + (* case subtyp_refl *)
+    intros m G v L Lo Hi Has2 _ s Eq Wf. subst.
+    apply invert_var_has_dec_typ in Has2.
+    destruct Has2 as [X2 [DsX2 [Lo2' [Hi2' [Ty [ExpX2 [DsX2Has [Eq2Lo Eq2Hi]]]]]]]].
+    apply invert_ty_var in Ty.
+    destruct Ty as [X1 [StX Bi]].
+    assert (P: exists DsX1, X1 = typ_bind DsX1) by admit. (* since wf_sto only typ_bind *)
+    destruct P as [DsX1 P]. subst X1.
+    (* now how can we guess the precise Lo1/Hi1 s.t. 
+       decs_has DsX1 L (dec_typ Lo1 Hi1)
+       ???
+    *)
     admit.
   + (* case subtyp_top *)
     admit.
@@ -2965,6 +3012,34 @@ Proof.
   + (* case subtyp_bind *)
     admit.
   + (* case subtyp_sel_l *)
+    intros m G x L Lo2 Hi2 T Has2 _ St IHSt s Eq Wf. subst.
+    specialize (IHSt s eq_refl Wf).
+    apply invert_var_has_dec_typ in Has2.
+    destruct Has2 as [X2 [DsX2 [Lo2' [Hi2' [Ty [ExpX2 [DsX2Has [Eq2Lo Eq2Hi]]]]]]]].
+    apply invert_ty_var in Ty.
+    destruct Ty as [X1 [StX Bi]].
+    refine (subtyp_trans _ IHSt).
+    (* now we need to guess the precise Lo1/Hi1 s.t. 
+       decs_has DsX1 L (dec_typ Lo1 Hi1)
+
+       We would need
+          X1 <: X2     <-- what if it contains middle p.L??
+          X1 < DsX1
+          X2 < DsX2
+          ------------ exp_preserves_sub
+          DsX1 <: DsX2
+
+      Or actually even harder than exp_preserves_sub because we have to guess
+      Lo1/Hi1 inside DsX1, so include the DsX2Has in lemma...
+    *)
+    assert (P: exists DsX1, X1 = typ_bind DsX1) by admit. (* since wf_sto only typ_bind *)
+    destruct P as [DsX1 P]. subst X1.
+
+
+
+
+
+     
     admit.
   + (* case subtyp_sel_r *)
     admit.
