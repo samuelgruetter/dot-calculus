@@ -889,6 +889,13 @@ Proof.
   introv Sd. inversions Sd. exists S1 T1. auto.
 Qed.
 
+Lemma invert_subdec_typ: forall G Lo1 Hi1 Lo2 Hi2,
+  subdec G (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2) ->
+  subtyp ip oktrans G Lo2 Lo1 /\ subtyp ip oktrans G Hi1 Hi2.
+Proof.
+  introv Sd. inversions Sd. auto.
+Qed.
+
 Lemma invert_subdecs: forall G Ds1 Ds2,
   subdecs G Ds1 Ds2 -> 
   forall l D2, decs_has Ds2 l D2 -> 
@@ -2040,6 +2047,21 @@ Proof.
     - fold get_dec in Has. apply* IHDs2.
 Qed.
 
+Lemma decs_has_preserves_sub_D1_known: forall G Ds1 Ds2 l D1 D2,
+  decs_has Ds1 l D1 ->
+  decs_has Ds2 l D2 ->
+  subdecs G Ds1 Ds2 ->
+  subdec G D1 D2.
+Proof.
+  introv Has1 Has2 Sds. induction Ds2.
+  + inversion Has2.
+  + unfold decs_has, get_dec in Has2. inversions Sds. case_if.
+    - inversions Has2. rename H4 into Has1'.
+      unfold decs_has in Has1, Has1'.
+      rewrite Has1' in Has1. inversions Has1. assumption.
+    - fold get_dec in Has2. apply* IHDs2.
+Qed.
+
 (* This is the big fat TODO of the proof ;-) 
    So far we know how to do it in precise mode, but we don't know how to do it
    in imprecise mode. *)
@@ -2610,42 +2632,62 @@ Proof.
     apply invert_has_pr in Has1.
     destruct Has1 as [X1 [DsX1 [D [Bi [ExpX1 [DsX1Has Eq1]]]]]].
     apply invert_var_has_dec_typ in Has2.
-    destruct Has2 as [X2 [DsX2 [Lo2' [Hi2' [Ty [ExpX2 [DsX2Has Eq2]]]]]]].
+    destruct Has2 as [X2 [DsX2 [Lo2' [Hi2' [Ty [ExpX2 [DsX2Has [Eq2Lo Eq2Hi]]]]]]]].
     apply invert_ty_var in Ty.
     destruct Ty as [X1' [StX Bi']].
     lets EqX: (binds_func Bi Bi'). subst X1'. clear Bi'.
-
-    (*
-    rename Lo into ipLo, Hi into ipHi, H into ipHas, Exp1 into prExp, Exp2 into ipExp,
-      Ds1 into prDs, Ds2 into ipDs.
-    inversions prExp. rename Lo into prLo, Hi into prHi, H3 into prHas, H5 into Exp.
-    *)
-    (* only works if Exp2 is precise:
-    assert (Eq: Ds1 = Ds2) by admit. (* precise is unique *)
-    exists vars_empty. intros z zL. subst. apply subdecs_refl.
-    *)
+    (* ExpX1 is contained in Exp1 --> decreasing *)
+    lets IHX: (exp_preserves_sub _ _ _ _ _ _ Ok StX ExpX1 ExpX2).
+    destruct IHX as [LX IHX].
+    assert (xLX: x \notin LX) by admit. (* doesn't hold, need some substitution ...*)
+    specialize (IHX x xLX).
+    apply (decs_has_open x) in DsX1Has.
+    apply (decs_has_open x) in DsX2Has.
+    unfold open_dec, open_rec_dec in DsX2Has. fold open_rec_typ in DsX2Has.
+    unfold open_typ in Eq2Lo, Eq2Hi.
+    rewrite Eq2Lo in DsX2Has.
+    rewrite Eq2Hi in DsX2Has.
+    rewrite <- Eq1 in DsX1Has.
+    lets Sd: (decs_has_preserves_sub_D1_known DsX1Has DsX2Has IHX).
+    apply invert_subdec_typ in Sd. apply proj2 in Sd.
+    assert (Impl: subtyp ip oktrans (G & x ~ typ_bind DsX1) Hi1 Hi2
+              ->  subtyp ip oktrans G Hi1 Hi2) by admit. (* some substitution stuff *)
+    specialize (Impl Sd).
+    (* Hi1 is the upper bound of x.L, so it's "simpler" than x.L 
+       -> decreasing measure *)
+    apply (exp_preserves_sub _ _ _ _ _ _ Ok Impl ExpHi1 ExpHi2).
   + (* case subtyp_top *)
-    intros m G T Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
     inversions Exp2.
     exists vars_empty. intros z zL. unfold open_decs, open_rec_decs. apply subdecs_empty.
   + (* case subtyp_bot *)
-    intros m G T Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
     inversions Exp1.
   + (* case subtyp_bind *)
-    intros L m G Ds1' Ds2' Sds Ds1 Ds2 Ok Eq Exp1 Exp2. inversions Exp1. inversions Exp2.
-    exists L. intros z zL. apply (Sds z zL).
+    inversions Exp1. inversions Exp2.
+    exists L. intros z zL. apply (H z zL).
   + (* case subtyp_sel_l *)
-    intros m G x L Lo2 Hi2 T Has2 St IHSt Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
+    rename H into Has2, H0 into StHiT2, S into Lo2, U into Hi2.
     apply invert_exp_sel in Exp1. destruct Exp1 as [Lo1 [Hi1 [Has1 Exp1]]].
-    assert (Exp21: exists Ds21, exp pr G Hi2 Ds21) by admit. (* <-- *)
-    destruct Exp21 as [Ds21 Exp21].
-    lets IH': (IHSt Ds21 Ds2 Ok eq_refl Exp21 Exp2).
-    specialize (IHSt Ds1 Ds21 Ok eq_refl).
-    (* We need an IH to go from Ds1 to Ds21, i.e. an IH for Hi1 <: Hi2, i.e. one
-       which takes an [Exp1: exp pr G Hi1 Ds1] and [Exp21: exp pr G Hi2 Ds21]. 
-       But again, Has1 (pr) and Has2 (ip) might be related through a subtyp_bind
-       in ty_sbsm, and we would have to invert the subtyp_bind to relate Hi1 and Hi2.
-    *)
+    assert (StHi: subtyp ip oktrans G Hi1 Hi2) by admit. (* using some IH and Has1, Has2 *)
+    lets St: (subtyp_trans StHi StHiT2).
+    (* Hi1 is the upper bound of x.L, so it's "simpler" than x.L 
+       -> decreasing measure *)
+    apply (exp_preserves_sub _ _ _ _ _ _ Ok St Exp1 Exp2).
+  + (* case subtyp_sel_r *)
+    admit.
+  + (* case subtyp_mode *)
+    (* H (notrans) is contained in oktrans judgment *)
+    apply (exp_preserves_sub _ _ _ _ _ _ Ok H Exp1 Exp2).
+  + (* case subtyp_trans *)
+    rename Ds2 into Ds3, T3 into T3temp,  T3 into T2.
+    assert (Exp2: exists Ds2, exp pr G T2 Ds2) by admit. (* <----- *)
+    destruct Exp2 as [Ds2 Exp2].
+    specialize (IH12 _ _ Ok eq_refl Exp1 Exp2). destruct IH12 as [L1 IH12].
+    specialize (IH23 _ _ Ok eq_refl Exp2 Exp3). destruct IH23 as [L2 IHS23].
+    exists (L1 \u L2 \u dom G). intros z zL1L2.
+    auto_specialize.
+    assert (Ok': ok (G & z ~ typ_bind Ds2)) by auto.
+    admit. (* subdecs transitivity *) (*
+
 }
 Qed.
 
