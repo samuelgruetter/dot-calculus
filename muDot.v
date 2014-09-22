@@ -2623,6 +2623,20 @@ Proof.
     apply (Impl DsX1Has).
 Qed.
 
+Inductive ilevel: ctx -> typ -> nat -> Prop :=
+| ilevel_top: forall G,
+    ilevel G typ_top 0
+| ilevel_bot: forall G,
+    ilevel G typ_bot 0
+| ilevel_bind: forall G Ds,
+    ilevel G (typ_bind Ds) 0
+| ilevel_sel: forall G x L S U n1 n2 n3,
+    has pr G (trm_var x) L (dec_typ S U) ->
+    ilevel G S n1 ->
+    ilevel G U n2 ->
+    n1 < n3 ->
+    n2 < n3 ->
+    ilevel G (typ_sel (pth_var x) L) n3.
 
 (* prepend an oktrans to a chain *)
 Lemma prepend_chain: forall s G A1 A2 D,
@@ -2641,6 +2655,8 @@ Proof.
 (**** prepend_chain ****) {
   introv Wf St. unfold chain in *. unfold st_middle in *.
   lets Ok: (wf_sto_to_ok_G Wf).
+  set (oktrans2notrans A D H := 
+    (chain1subtyp Ok (prepend_chain s G A D D Wf H (empty_chain G D)))).
   intro Hch. inversions St; [ inversions H | idtac ].
   + (* case refl *)
     assumption.
@@ -2664,22 +2680,37 @@ Proof.
     - subst. auto 10.
     - auto 10.
     - lets Hst: (subtyp_trans_notrans Ok (notsel_bind _) H Hch2b). auto 10.
-  + (* case asel_l *)
-    rename H0 into H, H1 into St.
-    (* decreasing because [U <: A2] is contained in [p.L <: A2] *)
-    lets IHSt: (prepend_chain s G U A2 D Wf St).
+  + (* case sel_l *)
+    rename H0 into Has2, H1 into St, S into S2, U into U2.
+    lets I: (ip_has_to_trans Wf Has2).
+    destruct I as [X1 [X2 [DsX1 [DsX2 [Bi [Ty [StX [ExpX1 [ExpX2 I]]]]]]]]].
+    (* ExpX1 is contained in Exp1 --> decreasing *)
+    lets IHX: (exp_preserves_sub s G X1 X2 DsX1 DsX2
+                                 Wf (oktrans2notrans X1 X2 StX) ExpX1 ExpX2).
+    specialize (I IHX). clear IHX.
+    destruct I as [S1 [U1 [Has1 [StS [StSU StU]]]]].
+    (* decreasing because [U2 <: A2] is contained in [p.L <: A2] *)
+    lets IHSt: (prepend_chain s G U2 A2 D Wf St).
     specialize (IHSt Hch).
-    destruct IHSt as [B [C [IH1 [IH2 IH3]]]].
+    lets IHStU: (prepend_chain s G U1 U2 D Wf StU).
+    specialize (IHStU IHSt).
+    destruct IHStU as [B [C [IH1 IH2]]].
     exists B C.
-    (* interesting!!!!! *)
-    (*
-    split.
-    apply (follow_ub_cons H IH1).
-    split; assumption.
-  + (* case asel_r *) 
+    apply (conj (follow_ub_cons Has1 IH1) IH2).
+  + (* case sel_r *)
+    rename H0 into Has2, S into S2, U into U2, H1 into StSU, H2 into StA1S2.
     set (Hch' := Hch).
     destruct Hch' as [B [C [Hch1 [Hch2 Hch3]]]].
-    inversion Hch1; subst.
+    (*lets IHStSU: (prepend_chain s G S *)
+    admit. (*
+
+
+  + (* case sel_r *)
+    rename H0 into Has2, H1 into StSU, H2 into StA1S.
+    set (Hch' := Hch).
+    destruct Hch' as [B [C [Hch1 [Hch2 Hch3]]]].
+    lets IHStSU: (prepend_chain s G S 
+    inversions Hch1.
     - (* case follow_ub_nil *)
       destruct Hch2 as [Hch2 | [Hch2 | [Hch2a Hch2b]]].
       * subst.
@@ -2696,7 +2727,6 @@ Proof.
       injection HdecEq; intros; subst.
       exists B C. auto.
     *)
-    admit. + admit.
   + (* case trans *)
     lets IHSt1: (prepend_chain s G A1 T2 D Wf H).
     lets IHSt2: (prepend_chain s G T2 A2 D Wf H0).
