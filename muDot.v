@@ -1133,6 +1133,37 @@ Qed.
 
 
 (* ###################################################################### *)
+(** ** Uniqueness *)
+
+Lemma exp_has_unique:
+  (forall m G T Ds1, exp m G T Ds1 -> m = pr ->
+     forall Ds2, exp pr G T Ds2 -> Ds1 = Ds2) /\ 
+  (forall m G v l D1, has m G v l D1 -> m = pr ->
+     forall D2, has pr G v l D2 -> D1 = D2).
+Proof.
+  apply exp_has_mutind; intros.
+  + inversions H0. reflexivity.
+  + inversions H0. reflexivity.
+  + inversions H2. specialize (H eq_refl _ H7). inversions H. apply* (H0 eq_refl).
+  + discriminate.
+  + discriminate.
+  + inversions H1. unfold decs_has in *.
+    lets Eq: (binds_func b H3). subst.
+    specialize (H eq_refl _ H4). subst.
+    rewrite d in H5.
+    inversion H5. reflexivity.
+Qed.
+
+Lemma exp_unique: forall G T Ds1 Ds2,
+  exp pr G T Ds1 -> exp pr G T Ds2 -> Ds1 = Ds2.
+Proof. intros. apply* exp_has_unique. Qed.
+
+Lemma has_unique: forall G v l D1 D2,
+  has pr G v l D1 -> has pr G v l D2 -> D1 = D2.
+Proof. intros. apply* exp_has_unique. Qed.
+
+
+(* ###################################################################### *)
 (** ** Weakening *)
 
 Lemma weakening:
@@ -2823,8 +2854,6 @@ Qed.
 
 Print Assumptions oktrans2notrans.
 
-Stop here.
-
 (* ###################################################################### *)
 (* ###################################################################### *)
 (* ###################################################################### *)
@@ -2853,7 +2882,7 @@ Proof.
               subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2))).
   + (* case subtyp_refl *)
     intros m G x L Lo Hi Has Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
-    assert (Eq: Ds1 = Ds2) by admit. (* precise is unique *)
+    lets Eq: (exp_unique Exp1 Exp2).
     exists vars_empty. intros z zL. subst. apply subdecs_refl.
   + (* case subtyp_top *)
     intros m G T Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
@@ -2869,25 +2898,24 @@ Proof.
   + (* case subtyp_sel_l *)
     intros m G x L Lo2 Hi2 T Has2 St IHSt Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
     apply invert_exp_sel in Exp1. destruct Exp1 as [Lo1 [Hi1 [Has1 Exp1]]].
-    assert (Eq: (dec_typ Lo2 Hi2) = (dec_typ Lo1 Hi1)) by admit. (* uniqueness of pr has *)
+    lets Eq: (has_unique Has2 Has1).
     inversions Eq.
     apply* IHSt.
   + (* case subtyp_sel_r *)
     intros m G x L Lo Hi T Has St1 IHSt1 St2 IHSt2 Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
     apply invert_exp_sel in Exp2. destruct Exp2 as [Lo' [Hi' [Has' Exp2]]].
-    assert (Eq: (dec_typ Lo' Hi') = (dec_typ Lo Hi)) by admit. (* uniqueness of pr has *)
+    lets Eq: (has_unique Has' Has).
     inversions Eq.
     assert (ExpLo: exists DsLo, exp pr G Lo DsLo) by admit. (* <----- *)
     destruct ExpLo as [DsLo ExpLo].
     specialize (IHSt1 DsLo Ds2 Ok eq_refl ExpLo Exp2). destruct IHSt1 as [L1 IHSt1].
     specialize (IHSt2 Ds1 DsLo Ok eq_refl Exp1 ExpLo). destruct IHSt2 as [L2 IHSt2].
     exists (L1 \u L2 \u dom G). intros z zL1L2.
+    lets StWk: (subtyp_tmode (@subtyp_bind L2 ip G Ds1 DsLo IHSt2)).
     auto_specialize.
     assert (Ok': ok (G & z ~ typ_bind DsLo)) by auto.
-    admit. (* subdecs_transitivity *) (*
-    lets IHSt1': (subdecs_narrow_last Ok' IHSt1 IHSt2).
-    apply (subdecs_trans_oktrans IHSt2 IHSt1').
-    *)
+    lets IHSt1': (narrow_subdecs Ok' StWk IHSt1).
+    apply (subdecs_trans IHSt2 IHSt1').
   + (* case subtyp_mode *)
     intros. apply* H0.
   + (* case subtyp_trans *)
@@ -2897,13 +2925,16 @@ Proof.
     specialize (IH12 _ _ Ok eq_refl Exp1 Exp2). destruct IH12 as [L1 IH12].
     specialize (IH23 _ _ Ok eq_refl Exp2 Exp3). destruct IH23 as [L2 IHS23].
     exists (L1 \u L2 \u dom G). intros z zL1L2.
+    lets StWk: (subtyp_tmode (@subtyp_bind L1 ip G Ds1 Ds2 IH12)).
     auto_specialize.
     assert (Ok': ok (G & z ~ typ_bind Ds2)) by auto.
-    admit. (* subdecs transitivity *) (*
-    lets IH2': (subdecs_narrow_last Ok' IHSt2 IHSt1).
-    apply (subdecs_trans_oktrans IHSt1 IHSt2').
-    *)
+    lets IHS23': (narrow_subdecs Ok' StWk IHS23).
+    apply (subdecs_trans IH12 IHS23').
 Qed.
+
+Print Assumptions exp_preserves_sub_pr.
+
+Stop here.
 
 
 (* note: if second Exp is ip, the subtyp_refl case is as hard as the whole lemma,
