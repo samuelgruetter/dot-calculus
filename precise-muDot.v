@@ -3225,6 +3225,13 @@ Proof.
     split.
     apply (follow_ub_cons H IH1).
     split; assumption.
+  (*
+  + (* case asel_r *) 
+    apply (IHSt2 Hok). apply (IHSt1 Hok).
+    destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+    exists B C.
+    inversions Hch1. (* oops, cannot prove follow_ub G U (typ_sel (pth_var (avar_f x)) L)*)
+  *)
   + (* case asel_r *) 
     set (Hch' := Hch).
     destruct Hch' as [B [C [Hch1 [Hch2 Hch3]]]].
