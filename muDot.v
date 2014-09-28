@@ -2894,7 +2894,7 @@ Note:
  - Conclusion is imprecise, because result of narrowing is imprecise.
 *)
 
-Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
+Lemma exp_preserves_sub_pr_ip: forall m2 G T1 T2 Ds1 Ds2,
   ok G ->
   subtyp pr m2 G T1 T2 ->
   exp pr G T1 Ds1 ->
@@ -2964,7 +2964,17 @@ Proof.
     apply (subdecs_trans IH12 IHS23').
 Qed.
 
-Print Assumptions exp_preserves_sub_pr.
+Print Assumptions exp_preserves_sub_pr_ip.
+
+(* note: conclusion is precise *)
+Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
+  ok G ->
+  subtyp pr m2 G T1 T2 ->
+  exp pr G T1 Ds1 ->
+  exp pr G T2 Ds2 ->
+  exists L, forall z, z \notin L -> 
+            subdecs pr (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
+Admitted.
 
 (* In ip mode, this holds, but does it also hold in pr mode??? *)
 Lemma pr_narrow_subdecs: forall G z DsA DsB Ds1 Ds2,
@@ -3016,37 +3026,46 @@ Proof.
     intros. apply subdecs_refl.
   + (* case exp_sel *)
     intros m G v L Lo2 Hi2 Ds2 Has IHHas Exp IHExp s Eq Wf. subst.
+    lets Ok: (wf_sto_to_ok_G Wf).
     specialize (IHHas _ _ eq_refl Wf eq_refl). destruct IHHas as [D1 [IHHas IHSd]].
     specialize (IHExp _ eq_refl Wf). destruct IHExp as [L0 [Ds1 [ExpHi2 Sds12]]].
     apply invert_subdec_typ_sync_left in IHSd.
     destruct IHSd as [Lo1 [Hi1 [Eq [StLo StHi]]]]. subst.
     assert (E: exists Ds0, exp pr G Hi1 Ds0) by admit. (* hopefully by wf_sto... *)
     destruct E as [Ds0 ExpHi1].
-    assert (Sds01: forall z : var, z \notin L0 ->                         (* vvvvvvvv *)
-      subdecs pr (G & z ~ typ_bind Ds0) (open_decs z Ds0) (open_decs z Ds1)) by admit.
-    exists L0 Ds0. split.
+    lets Sds01: (exp_preserves_sub_pr Ok StHi ExpHi1 ExpHi2).
+    destruct Sds01 as [L1 Sds01].
+    exists (L0 \u L1) Ds0. split.
     - apply (exp_sel IHHas ExpHi1).
-    - intros z zL0.
-      lets Sds01': Sds01.
-      specialize (Sds01 z zL0).
-      specialize (Sds12 z zL0).
-      lets Ok: (wf_sto_to_ok_G Wf).
+    - intros z zL0L1.
+      assert (zL0: z \notin L0) by auto. specialize (Sds12 z zL0).
+      assert (zL1: z \notin L1) by auto. specialize (Sds01 z zL1).
       assert (Ok' : ok (G & z ~ typ_bind Ds1)) by admit. (* TODO L0 \u dom G stuff *)
       (* narrowing should preserve mode!!*)
       lets Sds12' : (pr_narrow_subdecs Sds01 Sds12).
       apply (subdecs_trans Sds01 Sds12').
+
   + (* case has_trm *)
-    intros G t V2 Ds22 l D22 Ty IHTy Exp2 IHExp Ds22Has Clo s v _ Wf Eq. subst.
-    specialize (IHExp s eq_refl Wf). destruct IHExp as [L [Ds21 [Exp21 Sds]]].
-    specialize (IHTy s v Wf eq_refl). destruct IHTy as [V1 [BiG St]].
-    pick_fresh z. assert (zL: z \notin L) by auto.
-    specialize (Sds z zL).
-    apply (decs_has_open z) in Ds22Has.
-    lets P: (decs_has_preserves_sub Ds22Has Sds).
-    destruct P as [D21 [Ds21Has Sd]].
-    destruct (ctx_binds_to_sto_binds Wf BiG) as [[Ds1 ds] Bis].
-    lets P: (invert_wf_sto_with_weakening Wf Bis BiG).
-    destruct P as [Eq _]. subst.
+    intros G t X2 Ds2 l D2 Ty IHTy Exp2 IHExp Ds2Has Clo s v _ Wf Eq. subst.
+    lets Ok: (wf_sto_to_ok_G Wf).
+    specialize (IHExp s eq_refl Wf). destruct IHExp as [L2 [Dsm [Expm Sds2]]].
+    specialize (IHTy s v Wf eq_refl). destruct IHTy as [X1 [BiG St]].
+    assert (E: exists Ds1, exp pr G X1 Ds1) by admit. (* hopefully by wf_sto... *)
+    destruct E as [Ds1 Exp1].
+    lets Sds1: (exp_preserves_sub_pr Ok St Exp1 Expm).
+    destruct Sds1 as [L1 Sds1].
+    pick_fresh z.
+    assert (zL1: z \notin L1) by auto. specialize (Sds1 z zL1).
+    assert (zL2: z \notin L2) by auto. specialize (Sds2 z zL2).
+    assert (Ok': ok (G & z ~ typ_bind Ds1)) by auto.
+    lets Sds2': (pr_narrow_subdecs Sds1 Sds2). (* <---- *)
+    lets Sds: (subdecs_trans Sds1 Sds2').
+    apply (decs_has_open z) in Ds2Has.
+    rewrite Clo in Ds2Has.
+    lets P: (decs_has_preserves_sub Ds2Has Sds).
+    destruct P as [D1 [Ds1Has Sd]].
+    exists D1.
+    (* must move z of Sd into G --> some kind of precise subst?? *)
     admit.
   + (* case has_var *)
     admit.
