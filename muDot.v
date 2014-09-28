@@ -2891,7 +2891,6 @@ Admitted.
 Note:
  - Proving it for notrans only doesn't work, because the IH needs to accept oktrans,
    because that's what comes out of subtyp_sel_l/r.
- - Conclusion is imprecise, because result of narrowing is imprecise.
 *)
 
 Lemma exp_preserves_sub_pr_ip: forall m2 G T1 T2 Ds1 Ds2,
@@ -2899,8 +2898,8 @@ Lemma exp_preserves_sub_pr_ip: forall m2 G T1 T2 Ds1 Ds2,
   subtyp pr m2 G T1 T2 ->
   exp pr G T1 Ds1 ->
   exp pr G T2 Ds2 ->
-  exists L, forall z, z \notin L -> 
-            subdecs ip (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
+  forall z, binds z T1 G -> 
+            subdecs pr G (open_decs z Ds1) (open_decs z Ds2).
 Proof.
   (* We don't use the [induction] tactic because we want to intro everything ourselves: *)
   intros m2 G T1 T2 Ds1 Ds2 Ok St.
@@ -2910,29 +2909,32 @@ Proof.
     m1 = pr ->
     exp m1 G T1 Ds1 ->
     exp m1 G T2 Ds2 ->
-    exists L, forall z : var, z \notin L ->
-              subdecs ip (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2))).
+    forall z, binds z T1 G -> 
+              subdecs m1 G (open_decs z Ds1) (open_decs z Ds2))).
   + (* case subtyp_refl *)
     intros m G x L Lo Hi Has Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
     lets Eq: (exp_unique Exp1 Exp2).
-    exists vars_empty. intros z zL. subst. apply subdecs_refl.
+    subst. intros z Bi. apply subdecs_refl.
   + (* case subtyp_top *)
     intros m G T Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
     inversions Exp2.
-    exists vars_empty. intros z zL. unfold open_decs, open_rec_decs. apply subdecs_empty.
+    intros z Bi. unfold open_decs, open_rec_decs. apply subdecs_empty.
   + (* case subtyp_bot *)
     intros m G T Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
     inversions Exp1.
   + (* case subtyp_bind *)
     intros L m G Ds1' Ds2' Sds Ds1 Ds2 Ok Eq Exp1 Exp2.
     inversions Exp1. inversions Exp2.
-    exists L. intros z zL. specialize (Sds z zL). apply* pr2ip.
+    admit. (* TODO requires precise substitution!! *)
   + (* case subtyp_sel_l *)
     intros m G x L Lo2 Hi2 T Has2 St IHSt Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
     apply invert_exp_sel in Exp1. destruct Exp1 as [Lo1 [Hi1 [Has1 Exp1]]].
     lets Eq: (has_unique Has2 Has1).
     inversions Eq.
+    intros z Bi.
     apply* IHSt.
+    (* would need [binds z Hi1 G] --> doesn't work *)
+
   + (* case subtyp_sel_r *)
     intros m G x L Lo Hi T Has St1 IHSt1 St2 IHSt2 Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
     apply invert_exp_sel in Exp2. destruct Exp2 as [Lo' [Hi' [Has' Exp2]]].
