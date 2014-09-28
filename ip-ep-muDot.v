@@ -2930,13 +2930,13 @@ Note:
    because that's what comes out of subtyp_sel_l/r.
 *)
 
-Lemma exp_preserves_sub_ep: forall m2 s G T1 T2 Ds1 Ds2,
+Lemma exp_preserves_sub_ep_ip: forall m2 s G T1 T2 Ds1 Ds2,
   wf_sto s G ->
   subtyp ep m2 G T1 T2 ->
   exp ep G T1 Ds1 ->
   exp ep G T2 Ds2 ->
   forall z, ty_trm G (trm_var (avar_f z)) T1 -> 
-            subdecs ep G (open_decs z Ds1) (open_decs z Ds2).
+            subdecs ip G (open_decs z Ds1) (open_decs z Ds2).
 Proof.
   (* We don't use the [induction] tactic because we want to intro everything ourselves: *)
   intros m2 s G T1 T2 Ds1 Ds2 Wf St.
@@ -2946,7 +2946,7 @@ Proof.
     m1 = ep ->
     exp m1 G T1 Ds1 ->
     exp m1 G T2 Ds2 ->
-    forall z, _ -> subdecs m1 G (open_decs z Ds1) (open_decs z Ds2))).
+    forall z, _ -> subdecs ip G (open_decs z Ds1) (open_decs z Ds2))).
   + (* case subtyp_refl *)
     intros m G x L Lo Hi Has Ds1 Ds2 s Wf Eq Exp1 Exp2. subst.
     lets Eq: (exp_unique Exp1 Exp2).
@@ -2962,7 +2962,14 @@ Proof.
     intros L m G Ds1' Ds2' Sds Ds1 Ds2 s Wf Eq Exp1 Exp2.
     inversions Exp1. inversions Exp2.
     intros x Ty. pick_fresh z. assert (zL: z \notin L) by auto. specialize (Sds z zL).
-    admit. (* TODO requires env-precise substitution!! *)
+    lets Ok: (wf_sto_to_ok_G Wf). assert (Ok': ok (G & z ~ typ_bind Ds1)) by auto.
+    lets P: (@subdecs_subst_principle G z x (typ_bind Ds1) 
+        (open_decs z Ds1) (open_decs z Ds2) Ok' Sds Ty).
+    lets Eq: (@subst_intro_decs z x).
+    rewrite <- Eq in P. rewrite <- Eq in P.
+    - exact P.
+    - auto.
+    - auto.
   + (* case subtyp_sel_l *)
     (* This case does not need subdecs_trans, because Exp1 is precise, so the expansion
        of x.L is the same as the expansion of its upper bound Hi1, and we can just apply
@@ -3012,7 +3019,7 @@ Proof.
     apply (subdecs_trans IH12 IH23).
 Qed.
 
-Print Assumptions exp_preserves_sub_ep.
+Print Assumptions exp_preserves_sub_ep_ip.
 
 Lemma ip2ep:
    (forall m G T Ds2, exp m G T Ds2 -> forall s,
@@ -3070,7 +3077,7 @@ Proof.
     destruct IHSd as [Lo1 [Hi1 [Eq [StLo StHi]]]]. subst.
     assert (E: exists Ds0, exp ep G Hi1 Ds0) by admit. (* hopefully by wf_sto... *)
     destruct E as [Ds0 ExpHi1].
-    lets Sds01: (exp_preserves_sub_ep Wf StHi ExpHi1 ExpHi2).
+    lets Sds01: (exp_preserves_sub_ep_ip Wf StHi ExpHi1 ExpHi2).
     assert (Ty'': ty_trm G (trm_var (avar_f z)) Hi1). {
       apply (ty_sbsm Ty). apply subtyp_tmode. apply subtyp_pmode.
       apply (subtyp_sel_l IHHas (subtyp_refl_all _ _ _ _)).
