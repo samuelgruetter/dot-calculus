@@ -322,13 +322,12 @@ with subtyp : pmode -> tmode -> ctx -> typ -> typ -> Prop :=
       subtyp m notrans G T typ_top
   | subtyp_bot : forall m G T,
       subtyp m notrans G typ_bot T
-  (* m1 in hyp, m2 in conclusion, all 4 possibilities are allowed *)
-  | subtyp_bind : forall L m1 m2 G Ds1 Ds2,
+  | subtyp_bind : forall L m G Ds1 Ds2,
       (forall z, z \notin L -> 
-         subdecs m1 (G & z ~ (typ_bind Ds1))
-                   (open_decs z Ds1) 
-                   (open_decs z Ds2)) ->
-      subtyp m2 notrans G (typ_bind Ds1) (typ_bind Ds2)
+         subdecs ip (G & z ~ (typ_bind Ds1))
+                    (open_decs z Ds1) 
+                    (open_decs z Ds2)) ->
+      subtyp m notrans G (typ_bind Ds1) (typ_bind Ds2)
   | subtyp_sel_l : forall m G x L S U T,
       has m G (trm_var (avar_f x)) L (dec_typ S U) ->
       subtyp m oktrans G U T ->
@@ -338,6 +337,9 @@ with subtyp : pmode -> tmode -> ctx -> typ -> typ -> Prop :=
       subtyp m oktrans G S U -> (* <--- makes proofs a lot easier!! *)
       subtyp m oktrans G T S ->
       subtyp m notrans G T (typ_sel (pth_var (avar_f x)) L)
+  | subtyp_pmode : forall m G T1 T2,
+      subtyp ep m G T1 T2 ->
+      subtyp ip m G T1 T2
   | subtyp_tmode : forall m G T1 T2,
       subtyp m notrans G T1 T2 ->
       subtyp m oktrans G T1 T2
@@ -1264,6 +1266,8 @@ Proof.
     intros. subst. apply* subtyp_sel_l.
   + (* case subtyp_asel_r *)
     intros. subst. apply* subtyp_sel_r.
+  + (* case subtyp_pmode *)
+    introv Hst IH Hok Heq. apply subtyp_pmode. apply* IH.
   + (* case subtyp_tmode *)
     introv Hst IH Hok Heq. apply subtyp_tmode. apply* IH.
   + (* case subtyp_trans *)
@@ -1592,7 +1596,7 @@ Proof.
   + (* case subtyp_bot *)
     intros. simpl. apply subtyp_bot.
   + (* case subtyp_bind *)
-    intros L m1 m2 G Ds1 Ds2 Sds IH G1 G2 x EqG Bi Ok. subst.
+    intros L m G Ds1 Ds2 Sds IH G1 G2 x EqG Bi Ok. subst.
     apply_fresh subtyp_bind as z. fold subst_decs.
     assert (zL: z \notin L) by auto.
     specialize (IH z zL G1 (G2 & z ~ typ_bind Ds1) x).
@@ -1618,6 +1622,9 @@ Proof.
     specialize (IHHas _ _ _ eq_refl Bi Ok).
     simpl in *.
     case_if; apply (subtyp_sel_r IHHas IHSt1 IHSt2).
+  + (* case subtyp_pmode *)
+    intros m G T1 T2 St IH G1 G2 x EqG Bi Ok. subst.
+    apply (IH _ _ _ eq_refl Bi Ok).
   + (* case subtyp_tmode *)
     intros m G T1 T2 St IH G1 G2 x EqG Bi Ok. subst.
     specialize (IH _ _ _ eq_refl Bi Ok).
@@ -2054,11 +2061,9 @@ Lemma invert_subtyp_bind: forall m G Ds1 Ds2,
   exists L, forall z, z \notin L ->
             subdecs ip (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
 Proof.
-  introv St. inversions St. exists L.
-  intros z zL. specialize (H3 z zL).
-  destruct m1.
-  - assumption.
-  - admit. (* TODO ep=>ip *)
+  introv St. inversions St.
+  + exists L. assumption.
+  + inversions H. exists L. assumption.
 Qed.
 
 Lemma invert_wf_sto_with_weakening: forall s G,
@@ -2437,21 +2442,30 @@ Proof.
     - apply (IHDs3 H23c).
 Qed.
 
-Lemma subtyp_trans_notrans: forall G T1 T2 T3,
-  ok G -> notsel T2 -> subtyp ip notrans G T1 T2 -> subtyp ip notrans G T2 T3 -> 
-  subtyp ip notrans G T1 T3.
+(*
+Lemma subtyp_trans_notrans: forall m G T1 T2 T3,
+  ok G -> notsel T2 -> subtyp m notrans G T1 T2 -> subtyp m notrans G T2 T3 -> 
+  subtyp m notrans G T1 T3.
 Proof.
   introv Hok Hnotsel H12 H23.
 
   inversion Hnotsel; subst.
   (* case top *)
   + inversion H23; subst.
-    - apply (subtyp_top ip G T1).
+    - apply (subtyp_top m G T1).
     - apply (subtyp_sel_r H H0 (subtyp_trans (subtyp_tmode H12) H1)).
+    - inversion H; subst.
+      * apply (subtyp_top ip G T1).
+      * apply subtyp_pmode. apply (subtyp_sel_r H0 H1).
+        refine (subtyp_trans _ H2). apply subtyp_tmode. apply subtyp_top.
   (* case bot *)
   + inversion H12; subst.
-    - apply (subtyp_bot ip G T3).
+    - apply (subtyp_bot m G T3).
     - apply (subtyp_sel_l H (subtyp_trans H0 (subtyp_tmode H23))).
+    - inversion H; subst.
+      * apply (subtyp_bot ip G T3).
+      * apply subtyp_pmode. apply (subtyp_sel_l H0).
+        refine (subtyp_trans H1 _). apply subtyp_tmode. apply subtyp_bot.
   (* case bind *)
   + inversion H12; inversion H23; subst; (
       assumption ||
@@ -2477,6 +2491,7 @@ Proof.
         apply (subtyp_trans (subtyp_tmode H12) H6).
       apply (subtyp_sel_r H4 H5 H1S).
     - (* sel  <: bind <: bind *)
+      rename Ds into Ds2.
       assert (HU2: subtyp ip oktrans G U (typ_bind Ds2))
         by apply (subtyp_trans H0 (subtyp_tmode H23)).
       apply (subtyp_sel_l H HU2). 
@@ -2484,8 +2499,6 @@ Proof.
       apply (subtyp_sel_r H2 H6).
       apply (subtyp_trans (subtyp_tmode H12) H7).
 Qed.
-
-Print Assumptions subtyp_trans_notrans.
 
 (**
 (follow_ub G p1.X1 T) means that there exists a chain
@@ -2498,7 +2511,7 @@ Inductive follow_ub : ctx -> typ -> typ -> Prop :=
   | follow_ub_nil : forall G T,
       follow_ub G T T
   | follow_ub_cons : forall G v X Lo Hi T,
-      has pr G (trm_var (avar_f v)) X (dec_typ Lo Hi) ->
+      has ep G (trm_var (avar_f v)) X (dec_typ Lo Hi) ->
       follow_ub G Hi T ->
       follow_ub G (typ_sel (pth_var (avar_f v)) X) T.
 
@@ -2513,7 +2526,7 @@ Inductive follow_lb: ctx -> typ -> typ -> Prop :=
   | follow_lb_nil : forall G T,
       follow_lb G T T
   | follow_lb_cons : forall G v X Lo Hi U,
-      has pr G (trm_var (avar_f v)) X (dec_typ Lo Hi) ->
+      has ep G (trm_var (avar_f v)) X (dec_typ Lo Hi) ->
       subtyp ip oktrans G Lo Hi -> (* <-- realizable bounds *)
       follow_lb G (typ_sel (pth_var (avar_f v)) X) U ->
       follow_lb G Lo U.
@@ -2525,7 +2538,7 @@ Lemma invert_follow_lb: forall G T1 T2,
   follow_lb G T1 T2 -> 
   T1 = T2 \/ 
     exists v1 X1 v2 X2 Hi, (typ_sel (pth_var (avar_f v2)) X2) = T2 /\
-      has pr G (trm_var (avar_f v1)) X1 (dec_typ T1 Hi) /\
+      has ep G (trm_var (avar_f v1)) X1 (dec_typ T1 Hi) /\
       subtyp ip oktrans G T1 Hi /\
       follow_lb G (typ_sel (pth_var (avar_f v1)) X1) (typ_sel (pth_var (avar_f v2)) X2).
 Proof.
@@ -2898,6 +2911,7 @@ Proof.
 Qed.
 
 Print Assumptions oktrans2notrans.
+*)
 
 (* ###################################################################### *)
 (* ###################################################################### *)
@@ -2905,12 +2919,9 @@ Print Assumptions oktrans2notrans.
 (** Exploring helper lemmas for ip->pr and oktrans->notrans *)
 
 
-Lemma pr2ip:
-   (forall m G T Ds,   exp m G T Ds  -> exp ip G T Ds)
-/\ (forall m G t L D,  has m G t L D -> has ip G t L D)
-/\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 -> subtyp ip m2 G T1 T2)
-/\ (forall m G D1 D2, subdec m G D1 D2 -> subdec ip G D1 D2)
-/\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> subdecs ip G Ds1 Ds2).
+Lemma subdec_ep2ip: forall G D1 D2, subdec ep G D1 D2 -> subdec ip G D1 D2.
+Admitted.
+Lemma subdecs_ep2ip: forall G Ds1 Ds2, subdecs ep G Ds1 Ds2 -> subdecs ip G Ds1 Ds2.
 Admitted.
 
 (*
@@ -2919,20 +2930,20 @@ Note:
    because that's what comes out of subtyp_sel_l/r.
 *)
 
-Lemma exp_preserves_sub_pr: forall m2 s G T1 T2 Ds1 Ds2,
+Lemma exp_preserves_sub_ep: forall m2 s G T1 T2 Ds1 Ds2,
   wf_sto s G ->
-  subtyp pr m2 G T1 T2 ->
-  exp pr G T1 Ds1 ->
-  exp pr G T2 Ds2 ->
+  subtyp ep m2 G T1 T2 ->
+  exp ep G T1 Ds1 ->
+  exp ep G T2 Ds2 ->
   forall z, ty_trm G (trm_var (avar_f z)) T1 -> 
-            subdecs pr G (open_decs z Ds1) (open_decs z Ds2).
+            subdecs ep G (open_decs z Ds1) (open_decs z Ds2).
 Proof.
   (* We don't use the [induction] tactic because we want to intro everything ourselves: *)
   intros m2 s G T1 T2 Ds1 Ds2 Wf St.
-  gen_eq m1: pr. gen m1 m2 G T1 T2 St Ds1 Ds2 s Wf.
+  gen_eq m1: ep. gen m1 m2 G T1 T2 St Ds1 Ds2 s Wf.
   apply (subtyp_ind (fun m1 m2 G T1 T2 => forall Ds1 Ds2 s,
     wf_sto s G ->
-    m1 = pr ->
+    m1 = ep ->
     exp m1 G T1 Ds1 ->
     exp m1 G T2 Ds2 ->
     forall z, _ -> subdecs m1 G (open_decs z Ds1) (open_decs z Ds2))).
@@ -2963,9 +2974,8 @@ Proof.
     intros z Ty.
     apply* IHSt.
     apply (@ty_sbsm G _ (typ_sel (pth_var (avar_f x)) L) Hi1 Ty).
-    apply subtyp_tmode.
-    assert (Has1': has ip G (trm_var (avar_f x)) L (dec_typ Lo1 Hi1)) by apply* pr2ip.
-    apply (subtyp_sel_l Has1').
+    apply subtyp_tmode. apply subtyp_pmode.
+    apply (subtyp_sel_l Has1).
     apply subtyp_refl_all.
   + (* case subtyp_sel_r *)
     (* This case needs subdecs_trans: Ds1 <: DsLo <: Ds2 *)
@@ -2973,82 +2983,67 @@ Proof.
     apply invert_exp_sel in Exp2. destruct Exp2 as [Lo' [Hi' [Has' Exp2]]].
     lets Eq: (has_unique Has' Has).
     inversions Eq.
-    assert (ExpLo: exists DsLo, exp pr G Lo DsLo) by admit. (* <----- *)
+    assert (ExpLo: exists DsLo, exp ep G Lo DsLo) by admit. (* <----- *)
     destruct ExpLo as [DsLo ExpLo].
     intros y Ty.
     specialize (IHSt1 DsLo Ds2 s Wf eq_refl ExpLo Exp2).
     assert (Ty': ty_trm G (trm_var (avar_f y)) Lo). {
-      apply (ty_sbsm Ty). apply* pr2ip.
+      apply (ty_sbsm Ty). apply* subtyp_pmode.
     }
     specialize (IHSt1 y Ty').
     specialize (IHSt2 Ds1 DsLo s Wf eq_refl Exp1 ExpLo y Ty).
     (* since y is in G instead of appended after G, no need for narrowing (which would
        have to be precise!) before applying subdecs_trans *)
     apply (subdecs_trans IHSt2 IHSt1).
-  + (* case subtyp_mode *)
+  + (* case subtyp_pmode *)
+    intros. discriminate.
+  + (* case subtyp_tmode *)
     intros. apply* H0.
   + (* case subtyp_trans *)
     intros m G T1 T2 T3 St12 IH12 St23 IH23 Ds1 Ds3 s Wf Eq Exp1 Exp3. subst.
-    assert (Exp2: exists Ds2, exp pr G T2 Ds2) by admit. (* <----- *)
+    assert (Exp2: exists Ds2, exp ep G T2 Ds2) by admit. (* <----- *)
     destruct Exp2 as [Ds2 Exp2].
     intros y Ty.
     specialize (IH12 _ _ s Wf eq_refl Exp1 Exp2 y Ty).
     assert (Ty': ty_trm G (trm_var (avar_f y)) T2). {
-      apply (ty_sbsm Ty). apply* pr2ip.
+      apply (ty_sbsm Ty). apply* subtyp_pmode.
     }
     specialize (IH23 _ _ s Wf eq_refl Exp2 Exp3 y Ty').
     apply (subdecs_trans IH12 IH23).
 Qed.
 
-Print Assumptions exp_preserves_sub_pr.
+Print Assumptions exp_preserves_sub_ep.
 
-(* note: conclusion is precise
-Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
-  ok G ->
-  subtyp pr m2 G T1 T2 ->
-  exp pr G T1 Ds1 ->
-  exp pr G T2 Ds2 ->
-  exists L, forall z, z \notin L -> 
-            subdecs pr (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
-Admitted.
-
-(* In ip mode, this holds, but does it also hold in pr mode??? *)
-Lemma pr_narrow_subdecs: forall G z DsA DsB Ds1 Ds2,
-  subdecs pr (G & z ~ typ_bind DsA) (open_decs z DsA) (open_decs z DsB) ->
-  subdecs pr (G & z ~ typ_bind DsB) Ds1 Ds2 ->
-  subdecs pr (G & z ~ typ_bind DsA) Ds1 Ds2.
-Admitted.*)
-
-Lemma ip2pr:
+Lemma ip2ep:
    (forall m G T Ds2, exp m G T Ds2 -> forall s,
       m = ip ->
       wf_sto s G ->
       forall z, ty_trm G (trm_var (avar_f z)) T ->
-                exists Ds1, exp pr G T Ds1 /\
-                            subdecs pr G (open_decs z Ds1) (open_decs z Ds2))
+                exists Ds1, exp ep G T Ds1 /\
+                            subdecs ep G (open_decs z Ds1) (open_decs z Ds2))
 /\ (forall m G t L D2, has m G t L D2 -> forall s v,
       m = ip ->
       wf_sto s G ->
       t = (trm_var (avar_f v)) ->
-      exists D1, has pr G (trm_var (avar_f v)) L D1 /\
-                 subdec pr G D1 D2)
+      exists D1, has ep G (trm_var (avar_f v)) L D1 /\
+                 subdec ep G D1 D2)
 /\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 -> forall s,
       m1 = ip ->
       wf_sto s G ->
-      subtyp pr oktrans G T1 T2)
+      subtyp ep oktrans G T1 T2)
 /\ (forall m G D1 D2, subdec m G D1 D2 -> forall s,
       m = ip ->
       wf_sto s G ->
-      subdec pr G D1 D2)
+      subdec ep G D1 D2)
 /\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> forall s,
       m = ip ->
       wf_sto s G ->
-      subdecs pr G Ds1 Ds2)
+      subdecs ep G Ds1 Ds2)
 /\ (forall G t T2, ty_trm G t T2 -> forall s v,
       wf_sto s G ->
       t = (trm_var (avar_f v)) ->
       exists T1, binds v T1 G /\
-                 subtyp pr oktrans G T1 T2).
+                 subtyp ep oktrans G T1 T2).
 Proof.
   apply mutind6; try (intros; discriminate).
   + (* case exp_top *)
@@ -3073,13 +3068,12 @@ Proof.
     destruct IHExp as [Ds1 [ExpHi2 Sds12]].
     apply invert_subdec_typ_sync_left in IHSd.
     destruct IHSd as [Lo1 [Hi1 [Eq [StLo StHi]]]]. subst.
-    assert (E: exists Ds0, exp pr G Hi1 Ds0) by admit. (* hopefully by wf_sto... *)
+    assert (E: exists Ds0, exp ep G Hi1 Ds0) by admit. (* hopefully by wf_sto... *)
     destruct E as [Ds0 ExpHi1].
-    lets Sds01: (exp_preserves_sub_pr Wf StHi ExpHi1 ExpHi2).
+    lets Sds01: (exp_preserves_sub_ep Wf StHi ExpHi1 ExpHi2).
     assert (Ty'': ty_trm G (trm_var (avar_f z)) Hi1). {
-      apply (ty_sbsm Ty). apply subtyp_tmode.
-      assert (IHHas': has ip G (trm_var (avar_f v)) L (dec_typ Lo1 Hi1)) by apply* pr2ip.
-      apply (subtyp_sel_l IHHas' (subtyp_refl_all _ _ _ _)).
+      apply (ty_sbsm Ty). apply subtyp_tmode. apply subtyp_pmode.
+      apply (subtyp_sel_l IHHas (subtyp_refl_all _ _ _ _)).
     }
     specialize (Sds01 z Ty'').
     exists Ds0. split.
@@ -3091,9 +3085,9 @@ Proof.
     lets Ok: (wf_sto_to_ok_G Wf).
     specialize (IHExp s eq_refl Wf v Ty). destruct IHExp as [Dsm [Expm Sds2]].
     specialize (IHTy s v Wf eq_refl). destruct IHTy as [X1 [BiG St]].
-    assert (E: exists Ds1, exp pr G X1 Ds1) by admit. (* hopefully by wf_sto... *)
+    assert (E: exists Ds1, exp ep G X1 Ds1) by admit. (* hopefully by wf_sto... *)
     destruct E as [Ds1 Exp1].
-    lets Sds1: (exp_preserves_sub_pr Wf St Exp1 Expm).
+    lets Sds1: (exp_preserves_sub_ep Wf St Exp1 Expm).
     specialize (Sds1 v (ty_var BiG)).
     lets Sds: (subdecs_trans Sds1 Sds2).
     apply (decs_has_open v) in Ds2Has.
@@ -3104,7 +3098,7 @@ Proof.
     destruct E as [D1 Eq]. subst D1o.
     exists (open_dec v D1).
     refine (conj _ Sd).
-    apply (has_pr BiG Exp1).
+    apply (has_ep BiG Exp1).
     assert (decs_has (open_decs v Ds1) l (open_dec v D1)
          -> decs_has Ds1 l D1) by admit. (* TODO does not hold! *) auto.
   + (* case has_var *)
@@ -3125,11 +3119,8 @@ Proof.
     intros L m G Ds1 Ds2 Sds IH s Eq Wf. subst.
     apply subtyp_tmode. apply subtyp_bind with L.
     intros z zL.
-    specialize (Sds z zL).
-    (* TODO: what if these Ds1 are not realizable?? Then we don't have hyp for IH! *)
-    refine (IH z zL _ eq_refl _).
-    assert (wf_sto empty (G & z ~ typ_bind Ds1)) by admit. (* <---- *)
-    eassumption.
+    (* Env becomes bigger -> ip is allowed -> no need for IH, just apply hyp *)
+    apply (Sds z zL).
   + (* case subtyp_sel_l *)
     intros m G x L Lo2 Hi2 T Has2 IHHas2 St IHSt s Eq Wf. subst.
     specialize (IHHas2 _ _ eq_refl Wf eq_refl).
@@ -3142,10 +3133,17 @@ Proof.
     apply (subtyp_sel_l Has1 StHi1T).
   + (* case subtyp_sel_r *)
     admit.
+  + (* case subtyp_pmode *)
+    intros m G T1 T2 St _ s _ Wf. destruct m.
+    - apply (subtyp_tmode St).
+    - exact St.
   + (* case subtyp_tmode *)
-    admit.
+    intros m G T1 T2 St IH s Eq Wf. subst. apply* IH.
   + (* case subtyp_trans *)
-    admit.
+    intros m G T1 T2 T3 St12 IH12 St23 IH23 s Eq Wf. subst.
+    specialize (IH12 s eq_refl Wf).
+    specialize (IH23 s eq_refl Wf).
+    apply (subtyp_trans IH12 IH23).
 
   + (* case subdec_typ *)
     admit.
@@ -3176,11 +3174,11 @@ Lemma invert_subtyp_bind_oktrans: forall s G Ds1 Ds2,
   exists L, forall z, z \notin L ->
             subdecs ip (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
 Proof.
-  introv Wf St. destruct ip2pr as [_ [_ [P _]]].
+  introv Wf St. destruct ip2ep as [_ [_ [P _]]].
   specialize (P _ _ _ _ _ St _ eq_refl Wf).
-  lets Exp1: (exp_bind pr G Ds1).
-  lets Exp2: (exp_bind pr G Ds2).
-  lets Q: (exp_preserves_sub_pr Wf P Exp1 Exp2).
+  lets Exp1: (exp_bind ep G Ds1).
+  lets Exp2: (exp_bind ep G Ds2).
+  lets Q: (exp_preserves_sub_ep Wf P Exp1 Exp2).
 Qed.
 
 (* so probably we won't even need the transitivity push-back *)
