@@ -2995,7 +2995,8 @@ Proof.
     intros y Ty.
     specialize (IHSt1 DsLo Ds2 s Wf eq_refl ExpLo Exp2).
     assert (Ty': ty_trm G (trm_var (avar_f y)) Lo). {
-      apply (ty_sbsm Ty). apply* subtyp_pmode.
+      apply (ty_sbsm Ty).
+      apply (subtyp_pmode St2). (* <-- not just follow bounds, but could be anything! *)
     }
     specialize (IHSt1 y Ty').
     specialize (IHSt2 Ds1 DsLo s Wf eq_refl Exp1 ExpLo y Ty).
@@ -3085,7 +3086,7 @@ Proof.
     specialize (Sds01 z Ty'').
     exists Ds0. split.
     - apply (exp_sel IHHas ExpHi1).
-    - apply (subdecs_trans Sds01 Sds12).
+    - apply (subdecs_trans Sds01 Sds12). (* <-- Sds01 is ip instead of ep !!! *)
 
   + (* case has_trm *)
     intros G t X2 Ds2 l D2 Ty IHTy Exp2 IHExp Ds2Has Clo s v _ Wf Eq. subst.

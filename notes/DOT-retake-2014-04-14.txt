@@ -6,7 +6,7 @@ Term     t, u = x                               variable
 Path        p = x
                 p.l
 
-Constructor c = Tc { ds }
+Constructor c = p.K { ds }
 
 Definition  d = l = x                           field definition
                 m(x) = t                        method definition
@@ -341,10 +341,10 @@ Path and term typing: G |- p: T and G |- t: T
 (App)             -----------------------------------
                            G |- t.m(u) : T
 
-                   G |- Tc imp    G |- Tc <!x Ds
-              G, x: Tc |- ds : Ds    G, x: Tc |- t : T
+                   G |- p.K imp    G |- p.K <!x Ds
+              G, x: p.K |- ds : Ds    G, x: p.K |- t : T
 (New)         -------------------------------------------
-                 G |- (val x = new Tc { ds }; t) : T
+                 G |- (val x = new p.K { ds }; t) : T
 
                       G |- t : T    G |- T <: U
 (Sub)                 -------------------------
