@@ -301,6 +301,7 @@ Inductive exp : pmode -> ctx -> typ -> list (pth * nat) -> decs -> Prop :=
       exp m G (typ_bind Ds) H Ds
   | exp_sel : forall m G x n H Lo Hi Ds,
       has m G (trm_var (avar_f x)) (label_typ n) (dec_typ Lo Hi) ->
+      ~ List.In (pth_var (avar_f x), n) H ->
       exp m G Hi (cons ((pth_var (avar_f x)), n) H) Ds ->
       exp m G (typ_sel (pth_var (avar_f x)) (label_typ n)) H Ds
   (* if we encounter a p.L that we've already seen, we just say it expands to {} *)
@@ -1229,43 +1230,51 @@ Qed.
 
 
 Lemma exp_has_unique:
-  (forall m G T H Ds1, exp m G T H Ds1 -> m = pr -> H = nil ->
+  (forall m G T H Ds1, exp m G T H Ds1 -> m = pr ->
      forall Ds2, exp pr G T H Ds2 -> Ds1 = Ds2) /\ 
   (forall m G v l D1, has m G v l D1 -> m = pr ->
      forall D2, has pr G v l D2 -> D1 = D2).
 Proof.
-  apply exp_has_mutind; intros; subst.
+  apply exp_has_mutind.
   + (* exp_top *)
-    inversions H2. reflexivity.
+    introv Eq Exp. inversions Exp. reflexivity.
   + (* exp_bot *)
-    inversions H2. reflexivity.
+    introv Eq Exp. inversions Exp. reflexivity.
   + (* exp_bind *)
-    inversions H2. reflexivity.
+    introv Eq Exp. inversions Exp. reflexivity.
   + (* exp_sel *)
+    introv Has IHHas Notin Exp1 IHExp1 Eq Exp2. subst.
     destruct Hi as [| |DsHi|q M].
-    - inversions e. inversions H4.
-      * specialize (H0 eq_refl _ H7). inversions H0. inversions H10. reflexivity.
+    - inversions Exp1. inversions Exp2.
+      * specialize (IHHas eq_refl _ H3). inversions IHHas. inversions H9. reflexivity.
       * reflexivity.
-    - inversions e. inversions H4.
-      * specialize (H0 eq_refl _ H7). inversions H0. inversions H10. reflexivity.
-      * false H9. (* contradiction *)
-    - inversions e. inversions H4.
-      * specialize (H0 eq_refl _ H7). inversions H0. inversions H10. reflexivity.
-      * false H9. (* contradiction *)
-    - admit. (* <------ TODO does not hold !!!!!!!!! *)
+    - inversions Exp1. inversions Exp2.
+      * specialize (IHHas eq_refl _ H3). inversions IHHas. inversions H9. reflexivity.
+      * false Notin. assumption. (* contradiction *)
+    - inversions Exp1. inversions Exp2.
+      * specialize (IHHas eq_refl _ H3). inversions IHHas. inversions H9. reflexivity.
+      * false Notin. assumption. (* contradiction *)
+    - inversions Exp2.
+      * specialize (IHHas eq_refl _ H3). inversions IHHas. apply (IHExp1 eq_refl _ H9).
+      * false Notin. assumption. (* contradiction *)
   + (* case exp_loop *)
-    false i.
+    introv In Eq Exp. subst. inversions Exp.
+    * false H6. exact In.
+    * reflexivity.
   + (* case has_trm *)
     discriminate.
   + (* case has_var *)
     discriminate.
   + (* case has_pr *)
+    intros.
     inversions H1. unfold decs_has in *.
     lets Eq: (binds_func b H3). subst.
-    specialize (H eq_refl eq_refl _ H4). subst.
+    specialize (H eq_refl _ H4). subst.
     rewrite d in H5.
     inversion H5. reflexivity.
 Qed.
+
+Print Assumptions exp_has_unique.
 
 Lemma exp_unique: forall G T Ds1 Ds2,
   exp pr G T nil Ds1 -> exp pr G T nil Ds2 -> Ds1 = Ds2.
