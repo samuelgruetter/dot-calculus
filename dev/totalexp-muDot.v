@@ -1,5 +1,9 @@
 
 (*
+
+Idea: Make expansion a total function, so that expansion cannot be lost by
+narrowing, and we can have precise narrowing.
+
 In trm_new and in object, we only allow Ds, not any type, because that's the
 simplest thing which has a stable expansion under narrowing.
 Thus, expansion is only needed as a "helper" for has.
@@ -48,7 +52,8 @@ with dec : Type :=
   | dec_mtd : typ -> typ -> dec
 with decs : Type :=
   | decs_nil : decs
-  | decs_cons : nat -> dec -> decs -> decs.
+  | decs_cons : nat -> dec -> decs -> decs
+  | decs_bot : decs.
 
 Inductive trm : Type :=
   | trm_var  : avar -> trm
@@ -102,6 +107,11 @@ end.
 Fixpoint get_dec(l: label)(Ds: decs): option dec := match Ds with
 | decs_nil => None
 | decs_cons n D Ds' => If l = label_for_dec n D then Some D else get_dec l Ds'
+| decs_bot => match l with
+  | label_typ n => Some (dec_typ typ_top typ_bot)
+  | label_fld n => Some (dec_fld typ_bot)
+  | label_mtd n => Some (dec_mtd typ_top typ_bot)
+  end
 end.
 
 Definition defs_has(ds: defs)(l: label)(d: def): Prop := (get_def l ds = Some d).
@@ -145,6 +155,7 @@ with open_rec_decs (k: nat) (u: var) (Ds: decs) { struct Ds } : decs :=
   match Ds with
   | decs_nil          => decs_nil
   | decs_cons n D Ds' => decs_cons n (open_rec_dec k u D) (open_rec_decs k u Ds')
+  | decs_bot          => decs_bot
   end.
 
 Fixpoint open_rec_trm (k: nat) (u: var) (t: trm) { struct t } : trm :=
@@ -207,6 +218,7 @@ with fv_decs (Ds: decs) { struct Ds } : vars :=
   match Ds with
   | decs_nil          => \{}
   | decs_cons n D Ds' => (fv_dec D) \u (fv_decs Ds')
+  | decs_bot          => \{}
   end.
 
 (* Since we define defs ourselves instead of using [list def], we don't have any
@@ -277,32 +289,39 @@ Inductive tmode : Type := notrans | oktrans.
 (* pmode = "do the "has" judgments needed in subtyping have to be precise?" *)
 Inductive pmode : Type := pr | ip.
 
+(* H: list (path * nat) is the history of all visited p.L *)
+
 (* expansion returns a set of decs without opening them *)
-Inductive exp : pmode -> ctx -> typ -> decs -> Prop :=
-  | exp_top : forall m G, 
-      exp m G typ_top decs_nil
-(*| exp_bot : typ_bot has no expansion *)
-  | exp_bind : forall m G Ds,
-      exp m G (typ_bind Ds) Ds
-  | exp_sel : forall m G x L Lo Hi Ds,
-      has m G (trm_var (avar_f x)) L (dec_typ Lo Hi) ->
-      exp m G Hi Ds ->
-      exp m G (typ_sel (pth_var (avar_f x)) L) Ds
+Inductive exp : pmode -> ctx -> typ -> list (pth * nat) -> decs -> Prop :=
+  | exp_top : forall m G H,
+      exp m G typ_top H decs_nil
+  | exp_bot : forall m G H,
+      exp m G typ_bot H decs_bot
+  | exp_bind : forall m G H Ds,
+      exp m G (typ_bind Ds) H Ds
+  | exp_sel : forall m G x n H Lo Hi Ds,
+      has m G (trm_var (avar_f x)) (label_typ n) (dec_typ Lo Hi) ->
+      exp m G Hi (cons ((pth_var (avar_f x)), n) H) Ds ->
+      exp m G (typ_sel (pth_var (avar_f x)) (label_typ n)) H Ds
+  (* if we encounter a p.L that we've already seen, we just say it expands to {} *)
+  | exp_loop : forall m G x n H,
+      List.In (pth_var (avar_f x), n) H ->
+      exp m G (typ_sel (pth_var (avar_f x)) (label_typ n)) H decs_nil
 with has : pmode -> ctx -> trm -> label -> dec -> Prop :=
   | has_trm : forall G t T Ds l D,
       ty_trm G t T ->
-      exp ip G T Ds ->
+      exp ip G T nil Ds ->
       decs_has Ds l D ->
       (forall z, (open_dec z D) = D) ->
       has ip G t l D
   | has_var : forall G v T Ds l D,
       ty_trm G (trm_var (avar_f v)) T ->
-      exp ip G T Ds ->
+      exp ip G T nil Ds ->
       decs_has Ds l D ->
       has ip G (trm_var (avar_f v)) l (open_dec v D)
   | has_pr : forall G v T Ds l D,
       binds v T G ->
-      exp pr G T Ds ->
+      exp pr G T nil Ds ->
       decs_has Ds l D ->
       has pr G (trm_var (avar_f v)) l (open_dec v D)
 with subtyp : pmode -> tmode -> ctx -> typ -> typ -> Prop :=
@@ -338,8 +357,10 @@ with subtyp : pmode -> tmode -> ctx -> typ -> typ -> Prop :=
 with subdec : pmode -> ctx -> dec -> dec -> Prop :=
   | subdec_typ : forall m G Lo1 Hi1 Lo2 Hi2,
       (* only allow implementable decl *)
+      (*
       subtyp m oktrans G Lo1 Hi1 ->
       subtyp m oktrans G Lo2 Hi2 ->
+      *)
       (* lhs narrower range than rhs *)
       subtyp m oktrans G Lo2 Lo1 ->
       subtyp m oktrans G Hi1 Hi2 ->
@@ -360,6 +381,8 @@ with subdecs : pmode -> ctx -> decs -> decs -> Prop :=
       subdec  m G D1 D2 ->
       subdecs m G Ds1 Ds2 ->
       subdecs m G Ds1 (decs_cons n D2 Ds2)
+  | subdecs_bot : forall m G Ds,
+      subdecs m G decs_bot Ds
 with ty_trm : ctx -> trm -> typ -> Prop :=
   | ty_var : forall G x T,
       binds x T G ->
@@ -584,6 +607,7 @@ with subst_decs (z: var) (u: var) (Ds: decs) { struct Ds } : decs :=
   match Ds with
   | decs_nil          => decs_nil
   | decs_cons n D Ds' => decs_cons n (subst_dec z u D) (subst_decs z u Ds')
+  | decs_bot          => decs_bot
   end.
 
 Fixpoint subst_trm (z: var) (u: var) (t: trm) : trm :=
@@ -814,6 +838,21 @@ Qed.
 (* ###################################################################### *)
 (** ** Helper lemmas for definition/declaration lists *)
 
+(*
+Lemma subdecs_bot: forall m G Ds,
+  subdecs m G decs_bot Ds.
+Proof.
+  intros. induction Ds.
+  + apply subdecs_empty.
+  + destruct d.
+    - apply subdecs_push with (dec_typ typ_top typ_bot).
+      * simpl. unfold decs_has, get_dec. reflexivity.
+      * apply subdec_typ. (* t <: t0 might not work!! *)
+  (* also need subdecs m G decs_bot decs_bot *)
+  (* easiest: just add decs_bot <: everything *)
+Qed.
+*)
+
 Lemma defs_has_fld_sync: forall n d ds,
   defs_has ds (label_fld n) d -> exists x, d = (def_fld x).
 Proof.
@@ -842,6 +881,7 @@ Proof.
   + case_if.
     - inversions Hhas. unfold label_for_dec in H. destruct* D; discriminate.
     - apply* IHDs.
+  + inversions Hhas. exists typ_top typ_bot. reflexivity.
 Qed.
 
 Lemma decs_has_fld_sync: forall n d ds,
@@ -852,6 +892,7 @@ Proof.
   + case_if.
     - inversions Hhas. unfold label_for_dec in H. destruct* d; discriminate.
     - apply* IHds.
+  + inversions Hhas. exists typ_bot. reflexivity.
 Qed.
 
 Lemma decs_has_mtd_sync: forall n d ds,
@@ -862,6 +903,7 @@ Proof.
   + case_if.
     - inversions Hhas. unfold label_for_dec in H. destruct* d; discriminate.
     - apply* IHds.
+  + inversions Hhas. exists typ_top typ_bot. reflexivity.
 Qed.
 
 Lemma get_def_cons : forall l n d ds,
@@ -913,18 +955,46 @@ Proof.
   introv Sd. inversions Sd. auto.
 Qed.
 
+Lemma decs_bot_has_subdec: forall m G n D2,
+  exists D1, decs_has decs_bot (label_for_dec n D2) D1 /\
+             subdec m G D1 D2.
+Proof.
+  intros. destruct D2 as [Lo Hi | T | T1 T2].
+  - exists (dec_typ typ_top typ_bot). split.
+    * unfold decs_has, get_dec. reflexivity.
+    * apply subdec_typ; auto.
+  - exists (dec_fld typ_bot). split.
+    * unfold decs_has, get_dec. reflexivity.
+    * apply subdec_fld; auto.
+  - exists (dec_mtd typ_top typ_bot). split.
+    * unfold decs_has, get_dec. reflexivity.
+    * apply subdec_mtd; auto.
+Qed.
+
 Lemma invert_subdecs: forall m G Ds1 Ds2,
   subdecs m G Ds1 Ds2 -> 
   forall l D2, decs_has Ds2 l D2 -> 
                (exists D1, decs_has Ds1 l D1 /\ subdec m G D1 D2).
 Proof.
-  introv Sds. induction Ds2; introv Has.
-  + inversion Has.
-  + inversions Sds.
-    unfold decs_has, get_dec in Has. case_if.
-    - inversions Has.
+  introv Sds. induction Sds; introv DsHas.
+  + inversions DsHas.
+  + unfold decs_has, get_dec in DsHas. case_if.
+    - inversions DsHas.
       exists D1. split; assumption.
-    - fold get_dec in Has. apply IHDs2; assumption.
+    - fold get_dec in DsHas. apply IHSds; assumption.
+  + destruct l.
+    - exists (dec_typ typ_top typ_bot).
+      destruct (decs_has_typ_sync DsHas) as [Lo [Hi Eq]]. subst. split.
+      * unfold decs_has, get_dec. reflexivity.
+      * apply subdec_typ; auto.
+    - exists (dec_fld typ_bot).
+      destruct (decs_has_fld_sync DsHas) as [T Eq]. subst. split.
+      * unfold decs_has, get_dec. reflexivity.
+      * apply subdec_fld; auto.
+    - exists (dec_mtd typ_top typ_bot).
+      destruct (decs_has_mtd_sync DsHas) as [T1 [T2 Eq]]. subst. split.
+      * unfold decs_has, get_dec. reflexivity.
+      * apply subdec_mtd; auto.
 Qed.
 
 Lemma wf_sto_to_ok_s: forall s G,
@@ -1051,7 +1121,11 @@ Lemma invert_subdecs_push: forall m G Ds1 Ds2 n D2,
             /\ subdec m G D1 D2
             /\ subdecs m G Ds1 Ds2.
 Proof.
-  intros. inversions H. eauto.
+  intros. inversions H.
+  - eauto.
+  - lets P: (decs_bot_has_subdec m G n D2).
+    destruct P as [D1 [H1 H2]].
+    exists D1. refine (conj H1 (conj H2 (subdecs_bot _ _ _))).
 Qed.
 
 Lemma ty_def_to_label_for_eq: forall G d D n, 
@@ -1146,33 +1220,55 @@ Proof.
       inversions Has. reflexivity.
     - fold get_dec. apply IHDs. unfold decs_has, get_dec in Has.
       rewrite label_for_dec_open in H. case_if. apply Has.
+  + unfold open_decs, open_rec_decs. admit. (* TODO holds *)
 Qed.
 
 
 (* ###################################################################### *)
 (** ** Uniqueness *)
 
+
 Lemma exp_has_unique:
-  (forall m G T Ds1, exp m G T Ds1 -> m = pr ->
-     forall Ds2, exp pr G T Ds2 -> Ds1 = Ds2) /\ 
+  (forall m G T H Ds1, exp m G T H Ds1 -> m = pr -> H = nil ->
+     forall Ds2, exp pr G T H Ds2 -> Ds1 = Ds2) /\ 
   (forall m G v l D1, has m G v l D1 -> m = pr ->
      forall D2, has pr G v l D2 -> D1 = D2).
 Proof.
-  apply exp_has_mutind; intros.
-  + inversions H0. reflexivity.
-  + inversions H0. reflexivity.
-  + inversions H2. specialize (H eq_refl _ H7). inversions H. apply* (H0 eq_refl).
-  + discriminate.
-  + discriminate.
-  + inversions H1. unfold decs_has in *.
+  apply exp_has_mutind; intros; subst.
+  + (* exp_top *)
+    inversions H2. reflexivity.
+  + (* exp_bot *)
+    inversions H2. reflexivity.
+  + (* exp_bind *)
+    inversions H2. reflexivity.
+  + (* exp_sel *)
+    destruct Hi as [| |DsHi|q M].
+    - inversions e. inversions H4.
+      * specialize (H0 eq_refl _ H7). inversions H0. inversions H10. reflexivity.
+      * reflexivity.
+    - inversions e. inversions H4.
+      * specialize (H0 eq_refl _ H7). inversions H0. inversions H10. reflexivity.
+      * false H9. (* contradiction *)
+    - inversions e. inversions H4.
+      * specialize (H0 eq_refl _ H7). inversions H0. inversions H10. reflexivity.
+      * false H9. (* contradiction *)
+    - admit. (* <------ TODO does not hold !!!!!!!!! *)
+  + (* case exp_loop *)
+    false i.
+  + (* case has_trm *)
+    discriminate.
+  + (* case has_var *)
+    discriminate.
+  + (* case has_pr *)
+    inversions H1. unfold decs_has in *.
     lets Eq: (binds_func b H3). subst.
-    specialize (H eq_refl _ H4). subst.
+    specialize (H eq_refl eq_refl _ H4). subst.
     rewrite d in H5.
     inversion H5. reflexivity.
 Qed.
 
 Lemma exp_unique: forall G T Ds1 Ds2,
-  exp pr G T Ds1 -> exp pr G T Ds2 -> Ds1 = Ds2.
+  exp pr G T nil Ds1 -> exp pr G T nil Ds2 -> Ds1 = Ds2.
 Proof. intros. apply* exp_has_unique. Qed.
 
 Lemma has_unique: forall G v l D1 D2,
@@ -1184,10 +1280,10 @@ Proof. intros. apply* exp_has_unique. Qed.
 (** ** Weakening *)
 
 Lemma weakening:
-   (forall m G T Ds, exp m G T Ds -> forall G1 G2 G3,
+   (forall m G T H Ds, exp m G T H Ds -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
-      exp m (G1 & G2 & G3) T Ds)
+      exp m (G1 & G2 & G3) T H Ds)
 /\ (forall m G t l d, has m G t l d -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
@@ -1220,10 +1316,14 @@ Proof.
   apply ty_mutind.
   + (* case exp_top *)
     intros. apply exp_top.
+  + (* case exp_bot *)
+    intros. apply exp_bot.
   + (* case exp_bind *)
     intros. apply exp_bind.
   + (* case exp_sel *)
     intros. apply* exp_sel.
+  + (* case exp_loop *)
+    intros. apply* exp_loop.
   + (* case has_trm *)
     intros. apply* has_trm.
   + (* case has_var *)
@@ -1275,6 +1375,8 @@ Proof.
     apply (subdecs_push n Hb).
     apply (IHsd _ _ _ Hok123 Heq).
     apply (IHsds _ _ _ Hok123 Heq).
+  + (* case subdecs_bot *)
+    intros. apply subdecs_bot.
   + (* case ty_var *)
     intros. subst. apply ty_var. apply* binds_weaken.
   + (* case ty_sel *)
@@ -1317,13 +1419,13 @@ Qed.
 Print Assumptions weakening.
 
 Lemma weaken_exp_middle: forall m G1 G2 G3 T Ds,
-  ok (G1 & G2 & G3) -> exp m (G1 & G3) T Ds -> exp m (G1 & G2 & G3) T Ds.
+  ok (G1 & G2 & G3) -> exp m (G1 & G3) T nil Ds -> exp m (G1 & G2 & G3) T nil Ds.
 Proof.
   intros. apply* weakening.
 Qed.
 
 Lemma weaken_exp_end: forall m G1 G2 T Ds,
-  ok (G1 & G2) -> exp m G1 T Ds -> exp m (G1 & G2) T Ds.
+  ok (G1 & G2) -> exp m G1 T nil Ds -> exp m (G1 & G2) T nil Ds.
 Proof.
   introv Ok Exp.
   assert (Eq1: G1 = G1 & empty) by (rewrite concat_empty_r; reflexivity).
@@ -1464,6 +1566,7 @@ Proof.
     unfold decs_has, get_dec in Has. fold get_dec in Has. case_if.
     - inversions Has. reflexivity.
     - apply* IHDs.
+  + simpl. unfold decs_has, get_dec in *. destruct l; inversions Has; reflexivity.
 Qed.
 
 Lemma subst_binds: forall x y v T G,
@@ -1474,12 +1577,12 @@ Proof.
 Qed.
 
 Lemma subst_principles: forall y S,
-   (forall m G T Ds, exp m G T Ds -> forall G1 G2 x,
+   (forall m G T H Ds, exp m G T H Ds -> forall G1 G2 x,
      m = ip ->
      G = G1 & x ~ S & G2 ->
      ty_trm G1 (trm_var (avar_f y)) S ->
      ok (G1 & x ~ S & G2) ->
-     exp ip (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_decs x y Ds))
+     exp ip (G1 & (subst_ctx x y G2)) (subst_typ x y T) H (subst_decs x y Ds))
 /\ (forall m G t l D, has m G t l D -> forall G1 G2 x,
      m = ip ->
      G = (G1 & (x ~ S) & G2) ->
@@ -1523,10 +1626,12 @@ Proof.
   intros y S. apply ty_mutind.
   (* case exp_top *)
   + intros. simpl. apply exp_top.
+  (* case exp_bot *)
+  + intros. simpl. apply exp_bot.
   (* case exp_bind *)
   + intros. simpl. apply exp_bind.
   (* case exp_sel *)
-  + intros m G v L Lo Hi Ds Has IHHas Exp IHExp G1 G2 x Eqm EqG Tyy Ok. subst.
+  + intros m G v L Lo Hi H Ds Has IHHas Exp IHExp G1 G2 x Eqm EqG Tyy Ok. subst.
     specialize (IHHas _ _ _ eq_refl eq_refl Tyy Ok).
     specialize (IHExp _ _ _ eq_refl eq_refl Tyy Ok).
     unfold subst_typ. unfold subst_pth. unfold subst_avar. case_if.
