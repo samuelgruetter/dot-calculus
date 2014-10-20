@@ -292,22 +292,22 @@ Inductive pmode : Type := pr | ip.
 (* H: list (path * nat) is the history of all visited p.L *)
 
 (* expansion returns a set of decs without opening them *)
-Inductive exp : pmode -> ctx -> typ -> list (pth * nat) -> decs -> Prop :=
+Inductive exp : pmode -> ctx -> typ -> list (pth * label) -> decs -> Prop :=
   | exp_top : forall m G H,
       exp m G typ_top H decs_nil
   | exp_bot : forall m G H,
       exp m G typ_bot H decs_bot
   | exp_bind : forall m G H Ds,
       exp m G (typ_bind Ds) H Ds
-  | exp_sel : forall m G x n H Lo Hi Ds,
-      has m G (trm_var (avar_f x)) (label_typ n) (dec_typ Lo Hi) ->
-      ~ List.In (pth_var (avar_f x), n) H ->
-      exp m G Hi (cons ((pth_var (avar_f x)), n) H) Ds ->
-      exp m G (typ_sel (pth_var (avar_f x)) (label_typ n)) H Ds
+  | exp_sel : forall m G x L H Lo Hi Ds,
+      has m G (trm_var (avar_f x)) L (dec_typ Lo Hi) ->
+      ~ List.In (pth_var (avar_f x), L) H ->
+      exp m G Hi (cons ((pth_var (avar_f x)), L) H) Ds ->
+      exp m G (typ_sel (pth_var (avar_f x)) L) H Ds
   (* if we encounter a p.L that we've already seen, we just say it expands to {} *)
   | exp_loop : forall m G x n H,
       List.In (pth_var (avar_f x), n) H ->
-      exp m G (typ_sel (pth_var (avar_f x)) (label_typ n)) H decs_nil
+      exp m G (typ_sel (pth_var (avar_f x)) n) H decs_nil
 with has : pmode -> ctx -> trm -> label -> dec -> Prop :=
   | has_trm : forall G t T Ds l D,
       ty_trm G t T ->
@@ -1980,10 +1980,10 @@ Proof.
   introv Has. inversions Has. exists T Ds D0. auto.
 Qed.
 
-Lemma invert_exp_sel: forall m G v n Ds,
-  exp m G (typ_sel (pth_var (avar_f v)) (label_typ n)) nil Ds ->
-  exists Lo Hi, has m G (trm_var (avar_f v)) (label_typ n) (dec_typ Lo Hi) /\
-                exp m G Hi ((pth_var (avar_f v), n) :: nil) Ds.
+Lemma invert_exp_sel: forall m G v L Ds,
+  exp m G (typ_sel (pth_var (avar_f v)) L) nil Ds ->
+  exists Lo Hi, has m G (trm_var (avar_f v)) L (dec_typ Lo Hi) /\
+                exp m G Hi ((pth_var (avar_f v), L) :: nil) Ds.
 Proof.
   introv Exp. inversions Exp.
   + exists Lo Hi. auto.
