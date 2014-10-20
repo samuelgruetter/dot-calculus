@@ -305,9 +305,9 @@ Inductive exp : pmode -> ctx -> typ -> list (pth * label) -> decs -> Prop :=
       exp m G Hi (cons ((pth_var (avar_f x)), L) h) Ds ->
       exp m G (typ_sel (pth_var (avar_f x)) L) h Ds
   (* if we encounter a p.L that we've already seen, we just say it expands to {} *)
-  | exp_loop : forall m G x n h,
-      List.In (pth_var (avar_f x), n) h ->
-      exp m G (typ_sel (pth_var (avar_f x)) n) h decs_nil
+  | exp_loop : forall m G x L h,
+      List.In (pth_var (avar_f x), L) h ->
+      exp m G (typ_sel (pth_var (avar_f x)) L) h decs_nil
 with has : pmode -> ctx -> trm -> label -> dec -> Prop :=
   | has_trm : forall G t T Ds l D,
       ty_trm G t T ->
@@ -2910,6 +2910,21 @@ Qed.
 
 Print Assumptions nonempty_exp_doesnt_need_history.
 
+
+Lemma supertype_of_top_expands_to_decs_nil: forall G m2 T2,
+  ok G ->
+  subtyp pr m2 G typ_top T2 ->
+  exp pr G T2 nil decs_nil.
+Proof.
+Admitted.
+
+Lemma invert_empty_expansion: forall G T h,
+   exp pr G T h decs_nil ->
+   (subtyp pr oktrans G typ_top T)
+\/ (exists p L, T = typ_sel p L /\ List.In (p, L) h).
+Proof.
+Admitted.
+
 Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
   ok G ->
   subtyp pr m2 G T1 T2 ->
@@ -2949,7 +2964,26 @@ Proof.
     apply invert_exp_sel in Exp1. destruct Exp1 as [Lo1 [Hi1 [Has1 Exp1]]].
     lets Eq: (has_unique Has2 Has1).
     inversions Eq.
-    apply* IHSt.
+    specialize (IHSt Ds1 Ds2 Ok eq_refl).
+    (* If exp didn't have history, we could now just apply (IHSt Exp1 Exp2),
+       but since it does, we have to modify it before applying IHSt (2nd and 3rd case),
+       or do something else without using IHSt (1st case) *)
+    destruct Ds1 as [|n D1 Ds1|].
+    - apply invert_empty_expansion in Exp1. destruct Exp1 as [St' | [p0 [L0 [Eq HIn]]]].
+      * lets St'': (subtyp_trans St' St).
+        lets Exp2': (supertype_of_top_expands_to_decs_nil Ok St'').
+        lets Eq: (exp_unique Exp2 Exp2'). subst Ds2. 
+        exists vars_empty. intros z zL. unfold open_decs, open_rec_decs. 
+        apply subdecs_empty.
+      * subst Hi1.
+        lets HIn': HIn.
+        unfold List.In in HIn. destruct HIn as [Eq | F]; try false F.
+        inversions Eq. (* Has1 shows that we have have an upper-bound loop of length 1 *)
+        apply* IHSt. apply* exp_sel. apply exp_loop. exact HIn'.
+    - apply* IHSt.
+      apply (nonempty_exp_doesnt_need_history Exp1 (decs_nonempty_cons n D1 Ds1)).
+    - apply* IHSt.
+      apply (nonempty_exp_doesnt_need_history Exp1 decs_nonempty_bot).
   + (* case subtyp_sel_r *)
     intros m G x L Lo Hi T Has St1 IHSt1 St2 IHSt2 Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
     apply invert_exp_sel in Exp2. destruct Exp2 as [Lo' [Hi' [Has' Exp2]]].
