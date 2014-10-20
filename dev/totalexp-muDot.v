@@ -293,21 +293,21 @@ Inductive pmode : Type := pr | ip.
 
 (* expansion returns a set of decs without opening them *)
 Inductive exp : pmode -> ctx -> typ -> list (pth * label) -> decs -> Prop :=
-  | exp_top : forall m G H,
-      exp m G typ_top H decs_nil
-  | exp_bot : forall m G H,
-      exp m G typ_bot H decs_bot
-  | exp_bind : forall m G H Ds,
-      exp m G (typ_bind Ds) H Ds
-  | exp_sel : forall m G x L H Lo Hi Ds,
+  | exp_top : forall m G h,
+      exp m G typ_top h decs_nil
+  | exp_bot : forall m G h,
+      exp m G typ_bot h decs_bot
+  | exp_bind : forall m G h Ds,
+      exp m G (typ_bind Ds) h Ds
+  | exp_sel : forall m G x L h Lo Hi Ds,
       has m G (trm_var (avar_f x)) L (dec_typ Lo Hi) ->
-      ~ List.In (pth_var (avar_f x), L) H ->
-      exp m G Hi (cons ((pth_var (avar_f x)), L) H) Ds ->
-      exp m G (typ_sel (pth_var (avar_f x)) L) H Ds
+      ~ List.In (pth_var (avar_f x), L) h ->
+      exp m G Hi (cons ((pth_var (avar_f x)), L) h) Ds ->
+      exp m G (typ_sel (pth_var (avar_f x)) L) h Ds
   (* if we encounter a p.L that we've already seen, we just say it expands to {} *)
-  | exp_loop : forall m G x n H,
-      List.In (pth_var (avar_f x), n) H ->
-      exp m G (typ_sel (pth_var (avar_f x)) n) H decs_nil
+  | exp_loop : forall m G x n h,
+      List.In (pth_var (avar_f x), n) h ->
+      exp m G (typ_sel (pth_var (avar_f x)) n) h decs_nil
 with has : pmode -> ctx -> trm -> label -> dec -> Prop :=
   | has_trm : forall G t T Ds l D,
       ty_trm G t T ->
@@ -1255,20 +1255,20 @@ Proof.
     introv Has IHHas Notin Exp1 IHExp1 Eq Exp2. subst.
     destruct Hi as [| |DsHi|q M].
     - inversions Exp1. inversions Exp2.
-      * specialize (IHHas eq_refl _ H3). inversions IHHas. inversions H9. reflexivity.
+      * specialize (IHHas eq_refl _ H1). inversions IHHas. inversions H7. reflexivity.
       * reflexivity.
     - inversions Exp1. inversions Exp2.
-      * specialize (IHHas eq_refl _ H3). inversions IHHas. inversions H9. reflexivity.
+      * specialize (IHHas eq_refl _ H1). inversions IHHas. inversions H7. reflexivity.
       * false Notin. assumption. (* contradiction *)
     - inversions Exp1. inversions Exp2.
-      * specialize (IHHas eq_refl _ H3). inversions IHHas. inversions H9. reflexivity.
+      * specialize (IHHas eq_refl _ H1). inversions IHHas. inversions H7. reflexivity.
       * false Notin. assumption. (* contradiction *)
     - inversions Exp2.
-      * specialize (IHHas eq_refl _ H3). inversions IHHas. apply (IHExp1 eq_refl _ H9).
+      * specialize (IHHas eq_refl _ H1). inversions IHHas. apply (IHExp1 eq_refl _ H7).
       * false Notin. assumption. (* contradiction *)
   + (* case exp_loop *)
     introv In Eq Exp. subst. inversions Exp.
-    * false H6. exact In.
+    * false H4. exact In.
     * reflexivity.
   + (* case has_trm *)
     discriminate.
@@ -1987,7 +1987,7 @@ Lemma invert_exp_sel: forall m G v L Ds,
 Proof.
   introv Exp. inversions Exp.
   + exists Lo Hi. auto.
-  + false H6.
+  + false H5.
 Qed.
 
 Lemma subtyp_refl_all: forall m1 m2 G T, subtyp m1 m2 G T T.
@@ -2038,7 +2038,7 @@ Proof.
   + apply top_subtyp_of_empty_bind.
   + apply subtyp_tmode. apply subtyp_bot.
   + apply subtyp_refl_all.
-  + specialize (IHExp eq_refl). apply subtyp_tmode. apply (subtyp_sel_l H0 IHExp).
+  + specialize (IHExp eq_refl). apply subtyp_tmode. apply (subtyp_sel_l H IHExp).
   + apply subtyp_trans with typ_top. 
     - apply subtyp_tmode, subtyp_top.
     - apply top_subtyp_of_empty_bind.
@@ -2835,6 +2835,80 @@ Note:
    because that's what comes out of subtyp_sel_l/r.
  - Conclusion is imprecise, because result of narrowing is imprecise.
 *)
+
+Lemma open_decs_nil: forall z, (open_decs z decs_nil) = decs_nil.
+Proof.
+  intro z. reflexivity.
+Qed.
+
+Inductive decs_nonempty: decs -> Prop :=
+  | decs_nonempty_cons: forall n D Ds,
+      decs_nonempty (decs_cons n D Ds)
+  | decs_nonempty_bot:
+      decs_nonempty (decs_bot).
+
+Definition notin_hist(T: typ)(h: list (pth * label)): Prop :=
+   (exists p L, T = typ_sel p L /\ ~List.In (p, L) h)
+\/ notsel T.
+
+Hypothesis pL_eq_dec : forall x y : (pth*label), {x = y}+{x <> y}.
+
+Definition remove := List.remove pL_eq_dec.
+
+Lemma remove_notin_id: forall l x,
+  ~ List.In x l -> remove x l = l.
+Proof.
+  intro l. induction l; intros.
+  + reflexivity.
+  + unfold remove, List.remove. destruct (pL_eq_dec x a) as [Eq | Ne].
+    * subst. false H. unfold List.In. auto.
+    * f_equal. apply IHl. intro. apply H. unfold List.In. right. exact H0.
+Qed.
+
+Lemma remove_preserves_notin: forall l x y,
+  ~ List.In x l -> ~ List.In x (remove y l).
+Admitted.
+
+Lemma nonempty_exp_shrink_history: forall m G T h Ds,
+  exp m G T h Ds ->
+  m = pr ->
+  decs_nonempty Ds ->
+  forall p L, exp m G T (remove (p, L) h) Ds.
+Proof.
+  introv Exp. induction Exp; intros; subst m.
+  + apply exp_top.
+  + apply exp_bot.
+  + apply exp_bind.
+  + destruct H2 as [n D Ds|].
+    - specialize (IHExp eq_refl (decs_nonempty_cons n D Ds) p L0).
+      simpl in IHExp. destruct (pL_eq_dec (p, L0) (pth_var (avar_f x), L)) as [Eq | Ne].
+      { inversions Eq. apply (exp_sel H).
+        * apply List.remove_In.
+        * rewrite (remove_notin_id _ _ H0). exact Exp. }
+      { refine (exp_sel H _ IHExp). apply remove_preserves_notin. apply H0. }
+    - specialize (IHExp eq_refl decs_nonempty_bot p L0).
+      simpl in IHExp. destruct (pL_eq_dec (p, L0) (pth_var (avar_f x), L)) as [Eq | Ne].
+      { inversions Eq. apply (exp_sel H).
+        * apply List.remove_In.
+        * rewrite (remove_notin_id _ _ H0). exact Exp. }
+      { refine (exp_sel H _ IHExp). apply remove_preserves_notin. apply H0. }
+  + inversion H1. (* contradiction *)
+Qed.
+
+Lemma remove_head: forall l x, l = remove x (List.cons x l). Admitted.
+
+Lemma nonempty_exp_doesnt_need_history: forall h G T Ds,
+  exp pr G T h Ds ->
+  decs_nonempty Ds ->
+  exp pr G T nil Ds.
+Proof.
+  intro h. induction h; introv Exp Nem.
+  + exact Exp.
+  + apply* IHh. rewrite (remove_head h a). destruct a as [p L].
+    apply (nonempty_exp_shrink_history Exp eq_refl Nem).
+Qed.
+
+Print Assumptions nonempty_exp_doesnt_need_history.
 
 Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
   ok G ->
