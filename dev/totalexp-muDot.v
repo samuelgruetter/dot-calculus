@@ -2819,7 +2819,7 @@ Print Assumptions oktrans2notrans.
 (* ###################################################################### *)
 (** Exploring helper lemmas for ip->pr and oktrans->notrans *)
 
-
+(*
 Lemma pr2ip:
    (forall m G T Ds,   exp m G T Ds  -> exp ip G T Ds)
 /\ (forall m G t L D,  has m G t L D -> has ip G t L D)
@@ -2827,6 +2827,7 @@ Lemma pr2ip:
 /\ (forall m G D1 D2, subdec m G D1 D2 -> subdec ip G D1 D2)
 /\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> subdecs ip G Ds1 Ds2).
 Admitted.
+*)
 
 (*
 Note:
@@ -2835,13 +2836,13 @@ Note:
  - Conclusion is imprecise, because result of narrowing is imprecise.
 *)
 
-Lemma exp_preserves_sub_pr_ip: forall m2 G T1 T2 Ds1 Ds2,
+Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
   ok G ->
   subtyp pr m2 G T1 T2 ->
-  exp pr G T1 Ds1 ->
-  exp pr G T2 Ds2 ->
+  exp pr G T1 nil Ds1 ->
+  exp pr G T2 nil Ds2 ->
   exists L, forall z, z \notin L -> 
-            subdecs ip (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
+            subdecs pr (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
 Proof.
   (* We don't use the [induction] tactic because we want to intro everything ourselves: *)
   intros m2 G T1 T2 Ds1 Ds2 Ok St.
@@ -2849,10 +2850,10 @@ Proof.
   apply (subtyp_ind (fun m1 m2 G T1 T2 => forall Ds1 Ds2,
     ok G ->
     m1 = pr ->
-    exp m1 G T1 Ds1 ->
-    exp m1 G T2 Ds2 ->
+    exp m1 G T1 nil Ds1 ->
+    exp m1 G T2 nil Ds2 ->
     exists L, forall z : var, z \notin L ->
-              subdecs ip (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2))).
+              subdecs m1 (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2))).
   + (* case subtyp_refl *)
     intros m G x L Lo Hi Has Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
     lets Eq: (exp_unique Exp1 Exp2).
@@ -2864,10 +2865,11 @@ Proof.
   + (* case subtyp_bot *)
     intros m G T Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
     inversions Exp1.
+    exists vars_empty. intros z zL. apply subdecs_bot.
   + (* case subtyp_bind *)
     intros L m G Ds1' Ds2' Sds Ds1 Ds2 Ok Eq Exp1 Exp2.
     inversions Exp1. inversions Exp2.
-    exists L. intros z zL. specialize (Sds z zL). apply* pr2ip.
+    exists L. intros z zL. apply (Sds z zL).
   + (* case subtyp_sel_l *)
     intros m G x L Lo2 Hi2 T Has2 St IHSt Ds1 Ds2 Ok Eq Exp1 Exp2. subst.
     apply invert_exp_sel in Exp1. destruct Exp1 as [Lo1 [Hi1 [Has1 Exp1]]].
