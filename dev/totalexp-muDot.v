@@ -907,6 +907,15 @@ Proof.
   + inversions Hhas. exists typ_top typ_bot. reflexivity.
 Qed.
 
+Lemma decs_has_show_label_for_dec: forall Ds l D, decs_has Ds l D ->
+  exists n, l = (label_for_dec n D).
+Proof.
+  intros. destruct l; exists n.
+  + apply decs_has_typ_sync in H. destruct H as [Lo [Hi Eq]]. subst. reflexivity.
+  + apply decs_has_fld_sync in H. destruct H as [T      Eq ]. subst. reflexivity.
+  + apply decs_has_mtd_sync in H. destruct H as [T  [U  Eq]]. subst. reflexivity.
+Qed.
+
 Lemma get_def_cons : forall l n d ds,
   get_def l (defs_cons n d ds) = If l = (label_for_def n d) then Some d else get_def l ds.
 Proof.
@@ -1631,6 +1640,8 @@ Lemma subst_principles: forall y S,
      ty_trm G1 (trm_var (avar_f y)) S ->
      ok (G1 & (x ~ S) & G2) ->
      ty_defs (G1 & (subst_ctx x y G2)) (subst_defs x y ds) (subst_decs x y Ds)).
+Admitted. (* TODO *)
+(*
 Proof.
   intros y S. apply ty_mutind.
   (* case exp_top *)
@@ -1796,7 +1807,7 @@ Proof.
   (* case ty_dscons *)
   + intros. apply* ty_dscons.
 Qed.
-
+*)
 Print Assumptions subst_principles.
 
 Lemma trm_subst_principle: forall G x y t S T,
@@ -1875,7 +1886,7 @@ Admitted.
 Lemma invert_var_has_dec: forall G x l D,
   has ip G (trm_var (avar_f x)) l D ->
   exists T Ds D', ty_trm G (trm_var (avar_f x)) T /\
-                  exp ip G T Ds /\
+                  exp ip G T nil Ds /\
                   decs_has Ds l D' /\
                   open_dec x D' = D.
 Proof.
@@ -1889,12 +1900,12 @@ Qed.
 Lemma invert_has: forall G t l D,
    has ip G t l D ->
    (exists T Ds,      ty_trm G t T /\
-                      exp ip G T Ds /\
+                      exp ip G T nil Ds /\
                       decs_has Ds l D /\
                       (forall z : var, open_dec z D = D))
 \/ (exists x T Ds D', t = (trm_var (avar_f x)) /\
                       ty_trm G (trm_var (avar_f x)) T /\
-                      exp ip G T Ds /\
+                      exp ip G T nil Ds /\
                       decs_has Ds l D' /\
                       open_dec x D' = D).
 Proof.
@@ -1908,7 +1919,7 @@ Qed.
 Lemma invert_var_has_dec_typ: forall G x l S U,
   has ip G (trm_var (avar_f x)) l (dec_typ S U) ->
   exists X Ds S' U', ty_trm G (trm_var (avar_f x)) X /\
-                     exp ip G X Ds /\
+                     exp ip G X nil Ds /\
                      decs_has Ds l (dec_typ S' U') /\
                      open_typ x S' = S /\
                      open_typ x U' = U.
@@ -1924,7 +1935,7 @@ Qed.
 Lemma invert_var_has_dec_fld: forall G x l T,
   has ip G (trm_var (avar_f x)) l (dec_fld T) ->
   exists X Ds T', ty_trm G (trm_var (avar_f x)) X /\
-                  exp ip G X Ds /\
+                  exp ip G X nil Ds /\
                   decs_has Ds l (dec_fld T') /\
                   open_typ x T' = T.
 Proof.
@@ -1939,7 +1950,7 @@ Qed.
 Lemma invert_var_has_dec_mtd: forall G x l S U,
   has ip G (trm_var (avar_f x)) l (dec_mtd S U) ->
   exists X Ds S' U', ty_trm G (trm_var (avar_f x)) X /\
-                     exp ip G X Ds /\
+                     exp ip G X nil Ds /\
                      decs_has Ds l (dec_mtd S' U') /\
                      open_typ x S' = S /\
                      open_typ x U' = U.
@@ -1955,19 +1966,21 @@ Qed.
 Lemma invert_has_pr: forall G x l D,
   has pr G (trm_var (avar_f x)) l D ->
   exists T Ds D', binds x T G /\
-                  exp pr G T Ds /\
+                  exp pr G T nil Ds /\
                   decs_has Ds l D' /\
                   D = open_dec x D'.
 Proof.
   introv Has. inversions Has. exists T Ds D0. auto.
 Qed.
 
-Lemma invert_exp_sel: forall m G v L Ds,
-  exp m G (typ_sel (pth_var (avar_f v)) L) Ds ->
-  exists Lo Hi, has m G (trm_var (avar_f v)) L (dec_typ Lo Hi) /\
-                exp m G Hi Ds.
+Lemma invert_exp_sel: forall m G v n Ds,
+  exp m G (typ_sel (pth_var (avar_f v)) (label_typ n)) nil Ds ->
+  exists Lo Hi, has m G (trm_var (avar_f v)) (label_typ n) (dec_typ Lo Hi) /\
+                exp m G Hi ((pth_var (avar_f v), n) :: nil) Ds.
 Proof.
-  introv Exp. inversions Exp. exists Lo Hi. auto.
+  introv Exp. inversions Exp.
+  + exists Lo Hi. auto.
+  + false H6.
 Qed.
 
 Lemma subtyp_refl_all: forall m2 G T, subtyp ip m2 G T T.
@@ -2011,13 +2024,17 @@ Axiom top_subtyp_of_empty_bind: forall m1 m2 G,
   subtyp m1 m2 G typ_top (typ_bind decs_nil).
 
 Lemma exp_to_subtyp: forall G T Ds,
-  exp ip G T Ds ->
+  exp ip G T nil Ds ->
   subtyp ip oktrans G T (typ_bind Ds).
 Proof.
   introv Exp. gen_eq m: ip. induction Exp; intro Eq; subst.
   + apply top_subtyp_of_empty_bind.
+  + apply subtyp_tmode. apply subtyp_bot.
   + apply subtyp_refl_all.
-  + specialize (IHExp eq_refl). apply subtyp_tmode. apply (subtyp_sel_l H IHExp).
+  + specialize (IHExp eq_refl). apply subtyp_tmode. apply (subtyp_sel_l H0 IHExp).
+  + apply subtyp_trans with typ_top. 
+    - apply subtyp_tmode, subtyp_top.
+    - apply top_subtyp_of_empty_bind.
 Qed.
 
 (*
@@ -2204,12 +2221,16 @@ Lemma decs_has_preserves_sub: forall m G Ds1 Ds2 l D2,
   subdecs m G Ds1 Ds2 ->
   exists D1, decs_has Ds1 l D1 /\ subdec m G D1 D2.
 Proof.
-  introv Has Sds. induction Ds2.
+  introv Has Sds. gen l D2 Has. induction Sds; introv Has.
   + inversion Has.
-  + unfold decs_has, get_dec in Has. inversions Sds. case_if.
+  + unfold decs_has, get_dec in Has. case_if.
     - inversions Has. exists D1. auto.
-    - fold get_dec in Has. apply* IHDs2.
+    - fold get_dec in Has. apply* IHSds.
+  + destruct (decs_has_show_label_for_dec Has) as [n Eq]. subst.
+    apply decs_bot_has_subdec.
 Qed.
+
+Print Assumptions decs_has_preserves_sub.
 
 Lemma decs_has_preserves_sub_D1_known: forall m G Ds1 Ds2 l D1 D2,
   decs_has Ds1 l D1 ->
@@ -2217,14 +2238,20 @@ Lemma decs_has_preserves_sub_D1_known: forall m G Ds1 Ds2 l D1 D2,
   subdecs m G Ds1 Ds2 ->
   subdec m G D1 D2.
 Proof.
-  introv Has1 Has2 Sds. induction Ds2.
+  introv Has1 Has2 Sds. gen l D1 D2 Has1 Has2. induction Sds; introv Has1 Has2.
   + inversion Has2.
-  + unfold decs_has, get_dec in Has2. inversions Sds. case_if.
-    - inversions Has2. rename H5 into Has1'.
+  + unfold decs_has, get_dec in Has2. case_if.
+    - inversions Has2. rename H into Has1'.
       unfold decs_has in Has1, Has1'.
       rewrite Has1' in Has1. inversions Has1. assumption.
-    - fold get_dec in Has2. apply* IHDs2.
+    - fold get_dec in Has2. apply* IHSds.
+  + destruct (decs_has_show_label_for_dec Has2) as [n Eq]. subst.
+    lets P: (@decs_bot_has_subdec m G n D2). destruct P as [D1' [Has1' Sd]].
+    unfold decs_has in Has1, Has1'.
+    rewrite Has1' in Has1. inversions Has1. exact Sd.
 Qed.
+
+Print Assumptions decs_has_preserves_sub_D1_known.
 
 (* This is the big fat TODO of the proof ;-) 
    So far we know how to do it in precise mode, but we don't know how to do it
@@ -2523,6 +2550,7 @@ Proof.
     - assumption.
     - apply subdec_trans with D2; assumption.
     - apply (IHDs3 H23c).
+  + inversions H23. inversions H12. apply subdecs_bot.
 Qed.
 
 Lemma subtyp_trans_notrans: forall G T1 T2 T3,
