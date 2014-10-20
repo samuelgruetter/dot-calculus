@@ -2727,174 +2727,64 @@ Qed.
 
 Print Assumptions chain1subtyp.
 
-(*
-Lemma exp_preserves_sub_ADMITTED: forall m G T1 T2 Ds1 Ds2,
+(* prepend an oktrans to chain ("utrans0*") *)
+Lemma prepend_chain: forall G A1 A2 D,
   ok G ->
-  subtyp ip m G T1 T2 ->
-  exp pr G T1 Ds1 -> (* <-- note: precise *)
-  exp ip G T2 Ds2 -> (* <-- note: imprecise *)
-  exists L, forall z, z \notin L -> 
-            subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
-Admitted.
-*)
-
-(* Move imprecision in "has" into subtype transitivity: S2<:S1<:U1<:U2 *)
-Lemma ip_has_to_trans: forall s G x L S2 U2,
-  wf_sto s G ->
-  has ip G (trm_var (avar_f x)) L (dec_typ S2 U2) ->
-  (* I can give you all this: *)
-  exists X1 X2 DsX1 DsX2,
-    binds x X1 G /\
-    ty_trm G (trm_var (avar_f x)) X2 /\
-    subtyp ip oktrans G X1 X2 /\
-    exp pr G X1 DsX1 /\
-    exp ip G X2 DsX2 /\
-    ((* But you have to give me the conclusion of exp_preserves_sub: *)
-     (exists L, forall z, z \notin L -> 
-        subdecs ip (G & z ~ typ_bind DsX1) (open_decs z DsX1) (open_decs z DsX2)) ->
-     (* So that I can give you the result: *)
-     (exists S1 U1,
-        has pr G (trm_var (avar_f x)) L (dec_typ S1 U1) /\
-        subtyp ip oktrans G S2 S1 /\
-        subtyp ip oktrans G S1 U1 /\
-        subtyp ip oktrans G U1 U2)).
-Proof.
-  introv Wf Has2.
-  (* Step 1: Destruct hypotheses to instantiate existentials *)
-  lets Ok: (wf_sto_to_ok_G Wf).
-  apply invert_var_has_dec_typ in Has2.
-  destruct Has2 as [X2 [DsX2 [S2' [U2' [Ty [ExpX2 [DsX2Has [EqS EqU]]]]]]]].
-  destruct (invert_ty_var Ty) as [X1 [StX BiG]].
-  destruct (ctx_binds_to_sto_binds Wf BiG) as [[DsX1 ds] Bis].
-  lets I: (invert_wf_sto_with_weakening Wf Bis BiG). destruct I as [Eq [_ F]]. subst X1.
-  exists (typ_bind DsX1) X2 DsX1 DsX2.
-  lets ExpX1: (exp_bind pr G DsX1).
-  refine (conj BiG (conj Ty (conj StX (conj ExpX1 (conj ExpX2 _))))).
-  (* Step 2: Get S2 <: S1 and U1 <: U2 *)
-  intro Sds.
-  (* doesn't hold, need some substitution ...*)
-  assert (Impl: (exists L0, 
-      forall z : var, z \notin L0 ->
-      subdecs ip (G & z ~ typ_bind DsX1) (open_decs z DsX1) (open_decs z DsX2))
-   -> subdecs ip G                       (open_decs x DsX1) (open_decs x DsX2)) by admit.
-  apply Impl in Sds. clear Impl.
-  apply (decs_has_open x) in DsX2Has.
-  unfold open_dec, open_rec_dec in DsX2Has. fold open_rec_typ in DsX2Has.
-  unfold open_typ in EqS, EqU.
-  rewrite EqS in DsX2Has.
-  rewrite EqU in DsX2Has.
-  lets Sd: (decs_has_preserves_sub DsX2Has Sds).
-  destruct Sd as [D1 [DsX1Has Sd]].
-  apply invert_subdec_typ_sync_left in Sd. destruct Sd as [S1 [U1 [Eq [StS StU]]]].
-  (* Step 3: Get S1 <: U1 *)
-  subst D1. specialize (F L S1 U1 DsX1Has).
-  (* Step 4: Combine *)
-  exists S1 U1.
-  refine (conj _ (conj StS (conj F StU))).
-  assert (Eq: exists D1, open_dec x D1 = (dec_typ S1 U1)) by admit.
-  destruct Eq as [D1 Eq]. rewrite <- Eq.
-  apply has_pr with (typ_bind DsX1) DsX1.
-  + apply BiG.
-  + apply ExpX1.
-  + rewrite <- Eq in DsX1Has.
-    (* substitution hassle (does not hold): *)
-    assert (Impl: decs_has (open_decs x DsX1) L (open_dec x D1)
-                  -> decs_has DsX1 L D1) by admit.
-    apply (Impl DsX1Has).
-Qed.
-
-Inductive ilevel: ctx -> typ -> nat -> Prop :=
-| ilevel_top: forall G,
-    ilevel G typ_top 0
-| ilevel_bot: forall G,
-    ilevel G typ_bot 0
-| ilevel_bind: forall G Ds,
-    ilevel G (typ_bind Ds) 0
-| ilevel_sel: forall G x L S U n1 n2 n3,
-    has pr G (trm_var x) L (dec_typ S U) ->
-    ilevel G S n1 ->
-    ilevel G U n2 ->
-    n1 < n3 ->
-    n2 < n3 ->
-    ilevel G (typ_sel (pth_var x) L) n3.
-
-(* prepend an oktrans to a chain *)
-Lemma prepend_chain: forall s G A1 A2 D,
-  wf_sto s G ->
-  subtyp ip oktrans G A1 A2 ->
+  subtyp pr oktrans G A1 A2 ->
   chain G A2 D ->
-  chain G A1 D
-with exp_preserves_sub: forall s G T1 T2 Ds1 Ds2,
-  wf_sto s G ->
-  subtyp ip notrans G T1 T2 -> (* <-- TODO: is notrans sufficient ?? *)
-  exp pr G T1 Ds1 -> (* <-- note: precise *)
-  exp ip G T2 Ds2 -> (* <-- note: imprecise *)
-  exists L, forall z, z \notin L -> 
-            subdecs ip (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
+  chain G A1 D.
 Proof.
-(**** prepend_chain ****) {
-  introv Wf St. unfold chain in *. unfold st_middle in *.
-  lets Ok: (wf_sto_to_ok_G Wf).
-  set (oktrans2notrans A D H := 
-    (chain1subtyp Ok (prepend_chain s G A D D Wf H (empty_chain G D)))).
-  intro Hch. inversions St; [ inversions H | idtac ].
+  introv Hok St. gen_eq m: pr. unfold chain in *. unfold st_middle in *. 
+  induction St; intros Eq Hch; subst m.
   + (* case refl *)
     assumption.
   + (* case top *)
     destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
     inversion Hch1; subst.
     destruct Hch2 as [Hch2 | [Hch2 | [Hch2a Hch2b]]]; subst.
-    - exists A1 typ_top. auto 10.
-    - exists A1 C. auto 10.
-    - exists A1 C. auto 10.
+    exists T typ_top.
+    auto 10.
+    exists T C.
+    auto 10.
+    exists T C.
+    auto 10.
   + (* case bot *)
     destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
-    exists typ_bot C. auto 10.
+    exists typ_bot C.
+    auto 10.
   + (* case bind *)
     destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
     inversion Hch1; subst.
     exists (typ_bind Ds1) C.
-    assert (subtyp ip notrans G (typ_bind Ds1) (typ_bind Ds2))
-      by (apply subtyp_bind with L; assumption).
+    assert (subtyp pr notrans G (typ_bind Ds1) (typ_bind Ds2)). {
+      apply subtyp_bind with L. assumption.
+    }
     destruct Hch2 as [Hch2 | [Hch2 | [Hch2a Hch2b]]].
     - subst. auto 10.
     - auto 10.
-    - lets Hst: (subtyp_trans_notrans Ok (notsel_bind _) H Hch2b). auto 10.
-  + (* case sel_l *)
-    rename H0 into Has2, H1 into St, S into S2, U into U2.
-    lets I: (ip_has_to_trans Wf Has2).
-    destruct I as [X1 [X2 [DsX1 [DsX2 [Bi [Ty [StX [ExpX1 [ExpX2 I]]]]]]]]].
-    (* ExpX1 is contained in Exp1 --> decreasing *)
-    lets IHX: (exp_preserves_sub s G X1 X2 DsX1 DsX2
-                                 Wf (oktrans2notrans X1 X2 StX) ExpX1 ExpX2).
-    specialize (I IHX). clear IHX.
-    destruct I as [S1 [U1 [Has1 [StS [StSU StU]]]]].
-    (* decreasing because [U2 <: A2] is contained in [p.L <: A2] *)
-    lets IHSt: (prepend_chain s G U2 A2 D Wf St).
-    specialize (IHSt Hch).
-    lets IHStU: (prepend_chain s G U1 U2 D Wf StU).
-    specialize (IHStU IHSt).
-    destruct IHStU as [B [C [IH1 IH2]]].
+    - set (Hst := (subtyp_trans_notrans Hok (notsel_bind _) H0 Hch2b)). auto 10.
+  + (* case asel_l *)
+    specialize (IHSt Hok eq_refl Hch).
+    destruct IHSt as [B [C [IH1 [IH2 IH3]]]].
     exists B C.
-    apply (conj (follow_ub_cons Has1 IH1) IH2).
-  + (* case sel_r *)
-    rename H0 into Has2, S into S2, U into U2, H1 into StSU, H2 into StA1S2.
+    split.
+    apply (follow_ub_cons H IH1).
+    split; assumption.
+  (*
+  + (* case asel_r *) 
+    apply (IHSt2 Hok). apply (IHSt1 Hok).
+    destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+    exists B C.
+    inversions Hch1. (* oops, cannot prove follow_ub G U (typ_sel (pth_var (avar_f x)) L)*)
+  *)
+  + (* case asel_r *) 
     set (Hch' := Hch).
     destruct Hch' as [B [C [Hch1 [Hch2 Hch3]]]].
-    (*lets IHStSU: (prepend_chain s G S *)
-    admit. (*
-
-
-  + (* case sel_r *)
-    rename H0 into Has2, H1 into StSU, H2 into StA1S.
-    set (Hch' := Hch).
-    destruct Hch' as [B [C [Hch1 [Hch2 Hch3]]]].
-    lets IHStSU: (prepend_chain s G S 
-    inversions Hch1.
+    inversion Hch1; subst.
     - (* case follow_ub_nil *)
       destruct Hch2 as [Hch2 | [Hch2 | [Hch2a Hch2b]]].
       * subst.
-        apply (IHSt2 Hok).
+        apply (IHSt2 Hok eq_refl).
         exists S S. 
         set (Hflb := (follow_lb_cons H St1 Hch3)).
         auto.
@@ -2902,106 +2792,27 @@ Proof.
         auto.
       * inversion Hch2a. (* contradiction *)
     - (* case follow_ub_cons *)
-      apply (IHSt2 Hok). apply (IHSt1 Hok).
+      apply (IHSt2 Hok eq_refl). apply (IHSt1 Hok eq_refl).
       assert (HdecEq: dec_typ Lo Hi = dec_typ S U) by admit (* has_var_unique *).
       injection HdecEq; intros; subst.
       exists B C. auto.
-    *)
+  + (* case mode *)
+    apply (IHSt Hok eq_refl Hch).
   + (* case trans *)
-    lets IHSt1: (prepend_chain s G A1 T2 D Wf H).
-    lets IHSt2: (prepend_chain s G T2 A2 D Wf H0).
-    apply IHSt1. apply (IHSt2 Hch).
-}
-(**** exp_preserves_sub ****) {
-  introv Wf St Exp1 Exp2.
-  lets Ok: (wf_sto_to_ok_G Wf).
-  set (oktrans2notrans A D H := 
-    (chain1subtyp Ok (prepend_chain s G A D D Wf H (empty_chain G D)))).
-  inversions St.
-  + (* case subtyp_refl *)
-    inversions Exp1. rename Lo0 into Lo1, Hi0 into Hi1, H4 into Has1, H6 into ExpHi1.
-    inversions Exp2. rename Lo0 into Lo2, Hi0 into Hi2, H4 into Has2, H6 into ExpHi2.
-    lets I: (ip_has_to_trans Wf Has2).
-    destruct I as [X1 [X2 [DsX1 [DsX2 [Bi [Ty [StX [ExpX1 [ExpX2 I]]]]]]]]].
-    (* ExpX1 is contained in Exp1 --> decreasing *)
-    lets IHX: (exp_preserves_sub s G X1 X2 DsX1 DsX2
-                                 Wf (oktrans2notrans X1 X2 StX) ExpX1 ExpX2).
-    specialize (I IHX). clear IHX.
-    destruct I as [Lo1' [Hi1' [Has1' [_ [_ StHi]]]]].
-    (* since precise has is unique: *)
-    assert (Lo1' = Lo1) by admit. subst Lo1'.
-    assert (Hi1' = Hi1) by admit. subst Hi1'.
-    (* Hi1 is the upper bound of x.L, so it's "simpler" than x.L 
-       -> decreasing measure *)
-    apply (exp_preserves_sub _ _ _ _ _ _ Wf (oktrans2notrans Hi1 Hi2 StHi) ExpHi1 ExpHi2).
-  + (* case subtyp_top *)
-    inversions Exp2.
-    exists vars_empty. intros z zL. unfold open_decs, open_rec_decs. apply subdecs_empty.
-  + (* case subtyp_bot *)
-    inversions Exp1.
-  + (* case subtyp_bind *)
-    inversions Exp1. inversions Exp2.
-    exists L. intros z zL. apply (H z zL).
-  + (* case subtyp_sel_l *)
-    rename H into Has2, H0 into StHiT2, S into Lo2, U into Hi2.
-    lets I: (ip_has_to_trans Wf Has2).
-    destruct I as [X1 [X2 [DsX1 [DsX2 [Bi [Ty [StX [ExpX1 [ExpX2 I]]]]]]]]].
-    (* ExpX1 is contained in Exp1 --> decreasing *)
-    lets IHX: (exp_preserves_sub s G X1 X2 DsX1 DsX2
-                                 Wf (oktrans2notrans X1 X2 StX) ExpX1 ExpX2).
-    specialize (I IHX). clear IHX.
-    destruct I as [Lo1 [Hi1 [Has1 [_ [_ StHi]]]]].
-    lets St: (subtyp_trans StHi StHiT2).
-    apply invert_exp_sel in Exp1. destruct Exp1 as [Lo1' [Hi1' [Has1' ExpHi1]]].
-    (* since precise has is unique: *)
-    assert (Lo1' = Lo1) by admit. subst Lo1'.
-    assert (Hi1' = Hi1) by admit. subst Hi1'.
-    (* Hi1 is the upper bound of x.L, so it's "simpler" than x.L 
-       -> decreasing measure *)
-    refine (exp_preserves_sub _ _ _ _ _ _ Wf _ ExpHi1 Exp2).
-    apply (oktrans2notrans Hi1 T2 St).
-  + (* case subtyp_sel_r *)
-    rename H into Has2, H0 into StLo2Hi2, H1 into StLo2T1, S into Lo2, U into Hi2.
-    lets I: (ip_has_to_trans Wf Has2).
-    destruct I as [X1 [X2 [DsX1 [DsX2 [Bi [Ty [StX [ExpX1 [ExpX2 I]]]]]]]]].
-    (* ExpX1 is contained in Exp1 --> decreasing *)
-    lets IHX: (exp_preserves_sub s G X1 X2 DsX1 DsX2
-                                 Wf (oktrans2notrans X1 X2 StX) ExpX1 ExpX2).
-    specialize (I IHX). clear IHX.
-    destruct I as [Lo1 [Hi1 [Has1 [StLo2L1 [StLo1Hi1 StHi1Hi2]]]]].
-    (* TODO difficult *)
-
-     (*   T1 <: p.L (Lo..Hi)
-
-         Ds1 <:         Ds2
-     *)
-    admit.
-  (* if the exp_preserves_sub statement is only for notrans, no need for these 2 cases:
-  + (* case subtyp_mode *)
-    (* H (notrans) is contained in oktrans judgment *)
-    apply (exp_preserves_sub _ _ _ _ _ _ _ Wf H Exp1 Exp2).
-  + (* case subtyp_trans *)
-    rename Ds2 into Ds3, T3 into Temp, T2 into T3. rename Temp into T2.
-    rename H into St12, H0 into St23, Exp2 into Exp3.
-    assert (Exp2: exists Ds2, exp pr G T2 Ds2) by admit. (* <----- *)
-    destruct Exp2 as [Ds2 Exp2].
-    (* now apply exp_preserves_sub on St12 and St23, then subdecs_trans *)
-    *)
-}
-(*Qed.*)Abort.
-
-Lemma oktrans_to_chain: forall G T1 T2,
-  subtyp ip oktrans G T1 T2 ->
-  chain G T1 T2.
-Admitted.
+    apply (IHSt1 Hok eq_refl). apply (IHSt2 Hok eq_refl Hch).
+Qed.
 
 Lemma oktrans2notrans: forall G T1 T3,
-  ok G -> subtyp ip oktrans G T1 T3 -> subtyp ip notrans G T1 T3.
+  ok G -> subtyp pr oktrans G T1 T3 -> subtyp pr notrans G T1 T3.
 Proof.
-  introv Hok Hst. apply (chain1subtyp Hok (oktrans_to_chain Hst)).
+  introv Hok Hst.
+  assert (Hch: chain G T1 T3).
+  apply (prepend_chain Hok Hst (empty_chain _ _)).
+  apply (chain1subtyp Hok Hch).
 Qed.
 
 Print Assumptions oktrans2notrans.
+
 
 (* ###################################################################### *)
 (* ###################################################################### *)
