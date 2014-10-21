@@ -2526,8 +2526,8 @@ Proof.
 Admitted.
 
 (* TODO this only holds if T is well-formed, but we first need such a jugment... *)
-Lemma exp_total: forall G T,
-  exists Ds, exp pr G T nil Ds.
+Lemma exp_total: forall G T h,
+  exists Ds, exp pr G T h Ds.
 Admitted.
 
 Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
@@ -2636,9 +2636,12 @@ Print Assumptions exp_preserves_sub_pr.
 (* ###################################################################### *)
 (** ** Full-fledged narrowing *)
 
+Axiom okadmit: forall G: ctx, ok G.
+
 Lemma narrowing:
    (forall m G T h Ds2, exp m G T h Ds2 -> forall G1 G2 x S1 S2,
     m = pr ->
+    ok G ->
     G = G1 & x ~ S2 & G2 ->
     subtyp pr oktrans G1 S1 S2 ->
     exists L Ds1,
@@ -2647,33 +2650,40 @@ Lemma narrowing:
     subdecs pr (G1 & x ~ S1 & G2 & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2))
 /\ (forall m G t l D2, has m G t l D2 ->  forall G1 G2 x S1 S2,
     m = pr ->
+    ok G ->
     G = G1 & x ~ S2 & G2 ->
     subtyp pr oktrans G1 S1 S2 ->
-    exists D1, has pr G t l D1 /\ subdec pr (G1 & x ~ S1 & G2) D1 D2)
+    exists D1, has pr (G1 & x ~ S1 & G2) t l D1 /\ subdec pr (G1 & x ~ S1 & G2) D1 D2)
 /\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 ->  forall G1 G2 x S1 S2,
     m1 = pr ->
+    ok G ->
     G = G1 & x ~ S2 & G2 ->
     subtyp pr oktrans G1 S1 S2 ->
     subtyp pr oktrans (G1 & x ~ S1 & G2) T1 T2)
 /\ (forall m G D1 D2, subdec m G D1 D2 ->  forall G1 G2 x S1 S2,
     m = pr ->
+    ok G ->
     G = G1 & x ~ S2 & G2 ->
     subtyp pr oktrans G1 S1 S2 ->
     subdec pr (G1 & x ~ S1 & G2) D1 D2)
 /\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 ->  forall G1 G2 x S1 S2,
     m = pr ->
+    ok G ->
     G = G1 & x ~ S2 & G2 ->
     subtyp pr oktrans G1 S1 S2 ->
     subdecs pr (G1 & x ~ S1 & G2) Ds1 Ds2)
 /\ (forall G t T2, ty_trm G t T2 ->  forall G1 G2 x S1 S2,
+    ok G ->
     G = G1 & x ~ S2 & G2 ->
     subtyp pr oktrans G1 S1 S2 ->
     exists T1, ty_trm (G1 & x ~ S1 & G2) t T1 /\ subtyp pr oktrans (G1 & x ~ S1 & G2) T1 T2)
 /\ (forall G d D2, ty_def G d D2 ->  forall G1 G2 x S1 S2,
+    ok G ->
     G = G1 & x ~ S2 & G2 ->
     subtyp pr oktrans G1 S1 S2 ->
     exists D1, ty_def (G1 & x ~ S1 & G2) d D1 /\ subdec pr (G1 & x ~ S1 & G2) D1 D2)
 /\ (forall G ds Ds2, ty_defs G ds Ds2 ->  forall G1 G2 x S1 S2,
+    ok G ->
     G = G1 & x ~ S2 & G2 ->
     subtyp pr oktrans G1 S1 S2 ->
     exists Ds1, ty_defs (G1 & x ~ S1 & G2) ds Ds1 /\ subdecs pr (G1 & x ~ S1 & G2) Ds1 Ds2).
@@ -2692,7 +2702,30 @@ Proof.
     - apply exp_bind.
     - intros. apply subdecs_refl.
   + (* case exp_sel *)
-    intros. apply* exp_sel.
+    intros m G z L h Lo2 Hi2 Ds2 Has IHHas NIn Exp IHExp G1 G2 x S1 S2 E1 Ok2 E2 St. subst.
+    specialize (IHHas _ _ _ _ _ eq_refl Ok2 eq_refl St).
+    specialize (IHExp _ _ _ _ _ eq_refl Ok2 eq_refl St).
+    destruct IHHas as [D1 [IHHas Sd]].
+    destruct IHExp as [L0 [Dsm [IHExp Sds2]]].
+    apply invert_subdec_typ_sync_left in Sd.
+    destruct Sd as [Lo1 [Hi1 [Eq [StLo21 StHi12]]]]. subst D1.
+    destruct (exp_total (G1 & x ~ S1 & G2) Hi1 ((pth_var (avar_f z), L) :: h))
+      as [Ds1 Exp1].
+    exists L0 Ds1. apply (conj (exp_sel IHHas NIn Exp1)).
+    intros y yL0. specialize (Sds2 y yL0).
+    assert (Ok1: ok (G1 & x ~ S1 & G2)) by apply okadmit.
+    destruct Dsm as [|n Dsmh Dsmt|] eqn: Eq.
+    - lets Sds1: (subdecs_empty pr (G1 & x ~ S1 & G2 & y ~ typ_bind Ds1) (open_decs y Ds1)).
+      rewrite open_decs_nil in Sds2.
+      rewrite <- (open_decs_nil y) in Sds1.
+      apply (pr_narrow_subdecs Sds1) in Sds2. (* <---- narrowing in conclusion of IH!!! *)
+      apply (subdecs_trans Sds1 Sds2).
+      (* Note: for the "weak" form of narrowing (currently called pr_narrow_subdecs),
+         which is only for exp/has/subtyp/subdec/subdecs, we'd still have this exact same
+         case, where we have to apply narrowing on the conclusion of the IH! *)
+    - lets IHExp':(nonempty_exp_doesnt_need_history IHExp (decs_nonempty_cons n Dsmh Dsmt)).
+      rewrite <- Eq in *.
+    
   + (* case exp_loop *)
     intros. apply* exp_loop.
   + (* case has_trm *)
