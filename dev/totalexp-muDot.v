@@ -3035,17 +3035,17 @@ Print Assumptions exp_preserves_sub_pr.
 Lemma ty_def_sbsm: forall G d D1 D2,
   ok G ->
   ty_def G d D1 ->
-  subdec G D1 D2 ->
+  subdec ip G D1 D2 ->
   ty_def G d D2.
 Proof.
   introv Ok Ty Sd. destruct Ty; inversion Sd; try discriminate; subst; clear Sd.
   + apply ty_typ.
-  + apply (ty_fld (ty_sbsm H H2)).
+  + apply (ty_fld (ty_sbsm H H3)).
   + apply ty_mtd with (L \u dom G).
     intros x Fr. assert (xL: x \notin L) by auto. specialize (H x xL).
     assert (Okx: ok (G & x ~ S2)) by auto.
-    apply (weaken_subtyp_end Okx) in H5.
-    refine (ty_sbsm _ H5).
-    refine (narrow_ty_trm _ H3 H).
+    apply (weaken_subtyp_end Okx) in H6.
+    refine (ty_sbsm _ H6).
+    refine (narrow_ty_trm _ H4 H).
     auto.
 Qed.
