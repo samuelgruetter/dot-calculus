@@ -2925,6 +2925,11 @@ Lemma invert_empty_expansion: forall G T h,
 Proof.
 Admitted.
 
+(* TODO this only holds if T is well-formed, but we first need such a jugment... *)
+Lemma exp_total: forall G T,
+  exists Ds, exp pr G T nil Ds.
+Admitted.
+
 Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
   ok G ->
   subtyp pr m2 G T1 T2 ->
@@ -2989,33 +2994,43 @@ Proof.
     apply invert_exp_sel in Exp2. destruct Exp2 as [Lo' [Hi' [Has' Exp2]]].
     lets Eq: (has_unique Has' Has).
     inversions Eq.
-    assert (ExpLo: exists DsLo, exp pr G Lo DsLo) by admit. (* <----- *)
+    assert (ExpLo: exists DsLo, exp pr G Lo nil DsLo) by apply exp_total.
     destruct ExpLo as [DsLo ExpLo].
-    specialize (IHSt1 DsLo Ds2 Ok eq_refl ExpLo Exp2). destruct IHSt1 as [L1 IHSt1].
     specialize (IHSt2 Ds1 DsLo Ok eq_refl Exp1 ExpLo). destruct IHSt2 as [L2 IHSt2].
-    exists (L1 \u L2 \u dom G). intros z zL1L2.
-    lets StWk: (subtyp_tmode (@subtyp_bind L2 ip G Ds1 DsLo IHSt2)).
-    auto_specialize.
-    assert (Ok': ok (G & z ~ typ_bind DsLo)) by auto.
-    lets IHSt1': (narrow_subdecs Ok' StWk IHSt1).
-    apply (subdecs_trans IHSt2 IHSt1').
+    (* cannot yet specialize IHSt1 with Exp2, because Exp2 has non-empty history *)
+    destruct Ds2 as [|n Ds2h Ds2t|] eqn: Eq.
+    - exists vars_empty. intros z zL. unfold open_decs, open_rec_decs. apply subdecs_empty.
+    - lets Exp2': (nonempty_exp_doesnt_need_history Exp2 (decs_nonempty_cons n Ds2h Ds2t)).
+      rewrite <- Eq in *.
+      specialize (IHSt1 DsLo Ds2 Ok eq_refl ExpLo Exp2'). destruct IHSt1 as [L1 IHSt1].
+      exists (L1 \u L2 \u dom G). intros z zL1L2.
+      auto_specialize.
+      assert (Ok': ok (G & z ~ typ_bind DsLo)) by auto.
+      lets IHSt1': (pr_narrow_subdecs IHSt2 IHSt1). (* <-------- NARROWING *)
+      apply (subdecs_trans IHSt2 IHSt1').
+    - lets Exp2': (nonempty_exp_doesnt_need_history Exp2 decs_nonempty_bot). subst.
+      specialize (IHSt1 DsLo decs_bot Ok eq_refl ExpLo Exp2'). destruct IHSt1 as [L1 IHSt1].
+      exists (L1 \u L2 \u dom G). intros z zL1L2.
+      auto_specialize.
+      assert (Ok': ok (G & z ~ typ_bind DsLo)) by auto.
+      lets IHSt1': (pr_narrow_subdecs IHSt2 IHSt1). (* <-------- NARROWING *)
+      apply (subdecs_trans IHSt2 IHSt1').
   + (* case subtyp_mode *)
     intros. apply* H0.
   + (* case subtyp_trans *)
     intros m G T1 T2 T3 St12 IH12 St23 IH23 Ds1 Ds3 Ok Eq Exp1 Exp3. subst.
-    assert (Exp2: exists Ds2, exp pr G T2 Ds2) by admit. (* <----- *)
+    assert (Exp2: exists Ds2, exp pr G T2 nil Ds2) by apply exp_total.
     destruct Exp2 as [Ds2 Exp2].
     specialize (IH12 _ _ Ok eq_refl Exp1 Exp2). destruct IH12 as [L1 IH12].
-    specialize (IH23 _ _ Ok eq_refl Exp2 Exp3). destruct IH23 as [L2 IHS23].
+    specialize (IH23 _ _ Ok eq_refl Exp2 Exp3). destruct IH23 as [L2 IH23].
     exists (L1 \u L2 \u dom G). intros z zL1L2.
-    lets StWk: (subtyp_tmode (@subtyp_bind L1 ip G Ds1 Ds2 IH12)).
     auto_specialize.
     assert (Ok': ok (G & z ~ typ_bind Ds2)) by auto.
-    lets IHS23': (narrow_subdecs Ok' StWk IHS23).
+    lets IHS23': (pr_narrow_subdecs IH12 IH23).  (* <-------- NARROWING *)
     apply (subdecs_trans IH12 IHS23').
 Qed.
 
-Print Assumptions exp_preserves_sub_pr_ip.
+Print Assumptions exp_preserves_sub_pr.
 
 (* note: conclusion is precise *)
 Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
