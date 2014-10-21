@@ -1237,7 +1237,6 @@ Qed.
 (* ###################################################################### *)
 (** ** Uniqueness *)
 
-
 Lemma exp_has_unique:
   (forall m G T H Ds1, exp m G T H Ds1 -> m = pr ->
      forall Ds2, exp pr G T H Ds2 -> Ds1 = Ds2) /\ 
@@ -1840,45 +1839,6 @@ Qed.
 (* ###################################################################### *)
 (** ** Narrowing *)
 
-Lemma narrow_ty_trm: forall G y T1 T2 u U,
-  ok (G & y ~ T2) ->
-  subtyp ip oktrans G T1 T2 ->
-  ty_trm (G & y ~ T2) u U ->
-  ty_trm (G & y ~ T1) u U.
-Proof.
-  introv Ok St Tyu.
-  (* Step 1: rename *)
-  pick_fresh z.
-  assert (Okzy: ok (G & z ~ T2 & y ~ T2)) by admit.
-  apply (weaken_ty_trm_middle Okzy) in Tyu.
-  assert (Biz: binds z T2 (G & z ~ T2)) by auto.
-  lets Tyz: (ty_var Biz).
-  lets Tyu': (trm_subst_principle Okzy Tyu Tyz).
-  (* Step 2: the actual substitution *)
-  assert (Biy: binds y T1 (G & y ~ T1)) by auto.
-  assert (Ok': ok (G & y ~ T1)) by admit.
-  apply (weaken_subtyp_end Ok') in St.
-  lets Tyy: (ty_sbsm (ty_var Biy) St).
-  assert (Okyz: ok (G & y ~ T1 & z ~ T2)) by auto.
-  apply (weaken_ty_trm_middle Okyz) in Tyu'.
-  lets Tyu'': (trm_subst_principle Okyz Tyu' Tyy).
-  rewrite subst_trm_undo, subst_typ_undo in Tyu''; auto.
-Qed.
-
-Lemma narrow_subdec: forall G y T1 T2 D1 D2,
-  ok (G & y ~ T2) ->
-  subtyp ip oktrans G T1 T2 ->
-  subdec ip (G & y ~ T2) D1 D2 ->
-  subdec ip (G & y ~ T1) D1 D2.
-Admitted.
-
-Lemma narrow_subdecs: forall G y T1 T2 Ds1 Ds2,
-  ok (G & y ~ T2) ->
-  subtyp ip oktrans G T1 T2 ->
-  subdecs ip (G & y ~ T2) Ds1 Ds2 ->
-  subdecs ip (G & y ~ T1) Ds1 Ds2.
-Admitted.
-
 (* In ip mode, this holds, but does it also hold in pr mode??? *)
 Lemma pr_narrow_subdecs: forall G z DsA DsB Ds1 Ds2,
   subdecs pr (G & z ~ typ_bind DsA) (open_decs z DsA) (open_decs z DsB) ->
@@ -2044,42 +2004,6 @@ Proof.
     - apply top_subtyp_of_empty_bind.
 Qed.
 
-(*
-Lemma invert_ty_sel: forall G t l T,
-  ty_trm G (trm_sel t l) T ->
-  has ip G t (label_fld l) (dec_fld T).
-Proof.
-  introv Ty. gen_eq t0: (trm_sel t l). gen t l.
-  induction Ty; intros t' l' Eq; try (solve [ discriminate ]).
-  + inversions Eq. assumption.
-  + subst. rename t' into t, l' into l. specialize (IHTy _ _ eq_refl).
-    apply invert_has in IHTy.
-    destruct IHTy as [IHTy | IHTy].
-    (* case has_trm *)
-    - destruct IHTy as [X [Ds [Tyt [Exp [DsHas CloT]]]]].
-      (* U occurs in a subtype judgment, so it's closed: *)
-      assert (CloU: forall z, open_typ z U = U) by admit.
-      lets St1: (exp_to_subtyp Exp).
-      assert (St2: subtyp G (typ_bind Ds) (typ_bind (decs_cons l (dec_fld U) decs_nil))). {
-        apply_fresh subtyp_bind as z.
-        apply subdecs_push with (dec_fld T); fold open_rec_typ; simpl.
-        * rewrite <- (CloT z). apply (decs_has_open z DsHas).
-        * unfold open_dec, open_rec_dec. fold open_rec_typ. apply subdec_fld.
-          rewrite -> CloU. refine (weaken_subtyp_end _ H). admit.
-        * apply subdecs_empty.
-      }
-      apply has_trm with (typ_bind (decs_cons l (dec_fld U) decs_nil))
-                                   (decs_cons l (dec_fld U) decs_nil).
-      * refine (ty_sbsm _ St2). apply (ty_sbsm Tyt St1).
-      * apply exp_bind.
-      * unfold decs_has, get_dec. simpl. case_if. reflexivity.
-      * intro z. specialize (CloU z). unfold open_dec, open_rec_dec. 
-        fold open_rec_typ. f_equal. apply CloU.
-    (* case has_var *)
-    - admit. (* probably similar *)
-Qed.
-*)
-
 Lemma invert_ty_sel: forall G t l T,
   ty_trm G (trm_sel t l) T ->
   exists T', subtyp ip oktrans G T' T /\ has ip G t (label_fld l) (dec_fld T').
@@ -2092,28 +2016,6 @@ Proof.
     - apply subtyp_trans with T; assumption.
     - exact Has.
 Qed.
-
-(*
-Lemma invert_ty_call: forall G t m V u,
-  ty_trm G (trm_call t m u) V ->
-  exists U, has ip G t (label_mtd m) (dec_mtd U V) /\ ty_trm G u U.
-Proof.
-  introv Ty. gen_eq e: (trm_call t m u). gen t m u.
-  induction Ty; intros t0 m0 u0 Eq; try solve [ discriminate ]; symmetry in Eq.
-  + (* case ty_call *)
-    inversions Eq. exists U. auto.
-  + (* case ty_sbsm *)
-    subst t. specialize (IHTy _ _ _ eq_refl). rename t0 into t, m0 into m, u0 into u.
-    destruct IHTy as [V [Has Tyu]].
-    exists V. refine (conj _ Tyu).
-    apply invert_has in Has.
-    destruct Has as [IHTy | IHTy].
-
-    (* need to turn (dec_mtd U0 T) into (dec_mtd U0 U) using T <: U, but there's
-       no subsumption in has, so we would need to do the subsumption when
-       typing t0 --> tricky *)
-Abort.
-*)
 
 Lemma invert_ty_call: forall G t m V u,
   ty_trm G (trm_call t m u) V ->
@@ -2812,29 +2714,6 @@ Proof.
 Qed.
 
 Print Assumptions oktrans2notrans.
-
-
-(* ###################################################################### *)
-(* ###################################################################### *)
-(* ###################################################################### *)
-(** Exploring helper lemmas for ip->pr and oktrans->notrans *)
-
-(*
-Lemma pr2ip:
-   (forall m G T Ds,   exp m G T Ds  -> exp ip G T Ds)
-/\ (forall m G t L D,  has m G t L D -> has ip G t L D)
-/\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 -> subtyp ip m2 G T1 T2)
-/\ (forall m G D1 D2, subdec m G D1 D2 -> subdec ip G D1 D2)
-/\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> subdecs ip G Ds1 Ds2).
-Admitted.
-*)
-
-(*
-Note:
- - Proving it for notrans only doesn't work, because the IH needs to accept oktrans,
-   because that's what comes out of subtyp_sel_l/r.
- - Conclusion is imprecise, because result of narrowing is imprecise.
-*)
 
 Lemma open_decs_nil: forall z, (open_decs z decs_nil) = decs_nil.
 Proof.
