@@ -472,6 +472,43 @@ Definition preservation := forall s G e T e' s',
 (* ###################################################################### *)
 (** * Infrastructure *)
 
+
+(* ###################################################################### *)
+(** ** Tactics *)
+
+Ltac auto_specialize :=
+  repeat match goal with
+  | Impl: ?Cond ->            _ |- _ => let HC := fresh in 
+      assert (HC: Cond) by auto; specialize (Impl HC); clear HC
+  | Impl: forall (_ : ?Cond), _ |- _ => match goal with
+      | p: Cond |- _ => specialize (Impl p)
+      end
+  end.
+
+Ltac gather_vars :=
+  let A := gather_vars_with (fun x : vars      => x         ) in
+  let B := gather_vars_with (fun x : var       => \{ x }    ) in
+  let C := gather_vars_with (fun x : ctx       => dom x     ) in
+  let D := gather_vars_with (fun x : sto       => dom x     ) in
+  let E := gather_vars_with (fun x : avar      => fv_avar  x) in
+  let F := gather_vars_with (fun x : trm       => fv_trm   x) in
+  let G := gather_vars_with (fun x : def       => fv_def   x) in
+  let H := gather_vars_with (fun x : defs      => fv_defs  x) in
+  let I := gather_vars_with (fun x : typ       => fv_typ   x) in
+  let J := gather_vars_with (fun x : dec       => fv_dec   x) in
+  let K := gather_vars_with (fun x : decs      => fv_decs  x) in
+  constr:(A \u B \u C \u D \u E \u F \u G \u H \u I \u J \u K).
+
+Ltac pick_fresh x :=
+  let L := gather_vars in (pick_fresh_gen L x).
+
+Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
+  apply_fresh_base T gather_vars x.
+
+Hint Constructors subtyp.
+Hint Constructors subdec.
+
+
 (* ###################################################################### *)
 (** ** Induction principles *)
 
@@ -521,41 +558,82 @@ Combined Scheme mutind6 from exp_mut6, has_mut6,
                              subtyp_mut6, subdec_mut6, subdecs_mut6,
                              ty_trm_mut6.
 
-
-(* ###################################################################### *)
-(** ** Tactics *)
-
-Ltac auto_specialize :=
-  repeat match goal with
-  | Impl: ?Cond ->            _ |- _ => let HC := fresh in 
-      assert (HC: Cond) by auto; specialize (Impl HC); clear HC
-  | Impl: forall (_ : ?Cond), _ |- _ => match goal with
-      | p: Cond |- _ => specialize (Impl p)
-      end
-  end.
-
-Ltac gather_vars :=
-  let A := gather_vars_with (fun x : vars      => x         ) in
-  let B := gather_vars_with (fun x : var       => \{ x }    ) in
-  let C := gather_vars_with (fun x : ctx       => dom x     ) in
-  let D := gather_vars_with (fun x : sto       => dom x     ) in
-  let E := gather_vars_with (fun x : avar      => fv_avar  x) in
-  let F := gather_vars_with (fun x : trm       => fv_trm   x) in
-  let G := gather_vars_with (fun x : def       => fv_def   x) in
-  let H := gather_vars_with (fun x : defs      => fv_defs  x) in
-  let I := gather_vars_with (fun x : typ       => fv_typ   x) in
-  let J := gather_vars_with (fun x : dec       => fv_dec   x) in
-  let K := gather_vars_with (fun x : decs      => fv_decs  x) in
-  constr:(A \u B \u C \u D \u E \u F \u G \u H \u I \u J \u K).
-
-Ltac pick_fresh x :=
-  let L := gather_vars in (pick_fresh_gen L x).
-
-Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
-  apply_fresh_base T gather_vars x.
-
-Hint Constructors subtyp.
-Hint Constructors subdec.
+Lemma induction_skeleton:
+   (forall m G T H Ds, exp m G T H Ds -> exp m G T H Ds)
+/\ (forall m G t l d, has m G t l d -> has m G t l d)
+/\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 -> subtyp m1 m2 G T1 T2)
+/\ (forall m G D1 D2, subdec m G D1 D2 -> subdec m G D1 D2)
+/\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> subdecs m G Ds1 Ds2)
+/\ (forall G t T, ty_trm G t T -> ty_trm G t T)
+/\ (forall G d D, ty_def G d D -> ty_def G d D)
+/\ (forall G ds Ds, ty_defs G ds Ds -> ty_defs G ds Ds).
+Proof.
+  apply ty_mutind.
+  + (* case exp_top *)
+    intros. apply exp_top.
+  + (* case exp_bot *)
+    intros. apply exp_bot.
+  + (* case exp_bind *)
+    intros. apply exp_bind.
+  + (* case exp_sel *)
+    intros. apply* exp_sel.
+  + (* case exp_loop *)
+    intros. apply* exp_loop.
+  + (* case has_trm *)
+    intros. apply* has_trm.
+  + (* case has_var *)
+    intros. apply* has_var.
+  + (* case has_pr *)
+    intros. apply* has_pr.
+  + (* case subtyp_refl *)
+    intros. apply* subtyp_refl.
+  + (* case subtyp_top *)
+    intros. apply (subtyp_top _ _).
+  + (* case subtyp_bot *)
+    intros. apply (subtyp_bot _ _).
+  + (* case subtyp_bind *)
+    intros. apply_fresh subtyp_bind as z. auto.
+  + (* case subtyp_asel_l *)
+    intros. apply* subtyp_sel_l.
+  + (* case subtyp_asel_r *)
+    intros. apply* subtyp_sel_r.
+  + (* case subtyp_tmode *)
+    intros. apply* subtyp_tmode.
+  + (* case subtyp_trans *)
+    intros. admit.
+  + (* case subdec_typ *)
+    intros. admit.
+  + (* case subdec_fld *)
+    intros. admit.
+  + (* case subdec_mtd *)
+    intros. admit.
+  + (* case subdecs_empty *)
+    intros. apply subdecs_empty.
+  + (* case subdecs_push *)
+    intros. admit.
+  + (* case subdecs_bot *)
+    intros. apply subdecs_bot.
+  + (* case ty_var *)
+    intros. apply* ty_var.
+  + (* case ty_sel *)
+    intros. apply* ty_sel.
+  + (* case ty_call *)
+    intros. apply* ty_call.
+  + (* case ty_new *)
+    intros. apply* ty_new.
+  + (* case ty_sbsm *)
+    intros. apply ty_sbsm with T; auto.
+  + (* case ty_typ *)
+    intros. apply ty_typ.
+  + (* case ty_fld *)
+    intros. apply* ty_fld.
+  + (* case ty_mtd *)
+    intros. apply* ty_mtd.
+  + (* case ty_dsnil *)
+    intros. apply ty_dsnil.
+  + (* case ty_dscons *) 
+    intros. apply* ty_dscons.
+Qed.
 
 
 (* ###################################################################### *)
@@ -2553,6 +2631,82 @@ Print Assumptions exp_preserves_sub_pr.
 (* ###################################################################### *)
 (** ** Full-fledged narrowing *)
 
+Lemma narrowing:
+   (forall m G T H Ds, exp m G T H Ds -> exp m G T H Ds)
+/\ (forall m G t l d, has m G t l d -> has m G t l d)
+/\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 -> subtyp m1 m2 G T1 T2)
+/\ (forall m G D1 D2, subdec m G D1 D2 -> subdec m G D1 D2)
+/\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> subdecs m G Ds1 Ds2)
+/\ (forall G t T, ty_trm G t T -> ty_trm G t T)
+/\ (forall G d D, ty_def G d D -> ty_def G d D)
+/\ (forall G ds Ds, ty_defs G ds Ds -> ty_defs G ds Ds).
+Proof.
+  apply ty_mutind.
+  + (* case exp_top *)
+    intros. apply exp_top.
+  + (* case exp_bot *)
+    intros. apply exp_bot.
+  + (* case exp_bind *)
+    intros. apply exp_bind.
+  + (* case exp_sel *)
+    intros. apply* exp_sel.
+  + (* case exp_loop *)
+    intros. apply* exp_loop.
+  + (* case has_trm *)
+    intros. apply* has_trm.
+  + (* case has_var *)
+    intros. apply* has_var.
+  + (* case has_pr *)
+    intros. apply* has_pr.
+  + (* case subtyp_refl *)
+    intros. apply* subtyp_refl.
+  + (* case subtyp_top *)
+    intros. apply (subtyp_top _ _).
+  + (* case subtyp_bot *)
+    intros. apply (subtyp_bot _ _).
+  + (* case subtyp_bind *)
+    intros. apply_fresh subtyp_bind as z. auto.
+  + (* case subtyp_asel_l *)
+    intros. apply* subtyp_sel_l.
+  + (* case subtyp_asel_r *)
+    intros. apply* subtyp_sel_r.
+  + (* case subtyp_tmode *)
+    intros. apply* subtyp_tmode.
+  + (* case subtyp_trans *)
+    intros. admit.
+  + (* case subdec_typ *)
+    intros. admit.
+  + (* case subdec_fld *)
+    intros. admit.
+  + (* case subdec_mtd *)
+    intros. admit.
+  + (* case subdecs_empty *)
+    intros. apply subdecs_empty.
+  + (* case subdecs_push *)
+    intros. admit.
+  + (* case subdecs_bot *)
+    intros. apply subdecs_bot.
+  + (* case ty_var *)
+    intros. apply* ty_var.
+  + (* case ty_sel *)
+    intros. apply* ty_sel.
+  + (* case ty_call *)
+    intros. apply* ty_call.
+  + (* case ty_new *)
+    intros. apply* ty_new.
+  + (* case ty_sbsm *)
+    intros. apply ty_sbsm with T; auto.
+  + (* case ty_typ *)
+    intros. apply ty_typ.
+  + (* case ty_fld *)
+    intros. apply* ty_fld.
+  + (* case ty_mtd *)
+    intros. apply* ty_mtd.
+  + (* case ty_dsnil *)
+    intros. apply ty_dsnil.
+  + (* case ty_dscons *) 
+    intros. apply* ty_dscons.
+Qed.
 
 
 (* ###################################################################### *)
