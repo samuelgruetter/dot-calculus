@@ -2436,6 +2436,11 @@ Proof.
   intro z. reflexivity.
 Qed.
 
+Lemma open_decs_bot: forall z, (open_decs z decs_bot) = decs_bot.
+Proof.
+  intro z. reflexivity.
+Qed.
+
 Inductive decs_nonempty: decs -> Prop :=
   | decs_nonempty_cons: forall n D Ds,
       decs_nonempty (decs_cons n D Ds)
@@ -2632,22 +2637,60 @@ Print Assumptions exp_preserves_sub_pr.
 (** ** Full-fledged narrowing *)
 
 Lemma narrowing:
-   (forall m G T H Ds, exp m G T H Ds -> exp m G T H Ds)
-/\ (forall m G t l d, has m G t l d -> has m G t l d)
-/\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 -> subtyp m1 m2 G T1 T2)
-/\ (forall m G D1 D2, subdec m G D1 D2 -> subdec m G D1 D2)
-/\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> subdecs m G Ds1 Ds2)
-/\ (forall G t T, ty_trm G t T -> ty_trm G t T)
-/\ (forall G d D, ty_def G d D -> ty_def G d D)
-/\ (forall G ds Ds, ty_defs G ds Ds -> ty_defs G ds Ds).
+   (forall m G T h Ds2, exp m G T h Ds2 -> forall G1 G2 x S1 S2,
+    m = pr ->
+    G = G1 & x ~ S2 & G2 ->
+    subtyp pr oktrans G1 S1 S2 ->
+    exists L Ds1,
+    exp pr (G1 & x ~ S1 & G2) T h Ds1 /\ 
+    forall z, z \notin L ->
+    subdecs pr (G1 & x ~ S1 & G2 & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2))
+/\ (forall m G t l D2, has m G t l D2 ->  forall G1 G2 x S1 S2,
+    m = pr ->
+    G = G1 & x ~ S2 & G2 ->
+    subtyp pr oktrans G1 S1 S2 ->
+    exists D1, has pr G t l D1 /\ subdec pr (G1 & x ~ S1 & G2) D1 D2)
+/\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 ->  forall G1 G2 x S1 S2,
+    m1 = pr ->
+    G = G1 & x ~ S2 & G2 ->
+    subtyp pr oktrans G1 S1 S2 ->
+    subtyp pr oktrans (G1 & x ~ S1 & G2) T1 T2)
+/\ (forall m G D1 D2, subdec m G D1 D2 ->  forall G1 G2 x S1 S2,
+    m = pr ->
+    G = G1 & x ~ S2 & G2 ->
+    subtyp pr oktrans G1 S1 S2 ->
+    subdec pr (G1 & x ~ S1 & G2) D1 D2)
+/\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 ->  forall G1 G2 x S1 S2,
+    m = pr ->
+    G = G1 & x ~ S2 & G2 ->
+    subtyp pr oktrans G1 S1 S2 ->
+    subdecs pr (G1 & x ~ S1 & G2) Ds1 Ds2)
+/\ (forall G t T2, ty_trm G t T2 ->  forall G1 G2 x S1 S2,
+    G = G1 & x ~ S2 & G2 ->
+    subtyp pr oktrans G1 S1 S2 ->
+    exists T1, ty_trm (G1 & x ~ S1 & G2) t T1 /\ subtyp pr oktrans (G1 & x ~ S1 & G2) T1 T2)
+/\ (forall G d D2, ty_def G d D2 ->  forall G1 G2 x S1 S2,
+    G = G1 & x ~ S2 & G2 ->
+    subtyp pr oktrans G1 S1 S2 ->
+    exists D1, ty_def (G1 & x ~ S1 & G2) d D1 /\ subdec pr (G1 & x ~ S1 & G2) D1 D2)
+/\ (forall G ds Ds2, ty_defs G ds Ds2 ->  forall G1 G2 x S1 S2,
+    G = G1 & x ~ S2 & G2 ->
+    subtyp pr oktrans G1 S1 S2 ->
+    exists Ds1, ty_defs (G1 & x ~ S1 & G2) ds Ds1 /\ subdecs pr (G1 & x ~ S1 & G2) Ds1 Ds2).
 Proof.
   apply ty_mutind.
   + (* case exp_top *)
-    intros. apply exp_top.
+    intros. exists vars_empty decs_nil. split.
+    - apply exp_top.
+    - intros. rewrite open_decs_nil. apply subdecs_empty.
   + (* case exp_bot *)
-    intros. apply exp_bot.
+    intros. exists vars_empty decs_bot. split.
+    - apply exp_bot.
+    - intros. rewrite open_decs_bot. apply subdecs_bot.
   + (* case exp_bind *)
-    intros. apply exp_bind.
+    intros. subst. exists vars_empty Ds. split.
+    - apply exp_bind.
+    - intros. apply subdecs_refl.
   + (* case exp_sel *)
     intros. apply* exp_sel.
   + (* case exp_loop *)
