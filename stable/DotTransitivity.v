@@ -108,7 +108,7 @@ Definition ctx := env typ.
 
 Inductive has : ctx -> pth -> label -> dec -> Prop :=
   | has_var : forall G x ds l d,
-      binds x (typ_bind ds) G ->
+      binds x (typ_bind ds) G -> (* Note: No expansion, makes narrowing proofs easier! *)
       binds l d ds ->
       has G (pth_var (avar_f x)) l d.
 
