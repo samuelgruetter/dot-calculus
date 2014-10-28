@@ -330,11 +330,18 @@ with has : smode -> ctx -> trm -> label -> dec -> Prop :=
       decs_has Ds l D ->
       (forall z, (open_dec z D) = D) ->
       has unstable G t l D
+(*
   | has_var : forall m G v T Ds l D,
       binds v T G ->
       exp m G T nil Ds ->
       decs_has Ds l D ->
       has m G (trm_var (avar_f v)) l (open_dec v D)
+*)
+  | has_var : forall m G v T Ds l D,
+      binds v T G ->
+      exp m G T nil Ds ->
+      decs_has (open_decs v Ds) l D ->
+      has m G (trm_var (avar_f v)) l D
 with subtyp : tmode -> ctx -> typ -> typ -> Prop :=
   | subtyp_refl : forall G T,
       subtyp notrans G T T
@@ -539,6 +546,11 @@ Combined Scheme ty_mutind from exp_mut, has_mut,
                                subtyp_mut, subdec_mut, subdecs_mut,
                                ty_trm_mut, ty_def_mut, ty_defs_mut.
 
+Scheme subtyp_mut3  := Induction for subtyp  Sort Prop
+with   subdec_mut3  := Induction for subdec  Sort Prop
+with   subdecs_mut3 := Induction for subdecs Sort Prop.
+Combined Scheme subtyp_mutind from subtyp_mut3, subdec_mut3, subdecs_mut3.
+
 Scheme has_mut2    := Induction for has    Sort Prop
 with   ty_trm_mut2 := Induction for ty_trm Sort Prop.
 Combined Scheme ty_has_mutind from has_mut2, ty_trm_mut2.
@@ -562,6 +574,15 @@ with   ty_trm_mut6  := Induction for ty_trm  Sort Prop.
 Combined Scheme mutind6 from exp_mut6, has_mut6,
                              subtyp_mut6, subdec_mut6, subdecs_mut6,
                              ty_trm_mut6.
+
+Scheme exp_mut5     := Induction for exp     Sort Prop
+with   has_mut5     := Induction for has     Sort Prop
+with   subtyp_mut5  := Induction for subtyp  Sort Prop
+with   subdec_mut5  := Induction for subdec  Sort Prop
+with   subdecs_mut5 := Induction for subdecs Sort Prop
+with   ty_trm_mut5  := Induction for ty_trm  Sort Prop.
+Combined Scheme mutind5 from exp_mut5, has_mut5,
+                             subtyp_mut5, subdec_mut5, subdecs_mut5.
 
 Lemma induction_skeleton:
    (forall m G T H Ds, exp m G T H Ds -> exp m G T H Ds)
@@ -1040,6 +1061,8 @@ Proof. intros. apply* smode_to_unstable. Qed.
 Lemma subtyp_refl_all: forall m G T, subtyp m G T T.
 Admitted.
 
+Lemma subdec_refl: forall G D, subdec G D D. Admitted.
+
 (* subdecs_refl does not hold, because subdecs requires that for each dec in rhs
    (including hidden ones), there is an unhidden one in lhs *)
 (* or that there are no hidden decs in rhs *)
@@ -1303,6 +1326,7 @@ Proof.
   inversions* H. 
 Qed.
 
+(*
 Lemma invert_var_has_dec: forall m G x l D,
   has m G (trm_var (avar_f x)) l D ->
   exists T Ds D', ty_trm G (trm_var (avar_f x)) T /\
@@ -1316,7 +1340,27 @@ Proof.
   (* case has_var *)
   + exists T Ds D0. auto.
 Qed.
+*)
 
+Lemma invert_has: forall m G t l D,
+   has m G t l D ->
+   (exists T Ds,      ty_trm G t T /\
+                      exp m G T nil Ds /\
+                      decs_has Ds l D /\
+                      (forall z : var, open_dec z D = D))
+\/ (exists x T Ds,    t = (trm_var (avar_f x)) /\
+                      ty_trm G (trm_var (avar_f x)) T /\
+                      exp m G T nil Ds /\
+                      decs_has (open_decs x Ds) l D).
+Proof.
+  introv Has. inversions Has.
+  (* case has_trm *)
+  + subst. left. exists T Ds. auto.
+  (* case has_var *)
+  + right. exists v T Ds. auto.
+Qed.
+
+(*
 Lemma invert_has: forall m G t l D,
    has m G t l D ->
    (exists T Ds,      ty_trm G t T /\
@@ -1334,8 +1378,9 @@ Proof.
   + subst. left. exists T Ds. auto.
   (* case has_var *)
   + right. exists v T Ds D0. auto.
-Qed.
+Qed.*)
 
+(*
 Lemma invert_var_has_dec_typ: forall m G x l S U,
   has m G (trm_var (avar_f x)) l (dec_typ S U) ->
   exists X Ds S' U', ty_trm G (trm_var (avar_f x)) X /\
@@ -1382,6 +1427,7 @@ Proof.
   inversion Eq as [Eq'].
   exists X Ds S' U'. auto.
 Qed.
+*)
 
 (*
 Lemma invert_exp_sel: forall m G v L Ds,
@@ -1397,18 +1443,9 @@ Qed.
 *)
 
 Lemma invert_ty_var: forall G x T,
-  ty_trm G (trm_var (avar_f x)) T ->
-  exists T', subtyp oktrans G T' T /\ binds x T' G.
+  ty_trm G (trm_var (avar_f x)) T -> binds x T G.
 Proof.
-  introv Ty. gen_eq t: (trm_var (avar_f x)). gen x.
-  induction Ty; intros x' Eq; try (solve [ discriminate ]).
-  + inversions Eq. exists T. apply (conj (subtyp_refl_all _ _ _)). auto.
-  (* subsumption case: not needed
-  + subst. specialize (IHTy _ eq_refl). destruct IHTy as [T' [St Bi]].
-    exists T'. split.
-    - apply subtyp_trans with T; assumption.
-    - exact Bi.
-  *)
+  introv Ty. inversions Ty. assumption.
 Qed.
 
 (*
@@ -1524,73 +1561,148 @@ Proof.
   + unfold open_decs, open_rec_decs. admit. (* TODO holds *)
 Qed.
 
+Lemma decs_has_preserves_sub: forall G Ds1 Ds2 l D2,
+  decs_has Ds2 l D2 ->
+  subdecs G Ds1 Ds2 ->
+  exists D1, decs_has Ds1 l D1 /\ subdec G D1 D2.
+Proof.
+  introv Has Sds. gen l D2 Has. induction Sds; introv Has.
+  + inversion Has.
+  + unfold decs_has, get_dec in Has. case_if.
+    - inversions Has. exists D1. auto.
+    - fold get_dec in Has. apply* IHSds.
+  + destruct (decs_has_show_label_for_dec Has) as [n Eq]. subst.
+    apply decs_bot_has_subdec.
+Qed.
+
+Print Assumptions decs_has_preserves_sub.
+
+(*************************
+
+
+l : label
+D : dec
+G1 : env typ
+G2 : env typ
+x : var
+DsA : decs
+NIn : x # G2
+Sds : subdecs (G1 & x ~ typ_bind DsA) (open_decs x DsA) (open_decs x Ds)
+Ok : ok (G1 & x ~ typ_bind Ds & G2)
+IHExp : exp stable (G1 & x ~ typ_bind DsA & G2) (typ_bind Ds) nil Ds
+DsHas : decs_has (open_decs x Ds) l (open_dec x D)
+*)
+
+Lemma open_decs_cons: forall x DsC n DsOH DsOT,
+  decs_cons n DsOH DsOT = open_decs x DsC ->
+  exists DsCH DsCT, DsC = decs_cons n DsCH DsCT
+                 /\ open_dec  x DsCH = DsOH
+                 /\ open_decs x DsCT = DsOT.
+Proof.
+  introv Eq. destruct DsC.
+  + unfold open_decs, open_rec_decs in Eq. discriminate Eq.
+  + unfold open_decs, open_rec_decs in Eq.
+    fold open_rec_dec in Eq. fold open_rec_decs in Eq. inversions Eq.
+    exists d DsC. auto.
+  + discriminate Eq.
+Qed.
+
+Lemma decs_has_preserves_sub_open: forall x G Ds1 Ds2 l D2,
+  decs_has (open_decs x Ds2) l (open_dec x D2) ->
+  subdecs G (open_decs x Ds1) (open_decs x Ds2) ->
+  exists D1, decs_has (open_decs x Ds1) l D1
+          /\ subdec G D1 (open_dec x D2).
+Proof.
+  introv Has Sds.
+  gen_eq Ds2': (open_decs x Ds2).
+  gen_eq Ds1': (open_decs x Ds1).
+  gen x l Ds1 Ds2 D2 Has. induction Sds; introv Has Eq1 Eq2.
+  + inversion Has.
+  + rename Ds0 into Ds1AllClosed, Ds3 into Ds2AllClosed, D0 into DBClosed, D1 into DAOpen.
+    subst Ds1.
+    apply open_decs_cons in Eq2.
+    destruct Eq2 as [Ds2HeadOpen [Ds2TailOpen [Eq3 [Eq4 Eq5]]]]. subst.
+    unfold decs_has, get_dec in Has. case_if.
+    - inversions Has. exists DAOpen. auto.
+    - fold get_dec in Has. apply* IHSds.
+  + destruct (decs_has_show_label_for_dec Has) as [n Eq]. subst.
+    apply decs_bot_has_subdec.
+Qed.
+
+Lemma decs_has_preserves_sub_D1_known: forall G Ds1 Ds2 l D1 D2,
+  decs_has Ds1 l D1 ->
+  decs_has Ds2 l D2 ->
+  subdecs G Ds1 Ds2 ->
+  subdec G D1 D2.
+Proof.
+  introv Has1 Has2 Sds. gen l D1 D2 Has1 Has2. induction Sds; introv Has1 Has2.
+  + inversion Has2.
+  + unfold decs_has, get_dec in Has2. case_if.
+    - inversions Has2. rename H into Has1'.
+      unfold decs_has in Has1, Has1'.
+      rewrite Has1' in Has1. inversions Has1. assumption.
+    - fold get_dec in Has2. apply* IHSds.
+  + destruct (decs_has_show_label_for_dec Has2) as [n Eq]. subst.
+    lets P: (@decs_bot_has_subdec G n D2). destruct P as [D1' [Has1' Sd]].
+    unfold decs_has in Has1, Has1'.
+    rewrite Has1' in Has1. inversions Has1. exact Sd.
+Qed.
+
+Print Assumptions decs_has_preserves_sub_D1_known.
+
 
 (* ###################################################################### *)
 (** ** Uniqueness *)
 
-Lemma exp_has_unique:
-  (forall m1 G T H Ds1, exp m1 G T H Ds1 ->
-     forall m2 Ds2, exp m2 G T H Ds2 -> Ds1 = Ds2) /\ 
-  (forall m G v l D1, has m G v l D1 ->
-     forall D2, has m G v l D2 -> D1 = D2).
+Lemma stable_exp_has_unique:
+  (forall m G T H Ds1, exp m G T H Ds1 -> m = stable ->
+     forall Ds2, exp stable G T H Ds2 -> Ds1 = Ds2) /\ 
+  (forall m G v l D1, has m G v l D1 -> m = stable ->
+     forall D2, has stable G v l D2 -> D1 = D2).
 Proof.
   apply exp_has_mutind.
   + (* exp_top *)
-    introv Exp. inversions Exp. reflexivity. inversions H. reflexivity.
+    introv Eq Exp. inversions Exp. reflexivity.
   + (* exp_bot *)
-    introv Exp. inversions Exp. reflexivity. inversions H. reflexivity.
+    introv Eq Exp. inversions Exp. reflexivity.
   + (* exp_bind *)
-    introv Exp. inversions Exp. reflexivity. inversions H. reflexivity.
+    introv Eq Exp. inversions Exp. reflexivity.
   + (* exp_sel *)
-    introv Has IHHas Notin Exp1 IHExp1 Exp2. subst.
-    destruct Hi as [| |DsHi|q M].
-    - inversions Exp1. inversions H. inversions Exp2.
-      * specialize (IHHas _ H1). inversions IHHas. apply (IHExp1 _ _ H7).
-      * reflexivity.
-      * inversions H. (* contradiction *)
-    - inversions Exp1. inversions Exp2.
-      * specialize (IHHas _ H2). inversions IHHas. apply (IHExp1 _ _ H8).
-      * false Notin. assumption. (* contradiction *)
-      * inversions H0. (* contradiction *)
-    - inversions Exp1. inversions H. inversions Exp2.
-      * specialize (IHHas _ H1). inversions IHHas. apply (IHExp1 _ _ H7).
-      * false Notin. assumption. (* contradiction *)
-      * inversions H. (* contradiction *)
-    - inversions Exp2.
-      * specialize (IHHas _ H1). inversions IHHas. apply (IHExp1 _ _ H7).
-      * false Notin. assumption. (* contradiction *)
-      * inversions H. (* contradiction *)
+    intros. discriminate.
   + (* case exp_loop *)
-    introv In Exp. subst. inversions Exp.
-    * false H4. exact In.
-    * reflexivity.
-    * inversions H.
+    intros. discriminate.
   + (* case exp_smode *)
-    introv Exp1 IHExp1 Exp2. apply (IHExp1 _ _ Exp2).
+    introv Exp1 IHExp1 Eq Exp2. apply (IHExp1 eq_refl _ Exp2).
   + (* case has_trm *)
-    introv Ty Exp IHExp DSHas Cl Has.
-    admit. (* TODO need uniqueness also for ty *)
+    intros. discriminate.
   + (* case has_var *)
-    intros.
-    inversions H0.
-    - inversions H1. unfold decs_has in *.
-      lets Eq: (binds_func b H6). subst.
-      specialize (H _ _ H2). subst.
-      rewrite d in H3. inversion H3. apply H4.
-    - lets Eq: (binds_func b H2). subst.
-      specialize (H _ _ H3). subst. unfold decs_has in *.
-      rewrite d in H6. inversions H6. reflexivity.
+    introv Bi Exp IHExp DsHas Eq Has. subst. specialize (IHExp eq_refl).
+    apply invert_has in Has. destruct Has as [Has | Has].
+    - destruct Has as [T' [Ds' [Ty' [Exp' [DsHas' Cl]]]]].
+      apply invert_ty_var in Ty'.
+      lets Eq: (binds_func Bi Ty'). subst T'.
+      specialize (IHExp _ Exp'). subst Ds'.
+      apply (decs_has_open v) in DsHas'.
+      unfold decs_has in *. rewrite DsHas' in DsHas. inversions DsHas.
+      apply Cl.
+    - destruct Has as [v' [T' [Ds' [Eq [Ty' [Exp' DsHas']]]]]].
+      symmetry in Eq. inversions Eq.
+      apply invert_ty_var in Ty'.
+      lets Eq: (binds_func Bi Ty'). subst T'.
+      specialize (IHExp _ Exp'). subst Ds'.
+      unfold decs_has in *. rewrite DsHas' in DsHas. inversions DsHas.
+      reflexivity.
 Qed.
 
-Print Assumptions exp_has_unique.
+Print Assumptions stable_exp_has_unique.
 
-Lemma exp_unique: forall m1 m2 G T Ds1 Ds2,
-  exp m1 G T nil Ds1 -> exp m2 G T nil Ds2 -> Ds1 = Ds2.
-Proof. intros. apply ((proj1 exp_has_unique) _ _ _ _ _ H _ _ H0). Qed.
+Lemma stable_exp_unique: forall G T Ds1 Ds2,
+  exp stable G T nil Ds1 -> exp stable G T nil Ds2 -> Ds1 = Ds2.
+Proof. intros. apply ((proj1 stable_exp_has_unique) _ _ _ _ _ H eq_refl _ H0). Qed.
 
-Lemma has_unique: forall m G v l D1 D2,
-  has m G v l D1 -> has m G v l D2 -> D1 = D2.
-Proof. intros. apply* exp_has_unique. Qed.
+Lemma stable_has_unique: forall G v l D1 D2,
+  has stable G v l D1 -> has stable G v l D2 -> D1 = D2.
+Proof. intros. apply* stable_exp_has_unique. Qed.
 
 
 (* ###################################################################### *)
@@ -1760,6 +1872,18 @@ Proof.
   apply W.
 Qed.
 
+Lemma weaken_subdec_middle: forall G1 G2 G3 S U,
+  ok (G1 & G2 & G3) -> 
+  subdec (G1      & G3) S U ->
+  subdec (G1 & G2 & G3) S U.
+Proof.
+  destruct weakening as [_ [_ [_ [W _]]]].
+  introv Hok123 Hst.
+  specialize (W (G1 & G3) S U Hst).
+  specialize (W G1 G2 G3 eq_refl Hok123).
+  apply W.
+Qed.
+
 Lemma env_add_empty: forall (P: ctx -> Prop) (G: ctx), P G -> P (G & empty).
 Proof.
   intros.
@@ -1784,6 +1908,18 @@ Proof.
   apply weaken_subtyp_middle.
   apply (env_add_empty (fun G0 => ok G0) (G1 & G2) Hok).
   apply (env_add_empty (fun G0 => subtyp m G0 S U) G1 Hst).
+Qed.
+
+Lemma weaken_subdec_end: forall G1 G2 D1 D2,
+  ok (G1 & G2) -> 
+  subdec G1        D1 D2 ->
+  subdec (G1 & G2) D1 D2.
+Proof.
+  introv Hok Hsd.
+  apply (env_remove_empty (fun G0 => subdec G0 D1 D2) (G1 & G2)).
+  apply weaken_subdec_middle.
+  apply (env_add_empty (fun G0 => ok G0) (G1 & G2) Hok).
+  apply (env_add_empty (fun G0 => subdec G0 D1 D2) G1 Hsd).
 Qed.
 
 Lemma weaken_has_end: forall m G1 G2 t l d,
@@ -2137,11 +2273,144 @@ Qed.
 (* ###################################################################### *)
 (** ** A weak form of narrowing, only on type-level *)
 
+Axiom okadmit: forall G: ctx, ok G.
+
 Lemma pr_narrow_subdecs: forall G z DsA DsB Ds1 Ds2,
   subdecs (G & z ~ typ_bind DsA) (open_decs z DsA) (open_decs z DsB) ->
   subdecs (G & z ~ typ_bind DsB) Ds1 Ds2 ->
   subdecs (G & z ~ typ_bind DsA) Ds1 Ds2.
 Admitted.
+
+Lemma simple_narrow_exp_has:
+   (forall m G T h Ds, exp m G T h Ds -> forall G1 G2 x DsA DsB,
+    m = stable ->
+    ok G ->
+    G = G1 & x ~ (typ_bind DsB) & G2 ->
+    subdecs (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) ->
+    exp m (G1 & x ~ (typ_bind DsA) & G2) T h Ds)
+/\ (forall m G t l D2, has m G t l D2 -> forall G1 G2 x DsA DsB,
+    m = stable ->
+    ok G ->
+    G = G1 & x ~ (typ_bind DsB) & G2 ->
+    subdecs (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) ->
+    exists D1, has m  (G1 & x ~ (typ_bind DsA) & G2) t l D1
+            /\ subdec (G1 & x ~ (typ_bind DsA) & G2) D1 D2).
+Proof.
+  apply exp_has_mutind; try solve [(intros; discriminate) || (intros; auto)].
+  (* case has_var *)
+  + introv Bi Exp IHExp DsHas Eq1 Ok Eq2 Sds. subst.
+    specialize (IHExp _ _ _ _ _ eq_refl Ok eq_refl Sds).
+    apply binds_middle_inv in Bi.
+    destruct Bi as [Bi | [[NIn [Eq1 Eq2]] | [NIn [Ne Bi]]]].
+    - (* v is in G2 *)
+      exists D.
+      refine (conj _ (subdec_refl _ _)).
+      refine (has_var _ IHExp DsHas).
+      apply (binds_concat_right _ Bi).
+    - (* v = x *)
+      subst. inversions Exp. (* Ds = DsB *)
+      lets Sd: (decs_has_preserves_sub DsHas Sds).
+      destruct Sd as [D1 [DsAHas Sd]].
+      exists D1. split.
+      * refine (@has_var _ _ _  (typ_bind DsA) DsA l D1 _ _ DsAHas); auto.
+      * apply* weaken_subdec_end. apply okadmit.
+    - (* v is in G1 *)
+      exists D.
+      refine (conj _ (subdec_refl _ _)).
+      refine (has_var _ IHExp DsHas). auto.
+Qed.
+
+Print Assumptions simple_narrow_exp_has.
+
+Definition simple_narrow_exp := proj1 simple_narrow_exp_has.
+Definition simple_narrow_has := proj2 simple_narrow_exp_has.
+
+Lemma simple_narrow_sub:
+   (forall m G T1 T2 (Hst : subtyp m G T1 T2), forall G1 G2 z DsA DsB, 
+     ok              (G1 & z ~ typ_bind DsB & G2) ->
+     G       =       (G1 & z ~ typ_bind DsB & G2) ->
+     subdecs         (G1 & z ~ typ_bind DsA     ) (open_decs z DsA) (open_decs z DsB) ->
+     subtyp  oktrans (G1 & z ~ typ_bind DsA & G2) T1 T2)
+/\ (forall   G D1 D2 (Hsd : subdec G D1 D2), forall G1 G2 z DsA DsB, 
+     ok              (G1 & z ~ typ_bind DsB & G2) ->
+     G       =       (G1 & z ~ typ_bind DsB & G2) ->
+     subdecs         (G1 & z ~ typ_bind DsA     ) (open_decs z DsA) (open_decs z  DsB) ->
+     subdec          (G1 & z ~ typ_bind DsA & G2) D1 D2)
+/\ (forall G Ds1 Ds2 (Hsds : subdecs G Ds1 Ds2), forall G1 G2 z DsA DsB, 
+     ok              (G1 & z ~ typ_bind DsB & G2) ->
+     G       =       (G1 & z ~ typ_bind DsB & G2) ->
+     subdecs         (G1 & z ~ typ_bind DsA     ) (open_decs z DsA) (open_decs z DsB) ->
+     subdecs         (G1 & z ~ typ_bind DsA & G2) Ds1 Ds2).
+Proof.
+  apply subtyp_mutind; try (intros; solve [auto]).
+
+  (* subtyp *)
+  (* cases refl, top, bot: auto *)
+  + (* case bind *)
+    introv Sds12 IH Ok Eq SdsAB. subst. apply subtyp_tmode.
+    apply_fresh subtyp_bind as z0.
+    rewrite <- concat_assoc.
+    refine (IH z0 _ G1 (G2 & z0 ~ typ_bind Ds1) _ DsA DsB _ _ _ ); clear IH.
+    - auto.
+    - rewrite concat_assoc. auto.
+    - rewrite <- concat_assoc. reflexivity. 
+    - assumption.
+  + (* case sel_l *)
+    introv Has St IHSt Ok Eq SdsAB. subst.
+    apply subtyp_tmode.
+    lets Hn: (simple_narrow_has Has).
+    specialize (Hn G1 G2 z DsA DsB eq_refl Ok eq_refl SdsAB).
+    destruct Hn as [DA [DAHas Sd]].
+    apply invert_subdec_typ_sync_left in Sd.
+    destruct Sd as [Lo1 [Hi1 [Eq [St1 St2]]]]. subst.
+    apply subtyp_sel_l with Lo1 Hi1.
+    * assumption.
+    * assert (Hok': ok (G1 & z ~ (typ_bind DsA) & G2)). {
+        apply (ok_middle_change _ Ok).
+      }
+      refine (subtyp_trans St2 _).
+      apply IHSt with (DsB0 := DsB); auto.
+  + (* case asel_r *)
+    introv Has St1 IH1 St2 IH2 Ok Eq SdsAB. subst.
+    apply subtyp_tmode.
+    assert (Hok': ok (G1 & z ~ (typ_bind DsA) & G2)).
+    apply (ok_middle_change _ Ok).
+    lets Hn: (simple_narrow_has Has).
+    specialize (Hn G1 G2 z DsA DsB eq_refl Ok eq_refl SdsAB).
+    destruct Hn as [DA [DAHas Sd]].
+    apply invert_subdec_typ_sync_left in Sd.
+    destruct Sd as [Lo1 [Hi1 [Eq [St1' St2']]]]. subst.
+    apply subtyp_sel_r with S U.
+    * admit. (**  <---------- TODO can that work??? *)
+    * apply (IH1 _ _ _ _ _ Ok eq_refl SdsAB).
+    * apply (IH2 _ _ _ _ _ Ok eq_refl SdsAB).
+  (* case trans *)
+  + introv St IH Ok Eq SdsAB.
+    apply subtyp_trans with T2.
+    - apply IH with (DsB := DsB); auto.
+    - apply (subtyp_tmode (subtyp_refl _ T2)).
+  (* case mode *)
+  + introv Hst12 IH12 Hst23 IH23 Hok123 Heq HAB.
+    specialize (IH12 G1 G2 z DsA DsB Hok123 Heq HAB).
+    specialize (IH23 G1 G2 z DsA DsB Hok123 Heq HAB).
+    apply (subtyp_trans IH12 IH23).
+
+  (* subdec *)
+  (* case subdec_typ *)
+  + intros. apply* subdec_typ.
+  (* case subdec_fld *)
+  + intros. apply* subdec_fld.
+  (* case subdec_mtd *)
+  + intros. apply* subdec_mtd.
+
+  (* subdecs *)
+  (* case subdecs_empty: auto *)
+  (* case subdecs_push *)
+  + introv Hb Hsd IHsd Hsds IHsds Hok123 Heq HAB.
+    apply (subdecs_push n Hb).
+    apply (IHsd  _ _ _ _ _ Hok123 Heq HAB).
+    apply (IHsds _ _ _ _ _ Hok123 Heq HAB).
+Qed.
 
 
 (* ###################################################################### *)
@@ -2648,8 +2917,6 @@ Print Assumptions exp_preserves_sub_pr.
 (* ###################################################################### *)
 (** ** Full-fledged narrowing *)
 
-Axiom okadmit: forall G: ctx, ok G.
-
 Lemma narrowing:
    (forall m G T h Ds2, exp m G T h Ds2 -> forall G1 G2 x S1 S2,
     m = pr ->
@@ -2890,43 +3157,6 @@ Proof.
     *)
     admit.
 Qed.
-
-Lemma decs_has_preserves_sub: forall m G Ds1 Ds2 l D2,
-  decs_has Ds2 l D2 ->
-  subdecs m G Ds1 Ds2 ->
-  exists D1, decs_has Ds1 l D1 /\ subdec m G D1 D2.
-Proof.
-  introv Has Sds. gen l D2 Has. induction Sds; introv Has.
-  + inversion Has.
-  + unfold decs_has, get_dec in Has. case_if.
-    - inversions Has. exists D1. auto.
-    - fold get_dec in Has. apply* IHSds.
-  + destruct (decs_has_show_label_for_dec Has) as [n Eq]. subst.
-    apply decs_bot_has_subdec.
-Qed.
-
-Print Assumptions decs_has_preserves_sub.
-
-Lemma decs_has_preserves_sub_D1_known: forall m G Ds1 Ds2 l D1 D2,
-  decs_has Ds1 l D1 ->
-  decs_has Ds2 l D2 ->
-  subdecs m G Ds1 Ds2 ->
-  subdec m G D1 D2.
-Proof.
-  introv Has1 Has2 Sds. gen l D1 D2 Has1 Has2. induction Sds; introv Has1 Has2.
-  + inversion Has2.
-  + unfold decs_has, get_dec in Has2. case_if.
-    - inversions Has2. rename H into Has1'.
-      unfold decs_has in Has1, Has1'.
-      rewrite Has1' in Has1. inversions Has1. assumption.
-    - fold get_dec in Has2. apply* IHSds.
-  + destruct (decs_has_show_label_for_dec Has2) as [n Eq]. subst.
-    lets P: (@decs_bot_has_subdec m G n D2). destruct P as [D1' [Has1' Sd]].
-    unfold decs_has in Has1, Has1'.
-    rewrite Has1' in Has1. inversions Has1. exact Sd.
-Qed.
-
-Print Assumptions decs_has_preserves_sub_D1_known.
 
 (* This is the big fat TODO of the proof ;-) 
    So far we know how to do it in precise mode, but we don't know how to do it
