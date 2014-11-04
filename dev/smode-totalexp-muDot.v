@@ -584,8 +584,7 @@ Scheme exp_mut5     := Induction for exp     Sort Prop
 with   has_mut5     := Induction for has     Sort Prop
 with   subtyp_mut5  := Induction for subtyp  Sort Prop
 with   subdec_mut5  := Induction for subdec  Sort Prop
-with   subdecs_mut5 := Induction for subdecs Sort Prop
-with   ty_trm_mut5  := Induction for ty_trm  Sort Prop.
+with   subdecs_mut5 := Induction for subdecs Sort Prop.
 Combined Scheme mutind5 from exp_mut5, has_mut5,
                              subtyp_mut5, subdec_mut5, subdecs_mut5.
 
@@ -1120,7 +1119,10 @@ Proof.
   intros. destruct D2 as [Lo Hi | T | T1 T2].
   - exists (dec_typ typ_top typ_bot). split.
     * unfold decs_has, get_dec. reflexivity.
-    * apply subdec_typ; auto.
+    * apply subdec_typ.
+      (* Note: If in subdec_typ, we require Lo1 <: Hi1, we have to prove Top <: Bot here *)
+      + auto.
+      + auto.
   - exists (dec_fld typ_bot). split.
     * unfold decs_has, get_dec. reflexivity.
     * apply subdec_fld; auto.
@@ -2537,6 +2539,81 @@ Proof.
     apply (IHsds _ _ _ _ _ Hok123 Heq HAB).
 Qed.
 
+Lemma simple_narrow:
+   (forall m G T h Ds, exp m G T h Ds -> forall G1 G2 x DsA DsB,
+    m = stable ->
+    ok G ->
+    G = G1 & x ~ (typ_bind DsB) & G2 ->
+    subdecs (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) ->
+    exp m (G1 & x ~ (typ_bind DsA) & G2) T h Ds)
+/\ (forall m G t l D2, has m G t l D2 -> forall G1 G2 x DsA DsB Lo2 Hi2,
+    m = stable ->
+    D2 = (dec_typ Lo2 Hi2) ->
+    ok G ->
+    G = G1 & x ~ (typ_bind DsB) & G2 ->
+    subtyp oktrans (G1 & x ~ (typ_bind DsA) & G2) Lo2 Hi2 ->
+    subdecs (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) ->
+    exists Lo1 Hi1, has m (G1 & x ~ (typ_bind DsA) & G2) t l (dec_typ Lo1 Hi1)
+        /\ subtyp oktrans (G1 & x ~ (typ_bind DsA) & G2) Lo2 Lo1
+        /\ subtyp oktrans (G1 & x ~ (typ_bind DsA) & G2) Lo1 Hi1
+        /\ subtyp oktrans (G1 & x ~ (typ_bind DsA) & G2) Hi1 Hi2)
+/\ (forall m G T1 T2 (Hst : subtyp m G T1 T2), forall G1 G2 z DsA DsB, 
+     ok              (G1 & z ~ typ_bind DsB & G2) ->
+     G       =       (G1 & z ~ typ_bind DsB & G2) ->
+     subdecs         (G1 & z ~ typ_bind DsA     ) (open_decs z DsA) (open_decs z DsB) ->
+     subtyp  oktrans (G1 & z ~ typ_bind DsA & G2) T1 T2)
+/\ (forall   G D1 D2 (Hsd : subdec G D1 D2), forall G1 G2 z DsA DsB, 
+     ok              (G1 & z ~ typ_bind DsB & G2) ->
+     G       =       (G1 & z ~ typ_bind DsB & G2) ->
+     subdecs         (G1 & z ~ typ_bind DsA     ) (open_decs z DsA) (open_decs z  DsB) ->
+     subdec          (G1 & z ~ typ_bind DsA & G2) D1 D2)
+/\ (forall G Ds1 Ds2 (Hsds : subdecs G Ds1 Ds2), forall G1 G2 z DsA DsB, 
+     ok              (G1 & z ~ typ_bind DsB & G2) ->
+     G       =       (G1 & z ~ typ_bind DsB & G2) ->
+     subdecs         (G1 & z ~ typ_bind DsA     ) (open_decs z DsA) (open_decs z DsB) ->
+     subdecs         (G1 & z ~ typ_bind DsA & G2) Ds1 Ds2).
+Proof.
+  apply mutind5; try solve [(intros; discriminate) || (intros; auto)].
+  (* case has_var *)
+  + introv Bi Exp IHExp DsHas Eq1 Eq2 Ok Eq3 St Sds. subst.
+    specialize (IHExp _ _ _ _ _ eq_refl Ok eq_refl Sds).
+    apply binds_middle_inv in Bi.
+    destruct Bi as [Bi | [[NIn [Eq1 Eq2]] | [NIn [Ne Bi]]]].
+    - (* v is in G2 *)
+      exists Lo2 Hi2.
+      refine (conj _ 
+             (conj (subtyp_tmode (subtyp_refl _ _))
+             (conj St
+                   (subtyp_tmode (subtyp_refl _ _))))).
+      refine (has_var _ IHExp DsHas).
+      apply (binds_concat_right _ Bi).
+    - (* v = x *)
+      subst. inversions Exp. (* Ds = DsB *)
+      lets Sd: (decs_has_preserves_sub DsHas Sds).
+      destruct Sd as [D1 [DsAHas Sd]].
+      apply invert_subdec_typ_sync_left in Sd.
+      destruct Sd as [Lo1 [Hi1 [Eq [StLo StHi]]]]. subst D1.
+      exists Lo1 Hi1. repeat split.
+      * refine (@has_var _ _ _  (typ_bind DsA) DsA l (dec_typ Lo1 Hi1) _ _ DsAHas); auto.
+      * apply* weaken_subtyp_end. apply okadmit.
+      * (* lets P: (decs_has_preserves_sub_D1_known DsAHas DsHas Sds).
+           apply invert_subdec_typ in P. we already know that *)
+      (*
+      Problem: To get the termination measure working, the transitivity push-back
+      proof needs a Lo<:Hi proof inside subtyp_sel_r, so the case sel_r of
+      simple_narrow_subtyp needs to narrow [has G x L (dec_typ Lo2 Hi2)] to
+      [has G x L (dec_typ Lo1 Hi1)] in such a way that [Lo1 <: Hi1], so
+      simple_narrow_has_dec_typ should guarantee that the narrowed dec_typ
+      still has good bounds, so subdec_typ has to require that [Lo1 <: Hi1],
+      so decs_bot_has_subdec has to prove Top <: Bot.
+      *)
+
+    - (* v is in G1 *)
+      exists D.
+      refine (conj _ (subdec_refl _ _)).
+      refine (has_var _ IHExp DsHas). auto.
+
+Qed.
 
 (* ###################################################################### *)
 (** ** Transitivity push-back *)
