@@ -2431,6 +2431,14 @@ Print Assumptions simple_narrow_exp_has.
 Definition simple_narrow_exp := proj1 simple_narrow_exp_has.
 Definition simple_narrow_has := proj2 simple_narrow_exp_has.
 
+Lemma has_stable: forall G1 G2 z DsA DsB x L S U,
+  has stable (G1 & z ~ typ_bind DsB & G2) (trm_var (avar_f x)) L (dec_typ S U) ->
+  x <> z ->
+  subdecs    (G1 & z ~ typ_bind DsA) (open_decs z DsA) (open_decs z DsB) ->
+  has stable (G1 & z ~ typ_bind DsA & G2) (trm_var (avar_f x)) L (dec_typ S U).
+Proof.
+Admitted.
+
 Lemma simple_narrow_sub:
    (forall m G T1 T2 (Hst : subtyp m G T1 T2), forall G1 G2 z DsA DsB, 
      ok              (G1 & z ~ typ_bind DsB & G2) ->
@@ -2477,19 +2485,30 @@ Proof.
       refine (subtyp_trans St2 _).
       apply IHSt with (DsB0 := DsB); auto.
   + (* case asel_r *)
-    introv Has St1 IH1 St2 IH2 Ok Eq SdsAB. subst.
+    introv Has St1 IH1 St2 IH2 Ok Eq SdsAB. subst. rename S into LoB, U into HiB.
     apply subtyp_tmode.
     assert (Hok': ok (G1 & z ~ (typ_bind DsA) & G2)).
     apply (ok_middle_change _ Ok).
     lets Hn: (simple_narrow_has Has).
     specialize (Hn G1 G2 z DsA DsB eq_refl Ok eq_refl SdsAB).
-    destruct Hn as [DA [DAHas Sd]].
+    destruct Hn as [DA [HasA Sd]].
     apply invert_subdec_typ_sync_left in Sd.
-    destruct Sd as [Lo1 [Hi1 [Eq [St1' St2']]]]. subst.
-    apply subtyp_sel_r with S U.
-    * admit. (**  <---------- TODO can that work??? *)
-    * apply (IH1 _ _ _ _ _ Ok eq_refl SdsAB).
-    * apply (IH2 _ _ _ _ _ Ok eq_refl SdsAB).
+    destruct Sd as [LoA' [HiA' [Eq [St1' St2']]]]. subst.
+    destruct (classicT (x = z)) as [Eq | Ne].
+    - subst z.
+      destruct (invert_var_has_dec_typ HasA)
+        as [X [DsA' [LoA [HiA [Tyx [ExpX [DsAHas [Eq1 Eq2]]]]]]]].
+      apply invert_ty_var in Tyx.
+      apply (fun bi => (binds_middle_eq_inv bi Hok')) in Tyx. subst.
+      inversions ExpX. rename DsA' into DsA.
+      apply (subtyp_sel_r HasA).
+      * admit. (*****)
+      * specialize (IH2 G1 G2 x DsA DsB Ok eq_refl SdsAB).
+        apply (subtyp_trans IH2 St1').
+    - apply subtyp_sel_r with LoB HiB.
+      * apply (has_stable Has Ne SdsAB).
+      * apply (IH1 _ _ _ _ _ Ok eq_refl SdsAB).
+      * apply (IH2 _ _ _ _ _ Ok eq_refl SdsAB).
   (* case trans *)
   + introv St IH Ok Eq SdsAB.
     apply subtyp_trans with T2.
