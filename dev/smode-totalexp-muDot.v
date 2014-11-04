@@ -565,6 +565,11 @@ with   subtyp_mut4  := Induction for subtyp  Sort Prop
 with   ty_trm_mut4  := Induction for ty_trm  Sort Prop.
 Combined Scheme exp_has_subtyp_ty_mutind from exp_mut4, has_mut4, subtyp_mut4, ty_trm_mut4.
 
+Scheme exp_mut3     := Induction for exp     Sort Prop
+with   has_mut3     := Induction for has     Sort Prop
+with   ty_trm_mut3  := Induction for ty_trm  Sort Prop.
+Combined Scheme exp_has_ty_mutind from exp_mut3, has_mut3, ty_trm_mut3.
+
 Scheme exp_mut6     := Induction for exp     Sort Prop
 with   has_mut6     := Induction for has     Sort Prop
 with   subtyp_mut6  := Induction for subtyp  Sort Prop
@@ -1329,14 +1334,14 @@ Qed.
 (*
 Lemma invert_var_has_dec: forall m G x l D,
   has m G (trm_var (avar_f x)) l D ->
-  exists T Ds D', ty_trm G (trm_var (avar_f x)) T /\
-                  exp m G T nil Ds /\
-                  decs_has Ds l D' /\
-                  open_dec x D' = D.
+  exists T Ds Ds', ty_trm G (trm_var (avar_f x)) T /\
+                   exp m G T nil Ds /\
+                   open_decs x Ds' = Ds /\
+                   decs_has Ds' l D.
 Proof.
   introv Has. inversions Has.
   (* case has_trm *)
-  + exists T Ds D. auto.
+  + exists T Ds Ds. auto.
   (* case has_var *)
   + exists T Ds D0. auto.
 Qed.
@@ -1380,7 +1385,6 @@ Proof.
   + right. exists v T Ds D0. auto.
 Qed.*)
 
-(*
 Lemma invert_var_has_dec_typ: forall m G x l S U,
   has m G (trm_var (avar_f x)) l (dec_typ S U) ->
   exists X Ds S' U', ty_trm G (trm_var (avar_f x)) X /\
@@ -1389,14 +1393,23 @@ Lemma invert_var_has_dec_typ: forall m G x l S U,
                      open_typ x S' = S /\
                      open_typ x U' = U.
 Proof.
-  introv Has. apply invert_var_has_dec in Has.
-  destruct Has as [X [Ds [D [Tyx [Exp [Has Eq]]]]]].
-  destruct D as [ Lo Hi | T' | S' U' ]; try solve [ inversion Eq ].
-  unfold open_dec, open_rec_dec in Eq. fold open_rec_typ in Eq.
-  inversion Eq as [Eq'].
-  exists X Ds Lo Hi. auto.
+  introv Has. apply invert_has in Has.
+  destruct Has as [Has | Has].
+  - destruct Has as [X [Ds [Tyx [Exp [DsHas Clo]]]]].
+    exists X Ds S U. specialize (Clo x).
+    unfold open_dec, open_rec_dec in Clo. fold open_rec_typ in Clo.
+    inversion Clo.
+    rewrite H0 at 1 2. rewrite H1 at 1 2. auto.
+  - destruct Has as [x' [X [Ds [Eq [Tyx [Exp Has]]]]]].
+    inversion Eq. clear Eq. subst x'.
+    assert (E1: exists S', open_typ x S' = S) by admit. destruct E1 as [S' Eq1].
+    assert (E2: exists U', open_typ x U' = U) by admit. destruct E2 as [U' Eq2].
+    exists X Ds S' U'.
+    rewrite <- Eq1, <- Eq2 in Has.
+    admit. (* <----- *)
 Qed.
 
+(*
 Lemma invert_var_has_dec_fld: forall m G x l T,
   has m G (trm_var (avar_f x)) l (dec_fld T) ->
   exists X Ds T', ty_trm G (trm_var (avar_f x)) X /\
@@ -1654,6 +1667,94 @@ Print Assumptions decs_has_preserves_sub_D1_known.
 (* ###################################################################### *)
 (** ** Uniqueness *)
 
+Lemma decs_has_unique: forall Ds l D1 D2,
+  decs_has Ds l D1 -> decs_has Ds l D2 -> D1 = D2.
+Proof.
+  introv DsHas1 DsHas2. unfold decs_has, get_dec in *. fold get_dec in *.
+  rewrite DsHas2 in DsHas1. inversions DsHas1. reflexivity.
+Qed.
+
+Lemma exp_has_ty_unique:
+  (forall m1 G T H Ds1, exp m1 G T H Ds1 ->
+     forall m2 Ds2, exp m2 G T H Ds2 -> Ds1 = Ds2) /\ 
+  (forall m1 G t l D1, has m1 G t l D1 -> forall v, t = trm_var (avar_f v) ->
+     forall m2 D2, has m2 G t l D2 -> D1 = D2) /\
+  (forall G t T1, ty_trm G t T1 -> forall v, t = trm_var (avar_f v) ->
+     forall T2, ty_trm G t T2 -> T1 = T2).
+Proof.
+  apply exp_has_ty_mutind; try solve [intros; discriminate].
+  + (* exp_top *)
+    introv Exp. inversions Exp. reflexivity. inversions H. reflexivity.
+  + (* exp_bot *)
+    introv Exp. inversions Exp. reflexivity. inversions H. reflexivity.
+  + (* exp_bind *)
+    introv Exp. inversions Exp. reflexivity. inversions H. reflexivity.
+  + (* exp_sel *)
+    introv Has IHHas Notin Exp1 IHExp1 Exp2. subst.
+    destruct Hi as [| |DsHi|q M].
+    - inversions Exp1. inversions H. inversions Exp2.
+      * specialize (IHHas _ eq_refl unstable _ H1). inversions IHHas. apply (IHExp1 _ _ H7).
+      * reflexivity.
+      * inversions H. (* contradiction *)
+    - inversions Exp1. inversions Exp2.
+      * specialize (IHHas _ eq_refl unstable _ H2). inversions IHHas. apply (IHExp1 _ _ H8).
+      * false Notin. assumption. (* contradiction *)
+      * inversions H0. (* contradiction *)
+    - inversions Exp1. inversions H. inversions Exp2.
+      * specialize (IHHas _ eq_refl unstable _ H1). inversions IHHas. apply (IHExp1 _ _ H7).
+      * false Notin. assumption. (* contradiction *)
+      * inversions H. (* contradiction *)
+    - inversions Exp2.
+      * specialize (IHHas _ eq_refl unstable _ H1). inversions IHHas. apply (IHExp1 _ _ H7).
+      * false Notin. assumption. (* contradiction *)
+      * inversions H. (* contradiction *)
+  + (* case exp_loop *)
+    introv In Exp. subst. inversions Exp.
+    * false H4. exact In.
+    * reflexivity.
+    * inversions H.
+  + (* case exp_smode *)
+    introv Exp1 IHExp1 Exp2. apply (IHExp1 _ _ Exp2).
+  + (* case has_trm *)
+    introv Ty IHTy Exp IHExp DsHas Cl Eq Has2. subst.
+    apply invert_has in Has2. destruct Has2 as [Has2 | Has2].
+    - destruct Has2 as [V [DsV [Tyv [ExpV [DsHas' _]]]]].
+      specialize (IHTy _ eq_refl _ Tyv). subst V.
+      specialize (IHExp _ _ ExpV). subst DsV.
+      apply (decs_has_unique DsHas DsHas').
+    - destruct Has2 as [v' [V [DsV [Eq [Tyv [ExpV DsHas']]]]]].
+      inversion Eq. clear Eq. subst v'.
+      specialize (IHTy _ eq_refl _ Tyv). subst V.
+      specialize (IHExp _ _ ExpV). subst DsV.
+      apply (decs_has_open v) in DsHas.
+      rewrite Cl in DsHas.
+      apply (decs_has_unique DsHas DsHas').
+  + (* case has_var *)
+    introv Bi Exp IHExp DsHas Eq Has2.
+    inversion Eq. clear Eq. subst v0.
+    apply invert_has in Has2. destruct Has2 as [Has2 | Has2].
+    - destruct Has2 as [V [DsV [Tyv [ExpV [DsHas' Cl]]]]].
+      apply invert_ty_var in Tyv.
+      lets Eq: (binds_func Bi Tyv). subst V.
+      specialize (IHExp _ _ ExpV). subst DsV.
+      apply (decs_has_open v) in DsHas'.
+      rewrite Cl in DsHas'.
+      apply (decs_has_unique DsHas DsHas').
+    - destruct Has2 as [v' [V [DsV [Eq [Tyv [ExpV DsHas']]]]]].
+      inversion Eq. clear Eq. subst v'.
+      apply invert_ty_var in Tyv.
+      lets Eq: (binds_func Bi Tyv). subst V.
+      specialize (IHExp _ _ ExpV). subst DsV.
+      apply (decs_has_unique DsHas DsHas').
+  + (* case ty_var *)
+    introv Bi Eq Ty2. inversion Eq. clear Eq. subst v.
+    apply invert_ty_var in Ty2.
+    apply (binds_func Bi Ty2).
+Qed.
+
+Print Assumptions exp_has_ty_unique.
+
+(*
 Lemma stable_exp_has_unique:
   (forall m G T H Ds1, exp m G T H Ds1 -> m = stable ->
      forall Ds2, exp stable G T H Ds2 -> Ds1 = Ds2) /\ 
@@ -1703,6 +1804,11 @@ Proof. intros. apply ((proj1 stable_exp_has_unique) _ _ _ _ _ H eq_refl _ H0). Q
 Lemma stable_has_unique: forall G v l D1 D2,
   has stable G v l D1 -> has stable G v l D2 -> D1 = D2.
 Proof. intros. apply* stable_exp_has_unique. Qed.
+*)
+
+Definition exp_unique := proj1 exp_has_ty_unique.
+Definition has_unique := proj1 (proj2 exp_has_ty_unique).
+Definition ty_unique := proj2 (proj2 exp_has_ty_unique).
 
 
 (* ###################################################################### *)
