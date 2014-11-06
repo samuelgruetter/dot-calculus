@@ -884,6 +884,7 @@ Lemma invert_subdec_typ_sync_left: forall m G D Lo2 Hi2,
    subdec m G D (dec_typ Lo2 Hi2) ->
    exists Lo1 Hi1, D = (dec_typ Lo1 Hi1) /\
                    subtyp m oktrans G Lo2 Lo1 /\
+                   subtyp m oktrans G Lo1 Hi1 /\
                    subtyp m oktrans G Hi1 Hi2.
 Proof.
   introv Sd. inversions Sd. exists Lo1 Hi1. auto.
@@ -2655,7 +2656,7 @@ Proof.
   rewrite EqU in DsX2Has.
   lets Sd: (decs_has_preserves_sub DsX2Has Sds).
   destruct Sd as [D1 [DsX1Has Sd]].
-  apply invert_subdec_typ_sync_left in Sd. destruct Sd as [S1 [U1 [Eq [StS StU]]]].
+  apply invert_subdec_typ_sync_left in Sd. destruct Sd as [S1 [U1 [Eq [StS [_ StU]]]]].
   (* Step 3: Get S1 <: U1 *)
   subst D1. specialize (F L S1 U1 DsX1Has).
   (* Step 4: Combine *)
@@ -2878,6 +2879,13 @@ Print Assumptions oktrans2notrans.
 (* ###################################################################### *)
 (** Exploring helper lemmas for ip->pr and oktrans->notrans *)
 
+(* precise substitution *)
+Lemma pr_subdecs_subst_principle: forall G x y S Ds1 Ds2,
+  ok (G & x ~ S) ->
+  subdecs pr (G & x ~ S) Ds1 Ds2 ->
+  binds y S G ->
+  subdecs pr G (subst_decs x y Ds1) (subst_decs x y Ds2).
+Admitted.
 
 Lemma pr2ip:
    (forall m G T Ds,   exp m G T Ds  -> exp ip G T Ds)
@@ -2925,7 +2933,10 @@ Proof.
     intros L m G Ds1' Ds2' Sds Ds1 Ds2 s Wf Eq Exp1 Exp2.
     inversions Exp1. inversions Exp2.
     intros x Ty. pick_fresh z. assert (zL: z \notin L) by auto. specialize (Sds z zL).
-    admit. (* TODO requires env-precise substitution!! *)
+    apply invert_ty_var in Ty. (* <-- don't want imprecise subsumption ! *)
+
+    admit. (* TODO requires precise substitution which takes imprecise Ty, ie
+              something like substitution and then narrowing *)
   + (* case subtyp_sel_l *)
     (* This case does not need subdecs_trans, because Exp1 is precise, so the expansion
        of x.L is the same as the expansion of its upper bound Hi1, and we can just apply
@@ -3046,7 +3057,7 @@ Proof.
     specialize (IHExp z Ty').
     destruct IHExp as [Ds1 [ExpHi2 Sds12]].
     apply invert_subdec_typ_sync_left in IHSd.
-    destruct IHSd as [Lo1 [Hi1 [Eq [StLo StHi]]]]. subst.
+    destruct IHSd as [Lo1 [Hi1 [Eq [StLo [_ StHi]]]]]. subst.
     assert (E: exists Ds0, exp pr G Hi1 Ds0) by admit. (* hopefully by wf_sto... *)
     destruct E as [Ds0 ExpHi1].
     lets Sds01: (exp_preserves_sub_pr Wf StHi ExpHi1 ExpHi2).
@@ -3082,7 +3093,25 @@ Proof.
     assert (decs_has (open_decs v Ds1) l (open_dec v D1)
          -> decs_has Ds1 l D1) by admit. (* TODO does not hold! *) auto.
   + (* case has_var *)
-    admit.
+    intros G x0 X2 Ds2 l D2 Ty IHTy Exp2 IHExp Ds2Has s x _ Wf Eq. inversions Eq.
+    lets Ok: (wf_sto_to_ok_G Wf).
+    specialize (IHExp s eq_refl Wf x Ty). destruct IHExp as [Dsm [Expm Sds2]].
+    specialize (IHTy s x Wf eq_refl). destruct IHTy as [X1 [BiG St]].
+    assert (E: exists Ds1, exp pr G X1 Ds1) by admit. (* hopefully by wf_sto... *)
+    destruct E as [Ds1 Exp1].
+    lets Sds1: (exp_preserves_sub_pr Wf St Exp1 Expm).
+    specialize (Sds1 x (ty_var BiG)).
+    lets Sds: (subdecs_trans Sds1 Sds2).
+    apply (decs_has_open x) in Ds2Has.
+    lets P: (decs_has_preserves_sub Ds2Has Sds).
+    destruct P as [D1o [Ds1Has Sd]].
+    assert (E: exists D1, D1o = (open_dec x D1)) by admit.
+    destruct E as [D1 Eq]. subst D1o.
+    exists (open_dec x D1).
+    refine (conj _ Sd).
+    apply (has_pr BiG Exp1).
+    assert (decs_has (open_decs x Ds1) l (open_dec x D1)
+         -> decs_has Ds1 l D1) by admit. (* TODO does not hold! *) auto.
 
   + (* case subtyp_refl *)
     intros m G v L Lo2 Hi2 Has2 IHHas2 s Eq Wf. subst.
@@ -3110,28 +3139,38 @@ Proof.
     specialize (IHSt _ eq_refl Wf).
     destruct IHHas2 as [D1 [Has1 Sd]].
     apply invert_subdec_typ_sync_left in Sd.
-    destruct Sd as [Lo1 [Hi1 [Eq [StLo StHi]]]]. subst D1.
+    destruct Sd as [Lo1 [Hi1 [Eq [StLo [_ StHi]]]]]. subst D1.
     apply subtyp_tmode.
     lets StHi1T: (subtyp_trans StHi IHSt).
     apply (subtyp_sel_l Has1 StHi1T).
   + (* case subtyp_sel_r *)
-    admit.
+    intros m G x L Lo2 Hi2 T Has2 IHHas StLo2Hi2 IHStLo2Hi2 StTLo2 IHStTLo2 s Eq Wf. subst.
+    specialize (IHHas _ _ eq_refl  Wf eq_refl).
+    specialize (IHStLo2Hi2 s eq_refl Wf).
+    specialize (IHStTLo2 s eq_refl Wf).
+    destruct IHHas as [D1 [Has1 Sd]].
+    apply invert_subdec_typ_sync_left in Sd.
+    destruct Sd as [Lo1 [Hi1 [Eq [StLo2Lo1 [StLo1Hi1 StHi1Hi2]]]]]. subst D1.
+    apply subtyp_tmode.
+    lets StTLo1: (subtyp_trans IHStTLo2 StLo2Lo1).
+    apply (subtyp_sel_r Has1 StLo1Hi1 StTLo1).
   + (* case subtyp_tmode *)
-    admit.
+    introv St IHSt Eq Wf. subst. apply* IHSt.
   + (* case subtyp_trans *)
-    admit.
+    introv St12 IH12 St23 IH23 Eq Wf. subst.
+    apply subtyp_trans with T2; auto_star.
 
   + (* case subdec_typ *)
-    admit.
+    intros. subst. apply* subdec_typ.
   + (* case subdec_fld *)
-    admit.
+    intros. subst. apply* subdec_fld.
   + (* case subdec_mtd *)
-    admit.
+    intros. subst. apply* subdec_mtd.
 
   + (* case subdecs_empty *)
-    admit.
+    intros. subst. apply* subdecs_empty.
   + (* case subdecs_push *)
-    admit.
+    intros. subst. apply* subdecs_push.
 
   + (* case ty_var *)
     intros G x' T BiG s x Wf Eq. inversions Eq. exists T.
@@ -3143,6 +3182,8 @@ Proof.
     specialize (IHSt23 s eq_refl Wf).
     exists T1. apply (conj BiG). apply (subtyp_trans St12 IHSt23).
 Qed.
+
+Print Assumptions ip2pr.
 
 Lemma invert_subtyp_bind_oktrans: forall s G Ds1 Ds2,
   wf_sto s G ->
