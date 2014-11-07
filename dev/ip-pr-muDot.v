@@ -2914,7 +2914,7 @@ Lemma exp_preserves_sub_pr: forall m2 s G T1 T2 Ds1 Ds2,
   exp pr G T1 Ds1 ->
   exp pr G T2 Ds2 ->
   forall z T0, binds z T0 G -> 
-               subtyp pr m2 G T0 T1 ->
+               subtyp pr oktrans G T0 T1 ->
                subdecs pr G (open_decs z Ds1) (open_decs z Ds2).
 Proof.
   (* We don't use the [induction] tactic because we want to intro everything ourselves: *)
@@ -2942,8 +2942,8 @@ Proof.
     inversions Exp1. inversions Exp2.
     intros x T0 Bi St. pick_fresh z. assert (zL: z \notin L) by auto. specialize (Sds z zL).
 
-    admit. (* TODO requires precise substitution which takes imprecise Ty, ie
-              something like substitution and then narrowing *)
+    admit. (* TODO requires precise substitution+narrowing *)
+
   + (* case subtyp_sel_l *)
     (* This case does not need subdecs_trans, because Exp1 is precise, so the expansion
        of x.L is the same as the expansion of its upper bound Hi1, and we can just apply
@@ -2968,13 +2968,13 @@ Proof.
     destruct ExpLo as [DsLo ExpLo].
     intros y T0 Bi St.
     specialize (IHSt1 DsLo Ds2 s Wf eq_refl ExpLo Exp2 _ _ Bi).
-    specialize (IHSt2 Ds1 DsLo s Wf eq_refl Exp1 ExpLo y _ Bi (subtyp_tmode St)).
-    specialize (IHSt1 (subtyp_trans (subtyp_tmode St) St2)).
+    specialize (IHSt2 Ds1 DsLo s Wf eq_refl Exp1 ExpLo y _ Bi St).
+    specialize (IHSt1 (subtyp_trans St St2)).
     (* since y is in G instead of appended after G, no need for narrowing (which would
        have to be precise!) before applying subdecs_trans *)
     apply (subdecs_trans IHSt2 IHSt1).
   + (* case subtyp_mode *)
-    intros. subst. apply* H0.  admit. (* <-------- need oktrans2notrans!!!!!!!!!!! *)
+    intros. subst. apply* H0.
   + (* case subtyp_trans *)
     intros m G T1 T2 T3 St12 IH12 St23 IH23 Ds1 Ds3 s Wf Eq Exp1 Exp3. subst.
     assert (Exp2: exists Ds2, exp pr G T2 Ds2) by admit. (* <----- *)
