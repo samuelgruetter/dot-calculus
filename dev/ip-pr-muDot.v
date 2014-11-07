@@ -2895,6 +2895,13 @@ Lemma pr2ip:
 /\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> subdecs ip G Ds1 Ds2).
 Admitted.
 
+Lemma invert_subtyp_sel_r: forall m1 m2 G T x L,
+  subtyp m1 m2 G T (typ_sel (pth_var (avar_f x)) L) ->
+  exists Lo Hi, has m1 G (trm_var (avar_f x)) L (dec_typ Lo Hi) /\
+                subtyp m1 oktrans G T Lo /\
+                subtyp m1 oktrans G Lo Hi.
+Admitted.
+
 (*
 Note:
  - Proving it for notrans only doesn't work, because the IH needs to accept oktrans,
@@ -2906,8 +2913,9 @@ Lemma exp_preserves_sub_pr: forall m2 s G T1 T2 Ds1 Ds2,
   subtyp pr m2 G T1 T2 ->
   exp pr G T1 Ds1 ->
   exp pr G T2 Ds2 ->
-  forall z, ty_trm G (trm_var (avar_f z)) T1 -> 
-            subdecs pr G (open_decs z Ds1) (open_decs z Ds2).
+  forall z T0, binds z T0 G -> 
+               subtyp pr m2 G T0 T1 ->
+               subdecs pr G (open_decs z Ds1) (open_decs z Ds2).
 Proof.
   (* We don't use the [induction] tactic because we want to intro everything ourselves: *)
   intros m2 s G T1 T2 Ds1 Ds2 Wf St.
@@ -2917,23 +2925,22 @@ Proof.
     m1 = pr ->
     exp m1 G T1 Ds1 ->
     exp m1 G T2 Ds2 ->
-    forall z, _ -> subdecs m1 G (open_decs z Ds1) (open_decs z Ds2))).
+    forall z T0, _ -> _ -> subdecs m1 G (open_decs z Ds1) (open_decs z Ds2))).
   + (* case subtyp_refl *)
     intros m G x L Lo Hi Has Ds1 Ds2 s Wf Eq Exp1 Exp2. subst.
     lets Eq: (exp_unique Exp1 Exp2).
-    subst. intros z Bi. apply subdecs_refl.
+    subst. intros z T0 Bi St. apply subdecs_refl.
   + (* case subtyp_top *)
     intros m G T Ds1 Ds2 s Wf Eq Exp1 Exp2. subst.
     inversions Exp2.
-    intros z Bi. unfold open_decs, open_rec_decs. apply subdecs_empty.
+    intros z T0 Bi St. unfold open_decs, open_rec_decs. apply subdecs_empty.
   + (* case subtyp_bot *)
     intros m G T Ds1 Ds2 s Wf Eq Exp1 Exp2. subst.
     inversions Exp1.
   + (* case subtyp_bind *)
     intros L m G Ds1' Ds2' Sds Ds1 Ds2 s Wf Eq Exp1 Exp2.
     inversions Exp1. inversions Exp2.
-    intros x Ty. pick_fresh z. assert (zL: z \notin L) by auto. specialize (Sds z zL).
-    apply invert_ty_var in Ty. (* <-- don't want imprecise subsumption ! *)
+    intros x T0 Bi St. pick_fresh z. assert (zL: z \notin L) by auto. specialize (Sds z zL).
 
     admit. (* TODO requires precise substitution which takes imprecise Ty, ie
               something like substitution and then narrowing *)
@@ -2945,13 +2952,12 @@ Proof.
     apply invert_exp_sel in Exp1. destruct Exp1 as [Lo1 [Hi1 [Has1 Exp1]]].
     lets Eq: (has_unique Has2 Has1).
     inversions Eq.
-    intros z Ty.
+    intros z T0 Bi St0.
     apply* IHSt.
-    apply (@ty_sbsm G _ (typ_sel (pth_var (avar_f x)) L) Hi1 Ty).
-    apply subtyp_tmode.
-    assert (Has1': has ip G (trm_var (avar_f x)) L (dec_typ Lo1 Hi1)) by apply* pr2ip.
-    apply (subtyp_sel_l Has1').
-    apply subtyp_refl_all.
+    apply invert_subtyp_sel_r in St0.
+    destruct St0 as [Lo1' [Hi1' [Has1' [StT0 StLo]]]].
+    lets Eq: (has_unique Has1' Has1). inversions Eq.
+    apply (subtyp_trans StT0 StLo).
   + (* case subtyp_sel_r *)
     (* This case needs subdecs_trans: Ds1 <: DsLo <: Ds2 *)
     intros m G x L Lo Hi T Has St1 IHSt1 St2 IHSt2 Ds1 Ds2 s Wf Eq Exp1 Exp2. subst.
@@ -2960,28 +2966,23 @@ Proof.
     inversions Eq.
     assert (ExpLo: exists DsLo, exp pr G Lo DsLo) by admit. (* <----- *)
     destruct ExpLo as [DsLo ExpLo].
-    intros y Ty.
-    specialize (IHSt1 DsLo Ds2 s Wf eq_refl ExpLo Exp2).
-    assert (Ty': ty_trm G (trm_var (avar_f y)) Lo). {
-      apply (ty_sbsm Ty). apply* pr2ip.
-    }
-    specialize (IHSt1 y Ty').
-    specialize (IHSt2 Ds1 DsLo s Wf eq_refl Exp1 ExpLo y Ty).
+    intros y T0 Bi St.
+    specialize (IHSt1 DsLo Ds2 s Wf eq_refl ExpLo Exp2 _ _ Bi).
+    specialize (IHSt2 Ds1 DsLo s Wf eq_refl Exp1 ExpLo y _ Bi (subtyp_tmode St)).
+    specialize (IHSt1 (subtyp_trans (subtyp_tmode St) St2)).
     (* since y is in G instead of appended after G, no need for narrowing (which would
        have to be precise!) before applying subdecs_trans *)
     apply (subdecs_trans IHSt2 IHSt1).
   + (* case subtyp_mode *)
-    intros. apply* H0.
+    intros. subst. apply* H0.  admit. (* <-------- need oktrans2notrans!!!!!!!!!!! *)
   + (* case subtyp_trans *)
     intros m G T1 T2 T3 St12 IH12 St23 IH23 Ds1 Ds3 s Wf Eq Exp1 Exp3. subst.
     assert (Exp2: exists Ds2, exp pr G T2 Ds2) by admit. (* <----- *)
     destruct Exp2 as [Ds2 Exp2].
-    intros y Ty.
-    specialize (IH12 _ _ s Wf eq_refl Exp1 Exp2 y Ty).
-    assert (Ty': ty_trm G (trm_var (avar_f y)) T2). {
-      apply (ty_sbsm Ty). apply* pr2ip.
-    }
-    specialize (IH23 _ _ s Wf eq_refl Exp2 Exp3 y Ty').
+    intros y T0 Bi St.
+    specialize (IH12 _ _ s Wf eq_refl Exp1 Exp2 y T0 Bi St).
+    specialize (IH23 _ _ s Wf eq_refl Exp2 Exp3 y T0 Bi).
+    specialize (IH23 (subtyp_trans St St12)).
     apply (subdecs_trans IH12 IH23).
 Qed.
 
