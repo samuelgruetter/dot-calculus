@@ -3025,7 +3025,7 @@ Note:
    because that's what comes out of subtyp_sel_l/r.
 *)
 
-Lemma exp_preserves_sub_pr: forall m2 s G T1 T2 Ds1 Ds2,
+Lemma exp_preserves_sub_pr_with_conclusion_on_same_env: forall m2 s G T1 T2 Ds1 Ds2,
   wf_sto s G ->
   subtyp pr m2 G T1 T2 ->
   exp pr G T1 Ds1 ->
@@ -3107,6 +3107,83 @@ Proof.
     apply (subdecs_trans IH12 IH23).
 Qed.
 
+Lemma pr_narrow_subdecs: forall G z DsA DsB Ds1 Ds2,
+  subdecs pr (G & z ~ typ_bind DsA) (open_decs z DsA) (open_decs z DsB) ->
+  subdecs pr (G & z ~ typ_bind DsB) Ds1 Ds2 ->
+  subdecs pr (G & z ~ typ_bind DsA) Ds1 Ds2.
+Admitted.
+
+Lemma exp_preserves_sub_pr: forall m2 s G T1 T2 Ds1 Ds2,
+  wf_sto s G ->
+  subtyp pr m2 G T1 T2 ->
+  exp pr G T1 Ds1 ->
+  exp pr G T2 Ds2 ->
+  exists L, forall z, z \notin L ->
+    subdecs pr (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
+Proof.
+  (* We don't use the [induction] tactic because we want to intro everything ourselves: *)
+  intros m2 s G T1 T2 Ds1 Ds2 Wf St.
+  gen_eq m1: pr. gen m1 m2 G T1 T2 St Ds1 Ds2 s Wf.
+  apply (subtyp_ind (fun m1 m2 G T1 T2 => forall Ds1 Ds2 s,
+    wf_sto s G ->
+    m1 = pr ->
+    exp m1 G T1 Ds1 ->
+    exp m1 G T2 Ds2 ->
+    exists L, forall z, _ ->
+      subdecs m1 (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2))).
+  + (* case subtyp_refl *)
+    intros m G x L Lo Hi Has Ds1 Ds2 s Wf Eq Exp1 Exp2. subst.
+    lets Eq: (exp_unique Exp1 Exp2).
+    subst. exists vars_empty. intros z zL. apply subdecs_refl.
+  + (* case subtyp_top *)
+    intros m G T Ds1 Ds2 s Wf Eq Exp1 Exp2. subst.
+    inversions Exp2. exists vars_empty. intros z zL.
+    unfold open_decs, open_rec_decs. apply subdecs_empty.
+  + (* case subtyp_bot *)
+    intros m G T Ds1 Ds2 s Wf Eq Exp1 Exp2. subst.
+    inversions Exp1.
+  + (* case subtyp_bind *)
+    intros L m G Ds1' Ds2' Sds Ds1 Ds2 s Wf Eq Exp1 Exp2.
+    inversions Exp1. inversions Exp2. exists L.
+    intros z zL. apply (Sds z zL).
+  + (* case subtyp_sel_l *)
+    (* This case does not need subdecs_trans, because Exp1 is precise, so the expansion
+       of x.L is the same as the expansion of its upper bound Hi1, and we can just apply
+       the IH for Hi1<:T *)
+    intros m G x L Lo2 Hi2 T Has2 St IHSt Ds1 Ds2 s Wf Eq Exp1 Exp2. subst.
+    apply invert_exp_sel in Exp1. destruct Exp1 as [Lo1 [Hi1 [Has1 Exp1]]].
+    lets Eq: (has_unique Has2 Has1).
+    inversions Eq.
+    apply* IHSt.
+  + (* case subtyp_sel_r *)
+    (* This case needs subdecs_trans: Ds1 <: DsLo <: Ds2 *)
+    intros m G x L Lo Hi T Has St1 IHSt1 St2 IHSt2 Ds1 Ds2 s Wf Eq Exp1 Exp2. subst.
+    apply invert_exp_sel in Exp2. destruct Exp2 as [Lo' [Hi' [Has' Exp2]]].
+    lets Eq: (has_unique Has' Has).
+    inversions Eq.
+    assert (ExpLo: exists DsLo, exp pr G Lo DsLo) by admit. (* <----- *)
+    destruct ExpLo as [DsLo ExpLo].
+    specialize (IHSt1 DsLo Ds2 s Wf eq_refl ExpLo Exp2). destruct IHSt1 as [L1 IH1].
+    specialize (IHSt2 Ds1 DsLo s Wf eq_refl Exp1 ExpLo). destruct IHSt2 as [L2 IH2].
+    exists (L1 \u L2). intros z zn.
+    assert (zL1: z \notin L1) by auto. specialize (IH1 z zL1).
+    assert (zL2: z \notin L2) by auto. specialize (IH2 z zL2).
+    lets IH1': (pr_narrow_subdecs IH2 IH1). (* <-------- NARROWING *)
+    apply (subdecs_trans IH2 IH1').
+  + (* case subtyp_mode *)
+    intros. subst. apply* H0.
+  + (* case subtyp_trans *)
+    intros m G T1 T2 T3 St12 IH12 St23 IH23 Ds1 Ds3 s Wf Eq Exp1 Exp3. subst.
+    assert (Exp2: exists Ds2, exp pr G T2 Ds2) by admit. (* <----- *)
+    destruct Exp2 as [Ds2 Exp2].
+    specialize (IH12 _ _ _ Wf eq_refl Exp1 Exp2). destruct IH12 as [L1 IH12].
+    specialize (IH23 _ _ _ Wf eq_refl Exp2 Exp3). destruct IH23 as [L2 IH23].
+    exists (L1 \u L2 \u dom G). intros z zL1L2.
+    auto_specialize.
+    lets IHS23': (pr_narrow_subdecs IH12 IH23).  (* <-------- NARROWING *)
+    apply (subdecs_trans IH12 IHS23').
+Qed.
+
 Print Assumptions exp_preserves_sub_pr.
 
 (* note: conclusion is precise
@@ -3117,13 +3194,6 @@ Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
   exp pr G T2 Ds2 ->
   exists L, forall z, z \notin L -> 
             subdecs pr (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
-Admitted.
-
-(* In ip mode, this holds, but does it also hold in pr mode??? *)
-Lemma pr_narrow_subdecs: forall G z DsA DsB Ds1 Ds2,
-  subdecs pr (G & z ~ typ_bind DsA) (open_decs z DsA) (open_decs z DsB) ->
-  subdecs pr (G & z ~ typ_bind DsB) Ds1 Ds2 ->
-  subdecs pr (G & z ~ typ_bind DsA) Ds1 Ds2.
 Admitted.*)
 
 Lemma ip2pr:
