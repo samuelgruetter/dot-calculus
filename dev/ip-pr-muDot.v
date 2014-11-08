@@ -3002,7 +3002,6 @@ Lemma substnarrow_subdecs: forall G z x T1 T2 Ds1 Ds2,
   subdecs pr G (subst_decs z x Ds1) (subst_decs z x Ds2).
 Admitted.
 
-(*
 Lemma pr2ip:
    (forall m G T Ds,   exp m G T Ds  -> exp ip G T Ds)
 /\ (forall m G t L D,  has m G t L D -> has ip G t L D)
@@ -3010,7 +3009,6 @@ Lemma pr2ip:
 /\ (forall m G D1 D2, subdec m G D1 D2 -> subdec ip G D1 D2)
 /\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> subdecs ip G Ds1 Ds2).
 Admitted.
-*)
 
 Lemma invert_subtyp_sel_r: forall m1 m2 G T x L,
   subtyp m1 m2 G T (typ_sel (pth_var (avar_f x)) L) ->
@@ -3105,6 +3103,104 @@ Proof.
     specialize (IH23 _ _ s Wf eq_refl Exp2 Exp3 y T0 Bi).
     specialize (IH23 (subtyp_trans St St12)).
     apply (subdecs_trans IH12 IH23).
+Qed.
+
+Lemma open_decs_nil: forall z, (open_decs z decs_nil) = decs_nil.
+Proof.
+  intro z. reflexivity.
+Qed.
+
+Lemma narrowing:
+   (forall m G T Ds2, exp m G T Ds2 -> forall G1 G2 x S1 S2,
+    m = pr ->
+    ok G ->
+    G = G1 & x ~ S2 & G2 ->
+    subtyp pr oktrans G1 S1 S2 ->
+    exists L Ds1,
+    exp pr (G1 & x ~ S1 & G2) T Ds1 /\ 
+    forall z, z \notin L ->
+    subdecs pr (G1 & x ~ S1 & G2 & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2))
+/\ (forall m G t l D2, has m G t l D2 ->  forall G1 G2 x S1 S2,
+    m = pr ->
+    ok G ->
+    G = G1 & x ~ S2 & G2 ->
+    subtyp pr oktrans G1 S1 S2 ->
+    exists D1, has pr (G1 & x ~ S1 & G2) t l D1 /\ subdec pr (G1 & x ~ S1 & G2) D1 D2)
+/\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 ->  forall G1 G2 x S1 S2,
+    m1 = pr ->
+    ok G ->
+    G = G1 & x ~ S2 & G2 ->
+    subtyp pr oktrans G1 S1 S2 ->
+    subtyp pr oktrans (G1 & x ~ S1 & G2) T1 T2)
+/\ (forall m G D1 D2, subdec m G D1 D2 ->  forall G1 G2 x S1 S2,
+    m = pr ->
+    ok G ->
+    G = G1 & x ~ S2 & G2 ->
+    subtyp pr oktrans G1 S1 S2 ->
+    subdec pr (G1 & x ~ S1 & G2) D1 D2)
+/\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 ->  forall G1 G2 x S1 S2,
+    m = pr ->
+    ok G ->
+    G = G1 & x ~ S2 & G2 ->
+    subtyp pr oktrans G1 S1 S2 ->
+    subdecs pr (G1 & x ~ S1 & G2) Ds1 Ds2).
+Proof.
+  apply mutind5.
+  + (* case exp_top *)
+    intros. exists vars_empty decs_nil. split.
+    - apply exp_top.
+    - intros. rewrite open_decs_nil. apply subdecs_empty.
+  + (* case exp_bind *)
+    intros. subst. exists vars_empty Ds. split.
+    - apply exp_bind.
+    - intros. apply subdecs_refl.
+  + (* case exp_sel *)
+    intros m G p L Lo2 Hi2 Ds2 Has IHHas Exp IHExp G1 G2 x S1 S2 E1 Ok2 E2 St. subst.
+    specialize (IHHas _ _ _ _ _ eq_refl Ok2 eq_refl St).
+    specialize (IHExp _ _ _ _ _ eq_refl Ok2 eq_refl St).
+    destruct IHHas as [D1 [IHHas Sd]].
+    destruct IHExp as [L0 [Dsm [IHExp Sds2]]].
+    apply invert_subdec_typ_sync_left in Sd.
+    destruct Sd as [Lo1 [Hi1 [Eq [StLo21 [StLoHi1 StHi12]]]]]. subst D1.
+    assert (A: exists Ds1, exp pr (G1 & x ~ S1 & G2) Hi1 Ds1) by admit. (* <----- *)
+    destruct A as [Ds1 Exp1].
+    exists L0 Ds1. apply (conj (exp_sel IHHas Exp1)).
+    intros z zL0. specialize (Sds2 z zL0).
+    assert (Ok1: ok (G1 & x ~ S1 & G2)) by admit.
+    (* hmmmm *)
+    admit.
+  + (* case has_trm *)
+    admit.
+  + (* case has_var *)
+    admit.
+  + (* case has_pr *)
+    admit.
+  + (* case subtyp_refl *)
+    admit.
+  + (* case subtyp_top *)
+    admit.
+  + (* case subtyp_bot *)
+    admit.
+  + (* case subtyp_bind *)
+    admit.
+  + (* case subtyp_asel_l *)
+    admit.
+  + (* case subtyp_asel_r *)
+    admit.
+  + (* case subtyp_tmode *)
+    admit.
+  + (* case subtyp_trans *)
+    admit.
+  + (* case subdec_typ *)
+    admit.
+  + (* case subdec_fld *)
+    admit.
+  + (* case subdec_mtd *)
+    admit.
+  + (* case subdecs_empty *)
+    admit.
+  + (* case subdecs_push *)
+    admit.
 Qed.
 
 Lemma pr_narrow_subdecs: forall G z DsA DsB Ds1 Ds2,
