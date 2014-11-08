@@ -487,6 +487,14 @@ with   subtyp_mut4  := Induction for subtyp  Sort Prop
 with   ty_trm_mut4  := Induction for ty_trm  Sort Prop.
 Combined Scheme exp_has_subtyp_ty_mutind from exp_mut4, has_mut4, subtyp_mut4, ty_trm_mut4.
 
+Scheme exp_mut5     := Induction for exp     Sort Prop
+with   has_mut5     := Induction for has     Sort Prop
+with   subtyp_mut5  := Induction for subtyp  Sort Prop
+with   subdec_mut5  := Induction for subdec  Sort Prop
+with   subdecs_mut5 := Induction for subdecs Sort Prop.
+Combined Scheme mutind5 from exp_mut5, has_mut5,
+                             subtyp_mut5, subdec_mut5, subdecs_mut5.
+
 Scheme exp_mut6     := Induction for exp     Sort Prop
 with   has_mut6     := Induction for has     Sort Prop
 with   subtyp_mut6  := Induction for subtyp  Sort Prop
@@ -2887,6 +2895,114 @@ Lemma pr_subdecs_subst_principle: forall G x y S Ds1 Ds2,
   subdecs pr G (subst_decs x y Ds1) (subst_decs x y Ds2).
 Admitted.
 
+(*
+
+ forall G z x T1 T2 Ds1 Ds2,
+  subdecs pr (G & z ~ T2) Ds1 Ds2 ->
+  subtyp pr oktrans G T1 T2 ->
+  binds x T1 G ->
+  subdecs pr G (subst_decs z x Ds1) (subst_decs z x Ds2).
+*)
+
+Lemma substnarrow:
+   (forall m G T Ds2, exp m G T Ds2 -> forall x y G1 G2 S1 S2,
+     m = pr ->
+     G = (G1 & x ~ S2 & G2) ->
+     subtyp pr oktrans G1 S1 S2 ->
+     binds y S1 G1 ->
+     exists L Ds1, forall z, z \notin L ->
+       exp pr (G1 & (subst_ctx x y G2)) T Ds1 /\
+       subdecs pr (G1 & (subst_ctx x y G2) & z ~ typ_bind Ds1)
+         (open_decs z Ds1) (open_decs z Ds2))
+/\ (forall m G t l D2, has m G t l D2 -> forall x y G1 G2 S1 S2,
+     m = pr ->
+     G = (G1 & x ~ S2 & G2) ->
+     subtyp pr oktrans G1 S1 S2 ->
+     binds y S1 G1 ->
+     exists D1,
+       has pr (G1 & (subst_ctx x y G2)) t l D1 /\
+       subdec pr (G1 & (subst_ctx x y G2)) D1 D2)
+/\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 -> forall x y G1 G2 S1 S2,
+     m1 = pr ->
+     G = (G1 & x ~ S2 & G2) ->
+     subtyp pr oktrans G1 S1 S2 ->
+     binds y S1 G1 ->
+     subtyp pr oktrans (G1 & (subst_ctx x y G2)) T1 T2)
+/\ (forall m G D1 D2, subdec m G D1 D2 -> forall x y G1 G2 S1 S2,
+     m = pr ->
+     G = (G1 & x ~ S2 & G2) ->
+     subtyp pr oktrans G1 S1 S2 ->
+     binds y S1 G1 ->
+     subdec pr (G1 & (subst_ctx x y G2)) D1 D2)
+/\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> forall x y G1 G2 S1 S2,
+     m = pr ->
+     G = (G1 & x ~ S2 & G2) ->
+     subtyp pr oktrans G1 S1 S2 ->
+     binds y S1 G1 ->
+     subdecs pr (G1 & (subst_ctx x y G2)) (subst_decs x y Ds1) (subst_decs x y Ds2)).
+Proof.
+  apply mutind5.
+  + (* case exp_top *)
+    intros. subst. exists vars_empty decs_nil. intros.
+    apply (conj (exp_top _ _)).
+    unfold open_decs, open_rec_decs. apply subdecs_empty.
+  + (* case exp_bind *)
+    introv Eq1 Eq2 St Bi. subst. exists vars_empty Ds. intros z zL.
+    apply (conj (exp_bind _ _ _)).
+    apply subdecs_refl.
+  + (* case exp_sel *)
+    intros m G p L Lo2 Hi2 Ds2 Has2 IHHas Exp2 IHExp x y G1 G2 S1 S2 Eq1 Eq2 St Bi. subst.
+    specialize (IHHas x y G1 G2 S1 S2 eq_refl eq_refl St Bi).
+    specialize (IHExp x y G1 G2 S1 S2 eq_refl eq_refl St Bi).
+    destruct IHHas as [D1 [Has1 Sd]].
+    destruct IHExp as [L0 [Ds1 IHExp]].
+    exists L0 Ds1. intros z zL0. specialize (IHExp z zL0).
+    destruct IHExp as [Exp1 Sds].
+    (* if p = x, we need to apply exp_preserves_sub on [S1 <: S2], but we have no such IH *)
+    (* G2 only typ_bind, S1/S2 as well? *)
+    admit.
+  + (* case has_trm *)
+    admit.
+  + (* case has_var *)
+    admit.
+  + (* case has_pr *)
+    admit.
+  + (* case subtyp_refl *)
+    admit.
+  + (* case subtyp_top *)
+    admit.
+  + (* case subtyp_bot *)
+    admit.
+  + (* case subtyp_bind *)
+    admit.
+  + (* case subtyp_asel_l *)
+    admit.
+  + (* case subtyp_asel_r *)
+    admit.
+  + (* case subtyp_tmode *)
+    admit.
+  + (* case subtyp_trans *)
+    admit.
+  + (* case subdec_typ *)
+    admit.
+  + (* case subdec_fld *)
+    admit.
+  + (* case subdec_mtd *)
+    admit.
+  + (* case subdecs_empty *)
+    admit.
+  + (* case subdecs_push *)
+    admit.
+Qed.
+
+Lemma substnarrow_subdecs: forall G z x T1 T2 Ds1 Ds2,
+  subdecs pr (G & z ~ T2) Ds1 Ds2 ->
+  subtyp pr oktrans G T1 T2 ->
+  binds x T1 G ->
+  subdecs pr G (subst_decs z x Ds1) (subst_decs z x Ds2).
+Admitted.
+
+(*
 Lemma pr2ip:
    (forall m G T Ds,   exp m G T Ds  -> exp ip G T Ds)
 /\ (forall m G t L D,  has m G t L D -> has ip G t L D)
@@ -2894,6 +3010,7 @@ Lemma pr2ip:
 /\ (forall m G D1 D2, subdec m G D1 D2 -> subdec ip G D1 D2)
 /\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> subdecs ip G Ds1 Ds2).
 Admitted.
+*)
 
 Lemma invert_subtyp_sel_r: forall m1 m2 G T x L,
   subtyp m1 m2 G T (typ_sel (pth_var (avar_f x)) L) ->
@@ -2941,9 +3058,13 @@ Proof.
     intros L m G Ds1' Ds2' Sds Ds1 Ds2 s Wf Eq Exp1 Exp2.
     inversions Exp1. inversions Exp2.
     intros x T0 Bi St. pick_fresh z. assert (zL: z \notin L) by auto. specialize (Sds z zL).
-
-    admit. (* TODO requires precise substitution+narrowing *)
-
+    lets P: (substnarrow_subdecs Sds St Bi).
+    rewrite (subst_open_commute_decs z x z Ds1) in P.
+    rewrite (subst_open_commute_decs z x z Ds2) in P.
+    unfold subst_fvar in P. case_if.
+    assert (Eq1: (subst_decs z x Ds1) = Ds1) by apply* subst_fresh_typ_dec_decs.
+    assert (Eq2: (subst_decs z x Ds2) = Ds2) by apply* subst_fresh_typ_dec_decs.
+    rewrite Eq1, Eq2 in P. exact P.
   + (* case subtyp_sel_l *)
     (* This case does not need subdecs_trans, because Exp1 is precise, so the expansion
        of x.L is the same as the expansion of its upper bound Hi1, and we can just apply
