@@ -283,6 +283,12 @@ Inductive red : trm -> sto -> trm -> sto -> Prop :=
 (* ###################################################################### *)
 (** ** Typing *)
 
+Inductive no_decs_bot: decs -> Prop :=
+  | no_decs_bot_nil: no_decs_bot decs_nil
+  | no_decs_bot_cons: forall n D Ds,
+      no_decs_bot Ds ->
+      no_decs_bot (decs_cons n D Ds).
+
 (* tmode = "is transitivity at top level accepted?" *)
 Inductive tmode : Type := notrans | oktrans.
 
@@ -362,6 +368,8 @@ with subdec : pmode -> ctx -> dec -> dec -> Prop :=
       subtyp m oktrans G Lo1 Hi1 ->
       subtyp m oktrans G Lo2 Hi2 ->
       *)
+      (* right decl must be realizable, left not (because it could come from decs_bot) *)
+      subtyp m oktrans G Lo2 Hi2 ->
       (* lhs narrower range than rhs *)
       subtyp m oktrans G Lo2 Lo1 ->
       subtyp m oktrans G Hi1 Hi2 ->
@@ -381,9 +389,16 @@ with subdecs : pmode -> ctx -> decs -> decs -> Prop :=
       decs_has Ds1 (label_for_dec n D2) D1 ->
       subdec  m G D1 D2 ->
       subdecs m G Ds1 Ds2 ->
+      (* don't allow rhs to wrap decs_bot: *)
+      no_decs_bot Ds2 ->
       subdecs m G Ds1 (decs_cons n D2 Ds2)
+(* not needed because it can be proven in using subdecs_push and decs_has
   | subdecs_bot : forall m G Ds,
       subdecs m G decs_bot Ds
+*)
+  (* subdecs reflexivity for decs_bot because subdecs_push doesn't apply here *)
+  | subdecs_bot : forall m G,
+      subdecs m G decs_bot decs_bot
 with ty_trm : ctx -> trm -> typ -> Prop :=
   | ty_var : forall G x T,
       binds x T G ->
@@ -1058,6 +1073,16 @@ Proof.
   introv Sd. inversions Sd. auto.
 Qed.
 
+(*
+(* require Lo2 <: Hi2... *)
+Lemma decs_bot_has_subdec_typ: forall m G n Lo2 Hi2,
+  subtyp m G Lo2 Hi2 ->
+  exists D1, decs_has decs_bot (label_for_dec n D2) D1 /\
+             subdec m G D1 D2.
+Proof.
+  intros. destruct D2 as [Lo Hi | T | T1 T2].
+
+
 Lemma decs_bot_has_subdec: forall m G n D2,
   exists D1, decs_has decs_bot (label_for_dec n D2) D1 /\
              subdec m G D1 D2.
@@ -1073,18 +1098,32 @@ Proof.
     * unfold decs_has, get_dec. reflexivity.
     * apply subdec_mtd; auto.
 Qed.
+*)
 
+Lemma invert_subdecs_bot: forall m G Ds1,
+  subdecs m G Ds1 decs_bot ->
+  Ds1 = decs_bot.
+Proof.
+  introv Sds. inversions Sds. reflexivity.
+Qed.
+
+(*
+Doesn't hold if Ds2 = decs_bot, because (L:typ_top..typ_bot) of D2 doesn't satisfy
+typ_top<:typ_bot. So we exclude that case. *)
 Lemma invert_subdecs: forall m G Ds1 Ds2,
   subdecs m G Ds1 Ds2 -> 
+  no_decs_bot Ds2 ->
   forall l D2, decs_has Ds2 l D2 -> 
                (exists D1, decs_has Ds1 l D1 /\ subdec m G D1 D2).
 Proof.
-  introv Sds. induction Sds; introv DsHas.
+  introv Sds. induction Sds; introv Ne DsHas.
   + inversions DsHas.
   + unfold decs_has, get_dec in DsHas. case_if.
     - inversions DsHas.
       exists D1. split; assumption.
     - fold get_dec in DsHas. apply IHSds; assumption.
+  + inversions Ne.
+(*
   + destruct l.
     - exists (dec_typ typ_top typ_bot).
       destruct (decs_has_typ_sync DsHas) as [Lo [Hi Eq]]. subst. split.
@@ -1098,6 +1137,7 @@ Proof.
       destruct (decs_has_mtd_sync DsHas) as [T1 [T2 Eq]]. subst. split.
       * unfold decs_has, get_dec. reflexivity.
       * apply subdec_mtd; auto.
+*)
 Qed.
 
 Lemma wf_sto_to_ok_s: forall s G,
@@ -1226,9 +1266,11 @@ Lemma invert_subdecs_push: forall m G Ds1 Ds2 n D2,
 Proof.
   intros. inversions H.
   - eauto.
+(*
   - lets P: (decs_bot_has_subdec m G n D2).
     destruct P as [D1 [H1 H2]].
     exists D1. refine (conj H1 (conj H2 (subdecs_bot _ _ _))).
+*)
 Qed.
 
 Lemma ty_def_to_label_for_eq: forall G d D n, 
@@ -1675,10 +1717,10 @@ Proof.
     intros.
     apply subdecs_empty.
   + (* case subdecs_push *)
-    introv Hb Hsd IHsd Hsds IHsds Hok123 Heq.
-    apply (subdecs_push n Hb).
-    apply (IHsd _ _ _ Hok123 Heq).
-    apply (IHsds _ _ _ Hok123 Heq).
+    introv Hb Hsd IHsd Hsds IHsds Ne Hok123 Heq.
+    refine (subdecs_push n Hb _ _ Ne).
+    - apply (IHsd _ _ _ Hok123 Heq).
+    - apply (IHsds _ _ _ Hok123 Heq).
   + (* case subdecs_bot *)
     intros. apply subdecs_bot.
   + (* case ty_var *)
@@ -2159,15 +2201,54 @@ Lemma subdecs_trans: forall m G Ds1 Ds2 Ds3,
   subdecs m G Ds1 Ds3.
 Proof.
   introv H12 H23.
+  destruct (classicT (subdecs m G Ds3 decs_bot)) as [St3 | NSt3].
+  (* case Ds3 = decs_bot *) {
+  apply invert_subdecs_bot in St3. subst.
+  apply invert_subdecs_bot in H23. subst.
+  apply invert_subdecs_bot in H12. subst.
+  apply subdecs_bot.
+  }
+  (* case Ds3 <> decs_bot *) {
   induction Ds3.
   + apply subdecs_empty.
+  + rename d into D3.
+    apply invert_subdecs_push in H23.
+    destruct H23 as [D2 [H23a [H23b H23c]]].
+    specialize (IHDs3 H23c).
+    destruct (classicT (Ds2 = decs_bot)) as [Eq | Ne2].
+    - subst. apply invert_subdecs_bot in H12. subst.
+      apply subdecs_push with D2.
+
+
+
+  destruct (classicT (Ds3 = decs_bot)) as [Eq | Ne3].
+  (* case Ds3 = decs_bot *) {
+    subst. apply invert_subdecs_bot in H23. subst.
+    apply invert_subdecs_bot in H12. subst.
+    apply subdecs_bot.
+  }
+  (* case Ds3 <> decs_bot *)
+  induction Ds3.
+  + apply subdecs_empty.
+  + rename d into D3.
+    apply invert_subdecs_push in H23.
+    destruct H23 as [D2 [H23a [H23b H23c]]].
+    specialize (IHDs3 H23c).
+    destruct (classicT (Ds2 = decs_bot)) as [Eq | Ne2].
+    - subst. apply invert_subdecs_bot in H12. subst.
+
+      * subst.
+      apply subdecs_push with D2.      
+    lets H12': (invert_subdecs H12).
+
+
   + rename d into D3.
     apply invert_subdecs_push in H23.
     destruct H23 as [D2 [H23a [H23b H23c]]].
     lets H12': (invert_subdecs H12).
     specialize (H12' _ _ H23a).
     destruct H12' as [D1 [Has Sd]].
-    apply subdecs_push with D1.
+    aply subdecs_push with D1.
     - assumption.
     - apply subdec_trans with D2; assumption.
     - apply (IHDs3 H23c).
