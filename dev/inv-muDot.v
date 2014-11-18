@@ -1978,6 +1978,46 @@ Lemma subdecs_trans: forall G z Ds1 Ds2 Ds3,
   subdecs (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds3).
 Admitted.
 
+(* TODO define imode *)
+Lemma inv_pushback: forall G T1 T2,
+  subtyp G T1 T2 ->
+  forall T2', T2' = T2 -> subtyp G T1 T2' (* subtyp without inv *).
+Proof.
+  apply (subtyp_ind (fun G T1 T2 => forall T2', T2' = T2 -> subtyp G T1 T2')).
+  + (* case subtyp_refl *)
+    admit.
+  + (* case subtyp_top *)
+    admit.
+  + (* case subtyp_bot *)
+    admit.
+  + (* case subtyp_bind *)
+    admit.
+  + (* case subtyp_sel_l *)
+    admit.
+  + (* case subtyp_sel_r *)
+    admit.
+  + (* case subtyp_trans *)
+    admit.
+  + (* case subtyp_inv_typ_lo *)
+    introv St IH Exp1 Exp2 DsHas1 DsHas2.
+    (* to show: Lo2 <: Lo1 without using inversion axiom at top level *)
+    assert (subtyp G Lo2 Lo1).
+    clear IH.
+    (* real IH is: [T1 <: T2] has no inversion at top level *)
+    
+
+  + (* case subtyp_inv_typ_hi *)
+    admit.
+  + (* case subtyp_inv_fld *)
+    admit.
+  + (* case subtyp_inv_mtd_arg *)
+    admit.
+  + (* case subtyp_inv_mtd_ret *)
+    admit.
+
+Qed.
+
+
 (* Key lemma of the whole proof: How to prove it??? *)
 Lemma invert_subtyp_bind: forall G Ds1 Ds2,
   subtyp G (typ_bind Ds1) (typ_bind Ds2) ->
@@ -2011,6 +2051,18 @@ Proof.
       apply (subdecs_trans _ IH12 IH23).
     - (* The famous case with p.L in the middle !!
          Need stronger IH, maybe something with expansions instead of typ_bind? *)
+      admit.
+  + (* case subtyp_inv_typ_lo *)
+    introv St12 IH12 Exp1 Exp2 Ds1Has Ds2Has. intros DsLo2 DsLo1 Eq1 Eq2. subst.
+    admit.
+  + (* case subtyp_inv_typ_hi *)
+    admit.
+  + (* case subtyp_inv_fld *)
+    admit.
+  + (* case subtyp_inv_mtd_arg *)
+    admit.
+  + (* case subtyp_inv_mtd_ret *)
+    admit.
 Abort.
 
 Lemma invert_subtyp_bind: forall G Ds1 Ds2,
