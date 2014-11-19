@@ -277,6 +277,33 @@ Inductive tmode : Type := notrans | oktrans.
 (* pmode = "do the "has" judgments needed in subtyping have to be precise?" *)
 Inductive pmode : Type := pr | ip.
 
+(* Does this type, and all types that it syntactically contains, have collapsed
+   bounds for all type members? *)
+Inductive cbounds_typ: typ -> Prop :=
+  | cbounds_top:
+      cbounds_typ typ_top
+  | cbounds_bot:
+      cbounds_typ typ_bot
+  | cbounds_bind : forall Ds,
+      cbounds_decs Ds ->
+      cbounds_typ (typ_bind Ds)
+  | cbounds_sel: forall p L,
+      cbounds_typ (typ_sel p L)
+with cbounds_dec: dec -> Prop :=
+  | cbounds_dec_typ: forall T,
+      cbounds_dec (dec_typ T T) (* <-- that's the whole point *)
+  | cbounds_dec_fld: forall T,
+      cbounds_dec (dec_fld T)
+  | cbounds_dec_mtd: forall T U,
+      cbounds_dec (dec_mtd T U)
+with cbounds_decs: decs -> Prop :=
+  | cbounds_nil:
+      cbounds_decs decs_nil
+  | cbounds_cons: forall n D Ds,
+      cbounds_dec D ->
+      cbounds_decs Ds ->
+      cbounds_decs (decs_cons n D Ds).
+
 (* expansion returns a set of decs without opening them *)
 Inductive exp : pmode -> ctx -> typ -> decs -> Prop :=
   | exp_top : forall m G, 
