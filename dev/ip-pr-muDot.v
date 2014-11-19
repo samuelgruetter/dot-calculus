@@ -3105,6 +3105,8 @@ Proof.
     apply (subdecs_trans IH12 IH23).
 Qed.
 
+Print Assumptions exp_preserves_sub_pr_with_conclusion_on_same_env.
+
 Lemma open_decs_nil: forall z, (open_decs z decs_nil) = decs_nil.
 Proof.
   intro z. reflexivity.
@@ -3193,6 +3195,8 @@ Proof.
     destruct A as [Ds1 Exp1].
     assert (s: sto) by admit.
     assert (Wf: wf_sto s (G1 & x ~ (typ_bind DsA) & G2)) by admit.
+    (* !!! applying IH of exp_preserves_sub_pr to StHi12, which is conclusion of IHHas
+           and thus not structurally smaller !!! *)
     lets Sds1: (exp_preserves_sub_pr _ _ _ Hi1 Hi2 Ds1 Dsm Wf StHi12 Exp1 IHExp).
     destruct Sds1 as [L1 Sds1].
     exists (L0 \u L1) Ds1. apply (conj (exp_sel IHHas Exp1)).
@@ -3328,7 +3332,7 @@ Proof.
     rewrite concat_empty_r in Sds2n.
     apply (subdecs_trans Sds1 Sds2n).
   }
-Qed.
+(*Qed.*) Abort.
 
 Lemma pr_narrow_subdecs: forall G z DsA DsB Ds1 Ds2,
   subdecs pr (G & z ~ typ_bind DsA) (open_decs z DsA) (open_decs z DsB) ->
