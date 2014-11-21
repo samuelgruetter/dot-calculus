@@ -304,6 +304,14 @@ with cbounds_decs: decs -> Prop :=
       cbounds_decs Ds ->
       cbounds_decs (decs_cons n D Ds).
 
+Inductive cbounds_ctx: ctx -> Prop :=
+  | cbounds_empty: 
+      cbounds_ctx empty
+  | cbounds_push: forall G x T,
+      cbounds_typ T ->
+      cbounds_ctx G ->
+      cbounds_ctx (G & x ~ T).
+
 (* expansion returns a set of decs without opening them *)
 Inductive exp : pmode -> ctx -> typ -> decs -> Prop :=
   | exp_top : forall m G, 
@@ -969,6 +977,10 @@ Lemma wf_sto_to_ok_G: forall s G,
 Proof. intros. induction H; jauto. Qed.
 
 Hint Resolve wf_sto_to_ok_s wf_sto_to_ok_G.
+
+Lemma wf_sto_to_cbounds_ctx: forall s G,
+  wf_sto s G -> cbounds_ctx G.
+Admitted. (* TODO holds *)
 
 Lemma ctx_binds_to_sto_binds: forall s G x T,
   wf_sto s G ->
@@ -3232,9 +3244,9 @@ Proof.
   }
   (* narrow_has *) { introv Has. inversions Has.
   + (* case has_trm *)
-    admit.
+    intros; discriminate.
   + (* case has_var *)
-    admit.
+    intros; discriminate.
   + (* case has_pr *)
     admit.
   }
