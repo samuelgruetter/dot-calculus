@@ -792,6 +792,14 @@ Proof.
   unfold subst_fvar. case_var*.
 Qed.
 
+Lemma subst_intro_dec: forall x u D, x \notin (fv_dec D) ->
+  open_dec u D = subst_dec x u (open_dec x D).
+Proof.
+  introv Fr. unfold open_trm. rewrite* subst_open_commute_dec.
+  destruct (@subst_fresh_typ_dec_decs x u) as [_ [Q _]]. rewrite* (Q D).
+  unfold subst_fvar. case_var*.
+Qed.
+
 Lemma subst_intro_decs: forall x u Ds, x \notin (fv_decs Ds) ->
   open_decs u Ds = subst_decs x u (open_decs x Ds).
 Proof.
@@ -1192,6 +1200,11 @@ Proof.
       rewrite label_for_dec_open in H. case_if. apply Has.
 Qed.
 
+(* TODO does not hold because
+   [(open_dec z D1) = (open_dec z D2)] does not imply [D1 = D2]. *)
+Axiom decs_has_close_admitted: forall Ds l D z,
+  decs_has (open_decs z Ds) l (open_dec z D) -> decs_has Ds l D.
+
 
 (* ###################################################################### *)
 (** ** Uniqueness *)
@@ -1419,6 +1432,30 @@ Proof.
   destruct weakening as [_ [W _]].
   rewrite <- (concat_empty_r (G1 & G2)).
   apply (W m (G1 & empty)); rewrite* concat_empty_r.
+Qed.
+
+Lemma weaken_subdec_middle: forall m G1 G2 G3 S U,
+  ok (G1 & G2 & G3) -> 
+  subdec m (G1      & G3) S U ->
+  subdec m (G1 & G2 & G3) S U.
+Proof.
+  destruct weakening as [_ [_ [_ [W _]]]].
+  introv Hok123 Hst.
+  specialize (W m (G1 & G3) S U Hst).
+  specialize (W G1 G2 G3 eq_refl Hok123).
+  apply W.
+Qed.
+
+Lemma weaken_subdec_end: forall m G1 G2 D1 D2,
+  ok (G1 & G2) -> 
+  subdec m G1        D1 D2 ->
+  subdec m (G1 & G2) D1 D2.
+Proof.
+  introv Hok Hsd.
+  apply (env_remove_empty (fun G0 => subdec m G0 D1 D2) (G1 & G2)).
+  apply weaken_subdec_middle.
+  apply (env_add_empty (fun G0 => ok G0) (G1 & G2) Hok).
+  apply (env_add_empty (fun G0 => subdec m G0 D1 D2) G1 Hsd).
 Qed.
 
 Lemma weaken_ty_trm_end: forall G1 G2 e T,
@@ -3183,6 +3220,24 @@ Axiom subsub2eq: forall m1 m2 G T1 T2,
   subtyp m1 m2 G T2 T1 ->
   T1 = T2.
 
+Axiom okadmit: forall G: ctx, ok G.
+
+(* substitution principle for precise has
+   TODO prove both substitution principle for ip and pr in the same lemma *)
+Lemma pr_subst_has: forall y S t l D G1 G2 x,
+     has pr (G1 & x ~ S & G2) t l D ->
+     binds y S G1 ->
+     ok (G1 & (x ~ S) & G2) ->
+     has pr (G1 & (subst_ctx x y G2)) (subst_trm x y t) l (subst_dec x y D).
+Admitted.
+
+Lemma pr_subst_subdec: forall y S D1 D2 G1 G2 x,
+     subdec pr (G1 & x ~ S & G2) D1 D2 ->
+     binds y S G1 ->
+     ok (G1 & x ~ S & G2) ->
+     subdec pr (G1 & (subst_ctx x y G2)) (subst_dec x y D1) (subst_dec x y D2).
+Admitted.
+
 Lemma narrow_exp:
    (forall m G T Ds2, exp m G T Ds2 -> forall G1 G2 x DsA DsB,
     m = pr ->
@@ -3233,14 +3288,7 @@ with narrow_subdecs:
     cbounds_ctx (G1 & x ~ (typ_bind DsB) & G2) ->
     cbounds_ctx (G1 & x ~ (typ_bind DsA) & G2) ->
     subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) ->
-    subdecs pr (G1 & x ~ (typ_bind DsA) & G2) Ds1 Ds2)
-with exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
-  cbounds_ctx G ->
-  subtyp pr m2 G T1 T2 ->
-  exp pr G T1 Ds1 ->
-  exp pr G T2 Ds2 ->
-  exists L, forall z, z \notin L ->
-    subdecs pr (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
+    subdecs pr (G1 & x ~ (typ_bind DsA) & G2) Ds1 Ds2).
 Proof.
   (* narrow_exp *) { introv Exp. inversions Exp.
   + (* case exp_top *)
@@ -3277,7 +3325,57 @@ Proof.
   + (* case has_var *)
     intros; discriminate.
   + (* case has_pr *)
-    admit.
+    rename H into Bi, H0 into Exp, H1 into DsHas, D into D2, Ds into Ds2.
+    introv _ Ok Eq CbB CbA SdsAB. subst.
+    assert (OkA: ok (G1 & x ~ typ_bind DsA & G2)) by apply okadmit.
+    destruct (classicT (v = x)) as [Eq | Ne].
+    - (* case v = x *)
+      subst. lets Eq: (binds_middle_eq_inv Bi Ok). subst.
+      inversions Exp. (* DsB = Ds2 *) rename Ds2 into DsB.
+      apply (decs_has_open x) in DsHas.
+      lets Sd: (decs_has_preserves_sub DsHas SdsAB).
+      destruct Sd as [D1' [DsAHas Sd]].
+      assert (exists D1, open_dec x D1 = D1') by admit.
+      destruct H as [D1 Eq]. subst.
+      exists (open_dec x D1).
+      apply (weaken_subdec_end OkA) in Sd.
+      refine (conj _ Sd).
+      apply has_pr with (typ_bind DsA) DsA.
+      * assert (xG2: x # G2) by admit.
+        apply (binds_middle_eq G1 (typ_bind DsA) xG2).
+      * apply exp_bind.
+      * apply (decs_has_close_admitted DsA D1 x DsAHas).
+    - lets BiA: (binds_weaken (binds_subst Bi Ne) OkA).
+      lets IHExp: (narrow_exp _ _ _ _ Exp _ _ _ _ _ eq_refl Ok eq_refl CbB CbA SdsAB).
+      destruct IHExp as [L [Ds1 [Exp1 Sds12]]].
+      pick_fresh z. assert (zL: z \notin L) by auto.
+      specialize (Sds12 z zL).
+      apply (decs_has_open z) in DsHas.
+      lets Sd: (decs_has_preserves_sub DsHas Sds12).
+      destruct Sd as [D1' [Ds1Has Sd]].
+      assert (exists D1, open_dec z D1 = D1') by admit.
+      destruct H as [D1 Eq]. subst.
+      exists (open_dec v D1).
+      (* T appears in env, and suppose env only typ_bind: *)
+      assert (Eq: T = typ_bind Ds1) by admit. (* <------ *)
+      subst.
+      lets P: (@pr_subst_subdec v (typ_bind Ds1) (open_dec z D1) (open_dec z D2)
+        (G1 & x ~ typ_bind DsA & G2) empty z).
+      unfold subst_ctx in P. rewrite map_empty in P.
+      repeat (progress rewrite -> concat_empty_r in P).
+      assert (OkA': ok (G1 & x ~ typ_bind DsA & G2 & z ~ typ_bind Ds1)) by auto.
+      specialize (P Sd BiA OkA').
+      assert (Impl1: z \notin fv_decs Ds1 -> z \notin fv_dec D1) by admit.
+      assert (Impl2: z \notin fv_decs Ds2 -> z \notin fv_dec D2) by admit.
+      assert (FrD1: z \notin fv_dec D1) by auto.
+      assert (FrD2: z \notin fv_dec D2) by auto.
+      rewrite <- (@subst_intro_dec z v D1 FrD1) in P.
+      rewrite <- (@subst_intro_dec z v D2 FrD2) in P.
+      refine (conj _ P).
+      apply has_pr with (typ_bind Ds1) Ds1.
+      * exact BiA.
+      * apply exp_bind.
+      * apply (decs_has_close_admitted Ds1 D1 z Ds1Has).
   }
   (* narrow_subtyp *) { introv St. inversions St.
   + (* case subtyp_refl *)
@@ -3341,7 +3439,17 @@ Proof.
   + (* case subdecs_push *)
     admit.
   }
-  (* exp_preserves_sub_pr *) { introv Cb St Exp1 Exp2. inversions St.
+Admitted. (* Qed. *)
+
+Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
+  cbounds_ctx G ->
+  subtyp pr m2 G T1 T2 ->
+  exp pr G T1 Ds1 ->
+  exp pr G T2 Ds2 ->
+  exists L, forall z, z \notin L ->
+    subdecs pr (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
+Proof.
+  (* exp_preserves_sub_pr *) { fix 8. introv Cb St Exp1 Exp2. inversions St.
   + (* case subtyp_refl *)
     lets Eq: (exp_unique Exp1 Exp2).
     subst. exists vars_empty. intros z zL. apply subdecs_refl.
@@ -3412,8 +3520,7 @@ Proof.
     assert (zL2: z \notin L2) by auto. specialize (Sds2 z zL2).
     assert (Sds2n: subdecs pr (G & z ~ typ_bind Ds1 & empty)
                            (open_decs z Ds2) (open_decs z Ds3)). {
-     (* !! applying narrowing-IH on Sds2, which is already the result of IH !! *)
-     refine (narrow_subdecs pr _ _ _ Sds2 G empty
+     refine (@narrow_subdecs pr _ _ _ Sds2 G empty
                 z Ds1 Ds2 eq_refl _ _ Cb Sds1).
      - admit. (* ok-stuff *)
      - symmetry. apply concat_empty_r.
