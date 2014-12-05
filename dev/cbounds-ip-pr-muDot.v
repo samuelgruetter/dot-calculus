@@ -3238,7 +3238,7 @@ Lemma pr_subst_subdec: forall y S D1 D2 G1 G2 x,
      subdec pr (G1 & (subst_ctx x y G2)) (subst_dec x y D1) (subst_dec x y D2).
 Admitted.
 
-Lemma narrow_exp:
+Lemma pr_narrowing:
    (forall m G T Ds2, exp m G T Ds2 -> forall G1 G2 x DsA DsB,
     m = pr ->
     ok G ->
@@ -3251,8 +3251,7 @@ Lemma narrow_exp:
       forall z, z \notin L ->
         subdecs pr (G1 & x ~ (typ_bind DsA) & G2 & z ~ typ_bind Ds1)
                 (open_decs z Ds1) (open_decs z Ds2))
-with narrow_has:
-   (forall m G t l D2, has m G t l D2 ->  forall G1 G2 x DsA DsB,
+/\ (forall m G t l D2, has m G t l D2 ->  forall G1 G2 x DsA DsB,
     m = pr ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
@@ -3262,8 +3261,7 @@ with narrow_has:
     exists D1,
       has    pr (G1 & x ~ (typ_bind DsA) & G2) t l D1 /\ 
       subdec pr (G1 & x ~ (typ_bind DsA) & G2) D1 D2)
-with narrow_subtyp:
-   (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 ->  forall G1 G2 x DsA DsB,
+/\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 ->  forall G1 G2 x DsA DsB,
     m1 = pr ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
@@ -3271,8 +3269,7 @@ with narrow_subtyp:
     cbounds_ctx (G1 & x ~ (typ_bind DsA) & G2) ->
     subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) ->
     subtyp pr oktrans (G1 & x ~ (typ_bind DsA) & G2) T1 T2)
-with narrow_subdec:
-   (forall m G D1 D2, subdec m G D1 D2 ->  forall G1 G2 x DsA DsB,
+/\ (forall m G D1 D2, subdec m G D1 D2 ->  forall G1 G2 x DsA DsB,
     m = pr ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
@@ -3280,8 +3277,7 @@ with narrow_subdec:
     cbounds_ctx (G1 & x ~ (typ_bind DsA) & G2) ->
     subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) ->
     subdec pr (G1 & x ~ (typ_bind DsA) & G2) D1 D2)
-with narrow_subdecs:
-   (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 ->  forall G1 G2 x DsA DsB,
+/\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 ->  forall G1 G2 x DsA DsB,
     m = pr ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
@@ -3290,20 +3286,20 @@ with narrow_subdecs:
     subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) ->
     subdecs pr (G1 & x ~ (typ_bind DsA) & G2) Ds1 Ds2).
 Proof.
-  (* narrow_exp *) { introv Exp. inversions Exp.
+  apply mutind5.
   + (* case exp_top *)
     intros. exists vars_empty decs_nil. split.
     - apply exp_top.
     - intros. rewrite open_decs_nil. apply subdecs_empty.
   + (* case exp_bind *)
-    intros. subst. exists vars_empty Ds2. split.
+    intros. subst. exists vars_empty Ds. split.
     - apply exp_bind.
     - intros. apply subdecs_refl.
   + (* case exp_sel *)
-    rename H into Has2, Lo into Lo2, Hi into Hi2, H0 into Exp2, x into v.
+    intros m G v L Lo2 Hi2 Ds Has2 IHHas Exp2 IHExp.
     intros G1 G2 x DsA DsB E1 Ok2 E2 CbB CbA SdsAB. subst.
     lets Eq: (collapse_bounds CbB Has2). rename Hi2 into U2. subst.
-    lets IHHas: (narrow_has _ _ _ _ _ Has2 _ _ _ _ _ eq_refl Ok2 eq_refl CbB CbA SdsAB).
+    specialize (IHHas _ _ _ _ _ eq_refl Ok2 eq_refl CbB CbA SdsAB).
     destruct IHHas as [D1 [Has1 Sd]].
     apply invert_subdec_typ_sync_left in Sd.
     destruct Sd as [Lo1 [Hi1 [Eq [StLo21 [StLoHi1 StHi12]]]]]. subst D1.
@@ -3312,20 +3308,18 @@ Proof.
       by apply exp_total.
     destruct A as [DsU ExpU].
     lets Eq: (subsub2eq StHi12 StLo21). symmetry in Eq. subst. clear StHi12 StLo21 StLoHi1.
-    lets IHExp: (narrow_exp _ _ _ _ Exp2 _ _ _ _ _ eq_refl Ok2 eq_refl CbB CbA SdsAB).
+    specialize (IHExp _ _ _ _ _ eq_refl Ok2 eq_refl CbB CbA SdsAB).
     destruct IHExp as [L0 [DsU' [ExpU' Sds2]]].
     lets Eq: (exp_unique ExpU' ExpU). subst. clear ExpU'.
     exists L0 DsU. split.
     - apply (exp_sel Has1 ExpU).
     - exact Sds2.
-  }
-  (* narrow_has *) { introv Has. inversions Has.
   + (* case has_trm *)
     intros; discriminate.
   + (* case has_var *)
     intros; discriminate.
   + (* case has_pr *)
-    rename H into Bi, H0 into Exp, H1 into DsHas, D into D2, Ds into Ds2.
+    intros G v T Ds2 l D2 Bi Exp IHExp DsHas.
     introv _ Ok Eq CbB CbA SdsAB. subst.
     assert (OkA: ok (G1 & x ~ typ_bind DsA & G2)) by apply okadmit.
     destruct (classicT (v = x)) as [Eq | Ne].
@@ -3346,7 +3340,7 @@ Proof.
       * apply exp_bind.
       * apply (decs_has_close_admitted DsA D1 x DsAHas).
     - lets BiA: (binds_weaken (binds_subst Bi Ne) OkA).
-      lets IHExp: (narrow_exp _ _ _ _ Exp _ _ _ _ _ eq_refl Ok eq_refl CbB CbA SdsAB).
+      specialize (IHExp _ _ _ _ _ eq_refl Ok eq_refl CbB CbA SdsAB).
       destruct IHExp as [L [Ds1 [Exp1 Sds12]]].
       pick_fresh z. assert (zL: z \notin L) by auto.
       specialize (Sds12 z zL).
@@ -3376,10 +3370,8 @@ Proof.
       * exact BiA.
       * apply exp_bind.
       * apply (decs_has_close_admitted Ds1 D1 z Ds1Has).
-  }
-  (* narrow_subtyp *) { introv St. inversions St.
   + (* case subtyp_refl *)
-    rename H into Has. introv Eq1 Ok Eq2 CbB CbA SdsAB. subst.
+    introv Has IHHas Eq1 Ok Eq2 CbB CbA SdsAB. subst.
     (* apply subtyp_tmode. apply subtyp_refl with Lo Hi. *)
     apply subtyp_refl_all.
   + (* case subtyp_top *)
@@ -3387,11 +3379,11 @@ Proof.
   + (* case subtyp_bot *)
     intros. apply subtyp_tmode. apply subtyp_bot.
   + (* case subtyp_bind *)
-    rename H into Sds. introv Eq1 Ok Eq2 CbB CbA SdsAB. subst.
+    introv Sds IHSds. introv Eq1 Ok Eq2 CbB CbA SdsAB. subst.
     apply subtyp_tmode. apply_fresh subtyp_bind as z.
     assert (zL: z \notin L) by auto.
     specialize (Sds z zL).
-    lets IHSds: (narrow_subdecs _ _ _ _ Sds).
+    specialize (IHSds z zL).
     rewrite <- concat_assoc in IHSds.
     specialize (IHSds G1 (G2 & z ~ typ_bind Ds1) x DsA DsB eq_refl).
     repeat (progress rewrite -> concat_assoc in IHSds).
@@ -3403,11 +3395,9 @@ Proof.
     exact IHSds.
   + (* case subtyp_sel_l *)
     (* note: here we don't depend on bounds being collapsed *)
-    rename H into Has2, H0 into St, S into Lo2, U into Hi2.
+    introv Has2 IHHas St IHSt.
     introv Eq1 Ok Eq2 CbB CbA SdsAB. subst.
-    lets IHSt: (narrow_subtyp _ _ _ _ _ St).
     specialize (IHSt _ _ _ _ _ eq_refl Ok eq_refl CbB CbA SdsAB).
-    lets IHHas: (narrow_has _ _ _ _ _ Has2).
     specialize (IHHas _ _ _ _ _ eq_refl Ok eq_refl CbB CbA SdsAB).
     destruct IHHas as [D1 [Has1 Sd]].
     apply invert_subdec_typ_sync_left in Sd.
@@ -3416,64 +3406,35 @@ Proof.
     apply (subtyp_trans StHi12 IHSt).
   + (* case subtyp_sel_r *)
     (* note: here we don't depend on bounds being collapsed *)
-    rename S into Lo2, U into Hi2, H into Has2, H0 into StLo2Hi2, H1 into StT1Lo2, x into v.
+    intros m G v L Lo2 Hi2 T Has2 IHHas StLo2Hi2 IHStLo2Hi2 StT1Lo2 IHStTLo2.
     introv Eq1 Ok Eq2 CbB CbA SdsAB. subst.
-    lets IHHas: (narrow_has _ _ _ _ _ Has2 _ _ _ _ _ eq_refl Ok eq_refl CbB CbA SdsAB).
+    specialize (IHHas _ _ _ _ _ eq_refl Ok eq_refl CbB CbA SdsAB).
     destruct IHHas as [D1 [Has1 Sd]].
     apply invert_subdec_typ_sync_left in Sd.
     destruct Sd as [Lo1 [Hi1 [Eq [StLo21 [StLoHi1 StHi12]]]]]. subst D1.
-    lets IHStT1Lo2: (narrow_subtyp _ _ _ _ _ StT1Lo2 _ _ _ _ _ 
-      eq_refl Ok eq_refl CbB CbA SdsAB).
+    specialize (IHStTLo2 _ _ _ _ _ eq_refl Ok eq_refl CbB CbA SdsAB).
     apply subtyp_tmode.
-    lets StTLo1: (subtyp_trans IHStT1Lo2 StLo21).
+    lets StTLo1: (subtyp_trans IHStTLo2 StLo21).
     apply (subtyp_sel_r Has1 StLoHi1 StTLo1).
-  (*
-  + (* case subtyp_sel_r *)
-    rename S into Lo2, U into Hi2, H into Has2, H0 into StLo2Hi2, H1 into StT1Lo2, x into v.
-    introv Eq1 Ok Eq2 CbB CbA SdsAB. subst.
-    lets Eq: (collapse_bounds CbB Has2). rename Hi2 into U2. subst.
-    lets IHHas: (narrow_has _ _ _ _ _ Has2 _ _ _ _ _ eq_refl Ok eq_refl CbB CbA SdsAB).
-    destruct IHHas as [D1 [Has1 Sd]].
-    apply invert_subdec_typ_sync_left in Sd.
-    destruct Sd as [Lo1 [Hi1 [Eq [StLo21 [StLoHi1 StHi12]]]]]. subst D1.
-    lets Eq: (collapse_bounds CbA Has1). rename Hi1 into U. subst.
-    assert (A: exists DsU, exp pr (G1 & x ~ (typ_bind DsA) & G2) U DsU)
-      by apply exp_total.
-    destruct A as [DsU ExpU].
-    lets Eq: (subsub2eq StHi12 StLo21). symmetry in Eq. subst. clear StHi12 StLo21 StLoHi1.
-    lets IHStT1Lo2: (narrow_subtyp _ _ _ _ _ StT1Lo2 _ _ _ _ _ eq_refl Ok eq_refl SdsAB).
-    apply subtyp_tmode.
-    lets StTLo1: (subtyp_trans IHStT1Lo2 StLo2Lo1).
-    apply (subtyp_sel_r Has1 StLo1Hi1 StTLo1).
-  *)
   + (* case subtyp_tmode *)
-    intros. subst.
-    lets IHSt: (narrow_subtyp _ _ _ _ _ H).
+    introv St IHSt Eq1 Ok Eq2 CbB CbA SdsAB. subst.
     refine (IHSt _ _ _ _ _ eq_refl _ eq_refl _ _ _); assumption.
   + (* case subtyp_trans *)
-    rename T3 into T3', T2 into T2'. rename T2' into T3, T3' into T2.
-    rename H into St12, H0 into St23.
-    introv Eq1 Ok Eq2 CbB CbA Sds. subst. apply subtyp_trans with T2.
-    - lets IHSt12: (narrow_subtyp _ _ _ _ _ St12).
-      refine (IHSt12 _ _ _ _ _ eq_refl _ eq_refl _ _ _); assumption.
-    - lets IHSt23: (narrow_subtyp _ _ _ _ _ St23).
-      refine (IHSt23 _ _ _ _ _ eq_refl _ eq_refl _ _ _); assumption.
-  }
-  (* narrow_subdec *) { introv Sd. inversions Sd.
+    introv St12 IHSt12 St23 IHSt23 Eq1 Ok Eq2 CbB CbA SdsAB. subst.
+    apply subtyp_trans with T2.
+    - refine (IHSt12 _ _ _ _ _ eq_refl _ eq_refl _ _ _); assumption.
+    - refine (IHSt23 _ _ _ _ _ eq_refl _ eq_refl _ _ _); assumption.
   + (* case subdec_typ *)
     intros. subst. apply* subdec_typ.
   + (* case subdec_fld *)
     intros. subst. apply* subdec_fld.
   + (* case subdec_mtd *)
     intros. subst. apply* subdec_mtd.
-  }
-  (* narrow_subdecs *) { introv Sds. inversions Sds.
   + (* case subdecs_empty *)
     intros. subst. apply subdecs_empty.
   + (* case subdecs_push *)
     intros. subst. apply* subdecs_push.
-  }
-Admitted. (* Qed. *)
+Qed.
 
 Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
   cbounds_ctx G ->
