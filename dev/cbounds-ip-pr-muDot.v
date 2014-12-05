@@ -3436,6 +3436,8 @@ Proof.
     intros. subst. apply* subdecs_push.
 Qed.
 
+Print Assumptions pr_narrowing.
+
 Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
   cbounds_ctx G ->
   subtyp pr m2 G T1 T2 ->
@@ -3444,86 +3446,72 @@ Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
   exists L, forall z, z \notin L ->
     subdecs pr (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2).
 Proof.
-  (* exp_preserves_sub_pr *) { fix 8. introv Cb St Exp1 Exp2. inversions St.
+  (* We don't use the [induction] tactic because we want to intro everything ourselves: *)
+  intros m2 G T1 T2 Ds1 Ds2 Cb St.
+  gen_eq m1: pr. gen m1 m2 G T1 T2 St Ds1 Ds2 Cb.
+  apply (subtyp_ind (fun m1 m2 G T1 T2 => forall Ds1 Ds2,
+    cbounds_ctx G ->
+    m1 = pr ->
+    exp m1 G T1 Ds1 ->
+    exp m1 G T2 Ds2 ->
+    exists L, forall z, _ ->
+      subdecs m1 (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2))).
   + (* case subtyp_refl *)
+    introv Has Cb Eq Exp1 Exp2. subst.
     lets Eq: (exp_unique Exp1 Exp2).
     subst. exists vars_empty. intros z zL. apply subdecs_refl.
   + (* case subtyp_top *)
+    introv Cb Eq1 Exp1 Exp2.
     inversions Exp2. exists vars_empty. intros z zL.
     unfold open_decs, open_rec_decs. apply subdecs_empty.
   + (* case subtyp_bot *)
+    introv Cb Eq1 Exp1.
     inversions Exp1.
   + (* case subtyp_bind *)
-    rename H into Sds.
+    introv Sds Cb Eq1 Exp1 Exp2.
     inversions Exp1. inversions Exp2. exists L.
     intros z zL. apply (Sds z zL).
   + (* case subtyp_sel_l *)
     (* This case does not need subdecs_trans, because Exp1 is precise, so the expansion
        of x.L is the same as the expansion of its upper bound Hi1, and we can just apply
        the IH for Hi1<:T *)
-    rename H into Has2, H0 into St.
+    introv Has2 St IHSt Cb Eq Exp1 Exp2. subst.
     apply invert_exp_sel in Exp1. destruct Exp1 as [Lo1 [Hi1 [Has1 Exp1]]].
     lets Eq: (has_unique Has2 Has1).
     inversions Eq.
-    apply (exp_preserves_sub_pr _ _ Hi1 T2 Ds1 Ds2 Cb St Exp1 Exp2).
+    apply* IHSt.
   + (* case subtyp_sel_r *)
-    rename H into Has, H0 into St1, H1 into St2, S into Lo, U into Hi.
+    introv Has St1 IHSt1 St2 IHSt2 Cb Eq Exp1 Exp2.
+    rename S into Lo, U into Hi. subst.
     apply invert_exp_sel in Exp2. destruct Exp2 as [Lo' [Hi' [Has' Exp2]]].
     lets Eq: (has_unique Has' Has). inversions Eq. clear Has'.
     lets Eq: (collapse_bounds Cb Has). rename Hi into U. subst.
-    apply (exp_preserves_sub_pr _ _ _ _ Ds1 Ds2 Cb St2 Exp1 Exp2).
-  (*
-  + (* case subtyp_sel_r *)
-    (* This case needs subdecs_trans: Ds1 <: DsLo <: Ds2 *)
-    rename H into Has, H0 into St1, H1 into St2, S into Lo, U into Hi.
-    apply invert_exp_sel in Exp2. destruct Exp2 as [Lo' [Hi' [Has' Exp2]]].
-    lets Eq: (has_unique Has' Has).
-    inversions Eq.
-    assert (ExpLo: exists DsLo, exp pr G Lo DsLo) by apply exp_total.
-    destruct ExpLo as [DsLo ExpLo].
-    lets IHSt1: (exp_preserves_sub_pr _ _ _ _ Ds1 DsLo Cb St2 Exp1 ExpLo).
-    destruct IHSt1 as [L1 Sds1].
-    lets IHSt2: (exp_preserves_sub_pr _ _ _ _ DsLo Ds2 Cb St1 ExpLo Exp2).
-    destruct IHSt2 as [L2 Sds2].
-    exists (L1 \u L2). intros z zn.
-    assert (zL1: z \notin L1) by auto. specialize (Sds1 z zL1).
-    assert (zL2: z \notin L2) by auto. specialize (Sds2 z zL2).
-    assert (Sds2n: subdecs pr (G & z ~ typ_bind Ds1 & empty)
-                           (open_decs z DsLo) (open_decs z Ds2)). {
-     refine (narrow_subdecs pr _ _ _ Sds2 G empty
-                z Ds1 DsLo eq_refl _ _ Sds1).
-     - admit. (* ok-stuff *)
-     - symmetry. apply concat_empty_r.
-    }
-    rewrite concat_empty_r in Sds2n.
-    apply (subdecs_trans Sds1 Sds2n).
-  *)
+    apply* IHSt2.
   + (* case subtyp_mode *)
-    intros. apply (exp_preserves_sub_pr _ _ _ _ _ _ Cb H Exp1 Exp2).
+    intros. subst. apply* H0.
   + (* case subtyp_trans *)
-    rename H into St12, H0 into St23, Ds2 into Ds3, T2 into T3s, T3 into T2.
-    rename T3s into T3, Exp2 into Exp3.
+    introv St12 IHSt12 St23 IHSt23 Cb Eq Exp1 Exp3.
+    rename Ds2 into Ds3. subst.
     assert (Exp2: exists Ds2, exp pr G T2 Ds2) by apply exp_total.
     destruct Exp2 as [Ds2 Exp2].
-    (* !! does `cbounds_decs Ds2` hold ?? *)
-    lets IHSt1: (exp_preserves_sub_pr _ _ _ _ Ds1 Ds2 Cb St12 Exp1 Exp2).
-    destruct IHSt1 as [L1 Sds1].
-    lets IHSt2: (exp_preserves_sub_pr _ _ _ _ Ds2 Ds3 Cb St23 Exp2 Exp3).
-    destruct IHSt2 as [L2 Sds2].
+    specialize (IHSt12 Ds1 Ds2 Cb eq_refl Exp1 Exp2).
+    destruct IHSt12 as [L1 Sds12].
+    specialize (IHSt23 Ds2 Ds3 Cb eq_refl Exp2 Exp3).
+    destruct IHSt23 as [L2 Sds23].
     exists (L1 \u L2). intros z zn.
-    assert (zL1: z \notin L1) by auto. specialize (Sds1 z zL1).
-    assert (zL2: z \notin L2) by auto. specialize (Sds2 z zL2).
-    assert (Sds2n: subdecs pr (G & z ~ typ_bind Ds1 & empty)
-                           (open_decs z Ds2) (open_decs z Ds3)). {
-     refine (@narrow_subdecs pr _ _ _ Sds2 G empty
-                z Ds1 Ds2 eq_refl _ _ Cb Sds1).
-     - admit. (* ok-stuff *)
-     - symmetry. apply concat_empty_r.
-    }
-    rewrite concat_empty_r in Sds2n.
-    apply (subdecs_trans Sds1 Sds2n).
-  }
-(*Qed.*) Abort.
+    assert (zL1: z \notin L1) by auto. specialize (Sds12 z zL1).
+    assert (zL2: z \notin L2) by auto. specialize (Sds23 z zL2).
+    apply (subdecs_trans Sds12).
+    destruct pr_narrowing as [_ [_ [_ [_ N]]]].
+    specialize (N pr _ _ _ Sds23 G empty z Ds1 Ds2 eq_refl).
+    do 2 rewrite concat_empty_r in N.
+    refine (N _ eq_refl _ _ Sds12).
+    - admit. (* ok-stuff *)
+    - admit. (* !! does `cbounds_decs Ds2` hold ?? *)
+    - admit. (* !! does `cbounds_decs Ds1` hold ?? *)
+Qed.
+
+Print Assumptions exp_preserves_sub_pr.
 
 Lemma pr_narrow_subdecs: forall G z DsA DsB Ds1 Ds2,
   subdecs pr (G & z ~ typ_bind DsA) (open_decs z DsA) (open_decs z DsB) ->
@@ -3531,7 +3519,7 @@ Lemma pr_narrow_subdecs: forall G z DsA DsB Ds1 Ds2,
   subdecs pr (G & z ~ typ_bind DsA) Ds1 Ds2.
 Admitted.
 
-Lemma exp_preserves_sub_pr: forall m2 s G T1 T2 Ds1 Ds2,
+Lemma exp_preserves_sub_pr_OLD: forall m2 s G T1 T2 Ds1 Ds2,
   wf_sto s G ->
   subtyp pr m2 G T1 T2 ->
   exp pr G T1 Ds1 ->
@@ -3601,8 +3589,6 @@ Proof.
     lets IHS23': (pr_narrow_subdecs IH12 IH23).  (* <-------- NARROWING *)
     apply (subdecs_trans IH12 IHS23').
 Qed.
-
-Print Assumptions exp_preserves_sub_pr.
 
 (* note: conclusion is precise
 Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2,
