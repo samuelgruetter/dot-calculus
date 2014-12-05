@@ -3379,15 +3379,41 @@ Proof.
   }
   (* narrow_subtyp *) { introv St. inversions St.
   + (* case subtyp_refl *)
-    admit.
+    rename H into Has. introv Eq1 Ok Eq2 CbB CbA SdsAB. subst.
+    (* apply subtyp_tmode. apply subtyp_refl with Lo Hi. *)
+    apply subtyp_refl_all.
   + (* case subtyp_top *)
-    admit.
+    intros. apply subtyp_tmode. apply subtyp_top.
   + (* case subtyp_bot *)
-    admit.
+    intros. apply subtyp_tmode. apply subtyp_bot.
   + (* case subtyp_bind *)
-    admit.
+    rename H into Sds. introv Eq1 Ok Eq2 CbB CbA SdsAB. subst.
+    apply subtyp_tmode. apply_fresh subtyp_bind as z.
+    assert (zL: z \notin L) by auto.
+    specialize (Sds z zL).
+    lets IHSds: (narrow_subdecs _ _ _ _ Sds).
+    rewrite <- concat_assoc in IHSds.
+    specialize (IHSds G1 (G2 & z ~ typ_bind Ds1) x DsA DsB eq_refl).
+    repeat (progress rewrite -> concat_assoc in IHSds).
+    assert (ok (G1 & x ~ typ_bind DsB & G2 & z ~ typ_bind Ds1)) by auto.
+    (* !! need Ds1 to have collapsed bounds !! *)
+    assert (CbB': cbounds_ctx (G1 & x ~ typ_bind DsB & G2 & z ~ typ_bind Ds1)) by admit.
+    assert (CbA': cbounds_ctx (G1 & x ~ typ_bind DsA & G2 & z ~ typ_bind Ds1)) by admit.
+    specialize (IHSds H eq_refl CbB' CbA' SdsAB).
+    exact IHSds.
   + (* case subtyp_sel_l *)
-    admit.
+    (* note: here we don't depend on bounds being collapsed *)
+    rename H into Has2, H0 into St, S into Lo2, U into Hi2.
+    introv Eq1 Ok Eq2 CbB CbA SdsAB. subst.
+    lets IHSt: (narrow_subtyp _ _ _ _ _ St).
+    specialize (IHSt _ _ _ _ _ eq_refl Ok eq_refl CbB CbA SdsAB).
+    lets IHHas: (narrow_has _ _ _ _ _ Has2).
+    specialize (IHHas _ _ _ _ _ eq_refl Ok eq_refl CbB CbA SdsAB).
+    destruct IHHas as [D1 [Has1 Sd]].
+    apply invert_subdec_typ_sync_left in Sd.
+    destruct Sd as [Lo1 [Hi1 [Eq [StLo21 [StLoHi1 StHi12]]]]]. subst D1.
+    apply subtyp_tmode. apply (subtyp_sel_l Has1).
+    apply (subtyp_trans StHi12 IHSt).
   + (* case subtyp_sel_r *)
     (* note: here we don't depend on bounds being collapsed *)
     rename S into Lo2, U into Hi2, H into Has2, H0 into StLo2Hi2, H1 into StT1Lo2, x into v.
@@ -3421,23 +3447,31 @@ Proof.
     apply (subtyp_sel_r Has1 StLo1Hi1 StTLo1).
   *)
   + (* case subtyp_tmode *)
-    admit.
+    intros. subst.
+    lets IHSt: (narrow_subtyp _ _ _ _ _ H).
+    refine (IHSt _ _ _ _ _ eq_refl _ eq_refl _ _ _); assumption.
   + (* case subtyp_trans *)
-    admit.
+    rename T3 into T3', T2 into T2'. rename T2' into T3, T3' into T2.
+    rename H into St12, H0 into St23.
+    introv Eq1 Ok Eq2 CbB CbA Sds. subst. apply subtyp_trans with T2.
+    - lets IHSt12: (narrow_subtyp _ _ _ _ _ St12).
+      refine (IHSt12 _ _ _ _ _ eq_refl _ eq_refl _ _ _); assumption.
+    - lets IHSt23: (narrow_subtyp _ _ _ _ _ St23).
+      refine (IHSt23 _ _ _ _ _ eq_refl _ eq_refl _ _ _); assumption.
   }
   (* narrow_subdec *) { introv Sd. inversions Sd.
   + (* case subdec_typ *)
-    admit.
+    intros. subst. apply* subdec_typ.
   + (* case subdec_fld *)
-    admit.
+    intros. subst. apply* subdec_fld.
   + (* case subdec_mtd *)
-    admit.
+    intros. subst. apply* subdec_mtd.
   }
   (* narrow_subdecs *) { introv Sds. inversions Sds.
   + (* case subdecs_empty *)
-    admit.
+    intros. subst. apply subdecs_empty.
   + (* case subdecs_push *)
-    admit.
+    intros. subst. apply* subdecs_push.
   }
 Admitted. (* Qed. *)
 
