@@ -2097,6 +2097,41 @@ Admitted. (* TODO should hold *)
 (* ------------------------------------------------------------------------- *)
 (* ------------------------------------------------------------------------- *)
 
+(* subdecs_refl does not hold, because subdecs requires that for each dec in rhs
+   (including hidden ones), there is an unhidden one in lhs *)
+(* or that there are no hidden decs in rhs *)
+Lemma subdecs_refl: forall m G Ds,
+  subdecs m G Ds Ds.
+Proof.
+Admitted. (* TODO does not hold!! *)
+
+Lemma decs_has_preserves_sub: forall m G Ds1 Ds2 l D2,
+  decs_has Ds2 l D2 ->
+  subdecs m G Ds1 Ds2 ->
+  exists D1, decs_has Ds1 l D1 /\ subdec m G D1 D2.
+Proof.
+  introv Has Sds. induction Ds2.
+  + inversion Has.
+  + unfold decs_has, get_dec in Has. inversions Sds. case_if.
+    - inversions Has. exists D1. auto.
+    - fold get_dec in Has. apply* IHDs2.
+Qed.
+
+Lemma decs_has_preserves_sub_D1_known: forall m G Ds1 Ds2 l D1 D2,
+  decs_has Ds1 l D1 ->
+  decs_has Ds2 l D2 ->
+  subdecs m G Ds1 Ds2 ->
+  subdec m G D1 D2.
+Proof.
+  introv Has1 Has2 Sds. induction Ds2.
+  + inversion Has2.
+  + unfold decs_has, get_dec in Has2. inversions Sds. case_if.
+    - inversions Has2. rename H5 into Has1'.
+      unfold decs_has in Has1, Has1'.
+      rewrite Has1' in Has1. inversions Has1. assumption.
+    - fold get_dec in Has2. apply* IHDs2.
+Qed.
+
 Lemma subdec_trans: forall m G D1 D2 D3,
   subdec m G D1 D2 -> subdec m G D2 D3 -> subdec m G D1 D3.
 Proof.
@@ -2645,43 +2680,9 @@ Proof.
   lets Q: (exp_preserves_sub_pr Wf P Exp1 Exp2).
 Qed.
 
+
 (* ###################################################################### *)
 (** ** Soundness helper lemmas *)
-
-(* subdecs_refl does not hold, because subdecs requires that for each dec in rhs
-   (including hidden ones), there is an unhidden one in lhs *)
-(* or that there are no hidden decs in rhs *)
-Lemma subdecs_refl: forall m G Ds,
-  subdecs m G Ds Ds.
-Proof.
-Admitted. (* TODO does not hold!! *)
-
-Lemma decs_has_preserves_sub: forall m G Ds1 Ds2 l D2,
-  decs_has Ds2 l D2 ->
-  subdecs m G Ds1 Ds2 ->
-  exists D1, decs_has Ds1 l D1 /\ subdec m G D1 D2.
-Proof.
-  introv Has Sds. induction Ds2.
-  + inversion Has.
-  + unfold decs_has, get_dec in Has. inversions Sds. case_if.
-    - inversions Has. exists D1. auto.
-    - fold get_dec in Has. apply* IHDs2.
-Qed.
-
-Lemma decs_has_preserves_sub_D1_known: forall m G Ds1 Ds2 l D1 D2,
-  decs_has Ds1 l D1 ->
-  decs_has Ds2 l D2 ->
-  subdecs m G Ds1 Ds2 ->
-  subdec m G D1 D2.
-Proof.
-  introv Has1 Has2 Sds. induction Ds2.
-  + inversion Has2.
-  + unfold decs_has, get_dec in Has2. inversions Sds. case_if.
-    - inversions Has2. rename H5 into Has1'.
-      unfold decs_has in Has1, Has1'.
-      rewrite Has1' in Has1. inversions Has1. assumption.
-    - fold get_dec in Has2. apply* IHDs2.
-Qed.
 
 (* This is the big fat TODO of the proof ;-) 
    So far we know how to do it in precise mode, but we don't know how to do it
