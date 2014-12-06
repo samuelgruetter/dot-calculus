@@ -2272,18 +2272,23 @@ Proof.
     intros m G v L Lo2 Hi2 Ds Has2 IHHas Exp2 IHExp.
     intros G1 G2 x DsA DsB E1 Ok2 E2 CbB CbA SdsAB. subst.
     lets Eq: (collapse_bounds CbB Has2). rename Hi2 into U2. subst.
+             (***************)
     specialize (IHHas _ _ _ _ _ eq_refl Ok2 eq_refl CbB CbA SdsAB).
     destruct IHHas as [D1 [Has1 Sd]].
     apply invert_subdec_typ_sync_left in Sd.
     destruct Sd as [Lo1 [Hi1 [Eq [StLo21 [StLoHi1 StHi12]]]]]. subst D1.
     lets Eq: (collapse_bounds CbA Has1). rename Hi1 into U. subst.
+             (***************)
     assert (A: exists DsU, exp pr (G1 & x ~ (typ_bind DsA) & G2) U DsU)
       by apply exp_total.
+              (*********)
     destruct A as [DsU ExpU].
     lets Eq: (subsub2eq StHi12 StLo21). symmetry in Eq. subst. clear StHi12 StLo21 StLoHi1.
+             (*********)
     specialize (IHExp _ _ _ _ _ eq_refl Ok2 eq_refl CbB CbA SdsAB).
     destruct IHExp as [L0 [DsU' [ExpU' Sds2]]].
     lets Eq: (exp_unique ExpU' ExpU). subst. clear ExpU'.
+             (**********)
     exists L0 DsU. split.
     - apply (exp_sel Has1 ExpU).
     - exact Sds2.
@@ -2362,6 +2367,7 @@ Proof.
     repeat (progress rewrite -> concat_assoc in IHSds).
     assert (ok (G1 & x ~ typ_bind DsB & G2 & z ~ typ_bind Ds1)) by auto.
     (* !! need Ds1 to have collapsed bounds !! *)
+         (*********************************)
     assert (CbB': cbounds_ctx (G1 & x ~ typ_bind DsB & G2 & z ~ typ_bind Ds1)) by admit.
     assert (CbA': cbounds_ctx (G1 & x ~ typ_bind DsA & G2 & z ~ typ_bind Ds1)) by admit.
     specialize (IHSds H eq_refl CbB' CbA' SdsAB).
@@ -2451,6 +2457,7 @@ Proof.
     introv Has2 St IHSt Cb Eq Exp1 Exp2. subst.
     apply invert_exp_sel in Exp1. destruct Exp1 as [Lo1 [Hi1 [Has1 Exp1]]].
     lets Eq: (has_unique Has2 Has1).
+             (**********)
     inversions Eq.
     apply* IHSt.
   + (* case subtyp_sel_r *)
@@ -2458,7 +2465,9 @@ Proof.
     rename S into Lo, U into Hi. subst.
     apply invert_exp_sel in Exp2. destruct Exp2 as [Lo' [Hi' [Has' Exp2]]].
     lets Eq: (has_unique Has' Has). inversions Eq. clear Has'.
+             (**********)
     lets Eq: (collapse_bounds Cb Has). rename Hi into U. subst.
+             (***************)
     apply* IHSt2.
   + (* case subtyp_mode *)
     intros. subst. apply* H0.
@@ -2476,12 +2485,13 @@ Proof.
     assert (zL2: z \notin L2) by auto. specialize (Sds23 z zL2).
     apply (subdecs_trans Sds12).
     destruct pr_narrowing as [_ [_ [_ [_ N]]]].
+            (************)
     specialize (N pr _ _ _ Sds23 G empty z Ds1 Ds2 eq_refl).
     do 2 rewrite concat_empty_r in N.
     refine (N _ eq_refl _ _ Sds12).
     - admit. (* ok-stuff *)
-    - admit. (* !! does `cbounds_decs Ds2` hold ?? *)
-    - admit. (* !! does `cbounds_decs Ds1` hold ?? *)
+    - admit. (* !! does `cbounds_decs Ds2` hold ?? hmm might be any "middle" type *)
+    - admit. (* does `cbounds_decs Ds1` hold? Yes if we give it as a hypothesis *)
 Qed.
 
 Print Assumptions exp_preserves_sub_pr.
@@ -2517,6 +2527,7 @@ Lemma ip2pr:
       t = (trm_var (avar_f v)) ->
       exists T1, binds v T1 G /\
                  subtyp pr oktrans G T1 T2).
+Admitted. (*
 Proof.
   apply mutind6; try (intros; discriminate).
   + (* case exp_top *)
@@ -2700,8 +2711,16 @@ Proof.
     specialize (IHSt23 s eq_refl Wf).
     exists T1. apply (conj BiG). apply (subtyp_trans St12 IHSt23).
 Qed.
-
+*)
 Print Assumptions ip2pr.
+
+Lemma pr2ip:
+   (forall m G T Ds, exp m G T Ds -> exp ip G T Ds)
+/\ (forall m G t L D, has m G t L D -> has ip G t L D)
+/\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 -> subtyp ip m2 G T1 T2)
+/\ (forall m G D1 D2, subdec m G D1 D2 -> subdec ip G D1 D2)
+/\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> subdecs ip G Ds1 Ds2).
+Admitted.
 
 Lemma invert_subtyp_bind_oktrans: forall s G Ds1 Ds2,
   wf_sto s G ->
@@ -2713,18 +2732,15 @@ Proof.
   specialize (P _ _ _ _ _ St _ eq_refl Wf).
   lets Exp1: (exp_bind pr G Ds1).
   lets Exp2: (exp_bind pr G Ds2).
-  lets Q: (exp_preserves_sub_pr Wf P Exp1 Exp2).
+  lets Cb: (wf_sto_to_cbounds_ctx Wf).
+  lets Q: (exp_preserves_sub_pr Cb P Exp1 Exp2).
+          (********************)
+  destruct Q as [L Q]. exists L. intros z zL. specialize (Q z zL). apply* pr2ip.
 Qed.
 
 
 (* ###################################################################### *)
 (** ** Soundness helper lemmas *)
-
-(* This is the big fat TODO of the proof ;-) 
-   So far we know how to do it in precise mode, but we don't know how to do it
-   in imprecise mode. *)
-Axiom oktrans_to_notrans: forall G T1 T2,
-  subtyp ip oktrans G T1 T2 -> subtyp ip notrans G T1 T2.
 
 Lemma has_sound: forall s G x Ds1 ds l D2,
   wf_sto s G ->
@@ -2740,7 +2756,8 @@ Proof.
   destruct Has as [X2 [Ds2 [T [Tyx [Exp2 [Ds2Has Eq]]]]]]. subst.
   destruct (invert_wf_sto_with_sbsm Wf Bis Tyx) as [St [Tyds Cb]].
   lets St': (exp_to_subtyp Exp2).
-  lets Sds: (invert_subtyp_bind (oktrans_to_notrans (subtyp_trans St St'))).
+  lets Sds: (invert_subtyp_bind_oktrans Wf (subtyp_trans St St')).
+            (**************************)
   destruct Sds as [L Sds].
   pick_fresh z. assert (zL: z \notin L) by auto. specialize (Sds z zL).
   lets BiG: (sto_binds_to_ctx_binds Wf Bis).
@@ -2748,7 +2765,7 @@ Proof.
   lets Ok: (wf_sto_to_ok_G Wf).
   assert (Ok': ok (G & z ~ typ_bind Ds1)) by auto.
   lets Sds': (@subdecs_subst_principle _ z x (typ_bind Ds1)
-              (open_decs z Ds1) (open_decs z Ds2) Ok' Sds Tyx1).
+              (***********************) (open_decs z Ds1) (open_decs z Ds2) Ok' Sds Tyx1).
   assert (zDs1: z \notin fv_decs Ds1) by auto.
   assert (zDs2: z \notin fv_decs Ds2) by auto.
   rewrite <- (@subst_intro_decs z x Ds1 zDs1) in Sds'.
@@ -2779,6 +2796,7 @@ Proof.
     rewrite* (@subst_intro_decs x y Ds).
     lets Tyy: (ty_var (binds_push_eq y S G)).
     destruct (subst_principles y S) as [_ [_ [_ [_ [_ [_ [_ P]]]]]]].
+             (****************)
     specialize (P _ _ _ Ty' (G & y ~ S) empty x).
     rewrite concat_empty_r in P.
     specialize (P eq_refl Tyy Okyx).
@@ -2821,6 +2839,7 @@ Proof.
     (* receiver is a var *)
     - destruct IH as [x [[X1 ds] [Eq Bis]]]. subst.
       lets P: (has_sound Wf Bis Has).
+              (*********)
       destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
       destruct (decs_has_to_defs_has Tyds Ds1Has) as [d dsHas].
       destruct (defs_has_fld_sync dsHas) as [r Eqd]. subst.
@@ -2834,11 +2853,12 @@ Proof.
     - (* case receiver is  a var *)
       destruct IHrec as [x [[Tds ds] [Eq Bis]]]. subst.
       specialize (IHarg s Wf). destruct IHarg as [IHarg | IHarg].
-      (* arg is an expression *)
-      * destruct IHarg as [s' [e' IHarg]]. do 2 eexists. apply (red_call2 x m IHarg).
-      (* arg is a var *)
-      * destruct IHarg as [y [o [Eq Bisy]]]. subst.
+      * (* arg is an expression *)
+        destruct IHarg as [s' [e' IHarg]]. do 2 eexists. apply (red_call2 x m IHarg).
+      * (* arg is a var *)
+        destruct IHarg as [y [o [Eq Bisy]]]. subst.
         lets P: (has_sound Wf Bis Has).
+                (*********)
         destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
         destruct (decs_has_to_defs_has Tyds Ds1Has) as [d dsHas].
         destruct (defs_has_mtd_sync dsHas) as [body Eqd]. subst.
@@ -2861,7 +2881,7 @@ Print Assumptions progress_result.
 
 Theorem preservation_proof:
   forall e s e' s' (Hred: red e s e' s') G T (Hwf: wf_sto s G) (Hty: ty_trm G e T),
-  (exists H, wf_sto s' (G & H) /\ ty_trm (G & H) e' T).
+  exists H, wf_sto s' (G & H) /\ ty_trm (G & H) e' T.
 Proof.
   intros s e s' e' Red. induction Red.
   (* red_call *)
@@ -2870,6 +2890,7 @@ Proof.
     apply invert_ty_call in TyCall.
     destruct TyCall as [T2 [U2 [Has [StU23 Tyy]]]].
     lets P: (has_sound Wf Bis Has).
+            (*********)
     destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
     apply invert_subdec_mtd_sync_left in Sd.
     destruct Sd as [T1 [U1 [Eq [StT StU12]]]]. subst D1.
@@ -2884,6 +2905,7 @@ Proof.
     rewrite <- Eqsubst.
     lets Ok: (wf_sto_to_ok_G Wf).
     apply (@trm_subst_principle G y' y (open_trm y' body) T1 _).
+           (*******************)
     - auto.
     - assert (y'L0: y' \notin L0) by auto. specialize (Tybody y' y'L0).
       apply (ty_sbsm Tybody).
@@ -2895,6 +2917,7 @@ Proof.
     apply invert_ty_sel in TySel.
     destruct TySel as [T2 [StT23 Has]].
     lets P: (has_sound Wf Bis Has).
+            (*********)
     destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
     apply invert_subdec_fld_sync_left in Sd.
     destruct Sd as [T1 [Eq StT12]]. subst D1.
