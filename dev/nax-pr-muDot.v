@@ -362,6 +362,38 @@ Inductive subtyp : mode -> ctx -> typ -> typ -> Prop :=
       subtyp oktrans G T1 T2 ->
       subtyp oktrans G T2 T3 ->
       subtyp oktrans G T1 T3
+  (* narrowing as an axiom: *)
+(*
+  | subtyp_nax : forall L G1 G2 Ds1 Ds2 T1 T2 x,
+      binds z (typ_bind Ds2) G2 ->
+      binds z (typ_bind Ds1) G1 ->
+      (* "but otherwise G1 = G2"?? *)
+      (forall z, z \notin L -> 
+         subdecs oktrans
+                 (G1 & z ~ typ_bind Ds1)
+                 (open_decs z Ds1) 
+                 (open_decs z Ds2)) ->
+      subtyp oktrans (G1 & x ~ typ_bind Ds2 & G2) T1 T2 ->
+      subtyp oktrans (G1 & x ~ typ_bind Ds1 & G2) T1 T2
+*)
+  | subtyp_nax : forall L G1 G2 Ds1 Ds2 T1 T2 x,
+      (forall z, z \notin L -> 
+         subdecs oktrans
+                 (G1 & z ~ typ_bind Ds1)
+                 (open_decs z Ds1) 
+                 (open_decs z Ds2)) ->
+      subtyp oktrans (G1 & x ~ typ_bind Ds2 & G2) T1 T2 ->
+      subtyp oktrans (G1 & x ~ typ_bind Ds1 & G2) T1 T2
+(*
+  | subtyp_nax : forall L G Ds1 Ds2 T1 T2 x,
+      (forall z, z \notin L -> 
+         subdecs oktrans
+                 (G & z ~ typ_bind Ds1)
+                 (open_decs z Ds1) 
+                 (open_decs z Ds2)) ->
+      subtyp oktrans (G & x ~ typ_bind Ds2) T1 T2 ->
+      subtyp oktrans (G & x ~ typ_bind Ds1) T1 T2
+*)
 with subdec : mode -> ctx -> dec -> dec -> Prop :=
   | subdec_refl : forall m G D,
       subdec m G D D
@@ -1556,6 +1588,41 @@ Proof.
   apply (weaken_phas_middle Exp Ok).
 Qed.
 
+(* split an env consisting of an env F followed by a singleton binding x ~ T
+   followed by an env G into to envs E1 and E2 *)
+Lemma split_env_single_env: forall (A: Type) G E1 E2 F x (T: A),
+   E1 & E2 = F & x ~ T & G ->
+   (exists F1 F2, F = F1 & F2 /\ E1 = F1 /\ E2 = F2 & x ~ T & G)
+\/ (exists G1 G2, G = G1 & G2 /\ E1 = F & x ~ T & G1 /\ E2 = G2).
+Proof.
+  intro A. apply (env_ind (fun G => forall E1 E2 F x T,
+    E1 & E2 = F & x ~ T & G ->
+    (exists F1 F2, F = F1 & F2 /\ E1 = F1 /\ E2 = F2 & x ~ T & G) \/
+    (exists G1 G2, G = G1 & G2 /\ E1 = F & x ~ T & G1 /\ E2 = G2)
+  )).
+  + introv Eq. rewrite concat_empty_r in Eq.
+    lets H: (env_case E2).
+    destruct H as [Eq1 | [x' [T' [E2' Eq1]]]].
+    - subst. rewrite concat_empty_r in Eq.
+      right. exists (@empty A) (@empty A).
+      do 2 rewrite concat_empty_r. auto.
+    - subst. rename E2' into E2. rewrite concat_assoc in Eq.
+      destruct (eq_push_inv Eq) as [Eq1 [Eq2 Eq3]]. subst. clear Eq. left.
+      exists E1 E2. rewrite concat_empty_r. auto.
+  + intro G. introv IH Eq. rewrite concat_assoc in Eq.
+    lets H: (env_case E2).
+    destruct H as [Eq1 | [x' [v' [E2' Eq1]]]].
+    - subst. rewrite concat_empty_r in Eq. subst.
+      right. exists (G & x ~ v) (@empty A). rewrite concat_assoc.
+      rewrite concat_empty_r. auto.
+    - subst. rename E2' into E2. rewrite concat_assoc in Eq.
+      destruct (eq_push_inv Eq) as [Eq1 [Eq2 Eq3]]. subst. clear Eq.
+      specialize (IH _ _ _ _ _ Eq3).
+      destruct IH as [[F1 [F2 [Eq4 [Eq5 Eq6]]]] | [G1 [G2 [Eq4 [Eq5 Eq6]]]]]; subst.
+      * left.  exists F1 F2. rewrite concat_assoc. auto.
+      * right. exists G1 (G2 & x ~ v). rewrite concat_assoc. auto.
+Qed.
+
 Lemma subtyp_and_subdec_and_subdecs_weaken:
    (forall m G T1 T2 (Hst : subtyp m G T1 T2),
       forall G1 G2 G3, ok (G1 & G2 & G3) ->
@@ -1608,6 +1675,40 @@ Proof.
     specialize (IH12 G1 G2 G3 Hok123 Heq).
     specialize (IH23 G1 G2 G3 Hok123 Heq).
     apply (subtyp_trans IH12 IH23).
+  + (* case nax *)
+    intros L G1 G3 Ds1 Ds2 T1 T2 x Sds IHSds St IHSt E1 G2 E2 Ok Eq.
+    (* Somewhere in `G1 & x ~ typ_bind Ds1 & G3`, we're gonna insert G2.
+       E1 & E2 splits the env into two parts and indicates where we're inserting G2. *)
+    destruct (split_env_single_env Eq) as [H | H]; clear Eq.
+    - (* case 1: We're inserting G2 before `x ~ typ_bind Ds1` *)
+      destruct H as [G1a [G1b [Eq1 [Eq2 Eq3]]]]. subst.
+      do 2 rewrite concat_assoc.
+      do 2 rewrite concat_assoc in Ok.
+      apply_fresh subtyp_nax as z.
+      * assert (zL: z \notin L) by auto.
+        specialize (IHSds z zL G1a G2 (G1b & z ~ typ_bind Ds1)).
+        do 2 rewrite concat_assoc in IHSds.
+        assert (Ok': ok (G1a & G2 & G1b & z ~ typ_bind Ds1)) by admit.
+        apply (IHSds Ok' eq_refl).
+      * specialize (IHSt G1a G2 (G1b & x ~ typ_bind Ds2 & G3)).
+        do 4 rewrite concat_assoc in IHSt.
+        assert (Ok': ok (G1a & G2 & G1b & x ~ typ_bind Ds2 & G3)) by admit.
+        apply (IHSt Ok' eq_refl).
+    - (* case 2: We're inserting G2 after `x ~ typ_bind Ds1` *)
+      destruct H as [G3a [G3b [Eq1 [Eq2 Eq3]]]]. subst.
+      assert (Eq: (G1 & x ~ typ_bind Ds1 & G3a & G2 & G3b)
+                = (G1 & x ~ typ_bind Ds1 & (G3a & G2 & G3b)))
+        by (repeat progress rewrite concat_assoc; reflexivity).
+      rewrite Eq; clear Eq.
+      apply_fresh subtyp_nax as z.
+      * assert (zL: z \notin L) by auto.
+        (* note: We don't need IHSds, because weakening happens outside (to the right of)
+            `G1 & z ~ typ_bind Ds1` *)
+        apply (Sds z zL).
+      * specialize (IHSt (G1 & x ~ typ_bind Ds2 & G3a) G2 G3b).
+        repeat progress rewrite concat_assoc in *.
+        assert (Ok': ok (G1 & x ~ typ_bind Ds2 & G3a & G2 & G3b)) by admit.
+        apply (IHSt Ok' eq_refl).
 
   (* subdec *)
   + (* case subdec_refl *)
@@ -1925,6 +2026,13 @@ Proof.
   intros. case_if; reflexivity.
 Qed.
 
+Lemma align_env_single_env: forall (A: Type) E1 E2 F1 F2 x y (X Y: A),
+   E1 & x ~ X & E2 = F1 & y ~ Y & F2 ->
+   (exists I, F1 = E1 & x ~ X & I /\ E2 = I & y ~ Y & F2)
+\/ (exists I, E1 = F1 & y ~ Y & I /\ F2 = I & x ~ X & E2)
+\/ (E1 = F1 /\ x = y /\ X = Y /\ E2 = F2).
+Admitted.
+
 Lemma subtyping_subst_principles: forall y S,
    (forall m G T U, subtyp m G T U -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
@@ -1983,6 +2091,23 @@ Proof.
   + (* case subtyp_trans *)
     intros G T1 T2 T3 St12 IH12 St23 IH23 G1 G2 x Eq Bi Ok. subst.
     apply* subtyp_trans.
+  + (* case subtyp_nax *)
+    introv Sds IHSds St IHSt Eq Bi Ok. subst.
+    destruct (align_env_single_env Eq) as [H | [H | H]]; clear Eq.
+    - destruct H as [G4 [Eq1 Eq2]]. subst.
+      assert (Eq: G1 & x ~ typ_bind Ds1 &  G4 & subst_ctx x0 y G3 
+                = G1 & x ~ typ_bind Ds1 & (G4 & subst_ctx x0 y G3))
+      by (repeat progress rewrite concat_assoc; reflexivity).
+      rewrite Eq; clear Eq.
+      apply_fresh subtyp_nax as z.
+      * (* don't need IH *)
+        assert (zL: z \notin L) by auto. apply (Sds z zL).
+      * specialize (IHSt (G1 & x ~ typ_bind Ds2 & G4) G3 x0).
+        repeat progress rewrite concat_assoc in *.
+        assert (Ok': ok (G1 & x ~ typ_bind Ds2 & G4 & x0 ~ S & G3)) by admit.
+        refine (IHSt eq_refl _ Ok'). clear IHSt IHSds.
+        (* --> also need to expose y in the env *)
+
   + (* case subdec_refl *)
     intros. destruct m. 
     - apply subdec_refl.
