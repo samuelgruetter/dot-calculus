@@ -2033,22 +2033,30 @@ Lemma align_env_single_env: forall (A: Type) E1 E2 F1 F2 x y (X Y: A),
 \/ (E1 = F1 /\ x = y /\ X = Y /\ E2 = F2).
 Admitted.
 
+Lemma align35: forall (A: Type) (X Y Z: A) x y z E1 E2 E3 F1 F2,
+   E1 & x ~ X & E2 & y ~ Y & E3 = F1 & z ~ Z & F2 ->
+   (exists E1b, E1 = F1 & z ~ Z & E1b /\ F2 = E1b & x ~ X & E2 & y ~ Y & E3)
+\/ (F1 = E1 /\ z = x /\ Z = X /\ F2 = E2 & y ~ Y & E3)
+\/ (exists E2a E2b, E2 = E2a & z ~ Z & E2b /\
+                    F1 = E1 & x ~ X & E2a /\ F2 = E2b & y ~ Y & E3)
+\/ (F1 = E1 & x ~ X & E2 /\ y = z /\ Y = Z /\ F2 = E3)
+\/ (exists E3a, F1 = E1 & x ~ X & E2 & y ~ Y & E3a /\ E3 = E3a & z ~ Z & F2).
+Admitted.
+
 Lemma subtyping_subst_principles: forall y S,
-   (forall m G T U, subtyp m G T U -> forall G1 G2 x,
-     G = (G1 & (x ~ S) & G2) ->
-     binds y S G1 ->
-     ok (G1 & (x ~ S) & G2) ->
-     subtyp m (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_typ x y U))
-/\ (forall m G D1 D2, subdec m G D1 D2 -> forall G1 G2 x,
-     G = (G1 & (x ~ S) & G2) ->
-     binds y S G1 ->
-     ok (G1 & (x ~ S) & G2) ->
-     subdec m (G1 & (subst_ctx x y G2)) (subst_dec x y D1) (subst_dec x y D2))
-/\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> forall G1 G2 x,
-     G = (G1 & (x ~ S) & G2) ->
-     binds y S G1 ->
-     ok (G1 & (x ~ S) & G2) ->
-     subdecs m (G1 & (subst_ctx x y G2)) (subst_decs x y Ds1) (subst_decs x y Ds2)).
+   (forall m G T U, subtyp m G T U -> forall G1 G2 G3 x,
+     G = G1 & y ~ S & G2 & x ~ S & G3 ->
+     ok G ->
+     subtyp m (G1 & y ~ S & G2 & (subst_ctx x y G3)) (subst_typ x y T) (subst_typ x y U))
+/\ (forall m G D1 D2, subdec m G D1 D2 -> forall G1 G2 G3 x,
+     G = G1 & y ~ S & G2 & x ~ S & G3 ->
+     ok G ->
+     subdec m (G1 & y ~ S & G2 & (subst_ctx x y G3)) (subst_dec x y D1) (subst_dec x y D2))
+/\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> forall G1 G2 G3 x,
+     G = G1 & y ~ S & G2 & x ~ S & G3 ->
+     ok G ->
+     subdecs m (G1 & y ~ S & G2 & (subst_ctx x y G3))
+        (subst_decs x y Ds1) (subst_decs x y Ds2)).
 Proof.
   intros y S. apply subtyp_mutind.
   + (* case subtyp_refl *)
@@ -2058,12 +2066,12 @@ Proof.
   + (* case subtyp_bot *)
     intros. simpl. apply subtyp_bot.
   + (* case subtyp_bind *)
-    intros L G Ds1 Ds2 Sds IH G1 G2 x Eq Bi Ok. subst.
+    intros L G Ds1 Ds2 Sds IH G1 G2 G3 x Eq Ok. subst.
     apply_fresh subtyp_bind as z. fold subst_decs.
     assert (zL: z \notin L) by auto.
-    specialize (IH z zL G1 (G2 & z ~ typ_bind Ds1) x).
+    specialize (IH z zL G1 G2 (G3 & z ~ typ_bind Ds1) x).
     rewrite concat_assoc in IH.
-    specialize (IH eq_refl Bi).
+    specialize (IH eq_refl).
     unfold subst_ctx in IH. rewrite map_push in IH. simpl in IH.
     rewrite concat_assoc in IH.
     rewrite (subst_open_commute_decs x y z Ds1) in IH.
@@ -2072,27 +2080,62 @@ Proof.
     assert (x <> z) by auto. case_if.
     unfold subst_ctx. apply IH. admit.
   + (* case subtyp_sel_l *)
-    intros G v L Lo Hi T Has St IH G1 G2 x Eq Bi Ok. subst.
-    specialize (IH _ _ _ eq_refl Bi Ok).
+    intros G v L Lo Hi T Has St IH G1 G2 G3 x Eq Ok. subst.
+    specialize (IH _ _ _ x eq_refl Ok).
     simpl.
+    assert (Bi: binds y S (G1 & y ~ S & G2)) by admit.
     lets P: (subst_phas Has Bi Ok). simpl in P. unfold subst_fvar in P.
     case_if; case_if; apply (subtyp_sel_l P IH).
   + (* case subtyp_sel_r *)
-    intros G v L Lo Hi T Has St1 IH1 St2 IH2 G1 G2 x Eq Bi Ok. subst.
-    specialize (IH1 _ _ _ eq_refl Bi Ok).
-    specialize (IH2 _ _ _ eq_refl Bi Ok).
+    intros G v L Lo Hi T Has St1 IH1 St2 IH2 G1 G2 G3 x Eq Ok. subst.
+    specialize (IH1 _ _ _ x eq_refl Ok).
+    specialize (IH2 _ _ _ x eq_refl Ok).
     simpl.
+    assert (Bi: binds y S (G1 & y ~ S & G2)) by admit.
     lets P: (subst_phas Has Bi Ok). simpl in P. unfold subst_fvar in P.
     case_if; case_if; apply (subtyp_sel_r P IH1 IH2).
   + (* case subtyp_mode *)
-    intros G T1 T2 St IH G1 G2 x Eq Bi Ok. subst.
-    specialize (IH _ _ _ eq_refl Bi Ok).
+    intros G T1 T2 St IH G1 G2 G3 x Eq Ok. subst.
+    specialize (IH _ _ _ x eq_refl Ok).
     apply (subtyp_mode IH).
   + (* case subtyp_trans *)
-    intros G T1 T2 T3 St12 IH12 St23 IH23 G1 G2 x Eq Bi Ok. subst.
+    intros G T1 T2 T3 St12 IH12 St23 IH23 G1 G2 G3 x Eq Ok. subst.
     apply* subtyp_trans.
   + (* case subtyp_nax *)
-    introv Sds IHSds St IHSt Eq Bi Ok. subst.
+    introv Sds IHSds St IHSt Eq Ok. subst.
+    symmetry in Eq.
+    destruct (align35 Eq) as [H | [H | [H | [H | H]]]]; clear Eq.
+    - destruct H as [G5 [Eq1 Eq2]]. subst.
+      rename G1 into E1, G5 into E2, G3 into E3, G4 into E4.
+      assert (Eq: E1 & x ~ typ_bind Ds1 &  E2 & y ~ S & E3 & subst_ctx x0 y E4
+                = E1 & x ~ typ_bind Ds1 & (E2 & y ~ S & E3 & subst_ctx x0 y E4))
+      by (repeat rewrite concat_assoc; reflexivity).
+      rewrite Eq; clear Eq.
+      apply_fresh subtyp_nax as z.
+      * assert (zL: z \notin L) by auto. apply (Sds z zL).
+      * specialize (IHSt (E1 & x ~ typ_bind Ds2 & E2) E3 E4 x0).
+        repeat rewrite concat_assoc in *.
+        assert (Ok': ok (E1 & x ~ typ_bind Ds2 & E2 & y ~ S & E3 & x0 ~ S & E4)) by admit.
+        apply (IHSt eq_refl Ok').
+    - destruct H as [Eq1 [Eq2 [Eq3 Eq4]]]. subst.
+      rename G0 into E1, G3 into E2, G4 into E3.
+      assert (Eq: E1 & y ~ typ_bind Ds1 & E2 & subst_ctx x0 y E3
+                = E1 & y ~ typ_bind Ds1 & (E2 & subst_ctx x0 y E3))
+      by (repeat rewrite concat_assoc; reflexivity).
+      rewrite Eq; clear Eq.
+      apply_fresh subtyp_nax as z.
+      * assert (zL: z \notin L) by auto. apply (Sds z zL).
+      * (* IHSt is useless because Ds1 <> Ds2 !!! *)
+      admit.
+    - destruct H as [G5 [G6 [Eq1 [Eq2 Eq3]]]]. subst.
+      admit.
+    - destruct H as [Eq1 [Eq2 [Eq3 Eq4]]]. subst.
+      admit.
+    - destruct H as [G5 [Eq1 Eq2]]. subst.
+      admit.
+(*
+  + (* case subtyp_nax *)
+    introv Sds IHSds St IHSt Eq Ok. subst.
     destruct (align_env_single_env Eq) as [H | [H | H]]; clear Eq.
     - destruct H as [G4 [Eq1 Eq2]]. subst.
       assert (Eq: G1 & x ~ typ_bind Ds1 &  G4 & subst_ctx x0 y G3 
@@ -2107,7 +2150,7 @@ Proof.
         assert (Ok': ok (G1 & x ~ typ_bind Ds2 & G4 & x0 ~ S & G3)) by admit.
         refine (IHSt eq_refl _ Ok'). clear IHSt IHSds.
         (* --> also need to expose y in the env *)
-
+*)
   + (* case subdec_refl *)
     intros. destruct m. 
     - apply subdec_refl.
@@ -2121,9 +2164,9 @@ Proof.
   + (* case subdecs_empty *)
     intros. apply subdecs_empty.
   + (* case subdecs_push *)
-    intros m G n Ds1 Ds2 D1 D2 Has Sd IH1 Sds IH2 G1 G2 x Eq Bi Ok. subst.
-    specialize (IH1 _ _ _ eq_refl Bi Ok).
-    specialize (IH2 _ _ _ eq_refl Bi Ok).
+    intros m G n Ds1 Ds2 D1 D2 Has Sd IH1 Sds IH2 G1 G2 G3 x Eq Ok. subst.
+    specialize (IH1 _ _ _ x eq_refl Ok).
+    specialize (IH2 _ _ _ x eq_refl Ok).
     apply (subst_decs_has x y) in Has.
     rewrite <- (subst_label_for_dec n x y D2) in Has.
     apply subdecs_push with (subst_dec x y D1); 
