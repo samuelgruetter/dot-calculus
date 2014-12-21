@@ -2491,7 +2491,8 @@ Proof.
     refine (N _ eq_refl _ _ Sds12).
     - admit. (* ok-stuff *)
     - admit. (* !! does `cbounds_decs Ds2` hold ?? hmm might be any "middle" type *)
-    - admit. (* does `cbounds_decs Ds1` hold? Yes if we give it as a hypothesis *)
+    - admit. (* does `cbounds_decs Ds1` hold?
+      Yes if we give it as a hypothesis. But then we cannot use IHSt23 any more! *)
 Qed.
 
 Print Assumptions exp_preserves_sub_pr.
