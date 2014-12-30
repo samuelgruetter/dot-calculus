@@ -6,6 +6,30 @@ Idea: Judgment max_ctx_subtyp is given an env G and two types T1 and T2, and it 
 the max size of the env in the subtype derivation [G |- T1 <: T2].
 Then we can use this upper bound on the env size as a termination measure in
 narrowing/exp_preserves_sub.
+
+T1 = { z =>
+  List: bot .. { y =>
+    h: Int
+    t: z.List
+  }
+  l: z.List
+}
+
+is subtype of
+
+T2 = { z =>
+  List: bot .. { y =>
+    h: Int
+    t: z.List
+  }
+  // can "inline" z.List as many times as we want
+  // --> env grows arbitrarily (is this a problem?)
+  l: { l =>
+    h: Int
+    t: z.List
+  }
+}
+
 *)
 
 Set Implicit Arguments.
