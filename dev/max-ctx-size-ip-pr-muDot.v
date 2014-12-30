@@ -354,40 +354,48 @@ with subtyp : pmode -> tmode -> ctx -> typ -> typ -> nat -> Prop :=
       has m G (trm_var (avar_f x)) L (dec_typ S U) ->
       subtyp m oktrans G U T n ->
       subtyp m notrans G (typ_sel (pth_var (avar_f x)) L) T n
-  | subtyp_sel_r : forall m G x L S U T n1 n2,
+  | subtyp_sel_r : forall m G x L S U T n,
       has m G (trm_var (avar_f x)) L (dec_typ S U) ->
-      subtyp m oktrans G S U n1 -> (* <--- makes proofs a lot easier!! *)
-      subtyp m oktrans G T S n2 ->
-      subtyp m notrans G T (typ_sel (pth_var (avar_f x)) L) (max n1 n2)
+      subtyp m oktrans G S U n -> (* <--- makes proofs a lot easier!! *)
+      subtyp m oktrans G T S n ->
+      subtyp m notrans G T (typ_sel (pth_var (avar_f x)) L) n
   | subtyp_tmode : forall m G T1 T2 n,
       subtyp m notrans G T1 T2 n ->
       subtyp m oktrans G T1 T2 n
-  | subtyp_trans : forall m G T1 T2 T3 n12 n23,
-      subtyp m oktrans G T1 T2 n12 ->
-      subtyp m oktrans G T2 T3 n23 ->
-      subtyp m oktrans G T1 T3 (max n12 n23)
+  | subtyp_trans : forall m G T1 T2 T3 n,
+      subtyp m oktrans G T1 T2 n ->
+      subtyp m oktrans G T2 T3 n ->
+      subtyp m oktrans G T1 T3 n
+  | subtyp_ctx_size : forall m1 m2 G T1 T2 n1 n2,
+      n1 < n2 ->
+      subtyp m1 m2 G T1 T2 n1 ->
+      subtyp m1 m2 G T1 T2 n2
 with subdec : pmode -> ctx -> dec -> dec -> nat -> Prop :=
-  | subdec_typ : forall m G Lo1 Hi1 Lo2 Hi2 n1 n2 n3,
+  | subdec_typ : forall m G Lo1 Hi1 Lo2 Hi2 n,
       (* Lo2 <: Lo1 <: Hi1 <: Hi2 *)
-      subtyp m oktrans G Lo2 Lo1 n1 ->
-      subtyp m oktrans G Lo1 Hi1 n2 ->
-      subtyp m oktrans G Hi1 Hi2 n3 ->
-      subdec m G (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2) (max n1 (max n2 n3))
+      subtyp m oktrans G Lo2 Lo1 n ->
+      subtyp m oktrans G Lo1 Hi1 n ->
+      subtyp m oktrans G Hi1 Hi2 n ->
+      subdec m G (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2) n
   | subdec_fld : forall m G T1 T2 n,
       subtyp m oktrans G T1 T2 n ->
       subdec m G (dec_fld T1) (dec_fld T2) n
-  | subdec_mtd : forall m G S1 T1 S2 T2 n1 n2,
-      subtyp m oktrans G S2 S1 n1 ->
-      subtyp m oktrans G T1 T2 n2 ->
-      subdec m G (dec_mtd S1 T1) (dec_mtd S2 T2) (max n1 n2)
+  | subdec_mtd : forall m G S1 T1 S2 T2 n,
+      subtyp m oktrans G S2 S1 n ->
+      subtyp m oktrans G T1 T2 n ->
+      subdec m G (dec_mtd S1 T1) (dec_mtd S2 T2) n
 with subdecs : pmode -> ctx -> decs -> decs -> nat -> Prop :=
-  | subdecs_empty : forall m G Ds,
-      subdecs m G Ds decs_nil (ctx_size G)
-  | subdecs_push : forall m G n Ds1 Ds2 D1 D2 n1 n2,
+  | subdecs_empty : forall m G Ds n,
+      ctx_size G <= n ->
+      subdecs m G Ds decs_nil n
+  | subdecs_push : forall m G n Ds1 Ds2 D1 D2 n1,
       decs_has Ds1 (label_for_dec n D2) D1 ->
       subdec  m G D1  D2  n1 ->
-      subdecs m G Ds1 Ds2 n2 ->
-      subdecs m G Ds1 (decs_cons n D2 Ds2) (max n1 n2)
+      subdecs m G Ds1 Ds2 n1 ->
+      subdecs m G Ds1 (decs_cons n D2 Ds2) n1
+  | subdecs_refl : forall m G Ds n1,
+      ctx_size G <= n1 ->
+      subdecs m G Ds Ds n1
 with ty_trm : ctx -> trm -> typ -> Prop :=
   | ty_var : forall G x T,
       binds x T G ->
