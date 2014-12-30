@@ -1,35 +1,8 @@
 
 (*
-predict-max-ctx-size-ip-pr-muDot:
+max-ctx-size-ip-pr-muDot:
 
-Idea: Judgment max_ctx_subtyp is given an env G and two types T1 and T2, and it predicts
-the max size of the env in the subtype derivation [G |- T1 <: T2].
-Then we can use this upper bound on the env size as a termination measure in
-narrowing/exp_preserves_sub.
-
-T1 = { z =>
-  List: bot .. { y =>
-    h: Int
-    t: z.List
-  }
-  l: z.List
-}
-
-is subtype of
-
-T2 = { z =>
-  List: bot .. { y =>
-    h: Int
-    t: z.List
-  }
-  // can "inline" z.List as many times as we want
-  // --> env grows arbitrarily (is this a problem?)
-  l: { l =>
-    h: Int
-    t: z.List
-  }
-}
-
+Idea: subtype judgments give max env size they need & use it as termination measure
 *)
 
 Set Implicit Arguments.
@@ -334,6 +307,8 @@ Inductive cbounds_ctx: ctx -> Prop :=
       cbounds_ctx G ->
       cbounds_ctx (G & x ~ T).
 
+Definition ctx_size(G: ctx) := LibList.length G.
+
 (* expansion returns a set of decs without opening them *)
 Inductive exp : pmode -> ctx -> typ -> decs -> Prop :=
   | exp_top : forall m G, 
@@ -362,61 +337,57 @@ with has : pmode -> ctx -> trm -> label -> dec -> Prop :=
       exp pr G T Ds ->
       decs_has Ds l D ->
       has pr G (trm_var (avar_f v)) l (open_dec v D)
-with subtyp : pmode -> tmode -> ctx -> typ -> typ -> Prop :=
-  | subtyp_refl : forall m G x L Lo Hi,
-      has m G (trm_var (avar_f x)) L (dec_typ Lo Hi) ->
-      subtyp m notrans G (typ_sel (pth_var (avar_f x)) L) (typ_sel (pth_var (avar_f x)) L)
+with subtyp : pmode -> tmode -> ctx -> typ -> typ -> nat -> Prop :=
+  | subtyp_refl : forall m G T,
+      subtyp m notrans G T T (ctx_size G)
   | subtyp_top : forall m G T,
-      subtyp m notrans G T typ_top
+      subtyp m notrans G T typ_top (ctx_size G)
   | subtyp_bot : forall m G T,
-      subtyp m notrans G typ_bot T
-  | subtyp_bind : forall L m G Ds1 Ds2,
+      subtyp m notrans G typ_bot T (ctx_size G)
+  | subtyp_bind : forall L m G Ds1 Ds2 n,
       (forall z, z \notin L -> 
          subdecs m (G & z ~ (typ_bind Ds1))
                    (open_decs z Ds1) 
-                   (open_decs z Ds2)) ->
-      subtyp m notrans G (typ_bind Ds1) (typ_bind Ds2)
-  | subtyp_sel_l : forall m G x L S U T,
+                   (open_decs z Ds2) n) ->
+      subtyp m notrans G (typ_bind Ds1) (typ_bind Ds2) n
+  | subtyp_sel_l : forall m G x L S U T n,
       has m G (trm_var (avar_f x)) L (dec_typ S U) ->
-      subtyp m oktrans G U T ->
-      subtyp m notrans G (typ_sel (pth_var (avar_f x)) L) T
-  | subtyp_sel_r : forall m G x L S U T,
+      subtyp m oktrans G U T n ->
+      subtyp m notrans G (typ_sel (pth_var (avar_f x)) L) T n
+  | subtyp_sel_r : forall m G x L S U T n1 n2,
       has m G (trm_var (avar_f x)) L (dec_typ S U) ->
-      subtyp m oktrans G S U -> (* <--- makes proofs a lot easier!! *)
-      subtyp m oktrans G T S ->
-      subtyp m notrans G T (typ_sel (pth_var (avar_f x)) L)
-  | subtyp_tmode : forall m G T1 T2,
-      subtyp m notrans G T1 T2 ->
-      subtyp m oktrans G T1 T2
-  | subtyp_trans : forall m G T1 T2 T3,
-      subtyp m oktrans G T1 T2 ->
-      subtyp m oktrans G T2 T3 ->
-      subtyp m oktrans G T1 T3
-with subdec : pmode -> ctx -> dec -> dec -> Prop :=
-  | subdec_typ : forall m G Lo1 Hi1 Lo2 Hi2,
-      (* only allow implementable decl *)
-      subtyp m oktrans G Lo1 Hi1 ->
-      subtyp m oktrans G Lo2 Hi2 ->
-      (* lhs narrower range than rhs *)
-      subtyp m oktrans G Lo2 Lo1 ->
-      subtyp m oktrans G Hi1 Hi2 ->
-      (* conclusion *)
-      subdec m G (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2)
-  | subdec_fld : forall m G T1 T2,
-      subtyp m oktrans G T1 T2 ->
-      subdec m G (dec_fld T1) (dec_fld T2)
-  | subdec_mtd : forall m G S1 T1 S2 T2,
-      subtyp m oktrans G S2 S1 ->
-      subtyp m oktrans G T1 T2 ->
-      subdec m G (dec_mtd S1 T1) (dec_mtd S2 T2)
-with subdecs : pmode -> ctx -> decs -> decs -> Prop :=
+      subtyp m oktrans G S U n1 -> (* <--- makes proofs a lot easier!! *)
+      subtyp m oktrans G T S n2 ->
+      subtyp m notrans G T (typ_sel (pth_var (avar_f x)) L) (max n1 n2)
+  | subtyp_tmode : forall m G T1 T2 n,
+      subtyp m notrans G T1 T2 n ->
+      subtyp m oktrans G T1 T2 n
+  | subtyp_trans : forall m G T1 T2 T3 n12 n23,
+      subtyp m oktrans G T1 T2 n12 ->
+      subtyp m oktrans G T2 T3 n23 ->
+      subtyp m oktrans G T1 T3 (max n12 n23)
+with subdec : pmode -> ctx -> dec -> dec -> nat -> Prop :=
+  | subdec_typ : forall m G Lo1 Hi1 Lo2 Hi2 n1 n2 n3,
+      (* Lo2 <: Lo1 <: Hi1 <: Hi2 *)
+      subtyp m oktrans G Lo2 Lo1 n1 ->
+      subtyp m oktrans G Lo1 Hi1 n2 ->
+      subtyp m oktrans G Hi1 Hi2 n3 ->
+      subdec m G (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2) (max n1 (max n2 n3))
+  | subdec_fld : forall m G T1 T2 n,
+      subtyp m oktrans G T1 T2 n ->
+      subdec m G (dec_fld T1) (dec_fld T2) n
+  | subdec_mtd : forall m G S1 T1 S2 T2 n1 n2,
+      subtyp m oktrans G S2 S1 n1 ->
+      subtyp m oktrans G T1 T2 n2 ->
+      subdec m G (dec_mtd S1 T1) (dec_mtd S2 T2) (max n1 n2)
+with subdecs : pmode -> ctx -> decs -> decs -> nat -> Prop :=
   | subdecs_empty : forall m G Ds,
-      subdecs m G Ds decs_nil
-  | subdecs_push : forall m G n Ds1 Ds2 D1 D2,
+      subdecs m G Ds decs_nil (ctx_size G)
+  | subdecs_push : forall m G n Ds1 Ds2 D1 D2 n1 n2,
       decs_has Ds1 (label_for_dec n D2) D1 ->
-      subdec  m G D1 D2 ->
-      subdecs m G Ds1 Ds2 ->
-      subdecs m G Ds1 (decs_cons n D2 Ds2)
+      subdec  m G D1  D2  n1 ->
+      subdecs m G Ds1 Ds2 n2 ->
+      subdecs m G Ds1 (decs_cons n D2 Ds2) (max n1 n2)
 with ty_trm : ctx -> trm -> typ -> Prop :=
   | ty_var : forall G x T,
       binds x T G ->
@@ -433,9 +404,9 @@ with ty_trm : ctx -> trm -> typ -> Prop :=
                  ty_defs (G & x ~ typ_bind Ds) (open_defs x ds) (open_decs x Ds)) ->
       cbounds_decs Ds ->
       ty_trm G (trm_new Ds ds) (typ_bind Ds)
-  | ty_sbsm : forall G t T U,
+  | ty_sbsm : forall G t T U n,
       ty_trm G t T ->
-      subtyp ip oktrans G T U ->
+      subtyp ip oktrans G T U n ->
       ty_trm G t U
 with ty_def : ctx -> def -> dec -> Prop :=
   | ty_typ : forall G S T,
@@ -980,6 +951,7 @@ Qed.
 (* ###################################################################### *)
 (** ** Trivial inversion lemmas *)
 
+(*
 Lemma invert_subdec_typ_sync_left: forall m G D Lo2 Hi2,
    subdec m G D (dec_typ Lo2 Hi2) ->
    exists Lo1 Hi1, D = (dec_typ Lo1 Hi1) /\
@@ -2531,160 +2503,6 @@ Lemma narrow_subdecs_admitted:
     subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) ->
     subdecs pr (G1 & x ~ (typ_bind DsA) & G2) Ds1 Ds2.
 Admitted.
-
-Axiom ctx_size: ctx -> nat.
-
-(* given a type T which is well-formed in the environment G, what's the max env size that
-   can appear in any subtyp derivation of the form [G |- X <: T] ?
-   Note: self reference might appear in upper bound -> env can become arbitrarily large
-   in { z => List: Bot .. ... } <: X.
-   But not in lower bound -> [G |- X <: T] instead of [G |- T <: X].
-   But contravariance swaps direction -> give both lhs and rhs as args.
- *)
-
-Inductive notsel: typ -> Prop :=
-  | notsel_top  : notsel typ_top
-  | notsel_bot  : notsel typ_bot
-  | notsel_bind : forall Ds, notsel (typ_bind Ds).
-
-(* Given types T1 and T2 which are well-formed in the environment G,
-   how big can the env become until we can decide if T1 <: T2 ?
-   I.e. if T1 <: T2, what's the max env size that can appear the subtype derivation,
-   and if T1 is not a subtype of T2, how big can the env become until we know it? *)
-Inductive max_ctx_subtyp: ctx -> typ -> typ -> nat -> Prop :=
-  (* yes *)
-  | max_ctx_refl : forall G T,
-      max_ctx_subtyp G T T (ctx_size G)
-  | max_ctx_top : forall G T1,
-      max_ctx_subtyp G T1 typ_top (ctx_size G)
-  | max_ctx_bot : forall G T2,
-      max_ctx_subtyp G typ_bot T2 (ctx_size G)
-  | max_ctx_bind : forall L G Ds1 Ds2 n,
-      (forall z, z \notin L -> max_ctx_subdecs (G & z ~ typ_bind Ds1) Ds1 Ds2 n) ->
-      max_ctx_subtyp G (typ_bind Ds1) (typ_bind Ds2) (S n) (* <--- n+1 *)
-  (* when checking if p.L <: q.M, we can apply both subtyp_sel_l/r, but maybe only
-     one of them works *)
-  | max_ctx_sel : forall G x1 L1 Lo1 Hi1 x2 L2 Lo2 Hi2 n1 n2,
-      has pr G (trm_var (avar_f x1)) L1 (dec_typ Lo1 Hi1) ->
-      has pr G (trm_var (avar_f x2)) L2 (dec_typ Lo2 Hi2) ->
-      max_ctx_subtyp G (typ_sel (pth_var (avar_f x1)) L1) Lo2 n1 ->
-      max_ctx_subtyp G Hi2 (typ_sel (pth_var (avar_f x2)) L2) n2 ->
-      max_ctx_subtyp G (typ_sel (pth_var (avar_f x1)) L1)
-                       (typ_sel (pth_var (avar_f x2)) L2) (max n1 n2)
-  | max_ctx_sel_l : forall G x L Lo Hi T n,
-      notsel T ->
-      has pr G (trm_var (avar_f x)) L (dec_typ Lo Hi) ->
-      max_ctx_subtyp G Hi T n ->
-      max_ctx_subtyp G (typ_sel (pth_var (avar_f x)) L) T n
-  | max_ctx_sel_r : forall G T x L Lo Hi n1 n2,
-      notsel T ->
-      has pr G (trm_var (avar_f x)) L (dec_typ Lo Hi) ->
-      max_ctx_subtyp G T Lo n1 ->
-      max_ctx_subtyp G Lo Hi n2 ->
-      max_ctx_subtyp G T (typ_sel (pth_var (avar_f x)) L) (max n1 n2)
-  (* can't have transitivity rule because "T1 not subtype of TWeird" and
-     "TWeird not subtype of T2" does not imply "T1 not subtype of T2" *)
-  (* no *)
-  | max_ctx_top_bot : forall G,
-      max_ctx_subtyp G typ_top typ_bot (ctx_size G)
-  | max_ctx_top_bind : forall G Ds,
-      max_ctx_subtyp G typ_top (typ_bind Ds) (ctx_size G)
-  | max_ctx_bind_bot : forall G Ds,
-      max_ctx_subtyp G (typ_bind Ds) typ_bot (ctx_size G)
-with max_ctx_subdec : ctx -> dec -> dec -> nat -> Prop :=
-  | max_ctx_typ : forall G Lo1 Hi1 Lo2 Hi2 n1 n2,
-      max_ctx_subtyp G Lo2 Lo1 n1 ->
-      max_ctx_subtyp G Hi1 Hi2 n2 ->
-      max_ctx_subdec G (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2) (max n1 n2)
-  | max_ctx_fld : forall G T1 T2 n,
-      max_ctx_subtyp G T1 T2 n ->
-      max_ctx_subdec G (dec_fld T1) (dec_fld T2) n
-  | max_ctx_mtd : forall G A1 R1 A2 R2 n1 n2,
-      max_ctx_subtyp G A2 A1 n1 ->
-      max_ctx_subtyp G R1 R2 n2 ->
-      max_ctx_subdec G (dec_mtd A1 R1) (dec_mtd A2 R2) (max n1 n2)
-with max_ctx_subdecs : ctx -> decs -> decs -> nat -> Prop :=
-  | max_ctx_nil : forall G Ds1,
-      max_ctx_subdecs G Ds1 decs_nil (ctx_size G)
-  | max_ctx_cons : forall G D1 D2 Ds1 Ds2 n n1 n2,
-      decs_has Ds1 (label_for_dec n D2) D1 ->
-      max_ctx_subdec G D1 D2 n1 ->
-      max_ctx_subdecs G Ds1 Ds2 n2 ->
-      max_ctx_subdecs G Ds1 (decs_cons n D2 Ds2) (max n1 n2).
-
-Lemma top_not_subtyp_of_bot: forall m1 G, ~ subtyp m1 notrans G typ_top typ_bot.
-Proof.
-  intros m1 G St. inversions St.
-Qed.
-
-(* Lemma max_ctx_trans_top: forall G T1 T2 n,
-  wf_typ G T1 ->
-  wf_typ G T2 ->
-  max_ctx_subtyp G typ_top T2 n ->
-  max_ctx_subtyp G T1 T2 n.
-does not hold: maybe T1 and T2 are typ_bind, so typ_top is not the correct "middle guy" *)
-
-Lemma calc_max_ctx_size:
-   (forall G T1, wf_typ G T1 -> forall G' T2, wf_typ G' T2 -> G' = G -> 
-     exists n, max_ctx_subtyp G T1 T2 n)
-/\ (forall G D1, wf_dec G D1 -> forall G' D2, wf_dec G' D2 -> G' = G ->
-     exists n, max_ctx_subdec G D1 D2 n)
-/\ (forall G Ds1, wf_decs G Ds1 -> forall G' Ds2, wf_decs G' Ds2 -> G' = G ->
-     exists n, max_ctx_subdecs G Ds1 Ds2 n).
-Proof.
-  apply wf_mutind.
-  + intro G.
-    assert (
-    apply (wf_typ_ind (fun G' T2 => G' = G -> exists n, _)).
-    - intros. subst. exists (ctx_size G). apply max_ctx_top.
-    - intros. subst. exists (ctx_size G). apply max_ctx_top_bot.
-    - intros. subst. exists (ctx_size G). apply max_ctx_top_bind.
-    - introv Has WfLo IHLo WfHi IHHi Eq.
-      specialize (IHLo Eq). specialize (IHHi Eq). subst.
-      destruct IHLo as [n1 IHLo].
-      destruct IHHi as [n2 IHHi].
-   
- (* TODO "transitivity": Lo <: typ_top <: Hi --> Lo <: Hi *)
-...
-Qed.
-
-Lemma calc_max_ctx_size:
-   (forall G T1, wf_typ G T1 -> forall T2,
-     wf_typ G T2 ->
-     (exists n, max_ctx_subtyp G T1 T2 n) /\ (exists n, max_ctx_subtyp G T2 T1 n))
-/\ (forall G D1, wf_dec G D1 -> forall D2,
-     wf_dec G D2 ->
-     (exists n, max_ctx_subdec G D1 D2 n) /\ (exists n, max_ctx_subdec G D2 D1 n))
-/\ (forall G Ds1, wf_decs G Ds1 -> forall Ds2,
-     wf_decs G Ds2 ->
-     (exists n, max_ctx_subdecs G Ds1 Ds2 n) /\ (exists n, max_ctx_subdecs G Ds2 Ds1 n)).
-Proof.
-  apply wf_mutind; introv Wf2; split.
-  + admit.
-  + exists (ctx_size G). apply max_ctx_top.
-  ...
-Qed.
-
-(* given a type T which is well-formed in the environment G, what's the max env size that
-   can appear in any subtyp derivation of the form [G |- T <: X] ?
-Fixpoint max_ctx_subtyp(G: ctx)(T: typ): nat :=
-  match T with
-  | typ_top => ctx_size G
-  | typ_bot => ctx_size G
-  | typ_bind Ds => S (max_ctx_subdecs G Ds) (* <-- +1 because self ref is put into env *)
-  | typ_sel p L => ctx_size G (* TODO need to lookup lower and upper bound of p.L ! *)
-  end
-with max_ctx_subdec(G: ctx)(D: dec): nat :=
-  match D with
-  | dec_typ Lo Hi => max (max_ctx_subtyp G Lo) (max_ctx_subtyp G Hi)
-  | dec_fld T     => max_ctx_subtyp G T
-  | dec_mtd T U   => max (max_ctx_subtyp G T) (max_ctx_subtyp G U)
-  end
-with max_ctx_subdecs(G: ctx)(Ds: decs): nat :=
-  match Ds with
-  | decs_nil => ctx_size G
-  | decs_cons n D1 Ds1 => max (max_ctx_subdec G D1) (max_ctx_subdecs G Ds1)
-  end.
 *)
 
 Lemma pr_narrowing:
