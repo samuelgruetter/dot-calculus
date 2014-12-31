@@ -367,7 +367,7 @@ with subtyp : pmode -> tmode -> ctx -> typ -> typ -> nat -> Prop :=
       subtyp m oktrans G T2 T3 n ->
       subtyp m oktrans G T1 T3 n
   | subtyp_ctx_size : forall m1 m2 G T1 T2 n1 n2,
-      n1 < n2 ->
+      n1 <= n2 -> (* <= instead of < because it saves us the case distinction d =?= 0 *)
       subtyp m1 m2 G T1 T2 n1 ->
       subtyp m1 m2 G T1 T2 n2
 with subdec : pmode -> ctx -> dec -> dec -> nat -> Prop :=
@@ -1283,7 +1283,74 @@ Lemma has_unique: forall G v l D1 D2,
 Proof. intros. apply* exp_has_unique. Qed.
 
 
-(*
+(* ###################################################################### *)
+(** ** Context size lemmas *)
+
+Lemma subdec_ctx_size: forall m G D1 D2 n1 n2,
+  n1 <= n2 -> subdec m G D1 D2 n1 -> subdec m G D1 D2 n2.
+Proof.
+  introv Hle Sd. destruct (Lt.le_lt_or_eq _ _ Hle) as [Heq | Hlt].
+  + inversions* Sd.
+  + subst. exact Sd.
+Qed.
+
+Hint Resolve subdec_ctx_size.
+Hint Resolve Max.le_max_r Max.le_max_l.
+
+Lemma subdecs_ctx_size: forall m G Ds1 Ds2 n1 n2,
+  n1 <= n2 -> subdecs m G Ds1 Ds2 n1 -> subdecs m G Ds1 Ds2 n2.
+Proof.
+  introv Lt Sds. induction Sds.
+  + apply subdecs_empty. omega.
+  + apply* (@subdecs_push m G n Ds1 Ds2 D1 D2 n2 H).
+  + apply subdecs_refl. omega.
+Qed.
+
+Lemma min_ctx:
+   (forall m1 m2 G T1  T2  n, subtyp  m1 m2 G T1  T2  n -> ctx_size G <= n)
+/\ (forall m     G D1  D2  n, subdec  m     G D1  D2  n -> ctx_size G <= n)
+/\ (forall m     G Ds1 Ds2 n, subdecs m     G Ds1 Ds2 n -> ctx_size G <= n).
+Proof.
+  apply mutind3.
+  + intros. omega.
+  + intros. omega.
+  + intros. omega.
+  + intros. pick_fresh z. assert (zL: z \notin L) by auto.
+    specialize (H z zL). rewrite <- cons_to_push in H. unfold ctx_size in *.
+    rewrite LibList.length_cons in H. omega.
+  + intros. assumption.
+  + intros. assumption.
+  + intros. assumption.
+  + intros. assumption.
+  + intros. omega.
+  + intros. assumption.
+  + intros. assumption.
+  + intros. assumption.
+  + intros. assumption.
+  + intros. assumption.
+  + intros. assumption.
+Qed.
+
+Print Assumptions min_ctx.
+
+Definition min_ctx_subtyp := proj1 min_ctx.
+Definition min_ctx_subdec := proj1 (proj2 min_ctx).
+Definition min_ctx_subdecs := proj2 (proj2 min_ctx).
+
+Lemma ctx_size_push: forall G z T, ctx_size (G & z ~ T) = (ctx_size G) + 1.
+Proof.
+  intros. unfold ctx_size. rewrite <- cons_to_push.
+  rewrite LibList.length_cons. omega.
+Qed.
+
+Lemma ctx_size_swap_middle: forall G1 x T y U G2,
+  ctx_size (G1 & x ~ T & G2) = ctx_size (G1 & y ~ U & G2).
+Proof.
+  intros. rewrite concat_def. rewrite single_def. unfold ctx_size.
+  repeat progress rewrite LibList.length_app. auto.
+Qed.
+
+
 (* ###################################################################### *)
 (** ** Weakening *)
 
@@ -1296,18 +1363,21 @@ Lemma weakening:
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
       has m (G1 & G2 & G3) t l d)
-/\ (forall m1 m2 G T1 T2, subtyp m1 m2 G T1 T2 -> forall G1 G2 G3,
+/\ (forall m1 m2 G T1 T2 n, subtyp m1 m2 G T1 T2 n -> forall G1 G2 G3 d,
       G = G1 & G3 ->
+      n <= (ctx_size (G1 & G3)) + d ->
       ok (G1 & G2 & G3) ->
-      subtyp m1 m2 (G1 & G2 & G3) T1 T2)
-/\ (forall m G D1 D2, subdec m G D1 D2 -> forall G1 G2 G3,
+      subtyp m1 m2 (G1 & G2 & G3) T1 T2 ((ctx_size (G1 & G2 & G3)) + d))
+/\ (forall m G D1 D2 n, subdec m G D1 D2 n -> forall G1 G2 G3 d,
       G = G1 & G3 ->
+      n <= (ctx_size (G1 & G3)) + d ->
       ok (G1 & G2 & G3) ->
-      subdec m (G1 & G2 & G3) D1 D2)
-/\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> forall G1 G2 G3,
+      subdec m (G1 & G2 & G3) D1 D2 ((ctx_size (G1 & G2 & G3)) + d))
+/\ (forall m G Ds1 Ds2 n, subdecs m G Ds1 Ds2 n -> forall G1 G2 G3 d,
       G = G1 & G3 ->
+      n <= (ctx_size (G1 & G3)) + d ->
       ok (G1 & G2 & G3) ->
-      subdecs m (G1 & G2 & G3) Ds1 Ds2)
+      subdecs m (G1 & G2 & G3) Ds1 Ds2 ((ctx_size (G1 & G2 & G3)) + d))
 /\ (forall G t T, ty_trm G t T -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
@@ -1338,47 +1408,61 @@ Proof.
     - apply* H. 
     - assumption.
   + (* case subtyp_refl *)
-    introv Has IHHas Ok Eq. subst.
-    apply* subtyp_refl.
+    intros. refine (subtyp_ctx_size _ (subtyp_refl _ _ _)). omega.
   + (* case subtyp_top *)
-    introv Hok123 Heq; subst.
-    apply (subtyp_top _ _).
+    intros. refine (subtyp_ctx_size _ (subtyp_top _ _ _)). omega.
   + (* case subtyp_bot *)
-    introv Hok123 Heq; subst.
-    apply (subtyp_bot _ _).
+    intros. refine (subtyp_ctx_size _ (subtyp_bot _ _ _)). omega.
   + (* case subtyp_bind *)
-    introv Hc IH Hok123 Heq; subst.
+    introv Sds IHSds Eq1 Eq2 Ok. subst.
     apply_fresh subtyp_bind as z.
     rewrite <- concat_assoc.
-    refine (IH z _ G1 G2 (G3 & z ~ typ_bind Ds1) _ _).
-    - auto.
-    - rewrite <- concat_assoc. reflexivity.
-    - rewrite concat_assoc. auto.
+    assert (zL: z \notin L) by auto.
+    specialize (Sds z zL).
+    destruct d as [|d].
+    - (* case d = 0 *)
+      lets M: (min_ctx_subdecs Sds). rewrite ctx_size_push in M.
+      omega. (* contradiction *)
+    - (* case d > 0 *)
+      assert (Eq: S d = 1 + d) by omega. rewrite Eq in *. clear Eq.
+      rewrite Plus.plus_assoc in *.
+      assert (Eq: ctx_size (G1 & G2 & G3) + 1 + d
+                = ctx_size (G1 & G2 & (G3 & z ~ typ_bind Ds1)) + d). {
+        rewrite concat_assoc. rewrite ctx_size_push. reflexivity.
+      }
+      rewrite Eq. clear Eq.
+      refine (IHSds z zL G1 G2 (G3 & z ~ typ_bind Ds1) d _ _ _).
+      * rewrite <- concat_assoc. reflexivity.
+      * rewrite concat_assoc. rewrite ctx_size_push. exact Eq2.
+      * rewrite concat_assoc. auto.
   + (* case subtyp_asel_l *)
     intros. subst. apply* subtyp_sel_l.
   + (* case subtyp_asel_r *)
     intros. subst. apply* subtyp_sel_r.
   + (* case subtyp_tmode *)
-    introv Hst IH Hok Heq. apply subtyp_tmode. apply* IH.
+    intros. apply subtyp_tmode. apply* H.
   + (* case subtyp_trans *)
     intros. subst. apply* subtyp_trans.
+  + (* case subtyp_ctx_size *)
+    introv Hlt St IHSt Eq1 Eq2 Ok. subst.
+    assert (n1 <= ctx_size (G1 & G3) + d) by omega.
+    apply* IHSt.
   + (* case subdec_typ *)
-    intros.
-    apply subdec_typ; gen G1 G2 G3; assumption.
+    intros. apply* subdec_typ.
   + (* case subdec_fld *)
-    intros.
-    apply subdec_fld; gen G1 G2 G3; assumption.
+    intros. apply* subdec_fld.
   + (* case subdec_mtd *)
-    intros.
-    apply subdec_mtd; gen G1 G2 G3; assumption.
+    intros. apply* subdec_mtd.
   + (* case subdecs_empty *)
-    intros.
-    apply subdecs_empty.
+    intros. apply subdecs_empty. omega.
   + (* case subdecs_push *)
-    introv Hb Hsd IHsd Hsds IHsds Hok123 Heq.
-    apply (subdecs_push n Hb).
-    apply (IHsd _ _ _ Hok123 Heq).
-    apply (IHsds _ _ _ Hok123 Heq).
+    introv Has Sd IHSd Sds IHSds Eq1 Eq2 Ok.
+    apply (subdecs_push n Has).
+    - apply (IHSd _ _ _ _ Eq1 Eq2 Ok).
+    - apply (IHSds _ _ _ _ Eq1 Eq2 Ok).
+  + (* case subdecs_refl *)
+    intros. assert (ctx_size (G1 & G2 & G3) <= ctx_size (G1 & G2 & G3) + d) by omega.
+    apply* subdecs_refl.
   + (* case ty_var *)
     intros. subst. apply ty_var. apply* binds_weaken.
   + (* case ty_sel *)
@@ -1395,9 +1479,9 @@ Proof.
       * rewrite concat_assoc. auto.
     - exact Cb.
   + (* case ty_sbsm *)
-    intros. apply ty_sbsm with T.
+    intros. apply ty_sbsm with T (ctx_size (G1 & G2 & G3) + n). (* too big but who cares *)
     - apply* H.
-    - apply* H0.
+    - assert (n <= ctx_size (G1 & G3) + n) by omega. apply* H0.
   + (* case ty_typ *)
     intros. apply ty_typ. 
   + (* case ty_fld *)
@@ -1434,6 +1518,7 @@ Proof.
   apply (weaken_exp_middle Ok Exp).
 Qed.
 
+(*
 Lemma weaken_subtyp_middle: forall m1 m2 G1 G2 G3 S U,
   ok (G1 & G2 & G3) -> 
   subtyp m1 m2 (G1      & G3) S U ->
@@ -1492,19 +1577,38 @@ Proof.
   specialize (W G1 G2 G3 eq_refl Hok123).
   apply W.
 Qed.
+*)
 
-Lemma weaken_subdec_end: forall m G1 G2 D1 D2,
+Lemma weaken_subdec_end: forall m G1 G2 D1 D2 d,
   ok (G1 & G2) -> 
-  subdec m G1        D1 D2 ->
-  subdec m (G1 & G2) D1 D2.
+  subdec m G1        D1 D2 ((ctx_size G1) + d) ->
+  subdec m (G1 & G2) D1 D2 ((ctx_size G1) + (max d (ctx_size G2))).
 Proof.
-  introv Hok Hsd.
-  apply (env_remove_empty (fun G0 => subdec m G0 D1 D2) (G1 & G2)).
-  apply weaken_subdec_middle.
-  apply (env_add_empty (fun G0 => ok G0) (G1 & G2) Hok).
-  apply (env_add_empty (fun G0 => subdec m G0 D1 D2) G1 Hsd).
+  introv Ok Sd.
+  destruct weakening as [_ [_ [_ [W _]]]].
+  rewrite <- (concat_empty_r G1) in Sd.
+  specialize (W m (G1 & empty) D1 D2 _ Sd G1 G2 empty).
+  repeat progress rewrite concat_empty_r in *.
+  assert (Hle: ctx_size G1 + d <= ctx_size G1 + d) by omega.
+  specialize (W d eq_refl Hle Ok).
+  (* we get (ctx_size (G1 & G2) + d), which is bigger than what we aimed for... *)
+Abort.
+
+Lemma weaken_subdec_end: forall m G1 G2 D1 D2 d,
+  ok (G1 & G2) -> 
+  subdec m G1        D1 D2 ((ctx_size G1) + d) ->
+  subdec m (G1 & G2) D1 D2 ((ctx_size (G1 & G2)) + d).
+Proof.
+  introv Ok Sd.
+  destruct weakening as [_ [_ [_ [W _]]]].
+  rewrite <- (concat_empty_r G1) in Sd.
+  specialize (W m (G1 & empty) D1 D2 _ Sd G1 G2 empty).
+  repeat progress rewrite concat_empty_r in *.
+  assert (Hle: ctx_size G1 + d <= ctx_size G1 + d) by omega.
+  apply (W d eq_refl Hle Ok).
 Qed.
 
+(*
 Lemma weaken_ty_trm_end: forall G1 G2 e T,
   ok (G1 & G2) -> ty_trm G1 e T -> ty_trm (G1 & G2) e T.
 Proof.
@@ -2264,70 +2368,6 @@ Axiom subsub2eq: forall m1 m2 G T1 T2,
 
 Axiom okadmit: forall G: ctx, ok G.
 
-Lemma subdec_ctx_size: forall m G D1 D2 n1 n2,
-  n1 <= n2 -> subdec m G D1 D2 n1 -> subdec m G D1 D2 n2.
-Proof.
-  introv Hle Sd. destruct (Lt.le_lt_or_eq _ _ Hle) as [Heq | Hlt].
-  + inversions* Sd.
-  + subst. exact Sd.
-Qed.
-
-Hint Resolve subdec_ctx_size.
-Hint Resolve Max.le_max_r Max.le_max_l.
-
-Lemma subdecs_ctx_size: forall m G Ds1 Ds2 n1 n2,
-  n1 <= n2 -> subdecs m G Ds1 Ds2 n1 -> subdecs m G Ds1 Ds2 n2.
-Proof.
-  introv Lt Sds. induction Sds.
-  + apply subdecs_empty. omega.
-  + apply* (@subdecs_push m G n Ds1 Ds2 D1 D2 n2 H).
-  + apply subdecs_refl. omega.
-Qed.
-
-Lemma min_ctx:
-   (forall m1 m2 G T1  T2  n, subtyp  m1 m2 G T1  T2  n -> ctx_size G <= n)
-/\ (forall m     G D1  D2  n, subdec  m     G D1  D2  n -> ctx_size G <= n)
-/\ (forall m     G Ds1 Ds2 n, subdecs m     G Ds1 Ds2 n -> ctx_size G <= n).
-Proof.
-  apply mutind3.
-  + intros. omega.
-  + intros. omega.
-  + intros. omega.
-  + intros. pick_fresh z. assert (zL: z \notin L) by auto.
-    specialize (H z zL). rewrite <- cons_to_push in H. unfold ctx_size in *.
-    rewrite LibList.length_cons in H. omega.
-  + intros. assumption.
-  + intros. assumption.
-  + intros. assumption.
-  + intros. assumption.
-  + intros. omega.
-  + intros. assumption.
-  + intros. assumption.
-  + intros. assumption.
-  + intros. assumption.
-  + intros. assumption.
-  + intros. assumption.
-Qed.
-
-Print Assumptions min_ctx.
-
-Definition min_ctx_subtyp := proj1 min_ctx.
-Definition min_ctx_subdec := proj1 (proj2 min_ctx).
-Definition min_ctx_subdecs := proj2 (proj2 min_ctx).
-
-Lemma ctx_size_push: forall G z T, ctx_size (G & z ~ T) = (ctx_size G) + 1.
-Proof.
-  intros. unfold ctx_size. rewrite <- cons_to_push.
-  rewrite LibList.length_cons. omega.
-Qed.
-
-Lemma ctx_size_swap_middle: forall G1 x T y U G2,
-  ctx_size (G1 & x ~ T & G2) = ctx_size (G1 & y ~ U & G2).
-Proof.
-  intros. rewrite concat_def. rewrite single_def. unfold ctx_size.
-  repeat progress rewrite LibList.length_app. auto.
-Qed.
-
 (* env-grow restricted narrowing: Narrowing for derivations which grow the env by at
    most d entries *)
 Definition egr_narrowing(d: nat): Prop :=
@@ -2343,7 +2383,7 @@ Definition egr_narrowing(d: nat): Prop :=
         subdecs pr (G1 & x ~ (typ_bind DsA) & G2 & z ~ typ_bind Ds1)
                 (open_decs z Ds1) (open_decs z Ds2)
                 (max n (ctx_size (G1 & x ~ (typ_bind DsA) & G2 & z ~ typ_bind Ds1))))
-/\ (forall m G t l D2, has m G t l D2 ->  forall G1 G2 x DsA DsB n,
+/\ (forall m G t l D2, has m G t l D2 -> forall G1 G2 x DsA DsB n,
     m = pr ->
     n = (ctx_size G) + d ->
     ok G ->
@@ -2447,7 +2487,8 @@ Proof.
     - right. subst Ds2. exact IH23.
   + (* case subtyp_ctx_size *)
     introv Hlt St IHSt Eq1 Eq2 Exp1 Exp2. subst.
-    lets M: (min_ctx_subtyp St). omega. (* contradiction *)
+    lets M: (min_ctx_subtyp St). 
+    assert (Eq: n1 = ctx_size G) by omega. apply* IHSt.
 Qed.
 
 Print Assumptions exp_preserves_sub_base_case. (* only exp_total *)
@@ -2821,12 +2862,12 @@ Lemma exp_preserves_sub_pr: forall G T1 T2 Ds1 Ds2 n1,
     subdecs pr (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2) n2.
 Proof.
   introv St Exp1 Exp2.
-  assert (Hlt: n1 < (ctx_size G) + (n1 + 1)) by omega. (* too big, but who cares *)
+  assert (Hlt: n1 <= (ctx_size G) + n1) by omega. (* too big, but who cares *)
   lets St': (subtyp_ctx_size Hlt St).
-  destruct (putting_it_together (n1 + 1)) as [E _].
+  destruct (putting_it_together n1) as [E _].
   unfold egr_exp_preserves_sub_pr in E.
   specialize (E oktrans _ _ _ _ _ _ St' eq_refl Exp1 Exp2).
-  destruct E as [L Sds]. exists L (ctx_size G + max (n1 + 1) 1).
+  destruct E as [L Sds]. exists L (ctx_size G + max n1 1).
   exact Sds.
 Qed.
 
