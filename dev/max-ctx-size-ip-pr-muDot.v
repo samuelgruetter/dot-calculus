@@ -2371,48 +2371,51 @@ Axiom okadmit: forall G: ctx, ok G.
 (* env-grow restricted narrowing: Narrowing for derivations which grow the env by at
    most d entries *)
 Definition egr_narrowing(d: nat): Prop :=
-   (forall m G T Ds2, exp m G T Ds2 -> forall G1 G2 x DsA DsB n,
+   (forall m G T Ds2, exp m G T Ds2 -> forall G1 G2 x DsA DsB,
     m = pr ->
-    n = (ctx_size G) + d ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
-    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n ->
+    subdecs pr (G1 & x ~ typ_bind DsA) (open_decs x DsA) (open_decs x DsB)
+            ((ctx_size (G1 & x ~ typ_bind DsA)) + d) ->
     exists L Ds1,
       exp pr (G1 & x ~ (typ_bind DsA) & G2) T Ds1 /\ 
       forall z, z \notin L ->
-        subdecs pr (G1 & x ~ (typ_bind DsA) & G2 & z ~ typ_bind Ds1)
+        subdecs pr (G1 & x ~ typ_bind DsA & G2 & z ~ typ_bind Ds1)
                 (open_decs z Ds1) (open_decs z Ds2)
-                (max n (ctx_size (G1 & x ~ (typ_bind DsA) & G2 & z ~ typ_bind Ds1))))
-/\ (forall m G t l D2, has m G t l D2 -> forall G1 G2 x DsA DsB n,
+                ((ctx_size (G1 & x ~ typ_bind DsA & G2)) + (max d 1)))
+/\ (forall m G t l D2, has m G t l D2 -> forall G1 G2 x DsA DsB,
     m = pr ->
-    n = (ctx_size G) + d ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
-    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n ->
+    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB)
+            ((ctx_size (G1 & x ~ typ_bind DsA)) + d) ->
     exists D1,
       has    pr (G1 & x ~ (typ_bind DsA) & G2) t l D1 /\ 
       subdec pr (G1 & x ~ (typ_bind DsA) & G2) D1 D2
-                (max n (ctx_size (G1 & x ~ (typ_bind DsA) & G2))))
-/\ (forall m1 m2 G T1 T2 n, subtyp m1 m2 G T1 T2 n -> forall G1 G2 x DsA DsB n,
+                ((ctx_size (G1 & x ~ typ_bind DsA & G2)) + d))
+/\ (forall m1 m2 G T1 T2 n, subtyp m1 m2 G T1 T2 n -> forall G1 G2 x DsA DsB,
     m1 = pr ->
     n = (ctx_size G) + d ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
-    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n ->
+    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB)
+            ((ctx_size (G1 & x ~ typ_bind DsA)) + d) ->
     subtyp pr oktrans (G1 & x ~ (typ_bind DsA) & G2) T1 T2 n)
 /\ (forall m G D1 D2 n, subdec m G D1 D2 n -> forall G1 G2 x DsA DsB,
     m = pr ->
     n = (ctx_size G) + d ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
-    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n ->
+    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB)
+            ((ctx_size (G1 & x ~ typ_bind DsA)) + d) ->
     subdec pr (G1 & x ~ (typ_bind DsA) & G2) D1 D2 n)
 /\ (forall m G Ds1 Ds2 n, subdecs m G Ds1 Ds2 n -> forall G1 G2 x DsA DsB,
     m = pr ->
     n = (ctx_size G) + d ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
-    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n ->
+    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB)
+            ((ctx_size (G1 & x ~ typ_bind DsA)) + d) ->
     subdecs pr (G1 & x ~ (typ_bind DsA) & G2) Ds1 Ds2 n).
 
 (* env-grow-restricted exp_preserves_sub *)
@@ -2524,16 +2527,20 @@ Proof.
   + (* case exp_top *)
     intros. exists vars_empty decs_nil. split.
     - apply exp_top.
-    - intros. rewrite open_decs_nil. apply subdecs_empty. auto.
+    - intros. rewrite open_decs_nil. apply subdecs_empty.
+      rewrite ctx_size_push.
+      lets M: (Max.le_max_r d 1). omega.
   + (* case exp_bind *)
     intros. subst. exists vars_empty Ds. split.
     - apply exp_bind.
     - intros. apply subdecs_refl. auto.
+      rewrite ctx_size_push.
+      lets M: (Max.le_max_r d 1). omega.
   + (* case exp_sel *)
     intros m G v L Lo2 Hi2 Ds2 Has2 IHHas Exp2 IHExp.
-    intros G1 G2 x DsA DsB n E1 E2 Ok2 E3 SdsAB.
-    specialize (IHHas _ _ _ _ _ n E1 E2 Ok2 E3 SdsAB).
-    specialize (IHExp _ _ _ _ _ n E1 E2 Ok2 E3 SdsAB).
+    intros G1 G2 x DsA DsB E1 E2 Ok2 SdsAB.
+    specialize (IHHas _ _ _ _ _ E1 E2 Ok2 SdsAB).
+    specialize (IHExp _ _ _ _ _ E1 E2 Ok2 SdsAB).
     subst.
     destruct IHHas as [D1 [IHHas Sd]].
     destruct IHExp as [L0 [Dsm [IHExp Sds2]]].
@@ -2545,67 +2552,48 @@ Proof.
     destruct N as [N | [c [Eq N]]].
     (* case d = 0 *) {
     subst d. clear E.
-    assert (Eq: max (ctx_size (G1 & x ~ typ_bind DsB & G2) + 0)
-                    (ctx_size (G1 & x ~ typ_bind DsA & G2))
-                   = ctx_size (G1 & x ~ typ_bind DsA & G2)). {
-      rewrite Plus.plus_0_r. apply max_r.
-      rewrite (ctx_size_swap_middle _ x (typ_bind DsA) x (typ_bind DsB)). omega.
-    }
-    lets E: (exp_preserves_sub_base_case StHi12 eq_refl Eq Exp1 IHExp).
+    lets E: (exp_preserves_sub_base_case StHi12 eq_refl (Plus.plus_0_r _) Exp1 IHExp).
     exists L0 Ds1. apply (conj (exp_sel IHHas Exp1)).
     intros z zL0. specialize (Sds2 z zL0).
     destruct E as [E | E]; subst Dsm.
     - rewrite open_decs_nil in Sds2.
       apply subdecs_nil_l2r in Sds2. rewrite Sds2. apply subdecs_empty.
-      apply Max.le_max_r.
+      rewrite ctx_size_push.
+      lets M: (Max.le_max_r 0 1). omega.
     - exact Sds2.
     }
     (* case d > 0 *) {
     subst d. rename c into d.
     lets Eq1: (ctx_size_swap_middle G1 x (typ_bind DsB) x (typ_bind DsA) G2).
-    assert (Eq2: max (ctx_size (G1 & x ~ typ_bind DsB & G2) + (d + 1))
-                     (ctx_size (G1 & x ~ typ_bind DsA & G2))
-                    = ctx_size (G1 & x ~ typ_bind DsA & G2) + (d + 1)). {
-      rewrite Eq1. apply max_l. omega.
-    }
     (* apply exp_preserves_sub with d+1: *)
-    lets Sds1: (E _ _ Hi1 Hi2 Ds1 Dsm _ StHi12 Eq2 Exp1 IHExp).
+    lets Sds1: (E _ _ Hi1 Hi2 Ds1 Dsm _ StHi12 eq_refl Exp1 IHExp).
     destruct Sds1 as [L1 Sds1].
     exists (L0 \u L1) Ds1. apply (conj (exp_sel IHHas Exp1)).
     intros z zL01.
     assert (zL0: z \notin L0) by auto. specialize (Sds2 z zL0).
     assert (zL1: z \notin L1) by auto. specialize (Sds1 z zL1).
-    (* now some trivial but super-verbose math: *)
-    assert (Eq3: forall Ds0,
-                 max (ctx_size (G1 & x ~ typ_bind DsB & G2) + (d + 1))
-                     (ctx_size (G1 & x ~ typ_bind DsA & G2 & z ~ typ_bind Ds0))
-                   =  ctx_size (G1 & x ~ typ_bind DsA & G2 & z ~ typ_bind Ds0) + d). {
-      intro Ds0.
-      rewrite Eq1. rewrite ctx_size_push.
-      assert (Eq4: d + 1 = 1 + d) by omega. rewrite Eq4.
-      rewrite Plus.plus_assoc.
-      apply max_l. omega.
-    }
     assert (Eq4: max (d + 1) 1 = 1 + d) by (rewrite Plus.plus_comm; apply max_l; omega).
     rewrite Eq4 in Sds1.
     rewrite Plus.plus_assoc in Sds1.
+    assert (Eq2: ctx_size (G1 & x ~ typ_bind DsA & G2) + max (d + 1) 1
+               = ctx_size (G1 & x ~ typ_bind DsA & G2 & z ~ typ_bind Dsm) + d). {
+      rewrite Eq4. rewrite ctx_size_push. omega.
+    }
     assert (Sds2n: subdecs pr (G1 & x ~ typ_bind DsA & G2 & z ~ typ_bind Ds1 & empty)
                       (open_decs z Dsm) (open_decs z Ds2)
                       (ctx_size (G1 & x ~ typ_bind DsA & G2 & z ~ typ_bind Dsm) + d)). {
       (* apply narrowing from previous level d: *)
       destruct N as [_ [_ [_ [_ P]]]].
-      rewrite <- Eq3.
-      refine (P pr _ _ _ _ Sds2 _ _ _ _ _ eq_refl (Eq3 Dsm) _ _ _).
+      rewrite <- Eq2.
+      refine (P pr _ _ _ _ Sds2 _ _ _ _ _ eq_refl Eq2 _ _ _).
       - apply okadmit.
       - symmetry. apply concat_empty_r.
-      - rewrite -> Eq3.
-        rewrite ctx_size_push.
+      - rewrite ctx_size_push.
         exact Sds1.
     }
     rewrite concat_empty_r in Sds2n.
-    rewrite -> (Eq3 Ds1).
+    rewrite Eq4. rewrite Plus.plus_assoc.
     rewrite ctx_size_push in Sds2n.
-    rewrite ctx_size_push.
     apply (subdecs_trans Sds1 Sds2n).
     }
   + (* case has_trm *)
@@ -2614,7 +2602,7 @@ Proof.
     intros; discriminate.
   + (* case has_pr *)
     intros G v T Ds2 l D2 Bi Exp IHExp DsHas.
-    introv _ Eq1 Ok Eq2 SdsAB. subst.
+    introv _ Ok Eq2 SdsAB. subst.
     assert (OkA: ok (G1 & x ~ typ_bind DsA & G2)) by apply okadmit.
     destruct (classicT (v = x)) as [Eq | Ne].
     - (* case v = x *)
@@ -2626,8 +2614,7 @@ Proof.
       assert (exists D1, open_dec x D1 = D1') by admit.
       destruct H as [D1 Eq]. subst.
       exists (open_dec x D1).
-Admitted. (*
-      apply (weaken_subdec_end OkA) in Sd.
+      apply (weaken_subdec_end _ OkA) in Sd.
       refine (conj _ Sd).
       apply has_pr with (typ_bind DsA) DsA.
       * assert (xG2: x # G2) by admit.
