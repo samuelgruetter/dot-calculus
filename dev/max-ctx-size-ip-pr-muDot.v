@@ -1653,6 +1653,7 @@ Lemma weaken_ty_defs_middle: forall G1 G2 G3 ds Ds,
 Proof.
   intros. apply* weakening.
 Qed.
+*)
 
 
 (* ###################################################################### *)
@@ -1703,50 +1704,54 @@ Proof.
   introv Bi. unfold subst_ctx. apply binds_map. exact Bi.
 Qed.
 
+Inductive tyvar: pmode -> ctx -> var -> typ -> Prop :=
+  | tyvar_pr: forall G x T,
+      binds x T G ->
+      tyvar pr G x T
+  | tyvar_ip: forall G x T,
+      ty_trm G (trm_var (avar_f x)) T ->
+      tyvar ip G x T.
+
+(*
 Lemma subst_principles: forall y S,
    (forall m G T Ds, exp m G T Ds -> forall G1 G2 x,
-     m = ip ->
      G = G1 & x ~ S & G2 ->
-     ty_trm G1 (trm_var (avar_f y)) S ->
+     tyvar m G1 y S ->
      ok (G1 & x ~ S & G2) ->
      exp ip (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_decs x y Ds))
 /\ (forall m G t l D, has m G t l D -> forall G1 G2 x,
-     m = ip ->
      G = (G1 & (x ~ S) & G2) ->
-     ty_trm G1 (trm_var (avar_f y)) S ->
+     tyvar m G1 y S ->
      ok (G1 & (x ~ S) & G2) ->
      has ip (G1 & (subst_ctx x y G2)) (subst_trm x y t) l (subst_dec x y D))
-/\ (forall m1 m2 G T U, subtyp m1 m2 G T U -> forall G1 G2 x,
-     m1 = ip ->
+/\ (forall m1 m2 G T U n, subtyp m1 m2 G T U n -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     ty_trm G1 (trm_var (avar_f y)) S ->
+     tyvar m1 G1 y S ->
      ok (G1 & (x ~ S) & G2) ->
      subtyp ip m2 (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_typ x y U))
-/\ (forall m G D1 D2, subdec m G D1 D2 -> forall G1 G2 x,
-     m = ip ->
+/\ (forall m G D1 D2 n, subdec m G D1 D2 n -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     ty_trm G1 (trm_var (avar_f y)) S ->
+     tyvar m G1 y S ->
      ok (G1 & (x ~ S) & G2) ->
      subdec ip (G1 & (subst_ctx x y G2)) (subst_dec x y D1) (subst_dec x y D2))
-/\ (forall m G Ds1 Ds2, subdecs m G Ds1 Ds2 -> forall G1 G2 x,
-     m = ip ->
+/\ (forall m G Ds1 Ds2 n, subdecs m G Ds1 Ds2 n -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     ty_trm G1 (trm_var (avar_f y)) S ->
+     tyvar m G1 y S ->
      ok (G1 & (x ~ S) & G2) ->
      subdecs ip (G1 & (subst_ctx x y G2)) (subst_decs x y Ds1) (subst_decs x y Ds2))
 /\ (forall G t T, ty_trm G t T -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     ty_trm G1 (trm_var (avar_f y)) S ->
+     tyvar ip G1 y S ->
      ok (G1 & (x ~ S) & G2) ->
      ty_trm (G1 & (subst_ctx x y G2)) (subst_trm x y t) (subst_typ x y T))
 /\ (forall G d D, ty_def G d D -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     ty_trm G1 (trm_var (avar_f y)) S ->
+     tyvar ip G1 y S ->
      ok (G1 & (x ~ S) & G2) ->
      ty_def (G1 & (subst_ctx x y G2)) (subst_def x y d) (subst_dec x y D))
 /\ (forall G ds Ds, ty_defs G ds Ds -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     ty_trm G1 (trm_var (avar_f y)) S ->
+     tyvar ip G1 y S ->
      ok (G1 & (x ~ S) & G2) ->
      ty_defs (G1 & (subst_ctx x y G2)) (subst_defs x y ds) (subst_decs x y Ds)).
 Proof.
@@ -2635,6 +2640,7 @@ Proof.
       (* T appears in env, and suppose env only typ_bind: *)
       assert (Eq: T = typ_bind Ds1) by admit. (* <------ *)
       subst.
+Admitted. (*
       lets P: (@pr_subst_subdec v (typ_bind Ds1) (open_dec z D1) (open_dec z D2)
         (G1 & x ~ typ_bind DsA & G2) empty z).
       unfold subst_ctx in P. rewrite map_empty in P.
@@ -2734,8 +2740,9 @@ Proof.
   introv Eq Sds12 SdsAB. subst n.
   assert (Ok: ok (G & x ~ typ_bind DsB)) by apply okadmit.
   specialize (N pr _ _ _ (ctx_size G + (d + 1)) Sds12 G empty x DsA DsB eq_refl).
-  rewrite ctx_size_push in N.
-  rewrite (@Plus.plus_comm d 1) in N at 1. rewrite Plus.plus_assoc in N at 1.
+  repeat progress rewrite ctx_size_push in N.
+  rewrite <- Plus.plus_assoc in N.
+  rewrite (@Plus.plus_comm 1 d) in N.
   do 2 rewrite concat_empty_r in N.
   apply (N eq_refl Ok eq_refl SdsAB).
 Qed.
