@@ -2790,6 +2790,23 @@ Proof.
     intros. apply subtyp_tmode. apply subtyp_bot.
   + (* case subtyp_bind *)
     introv Sds IHSds. introv Eq1 Eq2 Eq3 Ok Eq4 SdsAB. subst.
+    (* IHSds is useless because it requires S n = n *)
+    clear IHSds.
+    apply subtyp_tmode. apply_fresh subtyp_bind as z.
+    assert (zL: z \notin L) by auto.
+    specialize (Sds z zL).
+    destruct N as [N | N]; [omega | idtac].
+    destruct N as [n' [Eq N]]. inversions Eq.
+    destruct N as [_ [_ [_ [_ P]]]].
+    specialize (P pr (G1 & x ~ typ_bind DsB & G2 & z ~ typ_bind Ds1)).
+    specialize (P (open_decs z Ds1) (open_decs z Ds2) n Sds).
+    rewrite ctx_size_push in P.
+    specialize (P G1 (G2 & z ~ typ_bind Ds1) x DsA DsB).
+    rewrite concat_assoc in P.
+    (* P is useless because it requires S n = n as well! *) admit. (* <-- +/-1 mismatch!!!
+    refine (P eq_refl _ eq_refl _ _ SdsAB).
+  + (* case subtyp_bind *)
+    introv Sds IHSds. introv Eq1 Eq2 Eq3 Ok Eq4 SdsAB. subst.
     apply subtyp_tmode. apply_fresh subtyp_bind as z.
     assert (zL: z \notin L) by auto.
     specialize (Sds z zL).
@@ -2798,7 +2815,7 @@ Proof.
     specialize (IHSds G1 (G2 & z ~ typ_bind Ds1) x DsA DsB eq_refl).
     repeat (progress rewrite -> concat_assoc in IHSds).
     assert (ok (G1 & x ~ typ_bind DsB & G2 & z ~ typ_bind Ds1)) by auto.
-    admit. (* TODO +/-1 mismatch!    maybe we can use N instead of IHSds?
+    admit. TODO +/-1 mismatch!    maybe we can use N instead of IHSds?
       or <= in IH instead of = ?
     specialize (IHSds H eq_refl SdsAB).
     exact IHSds.*)
