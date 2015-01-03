@@ -2433,8 +2433,8 @@ Definition egr_narrowing(g n0: nat): Prop :=
       exp pr (G1 & x ~ (typ_bind DsA) & G2) T Ds1 /\ 
       forall z, z \notin L ->
         subdecs pr (G1 & x ~ typ_bind DsA & G2 & z ~ typ_bind Ds1)
-                (open_decs z Ds1) (open_decs z Ds2) n0)
-             (*   (pred n0)) <- note: pred 0 = 0 *)
+                (open_decs z Ds1) (open_decs z Ds2)
+                (pred n0)) (* <- note: pred 0 = 0 *)
 /\ (forall m G t l D2, has m G t l D2 -> forall G1 G2 x DsA DsB,
     m = pr ->
     g = ctx_size G ->
@@ -2443,41 +2443,41 @@ Definition egr_narrowing(g n0: nat): Prop :=
     subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n0 ->
     exists D1,
       has    pr (G1 & x ~ (typ_bind DsA) & G2) t l D1 /\ 
-      subdec pr (G1 & x ~ (typ_bind DsA) & G2) D1 D2 (S n0))
+      subdec pr (G1 & x ~ (typ_bind DsA) & G2) D1 D2 n0)
 /\ (forall m1 m2 G T1 T2 n, subtyp m1 m2 G T1 T2 n -> forall G1 G2 x DsA DsB,
     m1 = pr ->
     g = ctx_size G ->
-    S n0 = n ->
+    n0 = n ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
-    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n0 ->
+    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n ->
     subtyp pr oktrans (G1 & x ~ (typ_bind DsA) & G2) T1 T2 n)
 /\ (forall m G D1 D2 n, subdec m G D1 D2 n -> forall G1 G2 x DsA DsB,
     m = pr ->
     g = ctx_size G ->
-    S n0 = n ->
+    n0 = n ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
-    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n0 ->
+    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n ->
     subdec pr (G1 & x ~ (typ_bind DsA) & G2) D1 D2 n)
 /\ (forall m G Ds1 Ds2 n, subdecs m G Ds1 Ds2 n -> forall G1 G2 x DsA DsB,
     m = pr ->
     g = ctx_size G ->
-    S n0 = n ->
+    n0 = n ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
-    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n0 ->
+    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n ->
     subdecs pr (G1 & x ~ (typ_bind DsA) & G2) Ds1 Ds2 n).
 
 (* env-grow-restricted exp_preserves_sub *)
 Definition egr_exp_preserves_sub_pr(g n0: nat): Prop := forall m2 G T1 T2 Ds1 Ds2 n,
   subtyp pr m2 G T1 T2 n ->
   g = ctx_size G ->
-  S n0 = n ->
+  n0 = n ->
   exp pr G T1 Ds1 ->
   exp pr G T2 Ds2 ->
   exists L, forall z, z \notin L ->
-    subdecs pr (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2) n0. 
+    subdecs pr (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2) (pred n0). 
 
 Lemma exp_preserves_sub_base_case: forall m1 m2 G T1 T2 n,
   subtyp m1 m2 G T1 T2 n ->
@@ -2541,7 +2541,6 @@ Qed.
 
 Print Assumptions exp_preserves_sub_base_case. (* only exp_total *)
 
-(*
 Lemma egr_exp_preserves_sub_pr_0: forall g, egr_exp_preserves_sub_pr g 0.
 Proof.
   unfold egr_exp_preserves_sub_pr. introv St Eq1 Eq2 Exp1 Exp2. subst. simpl.
@@ -2550,15 +2549,14 @@ Proof.
   - apply subdecs_empty.
   - apply subdecs_refl.
 Qed.
-*)
 
 Lemma egr_narrowing_to_narrow_subdecs_end: forall g n,
   egr_narrowing g n ->
   forall Ds1 Ds2 G x DsA DsB,
     g = ctx_size (G & x ~ typ_bind DsB) ->
-    subdecs pr (G & x ~ typ_bind DsB) Ds1 Ds2 (S n) -> 
+    subdecs pr (G & x ~ typ_bind DsB) Ds1 Ds2 n -> 
     subdecs pr (G & x ~ typ_bind DsA) (open_decs x DsA) (open_decs x DsB) n ->
-    subdecs pr (G & x ~ typ_bind DsA) Ds1 Ds2 (S n).
+    subdecs pr (G & x ~ typ_bind DsA) Ds1 Ds2 n.
 Proof.
   intros g n N. destruct N as [_ [_ [_ [_ N]]]].
   introv Eq Sds12 SdsAB. subst.
@@ -2580,11 +2578,11 @@ Proof.
   apply (subtyp_ind (fun m1 m2 G T1 T2 n => forall Ds1 Ds2,
     m1 = pr ->
     g = ctx_size G ->
-    S (S d) = n ->
+    S d = n ->
     exp m1 G T1 Ds1 ->
     exp m1 G T2 Ds2 ->
     exists L, forall z, _ ->
-      subdecs m1 (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2) (S d))).
+      subdecs m1 (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2) d)).
   + (* case subtyp_refl *)
     introv Eq1 Eq2 Eq3 Exp1 Exp2. subst.
     lets Eq: (exp_unique Exp1 Exp2).
@@ -2626,7 +2624,7 @@ Proof.
     exists (L1 \u L2). intros z zn.
     assert (zL1: z \notin L1) by auto. specialize (IH1 z zL1).
     assert (zL2: z \notin L2) by auto. specialize (IH2 z zL2).
-    (* IH2, which serves as SdsAB, must be one smaller than IH1, but it isn't! *)
+    (* narrowing with d [smaller than d+1 :-)] *)
     refine (subdecs_trans IH2 (N _ _ _ _ _ _ _ IH1 IH2)).
     symmetry. apply ctx_size_push.
   + (* case subtyp_mode *)
