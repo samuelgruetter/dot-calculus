@@ -2423,47 +2423,54 @@ Axiom subsub2eq: forall m1 m2 G T1 T2,
    Only deal with judgments for which env size is never bigger than g+n0
  *)
 Definition egr_narrowing(g n0: nat): Prop :=
-   (forall m G T Ds2, exp m G T Ds2 -> forall G1 G2 x DsA DsB,
+   (forall m G T Ds2, exp m G T Ds2 -> forall G1 G2 x DsA DsB n,
     m = pr ->
-    g = ctx_size G ->
+    g <= ctx_size G ->
+    ctx_size G + n <= g + n0 ->
+    n <= n0 ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
-    subdecs pr (G1 & x ~ typ_bind DsA) (open_decs x DsA) (open_decs x DsB) n0 ->
+    subdecs pr (G1 & x ~ typ_bind DsA) (open_decs x DsA) (open_decs x DsB) n ->
     exists L Ds1,
       exp pr (G1 & x ~ (typ_bind DsA) & G2) T Ds1 /\ 
       forall z, z \notin L ->
         subdecs pr (G1 & x ~ typ_bind DsA & G2 & z ~ typ_bind Ds1)
                 (open_decs z Ds1) (open_decs z Ds2)
-                (pred n0)) (* <- note: pred 0 = 0 *)
-/\ (forall m G t l D2, has m G t l D2 -> forall G1 G2 x DsA DsB,
+                (pred n)) (* <- note: pred 0 = 0 *)
+/\ (forall m G t l D2, has m G t l D2 -> forall G1 G2 x DsA DsB n,
     m = pr ->
-    g = ctx_size G ->
+    g <= ctx_size G ->
+    ctx_size G + n <= g + n0 ->
+    n <= n0 ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
-    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n0 ->
+    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n ->
     exists D1,
       has    pr (G1 & x ~ (typ_bind DsA) & G2) t l D1 /\ 
-      subdec pr (G1 & x ~ (typ_bind DsA) & G2) D1 D2 n0)
+      subdec pr (G1 & x ~ (typ_bind DsA) & G2) D1 D2 n)
 /\ (forall m1 m2 G T1 T2 n, subtyp m1 m2 G T1 T2 n -> forall G1 G2 x DsA DsB,
     m1 = pr ->
-    g = ctx_size G ->
-    n0 = n ->
+    g <= ctx_size G ->
+    ctx_size G + n <= g + n0 ->
+    n <= n0 ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
     subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n ->
     subtyp pr oktrans (G1 & x ~ (typ_bind DsA) & G2) T1 T2 n)
 /\ (forall m G D1 D2 n, subdec m G D1 D2 n -> forall G1 G2 x DsA DsB,
     m = pr ->
-    g = ctx_size G ->
-    n0 = n ->
+    g <= ctx_size G ->
+    ctx_size G + n <= g + n0 ->
+    n <= n0 ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
     subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n ->
     subdec pr (G1 & x ~ (typ_bind DsA) & G2) D1 D2 n)
 /\ (forall m G Ds1 Ds2 n, subdecs m G Ds1 Ds2 n -> forall G1 G2 x DsA DsB,
     m = pr ->
-    g = ctx_size G ->
-    n0 = n ->
+    g <= ctx_size G ->
+    ctx_size G + n <= g + n0 ->
+    n <= n0 ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
     subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n ->
@@ -2472,8 +2479,9 @@ Definition egr_narrowing(g n0: nat): Prop :=
 (* env-grow-restricted exp_preserves_sub *)
 Definition egr_exp_preserves_sub_pr(g n0: nat): Prop := forall m2 G T1 T2 Ds1 Ds2 n,
   subtyp pr m2 G T1 T2 n ->
-  g = ctx_size G ->
-  n0 = n ->
+  g <= ctx_size G ->
+  ctx_size G + n <= g + n0 ->
+  n <= n0 ->
   exp pr G T1 Ds1 ->
   exp pr G T2 Ds2 ->
   exists L, forall z, z \notin L ->
@@ -2543,28 +2551,31 @@ Print Assumptions exp_preserves_sub_base_case. (* only exp_total *)
 
 Lemma egr_exp_preserves_sub_pr_0: forall g, egr_exp_preserves_sub_pr g 0.
 Proof.
-  unfold egr_exp_preserves_sub_pr. introv St Eq1 Eq2 Exp1 Exp2. subst. simpl.
+  unfold egr_exp_preserves_sub_pr. introv St Eq1 Eq2 Eq3 Exp1 Exp2. subst. simpl.
+  assert (nEq0: n = 0) by omega. subst.
   lets M: (exp_preserves_sub_base_case St eq_refl eq_refl Exp1 Exp2).
   exists vars_empty. intros z _. destruct M as [Eq | Eq]; subst Ds2.
   - apply subdecs_empty.
   - apply subdecs_refl.
 Qed.
 
-Lemma egr_narrowing_to_narrow_subdecs_end: forall g n,
-  egr_narrowing g n ->
-  forall Ds1 Ds2 G x DsA DsB,
-    g = ctx_size (G & x ~ typ_bind DsB) ->
+Lemma egr_narrowing_to_narrow_subdecs_end: forall g n0,
+  egr_narrowing g n0 ->
+  forall Ds1 Ds2 G x DsA DsB n,
+    g <= ctx_size (G & x ~ typ_bind DsB) ->
+    ctx_size (G & x ~ typ_bind DsB) + n <= g + n0 ->
+    n <= n0 ->
     subdecs pr (G & x ~ typ_bind DsB) Ds1 Ds2 n -> 
     subdecs pr (G & x ~ typ_bind DsA) (open_decs x DsA) (open_decs x DsB) n ->
     subdecs pr (G & x ~ typ_bind DsA) Ds1 Ds2 n.
 Proof.
   intros g n N. destruct N as [_ [_ [_ [_ N]]]].
-  introv Eq Sds12 SdsAB. subst.
+  introv Eq1 Eq2 Eq3 Sds12 SdsAB. subst.
   assert (Ok: ok (G & x ~ typ_bind DsB)) by apply okadmit.
   specialize (N pr _ _ _ _ Sds12 G empty x DsA DsB eq_refl).
-  repeat progress rewrite ctx_size_push in N.
+  repeat progress rewrite ctx_size_push in *.
   do 2 rewrite concat_empty_r in N.
-  apply (N eq_refl eq_refl Ok eq_refl SdsAB).
+  refine (N _ _ _ Ok eq_refl SdsAB); omega.
 Qed.
 
 Lemma egr_narrowing_to_exp_preserves_sub_pr_step: forall g d,
@@ -2577,32 +2588,36 @@ Proof.
   lets N: (egr_narrowing_to_narrow_subdecs_end N0). clear N0.
   apply (subtyp_ind (fun m1 m2 G T1 T2 n => forall Ds1 Ds2,
     m1 = pr ->
-    g = ctx_size G ->
-    S d = n ->
+    g <= ctx_size G ->
+    ctx_size G + n <= g + S d ->
+    n <= S d ->
     exp m1 G T1 Ds1 ->
     exp m1 G T2 Ds2 ->
     exists L, forall z, _ ->
       subdecs m1 (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2) d)).
   + (* case subtyp_refl *)
-    introv Eq1 Eq2 Eq3 Exp1 Exp2. subst.
+    introv Eq1 Eq2 Eq3 Eq4 Exp1 Exp2. subst.
     lets Eq: (exp_unique Exp1 Exp2).
     subst. exists vars_empty. intros z zL. apply subdecs_refl.
   + (* case subtyp_top *)
-    introv Eq1 Eq2 Eq3 Exp1 Exp2.
+    introv Eq1 Eq2 Eq3 Eq4 Exp1 Exp2.
     inversions Exp2. exists vars_empty. intros z zL.
     unfold open_decs, open_rec_decs. apply subdecs_empty.
   + (* case subtyp_bot *)
-    introv Eq1 Eq2 Eq3 Exp1.
+    introv Eq1 Eq2 Eq3 Eq4 Exp1.
     inversions Exp1.
   + (* case subtyp_bind *)
-    introv Sds Eq1 Eq2 Eq3 Exp1 Exp2.
-    inversions Exp1. inversions Exp2. exists L. inversions Eq3.
-    intros z zL. apply (Sds z zL).
+    introv Sds Eq1 Eq2 Eq3 Eq4 Exp1 Exp2.
+    inversions Exp1. inversions Exp2. exists L.
+    intros z zL.
+    assert (Hle: n <= d) by omega.
+    refine (subdecs_max_ctx _ Hle).
+    apply (Sds z zL).
   + (* case subtyp_sel_l *)
     (* This case does not need subdecs_trans, because Exp1 is precise, so the expansion
        of x.L is the same as the expansion of its upper bound Hi1, and we can just apply
        the IH for Hi1<:T *)
-    introv Has2 St IHSt Eq1 Eq2 Eq3 Exp1 Exp2. subst.
+    introv Has2 St IHSt Eq1 Eq2 Eq3 Eq4 Exp1 Exp2. subst.
     apply invert_exp_sel in Exp1. destruct Exp1 as [Lo1 [Hi1 [Has1 Exp1]]].
     lets Eq: (has_unique Has2 Has1).
              (**********)
@@ -2610,40 +2625,66 @@ Proof.
     apply* IHSt.
   + (* case subtyp_sel_r *)
     (* This case needs subdecs_trans: Ds1 <: DsLo <: Ds2 *)
-    introv Has St1 IHSt1 St2 IHSt2 Eq1 Eq2 Eq3 Exp1 Exp2.
+    introv Has St1 IHSt1 St2 IHSt2. introv Eq1 Eq2 Eq3 Eq4 Exp1 Exp2.
     rename S into Lo, U into Hi. subst.
     apply invert_exp_sel in Exp2. destruct Exp2 as [Lo' [Hi' [Has' Exp2]]].
     lets Eq: (has_unique Has' Has). inversions Eq. clear Has'.
              (**********)
     assert (ExpLo: exists DsLo, exp pr G Lo DsLo) by apply exp_total. (* <----- *)
     destruct ExpLo as [DsLo ExpLo].
-    specialize (IHSt1 DsLo Ds2 eq_refl eq_refl eq_refl ExpLo Exp2).
-    specialize (IHSt2 Ds1 DsLo eq_refl eq_refl eq_refl Exp1 ExpLo).
+    specialize (IHSt1 DsLo Ds2 eq_refl Eq2 Eq3 Eq4 ExpLo Exp2).
+    specialize (IHSt2 Ds1 DsLo eq_refl Eq2 Eq3 Eq4 Exp1 ExpLo).
     destruct IHSt1 as [L1 IH1].
     destruct IHSt2 as [L2 IH2].
     exists (L1 \u L2). intros z zn.
     assert (zL1: z \notin L1) by auto. specialize (IH1 z zL1).
     assert (zL2: z \notin L2) by auto. specialize (IH2 z zL2).
-    (* narrowing with d [smaller than d+1 :-)] *)
-    refine (subdecs_trans IH2 (N _ _ _ _ _ _ _ IH1 IH2)).
-    symmetry. apply ctx_size_push.
+    assert (n <= S d) by omega.
+    specialize (N (open_decs z DsLo) (open_decs z Ds2) G z Ds1 DsLo).
+    repeat progress rewrite ctx_size_push in N.
+    refine (subdecs_trans IH2 (N _ _ _ _ IH1 IH2)).
+    - omega.
+    - (* -d-1 ==> need (ctx_size G) <= g, but Eq2 is the other way round *) admit. (*!!!*)
+    - omega.
+
+    (* N requires
+         S (ctx_size G) + n = S g + d
+       so
+         (ctx_size G) + n = g + d
+       so
+         n = g + d - (ctx_size G)
+
+       But conclusion is on d, and IH1, IH2 as well, so we have to specialize N with d,
+       not with (g + d - (ctx_size G)).
+       So we need g = ctx_size G. But we only have g <= ctx_size G.
+    *)
+
+    (* narrowing with d [smaller than d+1 :-)]
+    specialize (N (open_decs z DsLo) (open_decs z Ds2) G z Ds1 DsLo d).
+    refine (subdecs_trans IH2 (N _ _ IH1 IH2)).
+      rewrite ctx_size_push. omega.
+      rewrite ctx_size_push. assert (n <= S d) by omega.
+      assert (S (ctx_size G) + d >= S g + d) by omega.
+    *)
   + (* case subtyp_mode *)
     intros. subst. apply* H0.
   + (* case subtyp_trans *)
-    introv St12 IHSt12 St23 IHSt23 Eq1 Eq2 Eq3 Exp1 Exp3.
+    introv St12 IHSt12 St23 IHSt23 Eq1 Eq2 Eq3 Eq4 Exp1 Exp3.
     rename Ds2 into Ds3. subst.
     assert (Exp2: exists Ds2, exp pr G T2 Ds2) by apply exp_total. (* <----- *)
     destruct Exp2 as [Ds2 Exp2].
-    specialize (IHSt12 Ds1 Ds2 eq_refl eq_refl eq_refl Exp1 Exp2).
+    specialize (IHSt12 Ds1 Ds2 eq_refl Eq2 Eq3 Eq4 Exp1 Exp2).
     destruct IHSt12 as [L1 Sds12].
-    specialize (IHSt23 Ds2 Ds3 eq_refl eq_refl eq_refl Exp2 Exp3).
+    specialize (IHSt23 Ds2 Ds3 eq_refl Eq2 Eq3 Eq4 Exp2 Exp3).
     destruct IHSt23 as [L2 Sds23].
     exists (L1 \u L2). intros z zn.
     assert (zL1: z \notin L1) by auto. specialize (Sds12 z zL1).
     assert (zL2: z \notin L2) by auto. specialize (Sds23 z zL2).
     (* narrowing with d [smaller than d+1 :-)] *)
-    refine (subdecs_trans Sds12 (N _ _ _ _ _ _ _ Sds23 Sds12)).
-    symmetry. apply ctx_size_push.
+    refine (subdecs_trans Sds12 (N _ _ _ _ _ _ _ _ _ _ Sds23 Sds12)).
+    - rewrite ctx_size_push. omega.
+    - rewrite ctx_size_push. admit. (* <----- !!!*)
+    - omega.
 Qed.
 
 (* no base case needed for narrowing because [egr_narrowing d] depends on
@@ -2674,9 +2715,9 @@ Proof.
     - intros. apply subdecs_refl.
   + (* case exp_sel *)
     intros m G v L Lo2 Hi2 Ds2 Has2 IHHas Exp2 IHExp.
-    intros G1 G2 x DsA DsB E1 E2 Ok2 E3 SdsAB.
-    specialize (IHHas _ _ _ _ _ E1 E2 Ok2 E3 SdsAB).
-    specialize (IHExp _ _ _ _ _ E1 E2 Ok2 E3 SdsAB).
+    intros G1 G2 x DsA DsB n E1 Hle E2 Ok2 E3 SdsAB.
+    specialize (IHHas _ _ _ _ _ _ E1 Hle E2 Ok2 E3 SdsAB).
+    specialize (IHExp _ _ _ _ _ _ E1 Hle E2 Ok2 E3 SdsAB).
     subst.
     destruct IHHas as [D1 [IHHas Sd]].
     destruct IHExp as [L0 [Dsm [IHExp Sds2]]].
@@ -2688,6 +2729,7 @@ Proof.
     destruct N as [N | [c [Eq N]]].
     (* case d = 0 *) {
       subst d. clear E.
+      assert (nEq0: n = 0) by omega. subst.
       lets E: (exp_preserves_sub_base_case StHi12 eq_refl eq_refl Exp1 IHExp).
       exists L0 Ds1. apply (conj (exp_sel IHHas Exp1)).
       intros z zL0. specialize (Sds2 z zL0).
@@ -2697,7 +2739,7 @@ Proof.
       - exact Sds2.
     }
     (* case d > 0, so write d as d = n + 1 *) {
-      subst d. rename c into n.
+      subst d.
       (* apply exp_preserves_sub: *)
       lets Sds1: (E _ _ Hi1 Hi2 Ds1 Dsm _ StHi12 
                     (ctx_size_swap_middle G1 x (typ_bind DsB) x (typ_bind DsA) G2)
@@ -2844,6 +2886,8 @@ Proof.
   + (* case subdecs_refl *)
     intros. subst. apply* subdecs_refl.
 Qed.
+
+Print Assumptions egr_narrowing_proof.
 
 (*
 Lemma egr_exp_preserves_sub_pr_step: forall d,
