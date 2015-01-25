@@ -266,12 +266,12 @@ Inductive red : trm -> sto -> trm -> sto -> Prop :=
   (* computation rules *)
   | red_call : forall s x y m ds T U body,
       binds x ds s ->
-      defs_has (open_defs x ds) m (def_mtd T U body) ->
+      defs_has ds m (def_mtd T U body) ->
       red (trm_call (trm_var (avar_f x)) m (trm_var (avar_f y))) s
           (open_trm y body) s
   | red_sel : forall s x y l T ds,
       binds x ds s ->
-      defs_has (open_defs x ds) l (def_fld T y) ->
+      defs_has ds l (def_fld T y) ->
       red (trm_sel (trm_var (avar_f x)) l) s
           (trm_var y) s
   | red_new : forall s ds x,
@@ -651,10 +651,11 @@ with   subtyp_mut  := Induction for subtyp  Sort Prop
 with   subdec_mut  := Induction for subdec  Sort Prop
 with   ty_trm_mut  := Induction for ty_trm  Sort Prop
 with   ty_def_mut  := Induction for ty_def  Sort Prop
-with   ty_defs_mut := Induction for ty_defs Sort Prop.
+with   ty_defs_mut := Induction for ty_defs Sort Prop
+with   can_add_mut := Induction for can_add Sort Prop.
 Combined Scheme ty_mutind from typ_has_mut, has_mut,
                                subtyp_mut, subdec_mut,
-                               ty_trm_mut, ty_def_mut, ty_defs_mut.
+                               ty_trm_mut, ty_def_mut, ty_defs_mut, can_add_mut.
 
 Scheme has_mut2    := Induction for has    Sort Prop
 with   ty_trm_mut2 := Induction for ty_trm Sort Prop.
@@ -696,9 +697,9 @@ Ltac pick_fresh x :=
 Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
   apply_fresh_base T gather_vars x.
 
-Hint Constructors subtyp subdec.
+Hint Constructors typ_has has subtyp subdec ty_trm ty_def ty_defs can_add.
 Hint Constructors defs_has defs_hasnt.
-
+Hint Constructors label_matches_def label_matches_dec.
 
 (* ###################################################################### *)
 (** ** Library extensions *)
@@ -1090,6 +1091,16 @@ Qed.
 (* ###################################################################### *)
 (** ** Trivial inversion lemmas *)
 
+Lemma invert_subdec_typ_sync_right: forall G D2 Lo1 Hi1 n,
+  subdec G (dec_typ Lo1 Hi1) D2 n ->
+  exists Lo2 Hi2, D2 = (dec_typ Lo2 Hi2) /\
+                  subtyp oktrans G Lo2 Lo1 n /\
+                  subtyp oktrans G Lo1 Hi1 n /\
+                  subtyp oktrans G Hi1 Hi2 n.
+Proof.
+  introv Sd. inversions Sd. exists Lo2 Hi2. auto.
+Qed.
+
 (*
 Lemma invert_subdec_typ_sync_left: forall m G D Lo2 Hi2 n,
    subdec m G D (dec_typ Lo2 Hi2) n ->
@@ -1284,6 +1295,12 @@ Proof.
   - introv dsHas dsHasnt. inversions dsHas; inversions dsHasnt; auto_star.
 Qed.
 
+Lemma defs_has_and_hasnt: forall ds l1 d1 l2,
+  defs_has ds l1 d1 -> defs_hasnt ds l2 -> l1 <> l2.
+Proof.
+  introv dsHas dsHasnt. intro. subst. apply (not_defs_has_and_hasnt dsHas dsHasnt).
+Qed.
+
 Lemma invert_typ_rfn_has: forall G T l0 D0 l D,
   typ_has G (typ_rfn T l0 D0) l D ->
   typ_has G T l D \/
@@ -1321,6 +1338,130 @@ Proof.
   introv C. inversions* C.
 Qed.
 
+(* Not needed:
+Lemma subdec_typ_refl: forall G Lo Hi n,
+  subtyp oktrans G Lo Hi n -> subdec G (dec_typ Lo Hi) (dec_typ Lo Hi) n.
+Proof.
+  introv St. apply subdec_typ.
+  + apply subtyp_tmode. apply subtyp_refl.
+  + exact St.
+  + apply subtyp_tmode. apply subtyp_refl.
+Qed.
+Hint Resolve subdec_typ_refl.
+*)
+
+Lemma defs_has_hit_eq: forall ds l D1 D2, 
+  defs_hasnt ds l ->
+  defs_has (defs_cons ds l D1) l D2 ->
+  D1 = D2.
+Proof.
+  introv dsHasnt dsHas. inversions dsHas.
+  + (* case defs_has_hit *)
+    reflexivity.
+  + (* case defs_has_skip *)
+    false* H5.
+  + (* case defs_has_merge *)
+    exfalso. apply (not_defs_has_and_hasnt H4 dsHasnt).
+Qed.
+
+Lemma defs_has_unique: forall ds l D1 D2,
+  defs_has ds l D1 ->
+  defs_has ds l D2 ->
+  D1 = D2.
+Proof.
+  intro ds. induction ds; introv dsHas1 dsHas2.
+  + inversions dsHas1. (* contradiction *)
+  + inversions dsHas1; inversions dsHas2.
+    - reflexivity.
+    - false* H7.
+    - exfalso. apply (not_defs_has_and_hasnt H6 H5).
+    - false* H5.
+    - apply* IHds.
+    - false* H5.
+    - exfalso. apply (not_defs_has_and_hasnt H4 H6).
+    - false* H6.
+    - specialize (IHds _ _ _ H4 H6). inversions IHds. reflexivity.
+Qed.
+
+Lemma invert_defs_has_merge: forall ds l Lo0 Hi0 Lo1 Hi1 Lo Hi,
+  defs_has ds l (def_typ Lo1 Hi1) ->
+  defs_has (defs_cons ds l (def_typ Lo0 Hi0)) l (def_typ Lo Hi) ->
+  Lo = typ_or Lo1 Lo0 /\ Hi = typ_and Hi1 Hi0.
+Proof.
+  introv dsHas H. inversions H.
+  + (* case defs_has_hit *)
+    exfalso. apply (not_defs_has_and_hasnt dsHas H7).
+  + (* case defs_has_skip *)
+    false* H6.
+  + (* case defs_has_merge *)
+    lets Eq: (defs_has_unique dsHas H5). inversions Eq. auto.
+Qed.
+
+Lemma invert_defs_has_skip: forall ds l0 d0 l D,
+  defs_has (defs_cons ds l0 d0) l D ->
+  l0 <> l ->
+  defs_has ds l D.
+Proof.
+  introv dsHas Ne. inversions dsHas.
+  + (* case defs_has_hit *)
+    false* Ne.
+  + (* case defs_has_skip *)
+    exact H4.
+  + (* case defs_has_merge *)
+    false* Ne.
+Qed.
+
+Lemma subtyp_or_and: forall G Lo0 Hi0 Lo1 Hi1 n1 n2 n3 n4,
+  subtyp oktrans G Lo0 Hi0 n1 ->
+  subtyp oktrans G Lo1 Hi0 n2 ->
+  subtyp oktrans G Lo0 Hi1 n3 ->
+  subtyp oktrans G Lo1 Hi1 n4 ->
+  exists n, subtyp oktrans G (typ_or Lo1 Lo0) (typ_and Hi1 Hi0) n.
+Proof.
+  introv St1 St2 St3 St4.
+  remember (max n1 (max n2 (max n3 n4))) as n.
+  assert (n1 <= n /\ n2 <= n /\ n3 <= n /\ n4 <= n). {
+    lets L1: (Max.le_max_l n1 (max n2 (max n3 n4))).
+    lets L2: (Max.le_max_l n2 (max n3 n4)).
+    lets L3: (Max.le_max_l n3 n4).
+    lets R1: (Max.le_max_r n1 (max n2 (max n3 n4))).
+    lets R2: (Max.le_max_r n2 (max n3 n4)).
+    lets R3: (Max.le_max_r n3 n4).
+    omega.
+  }
+  exists n.
+  apply subtyp_tmode. apply subtyp_and; apply subtyp_tmode; apply subtyp_or.
+  + apply (subtyp_max_ctx St4). omega.
+  + apply (subtyp_max_ctx St3). omega.
+  + apply (subtyp_max_ctx St2). omega.
+  + apply (subtyp_max_ctx St1). omega.
+Qed.
+
+Lemma ty_defs_to_good_bounds: forall G ds T l Lo Hi,
+  ty_defs G ds T ->
+  defs_has ds l (def_typ Lo Hi) ->
+  exists n, subtyp oktrans G Lo Hi n.
+Proof.
+  introv Tyds. gen l Lo Hi. induction Tyds.
+  + introv dsHas. inversions dsHas. (* contradiction *)
+  + rename H into Tyd0, l into l0, D into D0, d into d0, H0 into M, H1 into C.
+    introv dsHas. destruct (classicT (l0 = l)) as [Eq | Ne].
+    - (* case l0 = l *)
+      subst. destruct d0 as [Lo0 Hi0 | T0 a | U0 V0 t]; inversions Tyd0.
+      * apply invert_can_add_typ in C.
+        destruct C as [ [n' [dsHasnt St]]
+                      | [n1 [n2 [n3 [Lo1 [Hi1 [dsHas' [St1 [St2 St3]]]]]]]]].
+        { lets Eq: (defs_has_hit_eq dsHasnt dsHas). inversions Eq. exists n'. exact St. }
+        { specialize (IHTyds _ _ _ dsHas'). destruct IHTyds as [n4 St4].
+          destruct (invert_defs_has_merge dsHas' dsHas) as [Eq1 Eq2]. subst.
+          apply (subtyp_or_and St1 St2 St3 St4). }
+      * inversions dsHas. false* H6.
+      * inversions dsHas. false* H6.
+    - (* case l0 <> l *)
+      lets dsHas': (invert_defs_has_skip dsHas Ne).
+      apply (IHTyds _ _ _ dsHas').
+Qed.
+
 Lemma invert_ty_defs: forall G l ds T D2,
   ty_defs G ds T ->
   typ_has G T l D2 ->
@@ -1332,82 +1473,97 @@ Proof.
     introv THas.
     apply invert_typ_rfn_has in THas.
     destruct d0 as [Lo0 Hi0 | T0 a | U0 V0 t].
-    - admit.
-    - apply invert_can_add_fld in C.
-      (destruct THas as [THas | [[M' [Eq1 Eq2]] | [D1 [THas [Eq1 Eq2]]]]];
-    [ (specialize (IHTyds _ _ THas); destruct IHTyds as [d [D1 [n' [dsHas' [Tyd Sd]]]]])
-    | idtac
-    | (specialize (IHTyds _ _ THas); destruct IHTyds as [d [D1' [n' [dsHas' [Tyd Sd]]]]])]).
-
- exists (def_fld T0 a) (dec_fld T0)
-; [
-      (apply invert_can_add_typ in C;
-       destruct C as [[n [dsHasnt St]] | [n1 [n2 [n3 [Lo1 [Hi1 [dsHas [St1 St2]]]]]]]])
-    | apply invert_can_add_fld in C
-    | apply invert_can_add_mtd in C
-    ].
-    - admit.
-    - admit.
-    - 
-
-
-
-    destruct d0 as [Lo0 Hi0 | T0 | U0 V0]; [
-      (apply invert_can_add_typ in C;
-       destruct C as [[n [dsHasnt St]] | [n1 [n2 [n3 [Lo1 [Hi1 [dsHas [St1 St2]]]]]]]])
-    | apply invert_can_add_fld in C
-    | apply invert_can_add_mtd in C
-    ];
-    (destruct THas as [THas | [[M' [Eq1 Eq2]] | [D1 [THas [Eq1 Eq2]]]]];
-    [ (specialize (IHTyds _ _ THas); destruct IHTyds as [d [D1 [n' [dsHas' [Tyd Sd]]]]])
-    | idtac
-    | (specialize (IHTyds _ _ THas); destruct IHTyds as [d [D1' [n' [dsHas' [Tyd Sd]]]]])]);
-    subst.
-    - admit. (* hard *)
-    - subst.
-
-    destruct C as [[n [dsHas St]] | [n1 [n2 [n3 [Lo1 [Hi1 [dsHas [St1 St2]]]]]]]]. admit.
-    destruct THas as [THas | [[M' [Eq1 Eq2]] | [D1 [THas [Eq1 Eq2]]]]];
-
-
-    destruct C as [
-      G ds L Lo Hi n dsHasnt St |
-      G ds L Lo1 Hi1 Lo2 Hi2 n1 n2 n3 dsHas St1 St2 St3 |
-      G ds l0' T' x dsHasnt |
-      G ds m T1 T2 t dsHasnt
-    ];
-    (destruct THas as [THas | [[M' [Eq1 Eq2]] | [D1 [THas [Eq1 Eq2]]]]];
-    [ (specialize (IHTyds _ _ THas); destruct IHTyds as [d [D1 [n' [dsHas' [Tyd Sd]]]]])
-    | idtac
-    | (specialize (IHTyds _ _ THas); destruct IHTyds as [d [D1' [n' [dsHas' [Tyd Sd]]]]])]).
-    - exists d D1 n'. auto.
-
- exists (def_typ Lo Hi) (dec_typ Lo Hi) 0. eauto.
-
-    - destruct (classicT (l0 = l)) as [Eq | Ne].
-      * (* case l0 = l *)
-        subst. exists d0 D0 0.
-
-
- specialize (IHTyds l D2 THas). destruct IHTyds as [d [D1 [n [dsHas [Tyd Sd]]]]].
-      exists d D1 n. auto.
-
-
-  + rename H into Tyd0, l into l0, D into D0, d into d0. introv THas.
-    apply invert_typ_rfn_has in THas.
-    destruct (classicT (l0 = l)) as [Eq | Ne].
-    - (* case l0 = l *)
-      subst. destruct THas as [THas | [[M [Eq1 Eq2]] | [D1 [THas [Eq1 Eq2]]]]].
-    - (* case l0 <> l *)
-
-  + rename H into Tyd0, l into l0, D into D0, d into d0. introv THas.
-    apply invert_typ_rfn_has in THas.
-    destruct THas as [THas | [[M [Eq1 Eq2]] | [D1 [THas [Eq1 Eq2]]]]].
-    - specialize (IHTyds l D2 THas). destruct IHTyds as [d [D1 [n [dsHas [Tyd Sd]]]]].
-      exists d D1 n. auto.
-
+    - inversions Tyd0. inversions M.
+      apply invert_can_add_typ in C.
+      destruct THas as [THas | [[M' [Eq1 Eq2]] | [D1 [THas [Eq1 Eq2]]]]].
+      * specialize (IHTyds _ _ THas). destruct IHTyds as [d [D1 [n'' [dsHas [Tyd Sd]]]]].
+        destruct (classicT ((label_typ n0) = l)) as [Eq | Ne].
+        (* case l0 = l *) {
+          subst. destruct C as [ [n' [dsHasnt St]]
+                               | [n1 [n2 [n3 [Lo1 [Hi1 [dsHas' [St1 [St2 St3]]]]]]]]].
+          + false (not_defs_has_and_hasnt dsHas dsHasnt).
+          + lets Eq: (defs_has_unique dsHas dsHas'). subst. inversions Tyd.
+            apply invert_subdec_typ_sync_right in Sd.
+            destruct Sd as [Lo1' [Hi1' [Eq [St5 [St6 St7]]]]]. subst.
+            rename H4 into St4.
+            lets St9: (subtyp_or_and St1 St2 St3 St4). destruct St9 as [n9 St9].
+            exists (def_typ (typ_or Lo1 Lo0) (typ_and Hi1 Hi0))
+                   (dec_typ (typ_or Lo1 Lo0) (typ_and Hi1 Hi0)) n9.
+            repeat split.
+            - apply defs_has_merge. exact dsHas'.
+            - apply ty_typ with n9. exact St9.
+            - assert (n'' = n9) by admit. subst. apply subdec_typ.
+              * apply subtyp_tmode. apply subtyp_or_l. exact St5.
+              * exact St9.
+              * apply subtyp_tmode. apply subtyp_and_l. exact St7.
+        }
+        (* case l0 <> l *) { eauto 10. }
+      * subst. destruct C as [ [n' [dsHasnt St]]
+                             | [n1 [n2 [n3 [Lo1 [Hi1 [dsHas' [St1 [St2 St3]]]]]]]]].
+        { exists (def_typ Lo0 Hi0) (dec_typ Lo0 Hi0) n. eauto 10. }
+        { lets St4: (ty_defs_to_good_bounds Tyds dsHas'). destruct St4 as [n4 St4].
+          lets St9: (subtyp_or_and St1 St2 St3 St4). destruct St9 as [n9 St9].
+          exists (def_typ (typ_or Lo1 Lo0) (typ_and Hi1 Hi0))
+                 (dec_typ (typ_or Lo1 Lo0) (typ_and Hi1 Hi0)) n9.
+          repeat split.
+          + apply defs_has_merge. exact dsHas'.
+          + apply ty_typ with n9. exact St9.
+          + apply subdec_typ.
+            - apply subtyp_tmode. apply subtyp_or_r. apply subtyp_tmode. apply subtyp_refl.
+            - exact St9.
+            - apply subtyp_tmode. apply subtyp_and_r. apply subtyp_tmode. apply subtyp_refl.
+        }
+      * subst.
+        specialize (IHTyds _ _ THas). destruct IHTyds as [d [D1' [n'' [dsHas [Tyd Sd]]]]].
+        destruct C as [ [n' [dsHasnt St]]
+                      | [n1 [n2 [n3 [Lo1 [Hi1 [dsHas' [St1 [St2 St3]]]]]]]]].
+        { exfalso. apply (not_defs_has_and_hasnt dsHas dsHasnt). }
+        { lets Eq: (defs_has_unique dsHas dsHas'). subst. inversions Tyd.
+          apply invert_subdec_typ_sync_right in Sd.
+          destruct Sd as [Lo1' [Hi1' [Eq [St5 [St6 St7]]]]]. subst. simpl.
+          rename H4 into St4.
+          lets St9: (subtyp_or_and St1 St2 St3 St4). destruct St9 as [n9 St9].
+          exists (def_typ (typ_or Lo1 Lo0) (typ_and Hi1 Hi0))
+                 (dec_typ (typ_or Lo1 Lo0) (typ_and Hi1 Hi0)) n9.
+          repeat split.
+          + apply defs_has_merge. exact dsHas'.
+          + apply ty_typ with n9. exact St9.
+          + assert (n'' = n9) by admit. subst. apply subdec_typ.
+            - apply subtyp_tmode. apply subtyp_or.
+              * apply subtyp_tmode. apply subtyp_or_l. exact St5.
+              * apply subtyp_tmode. apply subtyp_or_r.
+                apply subtyp_tmode. apply subtyp_refl.
+            - exact St9.
+            - apply subtyp_tmode. apply subtyp_and.
+              * apply subtyp_tmode. apply subtyp_and_l. exact St7.
+              * apply subtyp_tmode. apply subtyp_and_r.
+                apply subtyp_tmode. apply subtyp_refl.
+        }
+    - apply invert_can_add_fld in C. rename C into dsHasnt.
+      destruct THas as [THas | [[M' [Eq1 Eq2]] | [D1 [THas [Eq1 Eq2]]]]].
+      * specialize (IHTyds _ _ THas). destruct IHTyds as [d [D1 [n [dsHas [Tyd Sd]]]]].
+        lets Ne: (defs_has_and_hasnt dsHas dsHasnt).
+        exists d D1 n. auto.
+      * subst. inversions Tyd0.
+        exists (def_fld T0 a) (dec_fld T0) 0. inversions M. auto.
+      * subst.
+        specialize (IHTyds _ _ THas). destruct IHTyds as [d [D1' [n [dsHas [Tyd Sd]]]]].
+        false (not_defs_has_and_hasnt dsHas dsHasnt).
+    - apply invert_can_add_mtd in C. rename C into dsHasnt.
+      destruct THas as [THas | [[M' [Eq1 Eq2]] | [D1 [THas [Eq1 Eq2]]]]].
+      * specialize (IHTyds _ _ THas). destruct IHTyds as [d [D1 [n [dsHas [Tyd Sd]]]]].
+        lets Ne: (defs_has_and_hasnt dsHas dsHasnt).
+        exists d D1 n. auto.
+      * subst. inversions Tyd0.
+        exists (def_mtd U0 V0 t) (dec_mtd U0 V0) 0. inversions M. eauto 10.
+      * subst.
+        specialize (IHTyds _ _ THas). destruct IHTyds as [d [D1' [n [dsHas [Tyd Sd]]]]].
+        false (not_defs_has_and_hasnt dsHas dsHasnt).
 Qed.
 
+Print Assumptions invert_ty_defs.
+
+(*
 Lemma decs_has_to_defs_has: forall G l ds Ds D,
   ty_defs G ds Ds ->
   decs_has Ds l D ->
@@ -1502,7 +1658,11 @@ Lemma weakening:
 /\ (forall G ds Ds, ty_defs G ds Ds -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
-      ty_defs (G1 & G2 & G3) ds Ds).
+      ty_defs (G1 & G2 & G3) ds Ds)
+/\ (forall G ds l d, can_add G ds l d -> forall G1 G2 G3,
+      G = G1 & G3 ->
+      ok (G1 & G2 & G3) ->
+      can_add (G1 & G2 & G3) ds l d).
 Proof.
   apply ty_mutind.
   + (* case typ_rfn_has_1 *)
@@ -1606,6 +1766,14 @@ Proof.
     intros. apply ty_dsnil.
   + (* case ty_dscons *) 
     intros. apply* ty_dscons.
+  + (* case can_add_typ *)
+    intros. apply* can_add_typ.
+  + (* case can_refine_typ *)
+    intros. apply* can_refine_typ.
+  + (* case can_add_fld *)
+    intros. apply* can_add_fld.
+  + (* case can_add_mtd *)
+    intros. apply* can_add_mtd.
 Qed.
 
 Print Assumptions weakening.
@@ -2581,9 +2749,12 @@ Proof.
     - destruct IH as [x [ds [Eq Bis]]]. subst.
       lets P: (has_sound Wf Bis Has).
               (*********)
-      destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
-      destruct (decs_has_to_defs_has Tyds Ds1Has) as [d dsHas].
-      destruct (defs_has_fld_sync dsHas) as [r Eqd]. subst.
+      destruct P as [T1 [D1 [n [Tyds [THas Sd]]]]].
+      lets Q: (invert_ty_defs Tyds THas).
+              (**************)
+      destruct Q as [d [D0 [n0 [dsHas [Tyd Sd']]]]].
+      assert (exists T0 r, d = (def_fld T0 r)) by admit. (* <------ TODO *)
+      destruct H as [T0 [r Eq]]. subst d.
       exists (trm_var r) s.
       apply (red_sel Bis dsHas).
   (* case ty_call *)
