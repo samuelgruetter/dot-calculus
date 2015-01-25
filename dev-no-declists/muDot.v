@@ -25,37 +25,37 @@ Definition mtd_label := nat.
 
 Definition nat := tt. (* do not use nat ;-) *)
 
-Inductive avar : Type :=
+Inductive avar : Set :=
   | avar_b : Datatypes.nat -> avar  (* bound var (de Bruijn index) *)
   | avar_f : var -> avar. (* free var ("name"), refers to tenv or venv *)
 
-Inductive pth : Type :=
+Inductive pth : Set :=
   | pth_var : avar -> pth.
 
-Inductive typ : Type :=
+Inductive typ : Set :=
   | typ_top : typ
   | typ_bot : typ
   | typ_rfn : typ -> label -> dec -> typ (* T { z => l: D }, z nameless *)
   | typ_sel : pth -> label -> typ (* p.L *)
   | typ_and : typ -> typ -> typ
   | typ_or  : typ -> typ -> typ
-with dec : Type :=
+with dec : Set :=
   | dec_typ  : typ -> typ -> dec
   | dec_fld  : typ -> dec
   | dec_mtd : typ -> typ -> dec.
 
-Inductive trm : Type :=
+Inductive trm : Set :=
   | trm_var  : avar -> trm
   | trm_new  : defs -> trm (* with nameless self reference *)
   | trm_sel  : trm -> label -> trm
   | trm_call : trm -> label -> trm -> trm
-with def : Type :=
+with def : Set :=
   | def_typ : typ -> typ -> def (* same as dec_typ *)
   | def_fld : typ -> avar -> def (* cannot have a term here, need to assign first *)
   | def_mtd : typ -> typ -> trm -> def (* one nameless argument *)
-with defs : Type :=
+with defs : Set :=
   | defs_nil : defs
-  | defs_cons : label -> def -> defs -> defs.
+  | defs_cons : defs -> label -> def -> defs.
 
 
 (** *** Typing environment ("Gamma") *)
@@ -66,7 +66,7 @@ Definition sto := env defs.
 
 (** *** Syntactic sugar *)
 Definition trm_fun(T U: typ)(body: trm) := 
-            trm_new (defs_cons (label_mtd 0) (def_mtd T U body) defs_nil).
+            trm_new (defs_cons defs_nil (label_mtd 0) (def_mtd T U body)).
 Definition trm_app(func arg: trm) := trm_call func (label_mtd 0) arg.
 Definition trm_let(T U: typ)(rhs body: trm) := trm_app (trm_fun T U body) rhs.
 Definition typ_arrow(T1 T2: typ) := typ_rfn typ_top (label_mtd 0) (dec_mtd T1 T2).
@@ -96,12 +96,48 @@ Definition defs_has(ds: defs)(l: label)(d: def): Prop := (get_def l ds = Some d)
 Definition defs_hasnt(ds: defs)(l: label): Prop := (get_def l ds = None).
 *)
 
+Inductive label_matches_dec: label -> dec -> Prop :=
+  | label_matches_dec_typ: forall n Lo Hi, label_matches_dec (label_typ n) (dec_typ Lo Hi)
+  | label_matches_dec_fld: forall n T,     label_matches_dec (label_fld n) (dec_fld T)
+  | label_matches_dec_mtd: forall n T1 T2, label_matches_dec (label_mtd n) (dec_mtd T1 T2).
+
+Inductive label_matches_def: label -> def -> Prop :=
+  | label_matches_def_typ: forall n Lo Hi,
+    label_matches_def (label_typ n) (def_typ Lo Hi)
+  | label_matches_def_fld: forall n T x,
+    label_matches_def (label_fld n) (def_fld T x)
+  | label_matches_def_mtd: forall n T1 T2 t,
+    label_matches_def (label_mtd n) (def_mtd T1 T2 t).
+
+(*
+Inductive matching_label: label -> dec -> Prop :=
+  | matching_label_typ: forall n Lo Hi, matching_label (label_typ n) (dec_typ Lo Hi)
+  | matching_label_fld: forall n T,     matching_label (label_fld n) (dec_fld T)
+  | matching_label_mtd: forall n T1 T2, matching_label (label_mtd n) (dec_mtd T1 T2).
+*)
+
+Inductive defs_hasnt: defs -> label -> Prop :=
+| defs_hasnt_nil: forall l,
+    defs_hasnt defs_nil l
+| defs_hasnt_cons: forall l0 d0 ds l,
+    defs_hasnt ds l ->
+    l0 <> l ->
+    defs_hasnt (defs_cons ds l0 d0) l.
+
 Inductive defs_has: defs -> label -> def -> Prop :=
-  | defs_has_hit: forall l d ds,
-      defs_has (defs_cons l d ds) l d
-  | defs_has_skip: forall l1 d1 ds l2 d2,
-      defs_has ds l1 d1 ->
-      defs_has (defs_cons l2 d2 ds) l1 d1.
+| defs_has_hit: forall l d ds,
+    label_matches_def l d ->
+    defs_hasnt ds l ->
+    defs_has (defs_cons ds l d) l d
+| defs_has_skip: forall l1 d1 ds l2 d2,
+    defs_has ds l1 d1 ->
+    l2 <> l1 ->
+    defs_has (defs_cons ds l2 d2) l1 d1
+(* only def_typ can be merged, def_fld and def_mtd must be unique *)
+| defs_has_merge: forall l Lo1 Hi1 Lo2 Hi2 ds,
+    defs_has ds l (def_typ Lo1 Hi1) ->
+    defs_has (defs_cons ds l (def_typ Lo2 Hi2)) l
+      (def_typ (typ_or Lo1 Lo2) (typ_and Hi1 Hi2)).
 
 
 (* ###################################################################### *)
@@ -154,7 +190,7 @@ with open_rec_def (k: Datatypes.nat) (u: var) (d: def) { struct d } : def :=
 with open_rec_defs (k: Datatypes.nat) (u: var) (ds: defs) { struct ds } : defs :=
   match ds with
   | defs_nil => defs_nil
-  | defs_cons n d tl => defs_cons n (open_rec_def k u d) (open_rec_defs k u tl)
+  | defs_cons tl l d => defs_cons (open_rec_defs k u tl) l (open_rec_def k u d)
   end.
 
 Definition open_avar u a := open_rec_avar  0 u a.
@@ -214,7 +250,7 @@ with fv_def (d: def) : vars :=
 with fv_defs(ds: defs) : vars :=
   match ds with
   | defs_nil         => \{}
-  | defs_cons n d tl => (fv_def d) \u (fv_defs tl)
+  | defs_cons tl _ d => (fv_defs tl) \u (fv_def d)
   end.
 
 Definition fv_ctx_types(G: ctx): vars := (fv_in_values (fun T => fv_typ T) G).
@@ -269,11 +305,6 @@ Inductive pmode : Type := pr | ip. *)
 Definition pth2trm(p: pth): trm := match p with
   | pth_var a => trm_var a
 end.
-
-Inductive matching_label: label -> dec -> Prop :=
-  | matching_label_typ: forall n Lo Hi, matching_label (label_typ n) (dec_typ Lo Hi)
-  | matching_label_fld: forall n T,     matching_label (label_fld n) (dec_fld T)
-  | matching_label_mtd: forall n T1 T2, matching_label (label_mtd n) (dec_mtd T1 T2).
 
 (*
 Definition intersect_dec(D1 D2: dec): 
@@ -344,7 +375,7 @@ Inductive typ_has: ctx -> typ -> label -> dec -> Prop :=
       typ_has G T1 l D ->
       typ_has G (typ_rfn T1 l1 D1) l D
   | typ_rfn_has_2: forall G T l D,
-      matching_label l D ->
+      label_matches_dec l D ->
       typ_has G (typ_rfn T l D) l D
   | typ_rfn_has_12: forall G T l D1 D2,
       typ_has G T l D1 ->
@@ -478,10 +509,46 @@ with ty_def: ctx -> def -> dec -> Prop :=
 with ty_defs: ctx -> defs -> typ -> Prop :=
   | ty_dsnil: forall G,
       ty_defs G defs_nil typ_top
-  | ty_dscons: forall G ds d T D n,
+  | ty_dscons: forall G ds d T D l,
       ty_defs G ds T ->
-      ty_def  G d D ->
-      ty_defs G (defs_cons n d ds) (typ_rfn T n D).
+      ty_def G d D ->
+      label_matches_dec l D ->
+      can_add G ds l d ->
+      ty_defs G (defs_cons ds l d) (typ_rfn T l D)
+(* Note: can_add should also be called with a self reference in the environment. *)
+with can_add: ctx -> defs -> label -> def -> Prop :=
+  | can_add_typ: forall G ds L Lo Hi n,
+      defs_hasnt ds L ->
+      subtyp oktrans G Lo Hi n ->
+      can_add G ds L (def_typ Lo Hi)
+  | can_refine_typ: forall G ds L Lo1 Hi1 Lo2 Hi2 n1 n2 n3,
+      defs_has ds L (def_typ Lo1 Hi1) ->
+      (* added dec must have good bounds: *)
+      subtyp oktrans G Lo2 Hi2 n1 ->
+      (* and if intersected with existing bounds, still good: *)
+      subtyp oktrans G Lo1 Hi2 n2 ->
+      subtyp oktrans G Lo2 Hi1 n3 ->
+      can_add G ds L (def_typ Lo2 Hi2)
+  | can_add_fld: forall G ds l T x,
+      defs_hasnt ds l ->
+      can_add G ds l (def_fld T x)
+  | can_add_mtd: forall G ds m T1 T2 t,
+      defs_hasnt ds m ->
+      can_add G ds m (def_mtd T1 T2 t).
+
+
+(* "ty_def G ds d D" means "d has type D, and it's ok to put ds in front of it",
+with ty_def: ctx -> defs -> def -> dec -> Prop :=
+  | ty_typ: forall G S T n,
+      subtyp oktrans G S T n -> (* <----- only allow realizable bounds *)
+      ty_def G (def_typ S T) (dec_typ S T)
+  | ty_fld: forall G v T,
+      ty_trm G (trm_var v) T ->
+      ty_def G (def_fld T v) (dec_fld T)
+  | ty_mtd: forall L G S T t,
+      (forall x, x \notin L -> ty_trm (G & x ~ S) (open_trm x t) T) ->
+      ty_def G (def_mtd S T t) (dec_mtd S T)
+*)
 
 (*
 with real_typ: ctx -> typ -> Prop :=
@@ -629,8 +696,8 @@ Ltac pick_fresh x :=
 Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
   apply_fresh_base T gather_vars x.
 
-Hint Constructors subtyp.
-Hint Constructors subdec.
+Hint Constructors subtyp subdec.
+Hint Constructors defs_has defs_hasnt.
 
 
 (* ###################################################################### *)
@@ -698,7 +765,7 @@ with subst_def (z: var) (u: var) (d: def) : def :=
 with subst_defs (z: var) (u: var) (ds: defs) : defs :=
   match ds with
   | defs_nil => defs_nil
-  | defs_cons n d rest => defs_cons n (subst_def z u d) (subst_defs z u rest)
+  | defs_cons rest l d => defs_cons (subst_defs z u rest) l (subst_def z u d)
   end.
 
 Definition subst_ctx (z: var) (u: var) (G: ctx) : ctx := map (subst_typ z u) G.
@@ -1206,6 +1273,139 @@ Proof.
   introv HdsDs dsHas DsHas.
   lets H: (extract_ty_def_from_ty_defs HdsDs dsHas DsHas).
   inversions* H. 
+Qed.
+*)
+
+Lemma not_defs_has_and_hasnt: forall ds l d,
+  defs_has ds l d -> defs_hasnt ds l -> False.
+Proof.
+  intro ds. induction ds.
+  - introv nilHas. inversions nilHas. (* contradiction *)
+  - introv dsHas dsHasnt. inversions dsHas; inversions dsHasnt; auto_star.
+Qed.
+
+Lemma invert_typ_rfn_has: forall G T l0 D0 l D,
+  typ_has G (typ_rfn T l0 D0) l D ->
+  typ_has G T l D \/
+  label_matches_dec l0 D0 /\ l0 = l /\ D0 = D \/
+  exists D1, typ_has G T l D1 /\ l0 = l /\ D = (intersect_dec D1 D0).
+Proof.
+  introv THas. inversions THas; eauto 10.
+Qed.
+
+Lemma invert_can_add_typ: forall G ds L Lo Hi,
+  can_add G ds L (def_typ Lo Hi) ->
+     (exists n, defs_hasnt ds L /\
+                subtyp oktrans G Lo Hi n)
+  \/ (exists n1 n2 n3 Lo1 Hi1, defs_has ds L (def_typ Lo1 Hi1) /\
+                subtyp oktrans G Lo Hi n1 /\
+                subtyp oktrans G Lo1 Hi n2 /\
+                subtyp oktrans G Lo Hi1 n3).
+Proof.
+  introv C. inversions C; [left | right].
+  - exists n. auto.
+  - exists n1 n2 n3 Lo1 Hi1. auto.
+Qed.
+
+Lemma invert_can_add_fld: forall G ds l T x,
+  can_add G ds l (def_fld T x) ->
+  defs_hasnt ds l.
+Proof.
+  introv C. inversions* C.
+Qed.
+
+Lemma invert_can_add_mtd: forall G ds m T1 T2 t,
+  can_add G ds m (def_mtd T1 T2 t) ->
+  defs_hasnt ds m.
+Proof.
+  introv C. inversions* C.
+Qed.
+
+Lemma invert_ty_defs: forall G l ds T D2,
+  ty_defs G ds T ->
+  typ_has G T l D2 ->
+  exists d D1 n, defs_has ds l d /\ ty_def G d D1 /\ subdec G D1 D2 n.
+Proof.
+  introv Tyds. gen l D2. induction Tyds.
+  + introv THas. inversions THas. (* contradiction *)
+  + rename H into Tyd0, l into l0, D into D0, d into d0, H0 into M, H1 into C.
+    introv THas.
+    apply invert_typ_rfn_has in THas.
+    destruct d0 as [Lo0 Hi0 | T0 a | U0 V0 t].
+    - admit.
+    - apply invert_can_add_fld in C.
+      (destruct THas as [THas | [[M' [Eq1 Eq2]] | [D1 [THas [Eq1 Eq2]]]]];
+    [ (specialize (IHTyds _ _ THas); destruct IHTyds as [d [D1 [n' [dsHas' [Tyd Sd]]]]])
+    | idtac
+    | (specialize (IHTyds _ _ THas); destruct IHTyds as [d [D1' [n' [dsHas' [Tyd Sd]]]]])]).
+
+ exists (def_fld T0 a) (dec_fld T0)
+; [
+      (apply invert_can_add_typ in C;
+       destruct C as [[n [dsHasnt St]] | [n1 [n2 [n3 [Lo1 [Hi1 [dsHas [St1 St2]]]]]]]])
+    | apply invert_can_add_fld in C
+    | apply invert_can_add_mtd in C
+    ].
+    - admit.
+    - admit.
+    - 
+
+
+
+    destruct d0 as [Lo0 Hi0 | T0 | U0 V0]; [
+      (apply invert_can_add_typ in C;
+       destruct C as [[n [dsHasnt St]] | [n1 [n2 [n3 [Lo1 [Hi1 [dsHas [St1 St2]]]]]]]])
+    | apply invert_can_add_fld in C
+    | apply invert_can_add_mtd in C
+    ];
+    (destruct THas as [THas | [[M' [Eq1 Eq2]] | [D1 [THas [Eq1 Eq2]]]]];
+    [ (specialize (IHTyds _ _ THas); destruct IHTyds as [d [D1 [n' [dsHas' [Tyd Sd]]]]])
+    | idtac
+    | (specialize (IHTyds _ _ THas); destruct IHTyds as [d [D1' [n' [dsHas' [Tyd Sd]]]]])]);
+    subst.
+    - admit. (* hard *)
+    - subst.
+
+    destruct C as [[n [dsHas St]] | [n1 [n2 [n3 [Lo1 [Hi1 [dsHas [St1 St2]]]]]]]]. admit.
+    destruct THas as [THas | [[M' [Eq1 Eq2]] | [D1 [THas [Eq1 Eq2]]]]];
+
+
+    destruct C as [
+      G ds L Lo Hi n dsHasnt St |
+      G ds L Lo1 Hi1 Lo2 Hi2 n1 n2 n3 dsHas St1 St2 St3 |
+      G ds l0' T' x dsHasnt |
+      G ds m T1 T2 t dsHasnt
+    ];
+    (destruct THas as [THas | [[M' [Eq1 Eq2]] | [D1 [THas [Eq1 Eq2]]]]];
+    [ (specialize (IHTyds _ _ THas); destruct IHTyds as [d [D1 [n' [dsHas' [Tyd Sd]]]]])
+    | idtac
+    | (specialize (IHTyds _ _ THas); destruct IHTyds as [d [D1' [n' [dsHas' [Tyd Sd]]]]])]).
+    - exists d D1 n'. auto.
+
+ exists (def_typ Lo Hi) (dec_typ Lo Hi) 0. eauto.
+
+    - destruct (classicT (l0 = l)) as [Eq | Ne].
+      * (* case l0 = l *)
+        subst. exists d0 D0 0.
+
+
+ specialize (IHTyds l D2 THas). destruct IHTyds as [d [D1 [n [dsHas [Tyd Sd]]]]].
+      exists d D1 n. auto.
+
+
+  + rename H into Tyd0, l into l0, D into D0, d into d0. introv THas.
+    apply invert_typ_rfn_has in THas.
+    destruct (classicT (l0 = l)) as [Eq | Ne].
+    - (* case l0 = l *)
+      subst. destruct THas as [THas | [[M [Eq1 Eq2]] | [D1 [THas [Eq1 Eq2]]]]].
+    - (* case l0 <> l *)
+
+  + rename H into Tyd0, l into l0, D into D0, d into d0. introv THas.
+    apply invert_typ_rfn_has in THas.
+    destruct THas as [THas | [[M [Eq1 Eq2]] | [D1 [THas [Eq1 Eq2]]]]].
+    - specialize (IHTyds l D2 THas). destruct IHTyds as [d [D1 [n [dsHas [Tyd Sd]]]]].
+      exists d D1 n. auto.
+
 Qed.
 
 Lemma decs_has_to_defs_has: forall G l ds Ds D,
@@ -2284,14 +2484,15 @@ Definition intersect_ty_trm := proj2 intersect_ty_has.
 (* ###################################################################### *)
 (** ** Soundness helper lemmas *)
 
-Lemma has_sound: forall s G x Ds1 ds l D2,
+Lemma has_sound: forall s G x ds l D2,
   wf_sto s G ->
-  binds x (object Ds1 ds) s ->
-  has ip G (trm_var (avar_f x)) l D2 ->
-  exists Ds1 D1,
-    ty_defs G (open_defs x ds) (open_decs x Ds1) /\
-    decs_has (open_decs x Ds1) l D1 /\
-    subdec ip G D1 D2.
+  binds x ds s ->
+  has G (trm_var (avar_f x)) l D2 ->
+  exists T1 D1 n,
+    ty_defs G ds T1 /\
+    typ_has G T1 l D1 /\ (* <-- is this what we need? *)
+    subdec G (open_dec x D1) D2 n.
+Admitted. (*
 Proof.
   introv Wf Bis Has.
   apply invert_var_has_dec in Has.
@@ -2345,7 +2546,7 @@ Proof.
     unfold subst_ctx in P. rewrite map_empty in P. rewrite concat_empty_r in P.
     exact P.
 Qed.
-
+*)
 
 (* ###################################################################### *)
 (** ** Progress *)
@@ -2357,29 +2558,27 @@ Proof.
                          (exists e' s', red e s e' s') \/
                          (exists x o, e = (trm_var (avar_f x)) /\ binds x o s)).
   apply (ty_has_mutind
-    (fun m G e l d Has => forall s, wf_sto s G -> m = ip -> progress_for s e)
-    (fun G e T Ty      => forall s, wf_sto s G ->           progress_for s e));
+    (fun G e l d Has => forall s, wf_sto s G   -> progress_for s e)
+    (fun G e T Ty      => forall s, wf_sto s G -> progress_for s e));
     unfold progress_for; clear progress_for.
   (* case has_trm *)
   + intros. auto.
   (* case has_var *)
-  + intros G v T Ds l D Ty IH Exp Has s Wf.
-    right. apply invert_ty_var in Ty. destruct Ty as [T' [St BiG]].
+  + introv Ty IH THas Wf.
+    right. apply invert_ty_var in Ty. destruct Ty as [T' [n [St BiG]]].
     destruct (ctx_binds_to_sto_binds Wf BiG) as [o Bis].
     exists v o. auto.
-  (* case has_pr *)
-  + intros. discriminate.
   (* case ty_var *)
   + intros G x T BiG s Wf.
     right. destruct (ctx_binds_to_sto_binds Wf BiG) as [o Bis].
     exists x o. auto.
   (* case ty_sel *)
   + intros G t l T Has IH s Wf.
-    left. specialize (IH s Wf eq_refl). destruct IH as [IH | IH].
+    left. specialize (IH s Wf). destruct IH as [IH | IH].
     (* receiver is an expression *)
     - destruct IH as [s' [e' IH]]. do 2 eexists. apply (red_sel1 l IH).
     (* receiver is a var *)
-    - destruct IH as [x [[X1 ds] [Eq Bis]]]. subst.
+    - destruct IH as [x [ds [Eq Bis]]]. subst.
       lets P: (has_sound Wf Bis Has).
               (*********)
       destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
