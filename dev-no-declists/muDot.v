@@ -2789,6 +2789,21 @@ Proof.
   exists n'. apply (subtyp_trans H4). apply (subtyp_trans H6). exact H7.
 Qed.
 
+(* env of conclusion satisfies only one of the envs of the 2 hypotheses: *)
+Lemma subdec_or: forall G Ta Tb Da1 Da2 Db1 Db2 n z,
+  subdec (G & z ~ Ta) Da1 Da2 n ->
+  subdec (G & z ~ Tb) Db1 Db2 n ->
+  subdec (G & z ~ typ_or Ta Tb) (intersect_dec Da1 Da2) (union_dec Db1 Db2) n.
+Admitted.
+
+(* env of conclusions satisfies both of the envs of the 2 hypotheses:
+   (only holds if (typ_and Ta Tb) has good bounds) *)
+Lemma subdec_and: forall G Ta Tb Da1 Da2 Db1 Db2 n z,
+  subdec (G & z ~ Ta) Da1 Da2 n ->
+  subdec (G & z ~ Tb) Db1 Db2 n ->
+  subdec (G & z ~ typ_and Ta Tb) (union_dec Da1 Da2) (intersect_dec Db1 Db2) n.
+Admitted.
+
 Lemma swap_sub_and_has: swap_sub_and_has_statement.
 Proof.
   (* We don't use the [induction] tactic because we want to intro everything ourselves: *)
@@ -2913,9 +2928,39 @@ Proof.
     assert (xLU: x \notin LU) by auto. specialize (SdU x xLU).
     assert (xLV: x \notin LV) by auto. specialize (SdV x xLV).
     rewrite (distribute_open_dec_over_union_dec x DU DV).
+    assert (SdAnd: subdec (G & x ~ typ_or U V)
+                          (intersect_dec (open_dec x D2) (open_dec x D2))
+                          (open_dec x D2)
+                          (max nU nV)).
+    admit. (* doesn't hold because subdec_refl doesn't (need good bounds) *)
+    refine (subdec_trans _ SdAnd).
+    (*
+    apply subdec_or. doesn't match: we have intersect<:union, but want union<:intersect!
+    *)
+    admit. (*
+  + (* case subtyp_or *)
+    intros G U V T n StU IHU StV IHV l D2 THas.
+    specialize (IHU _ _ THas). destruct IHU as [DU [LU [nU [UHas SdU]]]].
+    specialize (IHV _ _ THas). destruct IHV as [DV [LV [nV [VHas SdV]]]].
+    exists (union_dec DU DV) (LU \u LV) (max nU nV).
+    apply (conj (union_typ_has UHas VHas)).
+    intros x Frx.
+    assert (xLU: x \notin LU) by auto. specialize (SdU x xLU).
+    assert (xLV: x \notin LV) by auto. specialize (SdV x xLV).
+    rewrite (distribute_open_dec_over_union_dec x DU DV).
+    (* SdU is with (x: U), but we need it with (x: (typ_or U V)),
+       but narrowing goes the other way round! 
+       Intersection types to the rescue! *)
+    lets StAndU: (subtyp_tmode (subtyp_and_l V (subtyp_tmode (subtyp_refl G U 7)))).
+    apply (narrow_subdec_end (okadmit _) StAndU) in SdU.
+    lets StAndV: (subtyp_tmode (subtyp_and_r U (subtyp_tmode (subtyp_refl G V 7)))).
+    apply (narrow_subdec_end (okadmit _) StAndV) in SdV.
+    assert (StAndOr: subtyp oktrans G (typ_and U V) (typ_or U V) 7). {
+      apply subtyp_tmode. apply subtyp_or_l. exact StAndU.
+    }
+    (* doesn't help, still the wrong way!
+    apply (narrow_subdec_end (okadmit _) StAndOr).*)
     apply subdec_union.
-    (* SdU is with x: U, but we need it with x: U or V,
-       but narrowing goes the other way round! *)
     admit. admit. (*
   + (* case subtyp_or *)
     intros G U V T n StU IHU StV IHV l D2 THas.
@@ -2923,8 +2968,7 @@ Proof.
     specialize (IHU _ _ THas). destruct IHU as [DU [LU [nU [UHas SdU]]]].
     exists DU LU nU. split.
     - apply typ_or_has.*)
-
-
+  *)
   + (* case subtyp_or_l *)
     admit.
   + (* case subtyp_or_r *)
