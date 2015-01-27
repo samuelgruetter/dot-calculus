@@ -1107,34 +1107,34 @@ Proof.
   introv Sd. inversions Sd. exists Lo2 Hi2. auto.
 Qed.
 
-(*
-Lemma invert_subdec_typ_sync_left: forall m G D Lo2 Hi2 n,
-   subdec m G D (dec_typ Lo2 Hi2) n ->
+Lemma invert_subdec_typ_sync_left: forall G D Lo2 Hi2 n,
+   subdec G D (dec_typ Lo2 Hi2) n ->
    exists Lo1 Hi1, D = (dec_typ Lo1 Hi1) /\
-                   subtyp m oktrans G Lo2 Lo1 n /\
-                   subtyp m oktrans G Lo1 Hi1 n /\
-                   subtyp m oktrans G Hi1 Hi2 n.
+                   subtyp oktrans G Lo2 Lo1 n /\
+                   subtyp oktrans G Lo1 Hi1 n /\
+                   subtyp oktrans G Hi1 Hi2 n.
 Proof.
   introv Sd. inversions Sd. exists Lo1 Hi1. auto.
 Qed.
 
-Lemma invert_subdec_fld_sync_left: forall m G D T2,
-   subdec m G D (dec_fld T2) ->
+Lemma invert_subdec_fld_sync_left: forall G D T2 n,
+   subdec G D (dec_fld T2) n ->
    exists T1, D = (dec_fld T1) /\
-              subtyp m oktrans G T1 T2.
+              subtyp oktrans G T1 T2 n.
 Proof.
   introv Sd. inversions Sd. exists T1. auto.
 Qed.
 
-Lemma invert_subdec_mtd_sync_left: forall m G D T2 U2,
-   subdec m G D (dec_mtd T2 U2) ->
+Lemma invert_subdec_mtd_sync_left: forall G D T2 U2 n,
+   subdec G D (dec_mtd T2 U2) n ->
    exists T1 U1, D = (dec_mtd T1 U1) /\
-                 subtyp m oktrans G T2 T1 /\
-                 subtyp m oktrans G U1 U2.
+                 subtyp oktrans G T2 T1 n /\
+                 subtyp oktrans G U1 U2 n.
 Proof.
   introv Sd. inversions Sd. exists S1 T1. auto.
 Qed.
 
+(*
 Lemma invert_subdec_typ: forall m G Lo1 Hi1 Lo2 Hi2,
   subdec m G (dec_typ Lo1 Hi1) (dec_typ Lo2 Hi2) ->
   subtyp m oktrans G Lo2 Lo1 /\ subtyp m oktrans G Hi1 Hi2.
@@ -1297,6 +1297,22 @@ Lemma invert_typ_sel_has: forall G p L l D,
   typ_has G (typ_sel p L) l D ->
   exists Lo Hi, has G (pth2trm p) L (dec_typ Lo Hi) /\ typ_has G Hi l D.
 Proof. intros. inversions* H. Qed.
+
+Lemma invert_typ_and_has: forall G T1 T2 l D,
+  typ_has G (typ_and T1 T2) l D ->
+  typ_has G T1 l D \/
+  typ_has G T2 l D \/ 
+  exists D1 D2, typ_has G T1 l D1 /\ typ_has G T2 l D2 /\ D = intersect_dec D1 D2.
+Proof.
+  introv THas. inversions THas; eauto 10.
+Qed.
+
+Lemma invert_typ_or_has: forall G T1 T2 l D,
+  typ_has G (typ_or T1 T2) l D ->
+  exists D1 D2, typ_has G T1 l D1 /\ typ_has G T2 l D2 /\ D = union_dec D1 D2.
+Proof.
+  introv THas. inversions THas; eauto 10.
+Qed.
 
 Lemma invert_can_add_typ: forall G ds L Lo Hi,
   can_add G ds L (def_typ Lo Hi) ->
@@ -2292,23 +2308,24 @@ Proof.
   (* case has_var *)
   + right. exists v T Ds D0. auto.
 Qed.
+*)
 
-Lemma invert_var_has_dec_typ: forall G x l S U,
-  has ip G (trm_var (avar_f x)) l (dec_typ S U) ->
-  exists X Ds S' U', ty_trm G (trm_var (avar_f x)) X /\
-                     exp ip G X Ds /\
-                     decs_has Ds l (dec_typ S' U') /\
-                     open_typ x S' = S /\
-                     open_typ x U' = U.
+Lemma invert_var_has_dec_typ: forall G v L S U,
+  has G (trm_var (avar_f v)) L (dec_typ S U) ->
+  exists T S' U', ty_trm G (trm_var (avar_f v)) T /\
+                  typ_has G T L (dec_typ S' U') /\
+                  open_typ v S' = S /\
+                  open_typ v U' = U.
 Proof.
   introv Has. apply invert_var_has_dec in Has.
-  destruct Has as [X [Ds [D [Tyx [Exp [Has Eq]]]]]].
-  destruct D as [ Lo Hi | T' | S' U' ]; try solve [ inversion Eq ].
+  destruct Has as [T [D' [Ty [THas Eq]]]].
+  destruct D' as [ Lo Hi | T' | S' U' ]; try solve [ inversion Eq ].
   unfold open_dec, open_rec_dec in Eq. fold open_rec_typ in Eq.
   inversion Eq as [Eq'].
-  exists X Ds Lo Hi. auto.
+  exists T Lo Hi. auto.
 Qed.
 
+(*
 Lemma invert_var_has_dec_fld: forall G x l T,
   has ip G (trm_var (avar_f x)) l (dec_fld T) ->
   exists X Ds T', ty_trm G (trm_var (avar_f x)) X /\
@@ -2622,6 +2639,13 @@ Lemma intersect_typ_has: forall G T l D1 D2,
   typ_has G T l (intersect_dec D1 D2).
 Admitted. (* maybe modulo swap lef/right? *)
 
+Lemma union_typ_has: forall G U V l D1 D2,
+  typ_has G U l D1 ->
+  typ_has G V l D2 ->
+  typ_has G (typ_or U V) l (union_dec D1 D2).
+Admitted. (* maybe modulo swap lef/right? *)
+
+
 (* ------------------------------------------------------------------------- *)
 (* ------------------------------------------------------------------------- *)
 (* ------------------------------------------------------------------------- *)
@@ -2649,12 +2673,123 @@ Qed.
    Conclusion: X1 ----typ_has---> D1 ----subdec----> D1
 In the system which used expansion instead of typ_has, this didn't work,
 because we were not sure if X1 had an expansion or not. *)
-Lemma swap_sub_and_has: forall m G X1 X2 n l D2,
+Definition swap_sub_and_has_statement := forall m G X1 X2 n l D2,
   subtyp m G X1 X2 n ->
   typ_has G X2 l D2 ->
   exists D1 L n',
     typ_has G X1 l D1 /\
     forall x, x \notin L -> subdec (G & x ~ X1) (open_dec x D1) (open_dec x D2) n'.
+
+(*
+Lemma typ_has_to_good_bounds: forall G T L Lo Hi ds,
+  typ_has G T L (dec_typ Lo Hi) ->
+  ty_defs G ds T -> (* <-- witnesses realizability of T *)
+  exists n, subtyp oktrans G Lo Hi n.
+Proof.
+  intros G T L Lo2 Hi2 ds THas Tyds.
+  lets P: (invert_ty_defs Tyds THas). destruct P as [d [D1 [n [dsHas [Tyd Sd]]]]].
+  apply invert_subdec_typ_sync_left in Sd.
+  destruct Sd as [Lo1 [Hi1 [Eq [StLo21 [StLoHi1 StHi12]]]]]. subst.
+  exists n.
+  apply (subtyp_trans StLo21).
+  apply (subtyp_trans StLoHi1).
+  exact StHi12.
+Qed.
+*)
+
+(* Lookup x to get ds *)
+Lemma sto_lookup: forall s G x T2,
+  wf_sto s G ->
+  ty_trm G (trm_var (avar_f x)) T2 ->
+  exists T1 ds n, 
+    ty_defs G ds T1 /\
+    subtyp oktrans G T1 T2 n /\
+    binds x T1 G /\
+    binds x ds s.
+Proof.
+  introv Wf Ty.
+  apply invert_ty_var in Ty. destruct Ty as [T1 [n [St BiG]]].
+  lets Bis: (ctx_binds_to_sto_binds Wf BiG). destruct Bis as [ds Bis].
+  lets P: (invert_wf_sto Wf Bis BiG). destruct P as [G1 [G2 [Eq Tyds]]].
+  exists T1 ds n. apply (conj Tyds). apply (conj St). apply (conj BiG Bis).
+Qed.
+
+Lemma distribute_open_dec_over_dec_typ: forall v Lo Hi,
+  open_dec v (dec_typ Lo Hi) = dec_typ (open_typ v Lo) (open_typ v Hi).
+Admitted.
+
+Lemma distribute_open_dec_over_union_dec: forall x D1 D2,
+  open_dec x (union_dec D1 D2) = union_dec (open_dec x D1) (open_dec x D2).
+Admitted.
+
+Hint Resolve subtyp_max_ctx.
+
+Lemma subdec_union: forall G DU DV D2 nU nV,
+  subdec G DU D2 nU ->
+  subdec G DV D2 nV ->
+  subdec G (union_dec DU DV) D2 (max nU nV).
+Proof.
+  introv SdU SdV.
+  lets leU: (Max.le_max_l nU nV).
+  lets leV: (Max.le_max_r nU nV).
+  destruct D2 as [Lo2 Hi2 | T2 | T1 T2].
+  + apply invert_subdec_typ_sync_left in SdU.
+    apply invert_subdec_typ_sync_left in SdV.
+    destruct SdU as [LoU [HiU [Eq [StU1 [StU2 StU3]]]]]. subst.
+    destruct SdV as [LoV [HiV [Eq [StV1 [StV2 StV3]]]]]. subst.
+    simpl.
+    apply subdec_typ.
+    - apply subtyp_tmode. apply subtyp_and.
+      * apply (subtyp_max_ctx StU1 leU).
+      * apply (subtyp_max_ctx StV1 leV).
+    - apply subtyp_tmode. apply subtyp_and_l. apply subtyp_tmode. apply subtyp_or_l.
+      apply (subtyp_max_ctx StU2 leU).
+    - apply subtyp_tmode. apply subtyp_or.
+      * apply (subtyp_max_ctx StU3 leU).
+      * apply (subtyp_max_ctx StV3 leV).
+  + apply invert_subdec_fld_sync_left in SdU.
+    apply invert_subdec_fld_sync_left in SdV.
+    destruct SdU as [U [Eq StU]]. subst.
+    destruct SdV as [V [Eq StV]]. subst.
+    simpl. eauto 10.
+  + apply invert_subdec_mtd_sync_left in SdU.
+    apply invert_subdec_mtd_sync_left in SdV.
+    destruct SdU as [UA [UR [Eq [StU1 StU2]]]]. subst.
+    destruct SdV as [VA [VR [Eq [StV1 StV2]]]]. subst.
+    simpl. eauto 10.
+Qed.
+
+Print Assumptions subdec_union.
+
+Axiom swap_sub_and_has_IH: swap_sub_and_has_statement.
+
+Lemma has_to_good_bounds: forall s G p L Lo Hi,
+  wf_sto s G -> (* <-- witnesses realizability of the type of p *)
+  has G (pth2trm p) L (dec_typ Lo Hi) ->
+  exists n, subtyp oktrans G Lo Hi n.
+Proof.
+  intros s G p L Lo2' Hi2' Wf Has.
+  destruct p as [v]. simpl in Has.
+  destruct v as [n|v]; [admit | idtac]. (* TODO path cannot be a bound var *)
+  apply invert_var_has_dec_typ in Has.
+  destruct Has as [T2 [Lo2 [Hi2 [Ty [T2Has [Eq1 Eq2]]]]]]. subst.
+  (* lookup v in the store: *)
+  lets P: (sto_lookup Wf Ty). destruct P as [T1 [ds [n [Tyds [St [Bis BiG]]]]]].
+  lets Q: (swap_sub_and_has_IH St T2Has).
+  destruct Q as [D1 [F [n' [T1Has Sd]]]].
+  pick_fresh z.
+  assert (zF: z \notin F) by auto. specialize (Sd z zF).
+  (* TODO substitution: *)
+  assert (Sd': subdec G (open_dec v D1) (open_dec v (dec_typ Lo2 Hi2)) n') by admit.
+  assert (Eq: exists Lo1 Hi1, D1 = (dec_typ Lo1 Hi1)) by admit.
+  destruct Eq as [Lo1 [Hi1 Eq]]. subst. simpl in Sd'.
+  rewrite (distribute_open_dec_over_dec_typ v Lo1 Hi1) in Sd'.
+  rewrite (distribute_open_dec_over_dec_typ v Lo2 Hi2) in Sd'.
+  inversions Sd'.
+  exists n'. apply (subtyp_trans H4). apply (subtyp_trans H6). exact H7.
+Qed.
+
+Lemma swap_sub_and_has: swap_sub_and_has_statement.
 Proof.
   (* We don't use the [induction] tactic because we want to intro everything ourselves: *)
   introv St. gen l D2. gen m G X1 X2 n.
@@ -2705,9 +2840,27 @@ Proof.
       lets St': (subtyp_tmode (subtyp_sel_l _ pHas (subtyp_tmode (subtyp_refl _ _ 0)))).
       refine (narrow_subdec_end _ St' Sd). apply okadmit.
   + (* case subtyp_sel_r *)
-    intros G p L Lo Hi T1 n pHas St1 IH1 St2 IH2 l D2 pLHas.
-    apply invert_typ_sel_has in pLHas. destruct pLHas as [Lo' [Hi' [pHas' Hi'Has]]].
-    admit. (* TODO very hard! *)
+    intros G p L Lo1 Hi1 T1 n pHas1 St1 IH1 St2 IH2 l D2 pLHas.
+    apply invert_typ_sel_has in pLHas. destruct pLHas as [Lo2 [Hi2 [pHas2 Hi2Has]]].
+    lets P: (intersect_has pHas1 pHas2). simpl in P.
+    assert (s: sto) by admit. assert (Wf: wf_sto s G) by admit. (* TODO as hypothesis *)
+    apply (has_to_good_bounds _ Wf) in P.
+    destruct P as [n' StB].
+    lets StA: (subtyp_tmode (subtyp_or_l Lo2 (subtyp_tmode (subtyp_refl G Lo1 n')))).
+    lets StC: (subtyp_tmode (subtyp_and_r Hi1 (subtyp_tmode (subtyp_refl G Hi2 n')))).
+    lets St: (subtyp_trans StA (subtyp_trans StB StC)).
+    (* TODO termination measure ??? *)
+    lets Q: (swap_sub_and_has_IH St Hi2Has).
+    destruct Q as [Dm [Fm [n'' [Lo1Has Sdm2]]]].
+    lets R: (swap_sub_and_has_IH St2 Lo1Has).
+    destruct R as [D1 [F1 [n''' [T1Has Sd1m]]]].
+    exists D1 (F1 \u Fm) (max n''' n'').
+    apply (conj T1Has).
+    intros x Frx.
+    assert (xF1: x \notin F1) by auto. specialize (Sd1m x xF1).
+    assert (xFm: x \notin Fm) by auto. specialize (Sdm2 x xFm).
+    lets Sdm2': (narrow_subdec_end (okadmit _) St2 Sdm2).
+    apply (subdec_trans_with_different_sizes Sd1m Sdm2').
   + (* case subtyp_tmode *)
     intros. apply* H0.
   + (* case subtyp_trans *)
