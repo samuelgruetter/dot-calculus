@@ -2874,14 +2874,57 @@ Proof.
     lets Sd23': (narrow_subdec_end (okadmit _) St12 Sd23).
     apply (subdec_trans_with_different_sizes Sd12 Sd23').
   + (* case subtyp_and *)
-    introv St1 IH1 St2 IH2 T12Has.
-    admit.
+    intros G T U V n StU IHU StV IHV l D2 UVHas.
+    apply invert_typ_and_has in UVHas. destruct UVHas as [UHas | [VHas | UVHas]].
+    - apply* IHU.
+    - apply* IHV.
+    - destruct UVHas as [D2U [D2V [UHas [VHas Eq]]]]. subst.
+      specialize (IHU _ _ UHas). destruct IHU as [D1U [LU [nU [THasD1U SdU]]]].
+      specialize (IHV _ _ VHas). destruct IHV as [D1V [LV [nV [THasD1V SdV]]]].
+      exists (intersect_dec D1U D1V) (LU \u LV) (max nU nV).
+      apply (conj (intersect_typ_has THasD1U THasD1V)).
+      intros x Frx.
+      assert (xLU: x \notin LU) by auto. specialize (SdU x xLU).
+      assert (xLV: x \notin LV) by auto. specialize (SdV x xLV).
+      admit. (* TODO follows from SdU and SdV *)
   + (* case subtyp_and_l *)
-    admit.
+    intros G U V T n St IH l D2 THas.
+    specialize (IH _ _ THas). destruct IH as [D1U [L [n' [UHas Sd]]]].
+    exists D1U L n'. split.
+    - apply (typ_and_has_1 _ UHas).
+    - intros x xL. specialize (Sd x xL).
+      lets St': (subtyp_tmode (subtyp_and_l V (subtyp_tmode (subtyp_refl G U 0)))).
+      apply (narrow_subdec_end (okadmit _) St' Sd).
   + (* case subtyp_and_r *)
-    admit.
+    intros G U V T n St IH l D2 THas.
+    specialize (IH _ _ THas). destruct IH as [D1V [L [n' [VHas Sd]]]].
+    exists D1V L n'. split.
+    - apply (typ_and_has_2 _ VHas).
+    - intros x xL. specialize (Sd x xL).
+      lets St': (subtyp_tmode (subtyp_and_r U (subtyp_tmode (subtyp_refl G V 0)))).
+      apply (narrow_subdec_end (okadmit _) St' Sd).
   + (* case subtyp_or *)
-    admit.
+    intros G U V T n StU IHU StV IHV l D2 THas.
+    specialize (IHU _ _ THas). destruct IHU as [DU [LU [nU [UHas SdU]]]].
+    specialize (IHV _ _ THas). destruct IHV as [DV [LV [nV [VHas SdV]]]].
+    exists (union_dec DU DV) (LU \u LV) (max nU nV).
+    apply (conj (union_typ_has UHas VHas)).
+    intros x Frx.
+    assert (xLU: x \notin LU) by auto. specialize (SdU x xLU).
+    assert (xLV: x \notin LV) by auto. specialize (SdV x xLV).
+    rewrite (distribute_open_dec_over_union_dec x DU DV).
+    apply subdec_union.
+    (* SdU is with x: U, but we need it with x: U or V,
+       but narrowing goes the other way round! *)
+    admit. admit. (*
+  + (* case subtyp_or *)
+    intros G U V T n StU IHU StV IHV l D2 THas.
+    (* only use left side (U) *)
+    specialize (IHU _ _ THas). destruct IHU as [DU [LU [nU [UHas SdU]]]].
+    exists DU LU nU. split.
+    - apply typ_or_has.*)
+
+
   + (* case subtyp_or_l *)
     admit.
   + (* case subtyp_or_r *)
