@@ -1,0 +1,245 @@
+
+Variable              x, y, z
+Field label           l
+Method label          m
+Type label            L
+
+Term         t, u ::= x                               variable
+                      t.l                             selection
+                      t.m(u)                          application
+                      new {z => ds}                   creation
+
+Path            p ::= x
+                      p.l
+
+Definition      d ::= L: S..U                         type member definition
+                      l: T = x                        field definition
+                      m(x: S): U = u                  method definition
+
+Def. list:     ds ::= ()                              empty definition list
+                      ds, d                           definition list cons
+
+Type      S, T, U ::= Top                             top
+                      Bot                             bottom
+                      {D}                             structural type with 1 declaration
+                      p.L                             type reference
+                      ∃x:S.U                          existential
+                      T & T                           intersection
+                      T | T                           union
+
+Declaration     D ::= L: S..U                         abstract or alias type declaration
+                      l: T                            field declaration
+                      m: S -> T                       method declaration
+
+Environment     G ::= x_1: T_1, ..., x_n: T_n         (x_i disjoint)
+Store           s ::= x_1: ds_1, ..., x_n: ds_n       (x_i disjoint)
+
+Eval context    e ::= []
+                      e.l
+                      e.m
+                      x.m(e)
+
+
+Type assignment: G |- t: T
+==========================
+
+          (x: T) in G
+          ----------- (ty_var)
+           G |- x: T
+
+           G |- t: T
+        G |- T has (l: U)
+        ----------------- (ty_sel)
+           G |- t.l: U
+
+            G |- t: T
+      G |- T has (m: U -> S)
+            G |- u: U
+      ---------------------- (ty_app)
+          G |- t.m(u): S
+
+          G, z: T |- ds: T
+     -------------------------- (ty_new)
+     G |- new {z => ds}: ∃z:T.T
+
+           y notin fv(T)
+    G1, y: S, x: U, G2 |- t: T
+    -------------------------- (ty_ex)
+    G1, x: ∃y:S.U,  G2 |- t: T
+
+           G |- t: T1
+          G |- T1 <: T2
+          ------------- (ty_sbsm)
+            G |- t: T2
+
+
+Definition typing: G |- d: D
+============================
+
+Just checks if the definitions are what they claim.
+Requires that a self reference is already in G.
+
+           G |- S <: U
+    ------------------------- (ty_def_typ)
+    G |- (L: S..U): (L: S..U)
+
+            G |- x: T
+     ----------------------- (ty_def_fld)
+     G |- (l: T = x): (l: T)
+
+          G, x: S |- t: U
+ ---------------------------------- (ty_def_mtd)
+ G |- (m(x: S): U = u): (m: S -> U)
+
+
+Definitions typing: G |- ds: T
+==============================
+
+Requires that a self reference is already in G.
+
+         ------------ (ty_defs_nil)
+         G |- {}: Top
+
+          G |- ds: T
+          G |- d: D
+     --------------------- (ty_defs_cons)
+     G |- (ds, d): T & {D} 
+
+
+Membership on types: G |- T has D
+=================================
+
+Top and Bot have no members. The typ_ex_has rule is the interesting one.
+
+          -------------- (typ_rcd_has)
+          G |- {D} has D
+
+            G |- p: T
+        G |- T has L: S..U
+           G |- U has D
+        ------------------ (typ_sel_has)
+          G |- p.L has D
+
+            x notin fv(D)
+      G, y: S, x: U |- U has D
+      ------------------------ (typ_ex_has)
+          G |- ∃x:S.U has D
+
+          G |- T1 has D1
+       ------------------- (typ_and_has_1)
+       G |- T1 & T2 has D1
+
+          G |- T2 has D2
+       ------------------- (typ_and_has_2)
+       G |- T1 & T2 has D2
+
+         G |- T1 has D1
+         G |- T2 has D2
+     ------------------------ (typ_and_has_12)
+     G |- T1 & T2 has D1 & D2
+
+         G |- T1 has D1
+         G |- T2 has D2
+     ------------------------ (typ_or_has_12)
+     G |- T1 | T2 has D1 | D2
+
+
+Subtyping: G |- S <: T
+======================
+
+         ----------- (subtyp_refl)
+         G |- T <: T
+
+        ------------- (subtyp_top)
+        G |- T <: Top
+
+        ------------- (subtyp_bot)
+        G |- Bot <: T
+
+        G |- D1 <: D2
+      ----------------- (subtyp_rcd)
+      G |- {D1} <: {D2}
+
+ G |- p has L: S..U    G |- U <: T
+ --------------------------------- (subtyp_sel_l)
+         G |- p.L <: T
+
+ G |- T <: S    G |- p has L: S..U
+ --------------------------------- (subtyp_sel_r)
+         G |- T <: p.L
+
+  G, z: S |- U <: T     z notin fv(T)
+  ----------------------------------- (subtyp_ex_l)
+         G |- ∃z:S.U <: T
+
+    G |- y: S     G |- T <: [y/x]U
+    ------------------------------ (subtyp_ex_r)
+         G |- T <: ∃z:S.U
+
+ G |- S <: T1    G |- S <: T2
+ ---------------------------- (subtyp_and)
+       G |- S <: T1 & T2
+
+        G |- T1 <: S
+      ----------------- (subtyp_and_l)
+      G |- T1 & T2 <: S
+
+        G |- T2 <: S
+      ----------------- (subtyp_and_r)
+      G |- T1 & T2 <: S
+
+ G |- T1 <: S    G |- T2 <: S
+ ---------------------------- (subtyp_or)
+       G |- T1 | T2 <: S
+
+        G |- S <: T1
+      ----------------- (subtyp_or_l)
+      G |- S <: T1 | T2
+
+        G |- S <: T2
+      ----------------- (subtyp_or_r)
+      G |- S <: T1 | T2
+
+
+Declaration Subtyping: G |- D1 <: D2
+====================================
+
+             ----------- (subdec_refl)
+             G |- D <: D
+
+ G |- S2 <: S1    G |- S1 <: U1    G |- U1 <: U2
+ ----------------------------------------------- (subdec_typ)
+       G |- (L: S1..U1) <: (L: S2..U2)
+
+                 G |- T1 <: T2
+            ----------------------- (subdec_fld)
+            G |- (l: T1) <: (l: T2)
+
+        G |- S2 <: S1    G |- T1 <: T2
+      ----------------------------------- (subdec_mtd)
+      G |- (m: S1 -> T1) <: (m: S2 -> T2)
+
+
+Reduction: t | s -> t' | s'
+============================
+
+    (x: (ds1, l: T = y, ds2)) in s
+    ------------------------------ (red_sel)
+          x.l | s  ->  y | s
+
+ (x: (ds1, m(y: S): T = t, ds2)) in s
+ ------------------------------------ (red_call)
+      x.m(z) | s  ->  [z/y]t | s
+
+               x notin s
+ ------------------------------------------ (red_new)
+ new {z => ds} | s  ->  x | s, (x: [z/x]ds)
+
+            t | s  ->  t' | s'
+         ------------------------ (red_cong)
+         e[t] | s  ->  e[t'] | s'
+
+
+
+
+
