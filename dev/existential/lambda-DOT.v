@@ -519,9 +519,9 @@ with ty_def: ctx -> def -> dec -> Prop :=
       (forall x, x \notin L -> ty_trm (G & x ~ S) (open_trm x t) T) ->
       ty_def G (def_mtd m S T t) (dec_mtd m S T)
 with ty_defs: ctx -> defs -> typ -> Prop :=
-  | ty_dsnil: forall G,
+  | ty_defs_nil: forall G,
       ty_defs G defs_nil typ_top
-  | ty_dscons: forall G ds d T D,
+  | ty_defs_cons: forall G ds d T D,
       ty_defs G ds T ->
       ty_def G d D ->
       can_add G ds d ->
@@ -1166,9 +1166,9 @@ Proof.
     - symmetry. apply concat_assoc.
     - rewrite concat_assoc. auto.
   + (* case ty_dsnil *) 
-    intros. apply ty_dsnil.
+    intros. apply ty_defs_nil.
   + (* case ty_dscons *) 
-    intros. apply* ty_dscons.
+    intros. apply* ty_defs_cons.
   + (* case can_add_typ *)
     intros. apply* can_add_typ.
   + (* case can_refine_typ *)
@@ -1268,9 +1268,59 @@ Qed.
 
 
 (* ###################################################################### *)
+(** ** Misc *)
+
+Definition ctx_size(G: ctx) := LibList.length G.
+
+Lemma ctx_size_zero_inv: forall G, ctx_size G = 0 -> G = empty.
+Proof.
+  rewrite empty_def.
+  apply LibList.length_zero_inv.
+Qed.
+
+Lemma vars_dont_type_in_empty_env: forall G t T,
+  ty_trm G t T ->
+  forall x, t = (trm_var (avar_f x)) ->
+  G = empty ->
+  False.
+Proof.
+  introv Ty. induction Ty; try discriminate; intros x' Eq1 Eq2; inversions Eq1.
+  + (* case ty_var *)
+    apply (binds_empty_inv H).
+  + (* case ty_sbsm *)
+    inversions H0. apply* IHTy.
+Qed.
+
+
+(* ###################################################################### *)
 (** ** More inversion lemmas *)
 
 Lemma invert_wf_sto: forall s G,
+  wf_sto s G ->
+  forall x T2,
+  ty_trm G (trm_var (avar_f x)) T2 ->
+  exists ds G1 G2 T1,
+    G = G1 & x ~ T1 & G2 /\ 
+    ty_defs G1 ds T1.
+Proof.
+  intros s G Wf. induction Wf; intros.
+  + exfalso. apply (vars_dont_type_in_empty_env H eq_refl eq_refl).
+  + rename T into X, H2 into Tyy, x0 into y, T2 into Y2.
+    apply invert_ty_var in Tyy. destruct Tyy as [Y1 [St BiG]].
+    unfold binds in BiG. rewrite get_push in BiG.
+    case_if.
+    - inversions BiG.
+      exists ds G (@empty typ) Y1. rewrite concat_empty_r.
+      apply (conj eq_refl H1).
+    - specialize (IHWf y Y1 (ty_var BiG)).
+      destruct IHWf as [dsY [G1 [G2 [Y' [EqG TydsY]]]]]. subst.
+      lets Eq: (binds_middle_eq_inv BiG (wf_sto_to_ok_G Wf)). subst Y'.
+      exists dsY G1 (G2 & x ~ X) Y1.
+      rewrite concat_assoc.
+      apply (conj eq_refl TydsY).
+Qed.
+
+Lemma invert_wf_sto_old: forall s G,
   wf_sto s G ->
     forall x ds T,
       binds x ds s -> 
@@ -1308,7 +1358,7 @@ Lemma invert_wf_sto_with_sbsm: forall s G,
 Proof.
   introv Wf Bis Tyx.
   apply invert_ty_var in Tyx. destruct Tyx as [T' [St BiG]].
-  destruct (invert_wf_sto Wf Bis BiG) as [G1 [G2 [Eq Tyds]]].
+  destruct (invert_wf_sto_old Wf Bis BiG) as [G1 [G2 [Eq Tyds]]].
   subst. exists T'.
   lets Ok: (wf_sto_to_ok_G Wf).
   apply (conj St).
@@ -1327,34 +1377,10 @@ Proof.
   introv Wf Ty.
   apply invert_ty_var in Ty. destruct Ty as [T1 [St BiG]].
   lets Bis: (ctx_binds_to_sto_binds Wf BiG). destruct Bis as [ds Bis].
-  lets P: (invert_wf_sto Wf Bis BiG). destruct P as [G1 [G2 [Eq Tyds]]].
+  lets P: (invert_wf_sto_old Wf Bis BiG). destruct P as [G1 [G2 [Eq Tyds]]].
   exists T1 ds. apply (conj Tyds). apply (conj St). apply (conj BiG Bis).
 Qed.
 
-
-(* ###################################################################### *)
-(** ** Misc *)
-
-Definition ctx_size(G: ctx) := LibList.length G.
-
-Lemma ctx_size_zero_inv: forall G, ctx_size G = 0 -> G = empty.
-Proof.
-  rewrite empty_def.
-  apply LibList.length_zero_inv.
-Qed.
-
-Lemma vars_dont_type_in_empty_env: forall G t T,
-  ty_trm G t T ->
-  forall x, t = (trm_var (avar_f x)) ->
-  G = empty ->
-  False.
-Proof.
-  introv Ty. induction Ty; try discriminate; intros x' Eq1 Eq2; inversions Eq1.
-  + (* case ty_var *)
-    apply (binds_empty_inv H).
-  + (* case ty_sbsm *)
-    inversions H0. apply* IHTy.
-Qed.
 
 
 (* ###################################################################### *)
@@ -1411,6 +1437,8 @@ Inductive is_bot: ctx -> typ -> Prop :=
 | is_bot_and_r: forall G T1 T2, is_bot G T2 -> is_bot G (typ_and T1 T2)
 | is_bot_or: forall G T1 T2, is_bot G T1 -> is_bot G T2 -> is_bot G (typ_or T1 T2).
 
+Module V3.
+
 Lemma subtyp_preserves_is_bot: forall G T1 T2,
   subtyp G T1 T2 ->
   is_bot G T2 ->
@@ -1444,6 +1472,8 @@ Proof.
   + (* case subtyp_trans *)
     apply IHSt1. apply IHSt2. exact Ib.
 Qed.
+
+End V3.
 
 Module V2.
 
@@ -1489,6 +1519,134 @@ Proof.
 Qed.
 
 End V2.
+
+Definition subtyp_preserves_is_bot_for(n: nat) := forall s G T1 T2,
+  ctx_size G = n ->
+  wf_sto s G ->
+  subtyp G T1 T2 ->
+  is_bot G T2 ->
+  is_bot G T1.
+
+Lemma pth_is_var: forall p, exists x, p = (pth_var (avar_f x)).
+Proof.
+  intro p. destruct p as [v]. destruct v as [n | x].
+  - admit. (* bound var not possible... TODO need closed-ness hypothesis for this *)
+  - exists x. reflexivity.
+Qed.
+
+Lemma subtyp_preserves_is_bot_base: subtyp_preserves_is_bot_for 0.
+Admitted.
+
+Lemma subtyp_preserves_is_bot_step: forall n,
+  (forall k, k <= n -> subtyp_preserves_is_bot_for k) ->
+ subtyp_preserves_is_bot_for (S n).
+Proof.
+  intros n IH. unfold subtyp_preserves_is_bot_for in *.
+  introv Eq Wf St Ib. induction St.
+  + (* case subtyp_refl *)
+    exact Ib.
+  + (* case subtyp_top *)
+    inversions Ib.
+  + (* case subtyp_bot *)
+    apply is_bot_bot.
+  + (* case subtyp_rcd *)
+    inversions Ib.
+  + (* case subtyp_sel_l *)
+    apply (is_bot_sel _ H H0). apply* IHSt.
+  + (* case subtyp_sel_r *)
+    rename H into Ty, H0 into XHas, S into Lo0, U into Hi0.
+    inversions Ib.
+    (* Problem: imprecision! To apply IHSt1 and IHSt2, we would need "is_bot G Hi0",
+       but we only have it for Hi. So throw away these IHs. *)
+    clear Lo0 Hi0 X Ty XHas St1 St2 IHSt1 IHSt2.
+    destruct (pth_is_var p) as [x Eqx]. rewrite Eqx in *. clear Eqx p.
+    rename T0 into X2, H1 into Tyx, H3 into XHas, H4 into Ib. simpl in Tyx.
+    lets P: (invert_wf_sto Wf Tyx).
+    destruct P as [ds [G1 [G2 [X1 [EqG Tyds]]]]].
+    (* The plan was to apply IH on "Lo <: Hi", which should hold in a smaller env,
+       but that would only be the case if L:Lo..Hi was the precise dec in x!
+       So we need swap_sub_and_has_step, but can't use it because we're a helper for it. *)
+    admit.
+  + (* case subtyp_and *)
+    admit.
+  + (* case subtyp_and_l *)
+    admit.
+  + (* case subtyp_and_r *)
+    admit.
+  + (* case subtyp_or *)
+    admit.
+  + (* case subtyp_or_l *)
+    admit.
+  + (* case subtyp_or_r *)
+    admit.
+  + (* case subtyp_trans *)
+    admit.
+
+Qed.
+
+Theorem strong_induction: forall P: nat -> Prop,
+  P 0 ->
+  (forall n: nat, (forall k: nat, k <= n -> P k) -> P (S n)) ->
+  forall n: nat, P n.
+Proof.
+  intros P Base Step n. assert (forall k, k <= n -> P k). {
+    induction n.
+    + intros. assert (k = 0) by omega. subst. exact Base.
+    + intros k Leq. assert (C: k = S n \/ k <= n) by omega.
+      destruct C as [C | C].
+      - subst. apply Step. exact IHn.
+      - apply IHn. exact C.
+  }
+  apply H. omega.
+Qed.
+
+Lemma subtyp_preserves_is_bot: forall G s T1 T2,
+  wf_sto s G ->
+  subtyp G T1 T2 ->
+  is_bot G T2 ->
+  is_bot G T1.
+Proof.
+  intros G s T1 T2.
+  lets P: (strong_induction _ subtyp_preserves_is_bot_base subtyp_preserves_is_bot_step).
+  unfold subtyp_preserves_is_bot_for in P.
+  apply (P (ctx_size G) s G T1 T2 eq_refl).
+Qed.
+
+(*
+Lemma subtyp_preserves_is_bot: forall G T1 T2,
+  subtyp G T1 T2 ->
+  is_bot G T2 ->
+  is_bot G T1.
+Proof.
+  introv St. induction St; intros Ib.
+  + (* case subtyp_refl *)
+    assumption.
+  + (* case subtyp_top *)
+    inversions Ib.
+  + (* case subtyp_bot *)
+    apply is_bot_bot.
+  + (* case subtyp_rcd *)
+    inversions Ib.
+  + (* case subtyp_sel_l *)
+    apply (is_bot_sel _ H H0). apply (IHSt Ib).
+  + (* case subtyp_sel_r *)
+    inversions Ib. apply IHSt2. apply IHSt1. admit. (* TODO imprecision!!!*)
+  + (* case subtyp_and *)
+    inversions Ib; auto.
+  + (* case subtyp_and_l *)
+    apply is_bot_and_l. apply* IHSt.
+  + (* case subtyp_and_r *)
+    apply is_bot_and_r. apply* IHSt.
+  + (* case subtyp_or *)
+    apply is_bot_or; auto.
+  + (* case subtyp_or_l *)
+    inversions Ib; auto.
+  + (* case subtyp_or_r *)
+    inversions Ib; auto.
+  + (* case subtyp_trans *)
+    apply IHSt1. apply IHSt2. exact Ib.
+Qed.
+*)
 
 Lemma type_of_defs_contains_no_path_types: forall G ds T,
   ty_defs G ds T -> no_path_types T.
@@ -1572,41 +1730,61 @@ Proof.
     introv Tyds. refine (IHSt1 _ _ Tyds). (* TODO might not hold!  *)
 Abort.
 
-Lemma defs_are_not_bot: forall s G ds X1 x,
+Lemma defs_are_not_bot: forall s G ds T,
+  ty_defs G ds T ->
+  wf_sto s G ->
+  is_bot G T ->
+  False.
+Proof.
+  introv Tyds. induction Tyds; introv Wf Ib.
+  - inversions Ib.
+  - inversions Ib.
+    + auto.
+    + inversions H3.
+Qed.
+
+Lemma defs_are_not_bot_old: forall s G ds X1,
   subtyp G X1 typ_bot ->
   ty_defs G ds X1 ->
   wf_sto s G ->
+(*
   binds x X1 G ->
   binds x ds s ->
+*)
   False.
 Proof.
-  introv St. gen s ds x. gen_eq X2: typ_bot. induction St; intro Eq; subst.
+  introv St. gen s ds. gen_eq X2: typ_bot. induction St; intro Eq; subst.
   + (* case subtyp_refl *)
-    introv Tyds Wf BiG Bis. inversions Tyds.
+    introv Tyds Wf. inversions Tyds.
   + (* case subtyp_top *)
     discriminate.
   + (* case subtyp_bot *)
-    introv Tyds Wf BiG Bis. inversions Tyds.
+    introv Tyds Wf. inversions Tyds.
   + (* case subtyp_rcd *)
     discriminate.
   + (* case subtyp_sel_l *)
-    introv Tyds Wf BiG Bis. inversions Tyds. (* defs don't type as p.L *)
+    introv Tyds Wf. inversions Tyds. (* defs don't type as p.L *)
   + (* case subtyp_sel_r *)
     discriminate.
   + (* case subtyp_and *)
     discriminate.
   + (* case subtyp_and_l *)
-    introv Tyds Wf BiG Bis. apply invert_ty_defs_cons in Tyds. rename ds into ds0.
-    destruct Tyds as [d [ds [D [Eq1 [Tyds [Eq2 Tyd]]]]]]. subst. admit. (* apply* IHSt. *)
+    introv Tyds Wf. apply invert_ty_defs_cons in Tyds. rename ds into ds0.
+    destruct Tyds as [d [ds [D [Eq1 [Tyds [Eq2 Tyd]]]]]]. subst. apply* IHSt.
   + (* case subtyp_and_r *)
-    admit.
+    introv Tyds Wf. apply invert_ty_defs_cons in Tyds. rename ds into ds0.
+    destruct Tyds as [d [ds [D [Eq1 [Tyds [Eq2 Tyd]]]]]]. subst.
+    lets P: (subtyp_preserves_is_bot Wf St (is_bot_bot G)). inversions P.
   + (* case subtyp_or *)
-    admit.
+    introv Tyds. inversions Tyds.
   + (* case subtyp_or_l *)
-    admit.
+    introv Tyds. discriminate.
   + (* case subtyp_or_r *)
-    admit.
+    introv Tyds. discriminate.
   + (* case subtyp_trans *)
+    introv Tyds. refine (IHSt1 _ _ _ Tyds). (* TODO might not hold!  *)
+
+
     admit.
 Qed.
 
@@ -1629,33 +1807,11 @@ Proof.
     introv THas Eq Wf Tyx. rename T into X2.
     lets P: (invert_wf_sto_without_binds Wf Tyx).
     destruct P as [X1 [ds [Tyds [St [BiG Bis]]]]].
- admit. (* TODO need witness that T is not bottom *)
-  + (* case subtyp_rfn_l *)
-    intros G T1 l0 D0 T2 n St IHSt l D2 T2Has.
-    specialize (IHSt _ _ T2Has).
-    destruct IHSt as [D1 [L [n' [T1Has Sd]]]]. exists D1 L n'. split.
-    - apply typ_rfn_has_1. exact T1Has.
-    - intros x xL. specialize (Sd x xL).
-      lets St': (subtyp_tmode (subtyp_rfn_l l0 D0 (subtyp_tmode (subtyp_refl G T1 0)))).
-      refine (narrow_subdec_end _ St' Sd). apply okadmit.
-  + (* case subtyp_rfn_r *)
-    introv St IHSt T1Has Sd T2Has. rename l into ll. rename l0 into l.
-    apply invert_typ_rfn_has in T2Has.
-    destruct T2Has as [T2Has | [[M [Eq1 Eq2]] | [D2' [T2Has [Eq1 Eq2]]]]].
-    - (* T2Has only looked left *)
-      specialize (IHSt _ _ T2Has). destruct IHSt as [D1' [L' [n' [T1Has' Sd']]]].
-      exists D1' L' n'. auto.
-    - (* T2Has only looked right *)
-      subst ll D0. exists D1 L n. auto.
-    - (* T2Has took intersection of left and right *)
-      subst.
-      specialize (IHSt _ _ T2Has). destruct IHSt as [D1' [L' [n' [T1Has' Sd']]]].
-      exists (intersect_dec D1' D1) (L' \u L) (max n' n). split.
-      * apply (intersect_typ_has T1Has' T1Has).
-      * intros x N. 
-        assert (xL: x \notin L) by auto. specialize (Sd x xL).
-        assert (xL': x \notin L') by auto. specialize (Sd' x xL').
-        admit. (* TODO distribute open over intersect etc, should hold *)
+    exfalso.
+    lets B: (subtyp_preserves_is_bot Wf St (is_bot_bot G)).
+    apply (defs_are_not_bot Tyds Wf B).
+  + (* case subtyp_rcd *)
+    admit.
   + (* case subtyp_sel_l *)
     intros G p L Lo Hi T2 n pHas St IHSt l D2 T2Has.
     specialize (IHSt _ _ T2Has). destruct IHSt as [D1 [F [n' [HiHas Sd]]]].
