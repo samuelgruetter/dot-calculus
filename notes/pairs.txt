@@ -1,0 +1,22 @@
+
+val glob = { glob =>
+  type Pair: Bot .. Top { z =>
+    type T: Bot .. Top
+    val fst: z.T
+    val snd: z.T
+    def setFst: z.T -> glob.Pair{T = z.T}
+    def setSnd: z.T -> glob.Pair{T = z.T}
+  }
+  
+  def swap(p: glob.Pair): glob.Pair{T = p.T} = {
+    val oldFst: p.T = p.fst  // <--- here
+    val p2: glob.Pair{T = p.T} = p.setFst(p.snd)
+    p2.setSnd(oldFst)
+  }
+}
+
+let G = { glob: ..., p: glob.Pair }
+
+show G |- p.fst : p.T
+
+
