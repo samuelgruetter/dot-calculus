@@ -403,12 +403,19 @@ Inductive typ_has: ctx -> typ -> dec -> Prop :=
 (*| typ_bot_has: in subdec_typ, we require that Lo2 <: Lo1 <: Hi1 <: Hi2,
       so the dec_typ that typ_bot could have, i.e.
       (dec_typ typ_top typ_bot) is not a subdec of anything, so better say
-      typ_bot has no members! *)
+      typ_bot has no members!
+      But now that we're always imprecise, we can say that typ_bot not only
+      has (dec_typ typ_top typ_bot), but *any* dec, and then use subdec_refl
+      to say that it's a subdec of itself. *)
+  | typ_bot_has: forall G D, typ_has G typ_bot D
   | typ_rcd_has: forall G D,
       typ_has G (typ_rcd D) D
   | typ_sel_has: forall G p T L Lo Hi D,
       ty_trm G (pth2trm p) T ->
       typ_has G T (dec_typ L Lo Hi) ->
+      (* This subtype check will hopefully make proofs easier, but
+         does it restrict the expressiveness of the language?
+      subtyp G Lo Hi -> *)
       typ_has G Hi D ->
       typ_has G (typ_sel p L) D
   | typ_and_has_1: forall G T1 T2 D,
@@ -440,6 +447,7 @@ with subtyp: ctx -> typ -> typ -> Prop :=
   | subtyp_sel_l: forall G p X L S U T,
       ty_trm G (pth2trm p) X ->
       typ_has G X (dec_typ L S U) ->
+      (*subtyp G S U -> <--- not needed because if U has D, then p.L has D as well *)
       subtyp G U T ->
       subtyp G (typ_sel p L) T
   | subtyp_sel_r: forall G p X L S U T,
@@ -1095,6 +1103,8 @@ Lemma weakening:
       can_add (G1 & G2 & G3) ds d).
 Proof.
   apply ty_mutind.
+  + (* case typ_bot_has *)
+    intros. apply typ_bot_has.
   + (* case typ_rcd_has *)
     intros. apply* typ_rcd_has.
   + (* case typ_sel_has *)
@@ -1795,6 +1805,47 @@ Qed.
     apply IHSt.
 *)
 
+(* let's try without any realizability guarantees: *)
+Lemma swap_sub_and_has: forall G T1 T2 D2,
+  subtyp G T1 T2 ->
+  typ_has G T2 D2 ->
+  exists D1,
+    typ_has G T1 D1 /\
+    subdec G D1 D2.
+Proof.
+  introv St. gen D2. induction St; introv T2Has.
+  + (* case subtyp_refl *)
+    eauto.
+  + (* case subtyp_top *)
+    inversions T2Has.
+  + (* case subtyp_bot *)
+    eauto.
+  + (* case subtyp_rcd *)
+    inversions T2Has. eauto.
+  + (* case subtyp_sel_l *)
+    rename S into Lo, U into Hi.
+    specialize (IHSt D2 T2Has). destruct IHSt as [D1 [HiHas Sd]].
+    exists D1. refine (conj _ Sd). apply (typ_sel_has _ H H0 HiHas).
+  + (* case subtyp_sel_r *)
+    rename S into Lo, U into Hi.
+    (* need IH for the Lo2..Hi2 inside T2Has, not for the ones from Lo..Hi *)
+    specialize (IHSt
+  + (* case subtyp_and *)
+    admit.
+  + (* case subtyp_and_l *)
+    admit.
+  + (* case subtyp_and_r *)
+    admit.
+  + (* case subtyp_or *)
+    admit.
+  + (* case subtyp_or_l *)
+    admit.
+  + (* case subtyp_or_r *)
+    admit.
+  + (* case subtyp_trans *)
+    admit.
+Qed.
+
 Lemma swap_sub_and_has_step: forall n,
   swap_sub_and_has_until n -> swap_sub_and_has_until (S n).
 Proof.
@@ -1804,15 +1855,28 @@ Proof.
   + (* case subtyp_top *)
     intros. inversions H. (* contradiction *)
   + (* case subtyp_bot *)
+    intros. exists D2. auto.
+    (* case subtyp_bot if bot has no members:
     introv THas Eq Wf Tyx. rename T into X2.
     lets P: (invert_wf_sto_without_binds Wf Tyx).
     destruct P as [X1 [ds [Tyds [St [BiG Bis]]]]].
     exfalso.
     lets B: (subtyp_preserves_is_bot Wf St (is_bot_bot G)).
-    apply (defs_are_not_bot Tyds Wf B).
+    apply (defs_are_not_bot Tyds Wf B). (* <--- not proven!! *)
+    *)
   + (* case subtyp_rcd *)
     admit.
   + (* case subtyp_sel_l *)
+    rename S into Lo, U into Hi, H into Ty, H0 into XHas, T into T2.
+    introv T2Has Leq Wf Tyx.
+    specialize (IHSt _ _ _ T2Has Leq Wf). (* how to get something which types as Hi?
+    maybe x, because it has type p.L, but for this, we need Lo<:Hi, which we could get
+    from store, but to do so, we need to bridge another imprecision gap... *)
+
+    destruct IHSt as [D1 [F [n' [HiHas Sd]]]].
+
+
+
     intros G p L Lo Hi T2 n pHas St IHSt l D2 T2Has.
     specialize (IHSt _ _ T2Has). destruct IHSt as [D1 [F [n' [HiHas Sd]]]].
     exists D1 F n'. split.
