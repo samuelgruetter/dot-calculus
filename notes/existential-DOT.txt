@@ -121,7 +121,7 @@ Top and Bot have no members. The typ_ex_has rule is the interesting one.
           G |- p.L has D
 
             x notin fv(D)
-      G, y: S, x: U |- U has D
+         G, x: S |- U has D
       ------------------------ (typ_ex_has)
           G |- ∃x:S.U has D
 
