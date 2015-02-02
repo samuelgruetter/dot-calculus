@@ -1,0 +1,51 @@
+
+TAPL p. 369:
+
+counterADT =
+  {*Nat,
+   {new = 1,
+    get = λi:Nat. i,
+    inc = λi:Nat. succ(i)}}
+  as {∃Counter,
+      {new: Counter,
+       get: Counter -> Nat,
+       inc: Counter -> Counter}};
+
+----
+
+type CounterModule = { cm =>
+  type Counter: Bot .. { c =>
+    def get: Unit -> Nat
+    def inc: Unit -> cm.Counter
+  }
+  def zero: Unit -> cm.Counter
+}
+
+
+val natCounterImpl: CounterModule = new { cm =>
+  type Counter = {
+    val value: Nat
+    def get: Unit -> Nat
+    def inc: Unit -> cm.Counter
+  }
+  // private constructor
+  def create(i: Nat): cm.Counter = new { c =>
+    val value: Nat = i
+    def get(u: Unit): Nat = c.value
+    def inc(u: Unit): cm.Counter = cm.create(i+1)
+  }  
+  // public constructor
+  def zero(u: Unit): cm.Counter = create(0)
+}
+
+// signature is not correct because we will return a new counter
+def incTwice(c: ∃m:CounterModule . m.Counter): c.type
+
+// we have to do the existential quantification at a higher level:
+type CounterFunctions = ∃m:CounterModule . {
+  def incTwice: m.Counter -> m.Counter
+}
+
+// but now how can we construct an object of that type??
+
+

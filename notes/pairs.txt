@@ -9,14 +9,15 @@ val glob = { glob =>
   }
   
   def swap(p: glob.Pair): glob.Pair{T = p.T} = {
-    val oldFst: p.T = p.fst  // <--- here
+    val oldFst: p.T = p.fst  // <--- consider this line here
     val p2: glob.Pair{T = p.T} = p.setFst(p.snd)
     p2.setSnd(oldFst)
   }
 }
 
-let G = { glob: ..., p: glob.Pair }
+Let's interpret the "T { z => D1, ... Dn }" notation used above as "∃z:T & {D1} & ... & {Dn}.T & {D1} & ... & {Dn}" (that's how we would represent refinement types, as far is I understood).
 
-show G |- p.fst : p.T
+Now let G = { glob: (type glob object), p: glob.Pair },
+and let's show "G |- p.fst : p.T".
 
 
