@@ -598,7 +598,7 @@ Ltac pick_fresh x :=
 Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
   apply_fresh_base T gather_vars x.
 
-Hint Constructors typ_has subtyp subdec ty_trm ty_def ty_defs can_add.
+Hint Constructors typ_has typ_hasnt subtyp subdec ty_trm ty_def ty_defs can_add.
 Hint Constructors defs_has defs_hasnt.
 
 Lemma fresh_push_eq_inv: forall A x a (E: env A),
@@ -1127,6 +1127,16 @@ Proof.
     intros. apply* can_add_mtd.
 Qed.*)
 
+Lemma weaken_typ_has_end: forall G1 G2 T D,
+  ok (G1 & G2) ->
+  typ_has G1 T D ->
+  typ_has (G1 & G2) T D.
+Proof.
+  introv Ok THas. destruct weakening as [W _].
+  specialize (W G1 T D THas G1 G2 empty). repeat rewrite concat_empty_r in W.
+  apply (W eq_refl Ok).
+Qed.
+
 Lemma weaken_subtyp_middle: forall G1 G2 G3 S U,
   ok (G1 & G2 & G3) -> 
   subtyp (G1      & G3) S U ->
@@ -1335,6 +1345,8 @@ Proof.
   solve [ assumption | (eapply subtyp_trans; eassumption)].
 Qed.
 
+Axiom okadmit: forall G: ctx, ok G.
+
 
 (* ###################################################################### *)
 (** ** Soundness helper lemmas *)
@@ -1351,6 +1363,12 @@ Admitted.
 Lemma strengthen_typ_has: forall G1 x T G2 D,
   typ_has (G1 & x ~ T & G2) T D ->
   typ_has G1 T D.
+Admitted.
+
+(* Corresponds to "expansion is total".
+   TODO: also needs wf-ness of T. *)
+Lemma has_decidable: forall G T l,
+  typ_hasnt G T l \/ exists D, typ_has G T D /\ label_of_dec D = l.
 Admitted.
 
 (* narrowing needed for function calls *)
@@ -1420,16 +1438,29 @@ Proof.
       * apply (subdec_trans Sd1m Sdm2). (* <-- will need narrowing once we have self refs *)
     - (* case x = x0 *)
       subst x0 T.
+      clear StLo21 StHi12 Lo1 Hi1 Hi1Has1 THas1 D1 Sd1m.
       lets S2Has: (strengthen_typ_has THas2).
       lets P: (swap_sub_and_has StS S2Has). (* <--------- *)
-      ...
+      destruct P as [DT [S1Has Sd]].
+      apply invert_subdec_typ_sync_left in Sd.
+      destruct Sd as [Lo1 [Hi1 [Eq [StLo21 StHi12]]]]. subst.
+      apply (weaken_subtyp_end (okadmit (G1 & x ~ S1))) in StHi12.
+      apply (weaken_subtyp_end (okadmit (G1 & x ~ S1 & G2))) in StHi12.
+      lets P: (swap_sub_and_has StHi12 Hi2Hasm). (* <--------- *)
+      destruct P as [D1 [Hi1Has1 Sd1m]].
+      apply (weaken_typ_has_end (okadmit (G1 & x ~ S1))) in S1Has.
+      apply (weaken_typ_has_end (okadmit (G1 & x ~ S1 & G2))) in S1Has.
       exists D1. split. 
-      * refine (typ_sel_has _  THas1 Hi1Has1).
+      * apply (typ_sel_has (binds_middle_eq _ _ xG2) S1Has Hi1Has1).
       * apply (subdec_trans Sd1m Sdm2). (* <-- will need narrowing once we have self refs *)
-
     - (* case x in G1 *)
+      exists D1. split. 
+      * refine (typ_sel_has _ THas1 Hi1Has1). auto.
+      * apply (subdec_trans Sd1m Sdm2). (* <-- will need narrowing once we have self refs *)
   + (* case typ_and_has_1 *)
-    admit.
+    intros G U V D2 UHas IHUHas VHasnt IHVHasnt. introv Eq St. subst.
+
+    intros. subst. auto_star. eauto 10.
   + (* case typ_and_has_2 *)
     admit.
   + (* case typ_and_has_12 *)
