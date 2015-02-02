@@ -1391,6 +1391,159 @@ Proof.
   exists T1 ds. apply (conj Tyds). apply (conj St). apply (conj BiG Bis).
 Qed.
 
+(* ###################################################################### *)
+
+Lemma top_sub_rcd: forall G T1 T2,
+  subtyp G T1 T2 ->
+  (* exclude subtype judgments with no subtyp premises: *)
+  T1 <> T2 ->
+  T1 <> typ_bot ->
+  T2 <> typ_top ->
+  (forall D1, T1 <> typ_rcd D1) ->
+  (forall D2, subtyp G typ_top T1 -> T2 = (typ_rcd D2) -> False) /\
+  (forall D3, T1 = typ_top -> subtyp G T2 (typ_rcd D3) -> False).
+Proof.
+  introv St. induction St; (split; [(intros D2' St' Eq') | (intros D3' Eq' St')]).
+  (* case subtyp_refl *)
+  + apply* H.
+  + apply* H.
+  (* case subtyp_top *)
+  + discriminate.
+  + subst. apply* H.
+  (* case subtyp_bot *)
+  + apply* H0.
+  + apply* H0.
+  (* case subtyp_rcd *)
+  + specialize (H3 D1). apply* H3.
+  + specialize (H3 D1). apply* H3.
+  (* case subtyp_sel_l *)
+  + subst. (* if U = T: cannot use IHSt! *) Abort. (*
+    admit.
+  + (* case subtyp_sel_r *)
+    admit.
+  + (* case subtyp_and *)
+    admit.
+  + (* case subtyp_and_l *)
+    admit.
+  + (* case subtyp_and_r *)
+    admit.
+  + (* case subtyp_or *)
+    admit.
+  + (* case subtyp_or_l *)
+    admit.
+  + (* case subtyp_or_r *)
+    admit.
+  + (* case subtyp_trans *)
+    admit.
+*)
+
+Lemma top_sub_rcd: forall G T2 D3,
+  subtyp G typ_top T2 ->
+  subtyp G T2 (typ_rcd D3) ->
+  False.
+Proof.
+  introv St1 St2. gen St1. gen_eq T3: (typ_rcd D3). gen D3.
+  induction St2; introv Eq St1; subst.
+  + inversions St1. Abort.
+
+Lemma top_sub_rcd: forall G D,
+  subtyp G typ_top (typ_rcd D) ->
+  False.
+Proof.
+  introv St. gen_eq T1: typ_top. gen_eq T2: (typ_rcd D). gen D.
+  induction St; introv Eq1 Eq2; subst; try discriminate.
+  (* only remaining case: subtyp_trans *)
+  specialize (IHSt2 D eq_refl).
+  destruct T2 as [ | | D2 | p L | U V | U V].
+  + (* case typ_top *)
+    apply* IHSt2.
+  + (* case typ_bot *)
+    admit. (* TODO top not subtype of bot!*)
+  + (* case typ_rcd *)
+    apply* IHSt1.
+  + (* case typ_sel *)
+    admit. (* TODO conclude that bounds of p.L are typ_top..(typ_rcd D) and use for
+     contradiction <-- hard! *)
+  + (* case typ_and *)
+    admit. (* TODO *)
+  + (* case typ_or *)
+    admit. (* TODO *)
+Abort. (* quite hard *)
+
+Lemma impossible_subtyping: forall G T1 T2,
+  subtyp G T1 T2 ->
+  (T1 = typ_top -> T2 = typ_bot \/
+                   (exists D2, T2 = typ_rcd D2) -> False) /\
+  ((exists D1, T1 = typ_rcd D1) -> T2 = typ_bot -> False).
+Proof.
+  introv St. induction St; (split;
+  [ (intros Eq1 Eqs; destruct Eqs as [Eq2 | [D2' Eq2]])
+  | (intros Eq1 Eq2; destruct Eq1 as [D1' Eq1])]);
+  subst; try discriminate.
+  + (* case subtyp_trans:  top <: T2 <: bot *)
+    destruct IHSt1 as [IH1 IH2]. destruct IHSt2 as [IH3 IH4].
+    specialize (IH1 eq_refl).
+    destruct T2; eauto.
+    - (* case top <: p.L <: bot *)
+      rename t into L.
+      admit.
+    - (* case top <: U & V <: bot *)
+      admit.
+    - (* case top <: U | V <: bot *)
+      admit.
+    (* in general: * need to be able to call IH for sub-sub-judgment -> include height
+                   * since we have transitivity, simplify rules so that we can equate *)
+  + (* case subtyp_trans: top <: T2 <: (typ_rcd D2) *)
+    rename D2' into D2.
+    destruct IHSt1 as [IH1 IH2]. destruct IHSt2 as [IH3 IH4].
+    specialize (IH1 eq_refl).
+    admit. (* basically the same story as above *)
+  + (* case subtyp_trans: (typ_rcd D1) <: T2 <: typ_bot *)
+    rename D1' into D1.
+    destruct IHSt1 as [IH1 IH2]. destruct IHSt2 as [IH3 IH4].
+    admit. (* basically the same story as above *)
+Qed.
+
+(* similar to invert_ty_defs of no-declists/muDot.v, but we use subtyp instead of typ_has *)
+Lemma invert_ty_defs_with_subtyp_instead_of_has: forall G T1 D2 ds,
+  ty_defs G ds T1 ->
+  subtyp G T1 (typ_rcd D2) ->
+  exists d D1, defs_has ds d /\ ty_def G d D1 /\ subdec G D1 D2.
+Proof.
+  introv Tyds. gen D2. induction Tyds; introv St.
+  + exfalso. lets P: (impossible_subtyping St).
+    destruct P as [P _]. specialize (P eq_refl). eauto.
+  + rename H into Tyd0, D into D0, d into d0, H0 into C.
+    inversions St.
+    - (* case subtyp_and_1 *)
+      specialize (IHTyds _ H3). destruct IHTyds as [d [D1 [dsHas [Tyd Sd]]]].
+      admit. (* TODO should work with thanks to can_add *)
+    - (* case subtyp_and_2 *)
+      exists d0 D0. inversions H3.
+      * (* case subtyp_refl *)
+        repeat split; auto. (* TODO should work with thanks to can_add *) admit.
+      * (* case subtyp_rcd *)
+        repeat split; auto. (* TODO should work with thanks to can_add *) admit.
+      * (* case subtyp_trans *)
+        (* TODO need subtyping to be "simple" so that T2 is not a path type *)
+        admit.
+    - (* case subtyp_trans *)
+      destruct T2.
+      * (* case typ_top: contradiction *)
+        admit.
+      * (* case typ_bot: contradiction *)
+        admit.
+      * (* case typ_rcd *)
+        rename d into D1.
+        (* TODO want to say T = (typ_rcd D1) \/  (typ_rcd D0) = (typ_rcd D1) \/
+           transitivity!!  inversions H. *) admit. (*????*)
+      * (* case typ_sel *)
+        admit. (* TODO exclude because of "simple" subtyping*)
+      * (* case typ_and *)
+        admit. (*??*)
+      * (* case typ_or *)
+        admit. (*??*)
+Qed. (* or maybe case distinction on can_add? *)
 
 
 (* ###################################################################### *)
