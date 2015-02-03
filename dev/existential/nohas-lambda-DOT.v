@@ -303,6 +303,26 @@ Inductive union_dec: dec -> dec -> dec -> Prop :=
     (dec_mtd m T1 U1) || (dec_mtd m T2 U2) == (dec_mtd m (typ_and T1 T2) (typ_or U1 U2))
 where "D1 || D2 == D3" := (union_dec D1 D2 D3).
 
+(* To try out:
+   - allow transitivity only with a no-path-type in the middle (restrictive! really?)
+     or two modes, simp and full, and show that simp <=> full
+   - require that p.L in the middle of transitivity rule has good bounds
+     doesnt' work because of imprecision (see below)
+   *)
+
+(*
+Inductive trans_middle_ok: ctx -> typ -> Prop :=
+| trans_middle_ok_top: forall G, trans_middle_ok G typ_top
+| trans_middle_ok_bot: forall G, trans_middle_ok G typ_bot
+| trans_middle_ok_rcd: forall G D, trans_middle_ok G (typ_rcd D)
+| trans_middle_ok_sel: forall G p L, 
+    ty_trm G (pth2trm p) X ->
+    subtyp G X (dec_typ L Lo Hi) -> (* imprecise and thus useless !! *)
+    trans_middle_ok G (typ_sel p L)
+| trans_middle_ok_and: forall G T1 T2, trans_middle_ok G (typ_and T1 T2)
+| trans_middle_ok_or:  forall G T1 T2, trans_middle_ok G (typ_or  T1 T2).
+*)
+
 (* Note: We have an explicit transitivity rule, which allows us to simplify
    subtyp_sel_l/r, and/or *)
 Inductive subtyp: ctx -> typ -> typ -> Prop :=
