@@ -4,10 +4,14 @@ Field label           l
 Method label          m
 Type label            L
 
-Term         t, u ::= x                               variable
+Term         t, u ::= v                               value
                       t.l                             selection
                       t.m(u)                          application
-                      new {z => ds}                   creation
+                      pack z:T = v for u              introduction of existential
+                                                      (a generalization of "new")
+
+Value           v ::= x                               variable
+                      {ds}                            plain record without self ref
 
 Path            p ::= x
                       p.l
@@ -40,6 +44,15 @@ Eval context    e ::= []
                       e.m
                       x.m(e)
 
+Note: There's no evaluation inside a "pack...for..."
+
+TODO do we need self types "x.type"?
+
+Note: We have to exclude "pack z: T = z for z".
+Cannot allow any term in first component of pack, because it's typechecked with z already in env.
+Can only allow var (reference to store) or ds.
+Maybe use closures instead of store?
+
 
 Type assignment: G |- t: T
 ==========================
@@ -59,14 +72,39 @@ Type assignment: G |- t: T
       ---------------------- (ty_app)
           G |- t.m(u): S
 
-          G, z: T |- ds: T
-     ------------------------------- (ty_new)
-     G |- new {z => ds}: ∃z:T z.type
-
            y notin fv(T)
     G1, y: S, x: U, G2 |- t: T
     -------------------------- (ty_ex)
     G1, x: ∃y:S U,  G2 |- t: T
+
+This is the elimination rule for existentials:
+
+         G |- u: ∃z:T U
+         --------------- (ty_ex_elim)
+         G, z: T |- u: U
+
+And we need two introduction rules for existentials:
+
+  G, z: T |- ds: T     G, z: T |- u: U
+  ------------------------------------ (ty_pack_defs)
+   G |- pack z:T = {ds} for u: ∃z:T U
+
+     G |- y: T    G, z: T |- u: U
+   -------------------------------- (ty_pack_var)
+   G |- pack z:T = y for u:  ∃z:T U
+
+Note: "pack" is a generalization of "new", because we can write "new" as
+new T{ds} == pack z: T = {ds} for z
+and it has type "∃z:T T" or "∃z:T z.type" (TODO which of these?).
+But we can also use "pack" to create a term which depends on something else than on
+itself, say on the implementation of a List module:
+pack m: ListModule = defaultListModuleImpl for m.emptyList()
+which has type "∃z:ListModule z.List", so this allows us to abstract over the
+concrete list module implementation which was used.
+TODO: To type the expression assigned to z, ty_pack_defs puts z into the env,
+whereas ty_pack_var does not. This anomaly is not so nice, and moreover, this
+way of introducing recursion (in the case of ty_pack_defs) feels a bit like cheating,
+we're abusing existentials to get recursion.
 
            G |- t: T1
           G |- T1 <: T2
@@ -78,7 +116,8 @@ Definition typing: G |- d: D
 ============================
 
 Just checks if the definitions are what they claim.
-Requires that a self reference is already in G.
+It does not matter whether a self reference is in G or not, except that if
+there's none, the definition cannot be recursive.
 
            G |- S <: U
     ------------------------- (ty_def_typ)
@@ -96,7 +135,8 @@ Requires that a self reference is already in G.
 Definitions typing: G |- ds: T
 ==============================
 
-Requires that a self reference is already in G.
+It does not matter whether a self reference is in G or not, except that if
+there's none, the definitions cannot be recursive.
 
          ------------ (ty_defs_nil)
          G |- {}: Top
@@ -109,6 +149,11 @@ Requires that a self reference is already in G.
 
 Membership on types: G |- T has D
 =================================
+
+TODO do we need to parameterize it with a self ref?
+i.e. "G |- T has_z D"
+TODO how can the rules prove something like
+"({val l: self.T} & {T = Int}) has self.T where self.T actually is Int"
 
 Top and Bot have no members. The typ_ex_has rule is the interesting one.
 
@@ -245,9 +290,12 @@ Reduction: t | s -> t' | s'
  ------------------------------------ (red_call)
       x.m(z) | s  ->  [z/y]t | s
 
-               x notin s
- ------------------------------------------ (red_new)
- new {z => ds} | s  ->  x | s, (x: [z/x]ds)
+                 z notin s
+ ------------------------------------------- (red_pack_defs)
+ pack z:T = ds for u | s  ->  u | s, (z: ds)
+
+   -------------------------------------- (red_pack_var)
+   pack z:T = y for u | s  ->  [y/z]u | s
 
             t | s  ->  t' | s'
          ------------------------ (red_cong)
