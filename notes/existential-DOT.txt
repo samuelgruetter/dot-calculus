@@ -23,7 +23,7 @@ Type      S, T, U ::= Top                             top
                       Bot                             bottom
                       {D}                             structural type with 1 declaration
                       p.L                             type reference
-                      ∃x:S.U                          existential
+                      ∃x:S U                          existential
                       T & T                           intersection
                       T | T                           union
 
@@ -60,12 +60,12 @@ Type assignment: G |- t: T
 
           G, z: T |- ds: T
      -------------------------- (ty_new)
-     G |- new {z => ds}: ∃z:T.T
+     G |- new {z => ds}: ∃z:T T
 
            y notin fv(T)
     G1, y: S, x: U, G2 |- t: T
     -------------------------- (ty_ex)
-    G1, x: ∃y:S.U,  G2 |- t: T
+    G1, x: ∃y:S U,  G2 |- t: T
 
            G |- t: T1
           G |- T1 <: T2
@@ -123,7 +123,7 @@ Top and Bot have no members. The typ_ex_has rule is the interesting one.
             x notin fv(D)
          G, x: S |- U has D
       ------------------------ (typ_ex_has)
-          G |- ∃x:S.U has D
+          G |- ∃x:S U has D
 
           G |- T1 has D1
        ------------------- (typ_and_has_1)
@@ -170,11 +170,11 @@ Subtyping: G |- S <: T
 
   G, z: S |- U <: T     z notin fv(T)
   ----------------------------------- (subtyp_ex_l)
-         G |- ∃z:S.U <: T
+         G |- ∃z:S U <: T
 
     G |- y: S     G |- T <: [y/x]U
     ------------------------------ (subtyp_ex_r)
-         G |- T <: ∃z:S.U
+         G |- T <: ∃z:S U
 
  G |- S <: T1    G |- S <: T2
  ---------------------------- (subtyp_and)
