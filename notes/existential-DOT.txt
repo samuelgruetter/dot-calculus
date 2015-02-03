@@ -24,6 +24,7 @@ Type      S, T, U ::= Top                             top
                       {D}                             structural type with 1 declaration
                       p.L                             type reference
                       ∃x:S U                          existential
+                      x.type                          self type
                       T & T                           intersection
                       T | T                           union
 
@@ -59,8 +60,8 @@ Type assignment: G |- t: T
           G |- t.m(u): S
 
           G, z: T |- ds: T
-     -------------------------- (ty_new)
-     G |- new {z => ds}: ∃z:T T
+     ------------------------------- (ty_new)
+     G |- new {z => ds}: ∃z:T z.type
 
            y notin fv(T)
     G1, y: S, x: U, G2 |- t: T
@@ -125,6 +126,12 @@ Top and Bot have no members. The typ_ex_has rule is the interesting one.
       ------------------------ (typ_ex_has)
           G |- ∃x:S U has D
 
+TODO: Do we have to substitute a self reference in D by x?
+           G |- x: T
+          G |- T has D
+        ----------------- (typ_self_has)
+        G |- x.type has D
+
           G |- T1 has D1
        ------------------- (typ_and_has_1)
        G |- T1 & T2 has D1
@@ -175,6 +182,13 @@ Subtyping: G |- S <: T
     G |- y: S     G |- T <: [y/x]U
     ------------------------------ (subtyp_ex_r)
          G |- T <: ∃z:S U
+
+            G |- x: T
+         ---------------- (subtyp_self)
+         G |- x.type <: T
+
+Note: There's no equivalent to subtyp_self with x.type on rhs. To have x.type
+on rhs, we must use subtyp_refl.
 
  G |- S <: T1    G |- S <: T2
  ---------------------------- (subtyp_and)
