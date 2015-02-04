@@ -48,4 +48,14 @@ type CounterFunctions = ∃m:CounterModule . {
 
 // but now how can we construct an object of that type??
 
+--> need an intro form for existentials
+
+(m: CounterModule => { def incTwice(c: m.Counter): m.Counter = c.inc().inc() })
+
+
+
+
+
+
+
 
