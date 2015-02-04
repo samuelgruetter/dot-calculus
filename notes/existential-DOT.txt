@@ -54,6 +54,25 @@ Can only allow var (reference to store) or ds.
 Maybe use closures instead of store?
 
 
+Rule schemas
+============
+
+P is any judgment appearing on the right-hand side of the turnstile.
+
+        y notin fv(P)
+    G1, y: S, x: U, G2 |- P
+    ----------------------- (open_ex)
+    G1, x: ∃y:S U,  G2 |- P
+
+  G, z: T |- x: z.type    G, z: T |- P
+  ------------------------------------ (id_subst_1)
+           [x/z]G |- [x/z]P
+
+  G, z: T |- x: z.type    G, z: T |- P
+  ------------------------------------ (id_subst_2)
+           [z/x]G |- [z/x]P
+
+
 Type assignment: G |- t: T
 ==========================
 
@@ -71,11 +90,6 @@ Type assignment: G |- t: T
             G |- u: U
       ---------------------- (ty_app)
           G |- t.m(u): S
-
-           y notin fv(T)
-    G1, y: S, x: U, G2 |- t: T
-    -------------------------- (ty_ex)
-    G1, x: ∃y:S U,  G2 |- t: T
 
 This is the elimination rule for existentials:
 
