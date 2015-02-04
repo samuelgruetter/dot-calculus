@@ -1,11 +1,78 @@
 
+An example typing derivation using the rules in existential-DOT.txt.
+
+Consider
+
 val glob = { glob =>
   type Pair: Bot .. Top { z =>
     type T: Bot .. Top
     val fst: z.T
     val snd: z.T
-    def setFst: z.T -> glob.Pair{T = z.T}
-    def setSnd: z.T -> glob.Pair{T = z.T}
+    def setFst: z.T -> glob.Pair & {T = z.T}
+    def setSnd: z.T -> glob.Pair & {T = z.T}
+  }
+  
+  def swap(p: glob.Pair): glob.Pair & {T = p.T} = {
+    val oldFst: p.T = p.fst  // <--- consider this line here
+    val p2: glob.Pair & {T = p.T} = p.setFst(p.snd)
+    p2.setSnd(oldFst)
+  }
+}
+
+Let's interpret refinement types "T { z => D1, ... Dn }" as "∃z:(T & {D1} & ... & {Dn}) z.type".
+Moreover, let's use "{D1, ... Dn}" as a shortcut for "{D1} & ... & {Dn}".
+
+Now let G be the environment that typechecking uses when checking the line marked with "<---", i.e.
+
+G = { glob: ∃g: {Pair: Bot..∃z:{type T: Bot..Top, fst: z.T, ...}, swap: ...} g.type,
+      p: glob.Pair }
+
+and let G' be the environment that we will obtain from G by applying the open_ex rule:
+
+G' = { g: {Pair: Bot..∃z:{type T: Bot..Top, fst: z.T, ...} z.type, swap: ...},
+       glob: g.type,
+       p: glob.Pair }
+
+and let's show "G |- p.fst : p.T":
+
+
+                             ------------------ (ty_var)  ------------------ (ty_var)
+                             G' |- p: glob.Pair           G' |- glob: g.type
+                             ----------------------------------------------- (id_subst_2 with [g/glob])
+g.Pair <: ∃z:{...} z.type      G' |- p: g.Pair      
+---------------------------------------------- (ty_sbsm)
+G' |- p: ∃z:{type T: Bot..Top, fst: z.T} z.type             g notin fv(rhs of |-)
+--------------------------------------------------------------------------------- (open_ex)
+G  |- p: ∃z:{type T: Bot..Top, fst: z.T} z.type
+----------------------------------------------- (ty_ex_elim)   ----------------------------------------------------------- (ty_var)
+G, z: {T: Bot..Top, fst: z.T} |- p: z.type                     G, z: {T: Bot..Top, fst: z.T} |- z: {T: Bot..Top, fst: z.T}
+------------------------------------------------------------------------------------------------------------------------- (id_subst_1 with [p/z])
+G |- p: {T: Bot..Top, fst: p.T}
+------------------------------- (ty_sel and typ_and_has_2)
+G |- p.fst : p.T
+
+
+
+**********
+
+Currently not used: The same example with different notation and a generic makePair:
+
+(glob: {type Pair: ..., mkPair: ..., swap: ...} => {
+  type Pair: Bot .. ∃z: {
+    type T: Bot .. Top
+    val fst: z.T
+    val snd: z.T
+    def setFst: z.T -> glob.Pair & {T = z.T}
+    def setSnd: z.T -> glob.Pair & {T = z.T}
+  } z.type
+  
+  def mkPair[E](x: E, y: E): glob.Pair{T = E} = {
+    // constructing a pair of a given type doesn't require a self reference
+    type T = E
+    val fst: E = x
+    val snd: E = y
+    def setFst(newFst: E): glob.Pair & {T = E} = glob.mkPair[E](newFst, y)
+    def setSnd(newSnd: E): glob.Pair & {T = E} = glob.mkPair[E](x, newSnd)
   }
   
   def swap(p: glob.Pair): glob.Pair{T = p.T} = {
@@ -13,11 +80,5 @@ val glob = { glob =>
     val p2: glob.Pair{T = p.T} = p.setFst(p.snd)
     p2.setSnd(oldFst)
   }
-}
-
-Let's interpret the "T { z => D1, ... Dn }" notation used above as "∃z:T & {D1} & ... & {Dn}.T & {D1} & ... & {Dn}" (that's how we would represent refinement types, as far is I understood).
-
-Now let G = { glob: (type glob object), p: glob.Pair },
-and let's show "G |- p.fst : p.T".
-
+})
 
