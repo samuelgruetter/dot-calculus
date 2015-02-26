@@ -1,0 +1,176 @@
+
+
+prepend_chain/transitivity push-back only works for precise typing
+existence of precise expansion not preserved by narrowing towards unrealizable env
+--> need imprecise typing for terms, because method arg type might be uninhabited
+--> need imprecse-to-precise conversion, which needs exp_preserves_sub
+invert_subtyp_bind (for which we needed oktrans-to-notrans) is a corolllary of exp_preserves_sub, so not sure if prepend_chain/transitivity push-back is still needed
+
+sketch the big picture:
+
+pmode (precise/imprecise)
+progress/preservation use has_sound (transforms imprecise "x has l: D2" into decs_has on x's precise type from store)
+needs invert_subtyp_bind, which first uses ip2pr and then exp_preserves_sub_pr
+exp_preserves_sub_pr and narrowing for precise subtyping by mutual induction using an appropriate termination measure
+
+-------
+
+2014-05-31: [Milestone 2':] Transitivity push-back proof for precise typing
+
+2014-08-02: [Milestone 3]: Progress+Preservation for simple records language
+
+2014-08-04:
+need unique exp and has-mem
+And why does narrowing has work in DotTransitivity?
+Because has only defined for variables of type typ_bind => no expansion needed.
+Note that imprecise has means non-unique has => problems in transitivity pushing proof.
+So we need an expansion for Bot
+
+2014-08-05:
+Idea: bake typ_bind-narrowing into otherwise trivial oktrans transitivity
+Lemma subtyp_trans_oktrans_n: forall G x T1 T2 T3 Ds1 Ds2,
+  subdecs oktrans (G & x ~ typ_bind Ds1) Ds1 Ds2 ->
+  subtyp oktrans (G & x ~ typ_bind Ds1) T1 T2 ->
+  subtyp oktrans (G & x ~ typ_bind (*-->*)Ds2(*<--*)) T2 T3 ->
+  subtyp oktrans (G & x ~ typ_bind Ds1) T1 T3.
+Result: Doesn't work because if T1=T2, we this is narrowing, which we also cannot prove.
+
+Idea: For each path type, we can define a follow_ub ("follow upper bound") judgment, which follows upper bound until it's not a path type any more. Prove this function total, and then replace all path types by their not-sel upper bound.
+Result: Used subtyp judgment to simulate wf judgment, which is a bad idea, so that's why it didn't work. Moreover, how to represent recursive types without nominality?
+
+2014-08-06:
+Idea:  Define "dreal" judgment ("definitely realizable") and "real" judgment (= exists a dreal sub-env) for envs, and prove lemma "wf_sto s G -> real_ctx0 G".
+Result: To prove lemma, we need that sub-env is structural, but how to express recursive types then?
+
+2014-08-07:
+Idea: "imode" ("inversion rules allowed?"): Add subtyping rule [p has L:S..U => S <: U] and additional mode to control if we allow it at top level.
+Not further investigated in Coq, because it doesn't solve the exp_preserves_sub problem (cannot just "invent" some member of S).
+
+2014-08-11: substitution principle for subtyping judgments holds modulo some "trivial" details...
+
+2014-08-13: Sketch big picture of progress/preservation with common part in has_sound, depends on narrowing!
+Subtyping uses precise has, term typing uses imprecise has.
+
+2014-08-14: Problem: Precise expansion cannot be narrowed towards (possibly non-realizable) env created to typecheck method body (intersection types expansion lost due to infinite upper bound chain).
+
+2014-08-15: Imprecise narrowing is just a corolllary of the imprecise substitution principle.
+
+2014-08-15: Start all-imprecise muDot.
+
+2014-08-15: investigating if invert_ty_sel with built-in subsumption helps us.
+for progress: no, because ty_sel is inverted by induction, in preservation: maybe
+Lemma invert_ty_sel: forall G t l T,
+ty_trm G (trm_sel t l) T ->
+has G t (label_fld l) (dec_fld T).
+vs
+Lemma invert_ty_sel_old: forall G t l T,
+ty_trm G (trm_sel t l) T ->
+exists T', subtyp G T' T /\ has G t (label_fld l) (dec_fld T').
+
+2014-08-16: 
+Idea: inv-muDot.v: Add subdecs_inv rule instead of proving invert_subtyp_bind, but this gives us a subdecs judgment from which we cannot prove subdec, so we need an inversion rule for subdec (ok), but then subdec inversion doesn't work, so add even more inversion rules (still ok).
+Result:
+The rules work and weakening and substitution seems to work as well, but
+it doesn't help a lot, because decs_has_preserves_sub, which was trivial
+before, doesn't hold any more: If we're in a contradictory environment,
+and the subdecs judgment was obtained from a subtyp_bind using the inversion
+rule, there's no way we can "invent" a D1.
+Preservation doesn't need decs_has_preserves_sub and becomes simpler, but
+progress needs something like decs_has_preserves_sub, in order to assert
+that if we get a subsumed member in the imprecise typing judgment, there
+exists a (precise) member in the store. And doing this requires a real
+invert_subtyp_bind.
+So it seems that the inversion rules just avoid the problem, but it still
+has to be solved. And they don't push it to another place where it's easier
+to solve, so they're useless.
+
+2014-08-18: introduce pmode := pr | ip
+
+(3 weeks away)
+
+2014-09-18:
+Idea: prepend_chain & exp_preserves_sub by mutual induction on.
+Problem: on what?
+
+2014-09-19:
+make_subtyp_precise seems to always depend on something like exp_preserves_sub
+
+2014-09-26: Problem: in ip2pr, we need narrowing for precise subdecs judgments.
+
+2014-09-28: 
+Idea: exp_preserves_sub_pr with subdecs conclusion on G only instead of [G & z ~ typ_bind Ds1], so that ip2pr does not need narrowing before subdecs_trans. 
+Result: Does not work because in case subtyp_sel_l, there might be no z in G of type "upper bound of p.L".
+
+2014-09-28:
+Idea: ip-ep-muDot.v:
+pmode = "do the "has" judgments needed in subtyping have to be precise?"
+- in imprecise mode (ip), subsumption is allowed everywhere
+- in env-precise mode (ep), all sub-proofs with the same environment must not use
+ subsumption, but as soon as the environment grows, subsumption is allowed.
+Problem: Only useful if conclusion of exp_preserves_sub is ip, but how can ip2pr deal with that? 
+
+2014-10-14:
+Idea: Force expansion to be total by remembering history of visited path types, and once a cycle is detected, just return empty set of declarations.
+Result: Might solve some problems, but not the big termination issue problem.
+
+2014-10-23:
+Observed that DotTransitivity uses a simpler "has" judgment without expansion => subdecs narrowing is much simpler
+
+2014-10-27: smode-totalexp-muDot.v:
+Idea: smode controls if has/exp are required to be stable under narrowing,
+smode := stable | unstable.
+2014-11-04: To get the termination measure working, the transitivity push-back
+proof needs a Lo<:Hi proof inside subtyp_sel_r, so the case sel_r of
+simple_narrow_subtyp needs to narrow [has G x L (dec_typ Lo2 Hi2)] to
+[has G x L (dec_typ Lo1 Hi1)] in such a way that [Lo1 <: Hi1], so
+simple_narrow_has_dec_typ should guarantee that the narrowed dec_typ
+still has good bounds, so subdec_typ has to require that [Lo1 <: Hi1],
+so decs_bot_has_subdec has to prove Top <: Bot.
+--> in subdec, require right dec_typ to have good bounds, but not the left one
+TODO and then?
+
+2014-11-08: Idea: substnarrow (= precise substitution + narrowing in one).
+Problem: does not work because need to apply exp_preserves_sub on S1 <: S2 which is not the one on which we do the induction.
+
+2014-11-09: start to actually write down narrowing for precise subtyping
+
+2014-11-14: sketch precise narrowing + exp_preserves_sub as one big mutual induction, seems to work so far EXCEPT what is the termination measure??
+
+2014-11-18: Idea: go back to inv-muDot, and instead of trying to get completely rid of inversion axioms, just do push-back on them.
+Problem: No idea how to prove it...
+
+2014-11-19: Idea: cbounds (collapsed bounds) judgment, require objects constructed by "new" to have cbounds => if wf_sto s G, then all types in G have cbounds.
+Problems: in exp_preserves_sub_pr/case subtyp_trans:
+1) does cbounds_decs for the decs of the middle type hold? Needed to invoke narrowing.
+2) applying narrowing-IH on conclusion of exp_preserves_sub-IH which might be bigger
+Morever: in case subtyp_bind, the decs might have non-collapsed bounds, but we put them into env
+And: precise subdecs narrowing (which should benefit from cbounts) is used by exp_preserves_sub_pr/case subtyp_trans,
+which cannot guarantee "cbounds Ds1" nor "cbounds Ds2", so we cannot pass
+any of these two to narrowing, so narrowing cannot get cbounds_ctx for
+old env nor for new env.
+
+2014-12-10: 
+Idea: Add narrowing for precise subtyping as a rule.
+Problem: substitution lemma doesn't work any more
+
+2014-12-30:
+Idea: Max ctx size anywhere in proof tree is hopefully preserved by narrowing, and the in the cases where we use a lemma on a not-necessarily-smaller input, the env is always one bigger. So use "distance to max env size" as a termination measure.
+Result: Seemed very promising, but in narrowing/case subtyp_bind, both IHs only work up to n, but should work for n+1.
+
+2015-01-22: new muDot variant: one-dec refinements, no declaration lists, no expansion --> closer to dotty.
+Idea: Before, when we had expansion, we had the problem that existence of an expansion in
+precise typing was not preserved by narrowing:
+z: { A: Bot..{f: Int}, B: Bot..Top }, z.A expands to {}, everything is fine
+After narrowing:
+z: { A: Bot..z.B /\ {f: Int}, B: Bot..z.A }, z.A has no finite expansion proof!
+And existence of an expansion was absolutely crucial to prove "has" judgments, eg
+to prove that an object a of type z.A still has a field f after narrowing.
+Now, we do the expansion only for the members we're interested in, so we can just
+forget the z.B part of z.A's upper bound and only look at {f: Int}, which is what
+we need.
+Problem: This only works with imprecise, but we still need precise typing to deal with the "p.L"-in-the-middle case, because no matter how we set up things, such a case will always occur.
+
+2015-01-27: detected unexpected anomaly in swap_sub_and_has/case subtyp_or 
+
+
+
