@@ -2428,7 +2428,8 @@ Definition egr_narrowing(g n0: nat): Prop :=
     g = ctx_size G ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
-    subdecs pr (G1 & x ~ typ_bind DsA) (open_decs x DsA) (open_decs x DsB) n0 ->
+    subdecs pr (G1 & x ~ typ_bind DsA) (open_decs x DsA) (open_decs x DsB)
+            ((ctx_size G2) + n0) ->
     exists L Ds1,
       exp pr (G1 & x ~ (typ_bind DsA) & G2) T Ds1 /\ 
       forall z, z \notin L ->
@@ -2440,7 +2441,8 @@ Definition egr_narrowing(g n0: nat): Prop :=
     g = ctx_size G ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
-    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n0 ->
+    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB)
+            ((ctx_size G2) + n0) ->
     exists D1,
       has    pr (G1 & x ~ (typ_bind DsA) & G2) t l D1 /\ 
       subdec pr (G1 & x ~ (typ_bind DsA) & G2) D1 D2 n0)
@@ -2450,7 +2452,8 @@ Definition egr_narrowing(g n0: nat): Prop :=
     n0 = n ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
-    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n ->
+    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB)
+            ((ctx_size G2) + n) ->
     subtyp pr oktrans (G1 & x ~ (typ_bind DsA) & G2) T1 T2 n)
 /\ (forall m G D1 D2 n, subdec m G D1 D2 n -> forall G1 G2 x DsA DsB,
     m = pr ->
@@ -2458,7 +2461,8 @@ Definition egr_narrowing(g n0: nat): Prop :=
     n0 = n ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
-    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n ->
+    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB)
+            ((ctx_size G2) + n) ->
     subdec pr (G1 & x ~ (typ_bind DsA) & G2) D1 D2 n)
 /\ (forall m G Ds1 Ds2 n, subdecs m G Ds1 Ds2 n -> forall G1 G2 x DsA DsB,
     m = pr ->
@@ -2466,7 +2470,8 @@ Definition egr_narrowing(g n0: nat): Prop :=
     n0 = n ->
     ok G ->
     G = G1 & x ~ (typ_bind DsB) & G2 ->
-    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB) n ->
+    subdecs pr (G1 & x ~ (typ_bind DsA)) (open_decs x DsA) (open_decs x DsB)
+            ((ctx_size G2) + n) ->
     subdecs pr (G1 & x ~ (typ_bind DsA) & G2) Ds1 Ds2 n).
 
 (* env-grow-restricted exp_preserves_sub *)
@@ -2564,6 +2569,9 @@ Proof.
   specialize (N pr _ _ _ _ Sds12 G empty x DsA DsB eq_refl).
   repeat progress rewrite ctx_size_push in N.
   do 2 rewrite concat_empty_r in N.
+  assert (Eq: ctx_size empty = 0). admit. (* TODO trivial *)
+  rewrite Eq in N.
+  simpl in N.
   apply (N eq_refl eq_refl Ok eq_refl SdsAB).
 Qed.
 
@@ -2658,6 +2666,14 @@ Proof.
   - reflexivity.
 Qed.
 
+(* TODO does not hold currently, but if we add a weakening axiom to the rules,
+   it should work.
+   But what effects will that weakening axiom have...? *)
+Lemma subdec_weakening_size_trick: forall m G1 G2 D1 D2 n,
+  subdec m G1 D1 D2 ((ctx_size G2) + n) ->
+  subdec m (G1 & G2) D1 D2 n.
+Admitted.
+
 Lemma egr_narrowing_proof: forall g d,
   (d = 0 \/ exists c, S c = d /\ egr_narrowing (S g) c) ->
   egr_exp_preserves_sub_pr g d ->
@@ -2716,7 +2732,9 @@ Proof.
                        n). (* <-- have to take n because P/N are from that level *) {
         (* apply narrowing *)
         destruct N as [_ [_ [_ [_ P]]]].
-        refine (P pr _ _ _ _ Sds2 _ _ _ _ _ eq_refl _ eq_refl _ _ Sds1).
+        assert (Eq: (n = ctx_size empty + n)) by admit. (* TODO trivial *)
+        rewrite Eq in Sds1.
+        refine (P pr _ _ _ _ Sds2 _ empty _ _ _ eq_refl _ eq_refl _ _ Sds1).
         - rewrite ctx_size_push. f_equal. apply ctx_size_swap_middle.
         - apply okadmit.
         - symmetry. apply concat_empty_r.
@@ -2742,7 +2760,7 @@ Proof.
       assert (exists D1, open_dec x D1 = D1') by admit.
       destruct H as [D1 Eq]. subst.
       exists (open_dec x D1).
-      apply (weaken_subdec_end OkA) in Sd.
+      apply subdec_weakening_size_trick in Sd.
       refine (conj _ Sd).
       apply has_pr with (typ_bind DsA) DsA.
       * assert (xG2: x # G2) by admit.
@@ -2803,22 +2821,10 @@ Proof.
     rewrite ctx_size_push in P.
     specialize (P G1 (G2 & z ~ typ_bind Ds1) x DsA DsB).
     rewrite concat_assoc in P.
-    (* P is useless because it requires S n = n as well! *) admit. (* <-- +/-1 mismatch!!!
-    refine (P eq_refl _ eq_refl _ _ SdsAB).
-  + (* case subtyp_bind *)
-    introv Sds IHSds. introv Eq1 Eq2 Eq3 Ok Eq4 SdsAB. subst.
-    apply subtyp_tmode. apply_fresh subtyp_bind as z.
-    assert (zL: z \notin L) by auto.
-    specialize (Sds z zL).
-    specialize (IHSds z zL).
-    rewrite <- concat_assoc in IHSds.
-    specialize (IHSds G1 (G2 & z ~ typ_bind Ds1) x DsA DsB eq_refl).
-    repeat (progress rewrite -> concat_assoc in IHSds).
-    assert (ok (G1 & x ~ typ_bind DsB & G2 & z ~ typ_bind Ds1)) by auto.
-    admit. TODO +/-1 mismatch!    maybe we can use N instead of IHSds?
-      or <= in IH instead of = ?
-    specialize (IHSds H eq_refl SdsAB).
-    exact IHSds.*)
+    rewrite ctx_size_push in P.
+    assert (Eq: (S (ctx_size G2)) + n = (ctx_size G2) + S n) by omega. rewrite Eq in P.
+    rewrite concat_assoc in P.
+    refine (P eq_refl eq_refl eq_refl (okadmit _) eq_refl SdsAB).
   + (* case subtyp_sel_l *)
     introv Has2 IHHas St IHSt.
     introv Eq1 Eq2 Eq3 Ok Eq4 SdsAB. subst.
@@ -3146,6 +3152,7 @@ Proof.
   destruct Q as [L [n3 Q]]. exists L n3. intros z zL. specialize (Q z zL). apply* pr2ip.
 Qed.
 
+Print Assumptions invert_subtyp_bind_oktrans.
 
 (* ###################################################################### *)
 (** ** Soundness helper lemmas *)
