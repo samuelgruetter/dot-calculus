@@ -2502,9 +2502,10 @@ Axiom subsub2eq: forall m1 m2 G T1 T2,
   T1 = T2.
 *)
 
-(* env-grow restricted narrowing: Narrowing for derivations which grow the env by at
-   most d entries *)
-Definition egr_narrowing(d: nat): Prop :=
+(* env-grow restricted narrowing: Narrowing for derivations which never use an
+   env bigger than n, and whose env in the conclusion is of size (n-d) 
+ --> but wait that's already what we do in max-ctx-growth-ip-pr-muDot!! *)
+Definition egr_narrowing(n d: nat): Prop :=
    (forall m G T Ds2, exp m G T Ds2 -> forall G1 G2 x DsA DsB,
     m = pr ->
     ok G ->
@@ -2769,32 +2770,33 @@ Proof.
       (* T appears in env, and suppose env only typ_bind: *)
       assert (Eq: T = typ_bind Ds1) by admit. (* <------ *)
       subst.
-Admitted. (*
-      lets P: (@pr_subst_subdec v (typ_bind Ds1) (open_dec z D1) (open_dec z D2)
-        (G1 & x ~ typ_bind DsA & G2) empty z).
-      unfold subst_ctx in P. rewrite map_empty in P.
-      repeat (progress rewrite -> concat_empty_r in P).
       assert (OkA': ok (G1 & x ~ typ_bind DsA & G2 & z ~ typ_bind Ds1)) by auto.
-      specialize (P Sd BiA OkA').
+      lets P: (pr_subdec_subst_principle OkA' Sd BiA).
       assert (Impl1: z \notin fv_decs Ds1 -> z \notin fv_dec D1) by admit.
       assert (Impl2: z \notin fv_decs Ds2 -> z \notin fv_dec D2) by admit.
       assert (FrD1: z \notin fv_dec D1) by auto.
       assert (FrD2: z \notin fv_dec D2) by auto.
       rewrite <- (@subst_intro_dec z v D1 FrD1) in P.
       rewrite <- (@subst_intro_dec z v D2 FrD2) in P.
+      (* TODO case where d=0!!! <-------------- *)
+      assert (Eqd: max d 1 = d) by admit. rewrite Eqd in *.
       refine (conj _ P).
       apply has_pr with (typ_bind Ds1) Ds1.
       * exact BiA.
       * apply exp_bind.
       * apply (decs_has_close_admitted Ds1 D1 z Ds1Has).
   + (* case subtyp_refl *)
-    introv Has IHHas Eq1 Ok Eq2 SdsAB. subst.
-    (* apply subtyp_tmode. apply subtyp_refl with Lo Hi. *)
-    apply subtyp_refl_all.
+    introv Eq1 Eq2 Ok EqG SdsAB. subst.
+    rewrite (ctx_size_swap_middle _ _ _ x (typ_bind DsA) _).
+    apply subtyp_tmode. apply subtyp_refl.
   + (* case subtyp_top *)
-    intros. apply subtyp_tmode. apply subtyp_top.
+    intros. apply subtyp_tmode. subst.
+    rewrite (ctx_size_swap_middle _ _ _ x (typ_bind DsA) _).
+    apply subtyp_top.
   + (* case subtyp_bot *)
-    intros. apply subtyp_tmode. apply subtyp_bot.
+    intros. apply subtyp_tmode.
+    subst. rewrite (ctx_size_swap_middle _ _ _ x (typ_bind DsA) _).
+    apply subtyp_bot.
   + (* case subtyp_bind *)
     introv Sds IHSds. introv Eq1 Ok Eq2 SdsAB. subst.
     apply subtyp_tmode. apply_fresh subtyp_bind as z.
