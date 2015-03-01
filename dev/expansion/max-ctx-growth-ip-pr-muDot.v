@@ -310,6 +310,8 @@ Inductive cbounds_ctx: ctx -> Prop :=
       cbounds_ctx G ->
       cbounds_ctx (G & x ~ T).
 
+Definition ctx_size(G: ctx) := LibList.length G.
+
 (* expansion returns a set of decs without opening them *)
 Inductive exp : pmode -> ctx -> typ -> decs -> Prop :=
   | exp_top : forall m G, 
@@ -381,6 +383,11 @@ with subdec : pmode -> ctx -> dec -> dec -> nat -> Prop :=
       subtyp m oktrans G S2 S1 n ->
       subtyp m oktrans G T1 T2 n ->
       subdec m G (dec_mtd S1 T1) (dec_mtd S2 T2) n
+  (* weaking axiom, needed to get env size right for termination measure *)
+  | subdec_weaken : forall m G1 G2 D1 D2 n,
+      subdec m G1 D1 D2 ((ctx_size G2) + n) ->
+      ok (G1 & G2) ->
+      subdec m (G1 & G2) D1 D2 n
 with subdecs : pmode -> ctx -> decs -> decs -> nat -> Prop :=
   | subdecs_empty : forall m G Ds n,
       subdecs m G Ds decs_nil n
@@ -989,8 +996,6 @@ Qed.
 (* ###################################################################### *)
 (** ** Context size lemmas *)
 
-Definition ctx_size(G: ctx) := LibList.length G.
-
 Lemma inc_max_ctx:
    (forall m1 m2 G T1  T2  n1, subtyp  m1 m2 G T1  T2  n1 ->
       forall n2, n1 <= n2  ->  subtyp  m1 m2 G T1  T2  n2  )
@@ -1007,7 +1012,10 @@ Proof.
     assert (n1 <= n2) by omega. apply* subtyp_bind.
   + (* case subtyp_trans *)
     intros. apply subtyp_trans with T2; auto.
-  + (* case subdec_push *)
+  + (* case subdec_weaken *)
+    introv Sd IH Ok Hle. rename n into n1. refine (subdec_weaken _ _ Ok).
+    apply IH. omega.
+  + (* case subdecs_push *)
     intros. apply* subdecs_push.
 Qed.
 
@@ -1032,6 +1040,7 @@ Qed.
 (* ###################################################################### *)
 (** ** Trivial inversion lemmas *)
 
+(* now needs weakening!
 Lemma invert_subdec_typ_sync_left: forall m G D Lo2 Hi2 n,
    subdec m G D (dec_typ Lo2 Hi2) n ->
    exists Lo1 Hi1, D = (dec_typ Lo1 Hi1) /\
@@ -1041,6 +1050,7 @@ Lemma invert_subdec_typ_sync_left: forall m G D Lo2 Hi2 n,
 Proof.
   introv Sd. inversions Sd. exists Lo1 Hi1. auto.
 Qed.
+*)
 
 (*
 Lemma invert_subdec_fld_sync_left: forall m G D T2,
@@ -1370,6 +1380,15 @@ Proof. intros. apply* exp_has_unique. Qed.
 (* ###################################################################### *)
 (** ** Weakening *)
 
+Lemma align_env_eq: forall T (E1 E2 F1 F2: env T), E1 & E2 = F1 & F2 ->
+   (exists G1 G2 G3, E1 = G1 & G2 /\ E2 = G3 /\ F1 = G1 /\ F2 = G2 & G3)
+\/ (exists G1 G2 G3, F1 = G1 & G2 /\ F2 = G3 /\ E1 = G1 /\ E2 = G2 & G3).
+Admitted.
+
+Lemma ctx_size_cons: forall G1 G2,
+  ctx_size (G1 & G2) = (ctx_size G1) + (ctx_size G2).
+Admitted.
+
 Lemma weakening:
    (forall m G T Ds, exp m G T Ds -> forall G1 G2 G3,
       G = G1 & G3 ->
@@ -1449,6 +1468,19 @@ Proof.
     intros. apply* subdec_fld.
   + (* case subdec_mtd *)
     intros. apply* subdec_mtd.
+  + (* case subdec_weaken *)
+    introv Sd IH Ok1 Eq Ok2. apply align_env_eq in Eq.
+    destruct Eq as [ [Ga [Gb [Gc [Eq1 [Eq2 [Eq3 Eq4]]]]]]
+                   | [Ga [Gb [Gc [Eq1 [Eq2 [Eq3 Eq4]]]]]]]; subst.
+    - specialize (IH Ga G3 Gb eq_refl).
+      rewrite concat_assoc in *.
+      refine (subdec_weaken _ (IH _) Ok2). auto.
+    - assert (Eq: Ga & Gb & G3 & Gc = Ga & (Gb & G3 & Gc))
+        by (repeat rewrite concat_assoc; reflexivity).
+      rewrite Eq.
+      refine (@subdec_weaken _ Ga (Gb & G3 & Gc) D1 D2 n _ _).
+      * apply (subdec_max_ctx Sd). repeat rewrite ctx_size_cons. omega.
+      * repeat rewrite concat_assoc. auto.
   + (* case subdecs_empty *)
     intros. apply subdecs_empty.
   + (* case subdecs_push *)
@@ -1513,19 +1545,29 @@ Proof.
   apply (weaken_exp_middle Ok Exp).
 Qed.
 
-(*
-Lemma weaken_subtyp_middle: forall m1 m2 G1 G2 G3 S U,
+Lemma weaken_subtyp_middle: forall m1 m2 G1 G2 G3 S U n,
   ok (G1 & G2 & G3) -> 
-  subtyp m1 m2 (G1      & G3) S U ->
-  subtyp m1 m2 (G1 & G2 & G3) S U.
+  subtyp m1 m2 (G1      & G3) S U n ->
+  subtyp m1 m2 (G1 & G2 & G3) S U n.
 Proof.
   destruct weakening as [_ [_ [W _]]].
   introv Hok123 Hst.
-  specialize (W m1 m2 (G1 & G3) S U Hst).
+  specialize (W m1 m2 (G1 & G3) S U n Hst).
   specialize (W G1 G2 G3 eq_refl Hok123).
   apply W.
 Qed.
 
+Lemma weaken_subtyp_end: forall m1 m2 G1 G2 T1 T2 n,
+  ok (G1 & G2) -> subtyp m1 m2 G1 T1 T2 n -> subtyp m1 m2 (G1 & G2) T1 T2 n.
+Proof.
+  introv Ok St.
+  assert (Eq1: G1 = G1 & empty) by (rewrite concat_empty_r; reflexivity).
+  assert (Eq2: G1 & G2 = G1 & G2 & empty) by (rewrite concat_empty_r; reflexivity).
+  rewrite Eq1 in St. rewrite Eq2 in Ok. rewrite Eq2.
+  apply (weaken_subtyp_middle Ok St).
+Qed.
+
+(*
 Lemma env_add_empty: forall (P: ctx -> Prop) (G: ctx), P G -> P (G & empty).
 Proof.
   intros.
@@ -1635,6 +1677,24 @@ Qed.
 *)
 
 
+Lemma invert_subdec_typ_sync_left: forall m G D Lo2 Hi2 n,
+   subdec m G D (dec_typ Lo2 Hi2) n ->
+   exists n2 Lo1 Hi1, D = (dec_typ Lo1 Hi1) /\
+                      subtyp m oktrans G Lo2 Lo1 n2 /\
+                      subtyp m oktrans G Lo1 Hi1 n2 /\
+                      subtyp m oktrans G Hi1 Hi2 n2.
+Proof.
+  introv Sd. gen_eq D2: (dec_typ Lo2 Hi2). gen Lo2 Hi2. induction Sd.
+  + introv Eq. inversions Eq. eauto 10.
+  + intros. discriminate.
+  + intros. discriminate.
+  + intros. subst. specialize (IHSd _ _ eq_refl).
+    destruct IHSd as [n2 [Lo1 [Hi1 [Eq [St1 [St2 St3]]]]]]. subst.
+    exists n2 Lo1 Hi1. apply (conj eq_refl).
+    repeat split; apply* weaken_subtyp_end.
+Qed.
+
+
 (* ###################################################################### *)
 (** ** The substitution principle *)
 
@@ -1727,6 +1787,14 @@ Admitted.
 
 Axiom okadmit: forall G: ctx, ok G.
 
+Lemma align_envs_2: forall T (E1 E2 F1 F2: env T) x S,
+   E1 & E2 = F1 & x ~ S & F2 ->
+   (exists G, F1 = E1 & G /\ E2 = G & x ~ S & F2)
+\/ (exists G, F2 = G & E2 /\ E1 = F1 & x ~ S & G).
+Admitted.
+
+(* Why (n+1)? Because what counts is not the growth, but the max size. The only reason we
+   measure the growth is that it's easier to measure. *)
 Lemma subst_principles: forall y S,
    (forall m G T Ds, exp m G T Ds -> forall G1 G2 x,
      G = G1 & x ~ S & G2 ->
@@ -1742,17 +1810,17 @@ Lemma subst_principles: forall y S,
      G = (G1 & (x ~ S) & G2) ->
      tyvar m1 G1 y S ->
      ok (G1 & (x ~ S) & G2) ->
-     subtyp m1 m2 (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_typ x y U) n)
+     subtyp m1 m2 (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_typ x y U) (n+1))
 /\ (forall m G D1 D2 n, subdec m G D1 D2 n -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
      tyvar m G1 y S ->
      ok (G1 & (x ~ S) & G2) ->
-     subdec m (G1 & (subst_ctx x y G2)) (subst_dec x y D1) (subst_dec x y D2) n)
+     subdec m (G1 & (subst_ctx x y G2)) (subst_dec x y D1) (subst_dec x y D2) (n+1))
 /\ (forall m G Ds1 Ds2 n, subdecs m G Ds1 Ds2 n -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
      tyvar m G1 y S ->
      ok (G1 & (x ~ S) & G2) ->
-     subdecs m (G1 & (subst_ctx x y G2)) (subst_decs x y Ds1) (subst_decs x y Ds2) n)
+     subdecs m (G1 & (subst_ctx x y G2)) (subst_decs x y Ds1) (subst_decs x y Ds2) (n+1))
 /\ (forall G t T, ty_trm G t T -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
      tyvar ip G1 y S ->
@@ -1878,6 +1946,14 @@ Proof.
     intros. apply* subdec_fld.
   + (* case subdec_mtd *)
     intros. apply* subdec_mtd.
+  + (* case subdec_weaken *)
+    introv Sd IH Ok1 Eq Tyy Ok2. apply align_envs_2 in Eq.
+    (* 
+    destruct Eq as [[G4 [Eq1 Eq2]] | [G4 [Eq1 Eq2]]]; subst.
+    - repeat rewrite ctx_size_middle. admit
+    *)
+    admit. (* <---- TODO!!!!*)
+ 
   + (* case subdecs_empty *)
     intros. apply subdecs_empty.
   + (* case subdecs_push *)
@@ -1933,7 +2009,7 @@ Proof.
     - apply (subst_decs_preserves_cbounds _ _ Cb).
   (* case ty_sbsm *)
   + intros G t T U n Ty IHTy St IHSt G1 G2 x Eq Bi Ok. subst.
-    apply ty_sbsm with (subst_typ x y T) n.
+    apply ty_sbsm with (subst_typ x y T) (n+1).
     - apply* IHTy.
     - apply* IHSt.
   (* case ty_typ *)
@@ -1978,7 +2054,7 @@ Lemma pr_subdec_subst_principle: forall G x y S D1 D2 n,
   ok (G & x ~ S) ->
   subdec pr (G & x ~ S) D1 D2 n ->
   binds y S G ->
-  subdec pr G (subst_dec x y D1) (subst_dec x y D2) n.
+  subdec pr G (subst_dec x y D1) (subst_dec x y D2) (n+1).
 Proof.
   introv Hok Sd yTy. destruct (subst_principles y S) as [_ [_ [_ [P _]]]].
   specialize (P _ _ D1 D2 _ Sd G empty x).
@@ -1992,7 +2068,7 @@ Lemma subdecs_subst_principle: forall G x y S Ds1 Ds2 n,
   ok (G & x ~ S) ->
   subdecs ip (G & x ~ S) Ds1 Ds2 n ->
   ty_trm G (trm_var (avar_f y)) S ->
-  subdecs ip G (subst_decs x y Ds1) (subst_decs x y Ds2) n.
+  subdecs ip G (subst_decs x y Ds1) (subst_decs x y Ds2) (n+1).
 Proof.
   introv Hok Sds yTy. destruct (subst_principles y S) as [_ [_ [_ [_ [P _]]]]].
   specialize (P _ _ Ds1 Ds2 _ Sds G empty x).
@@ -2356,9 +2432,10 @@ Qed.
 Lemma subdec_trans: forall m G D1 D2 D3 n,
   subdec m G D1 D2 n -> subdec m G D2 D3 n -> subdec m G D1 D3 n.
 Proof.
+Admitted. (*
   introv H12 H23. inversions H12; inversions H23; constructor;
   solve [ assumption | (eapply subtyp_trans; eassumption)].
-Qed.
+Qed.*)
 
 Lemma subdecs_trans: forall m G Ds1 Ds2 Ds3 n,
   subdecs m G Ds1 Ds2 n ->
@@ -2382,13 +2459,14 @@ Proof.
     - apply (IHDs3 H23c).
 Qed.
 
-(* precise substitution *)
+(* precise substitution
 Lemma pr_subdecs_subst_principle: forall G x y S Ds1 Ds2 n,
   ok (G & x ~ S) ->
   subdecs pr (G & x ~ S) Ds1 Ds2 n ->
   binds y S G ->
   subdecs pr G (subst_decs x y Ds1) (subst_decs x y Ds2) n. (* <-- n preserved ?? *)
 Admitted.
+*)
 
 Lemma open_decs_nil: forall z, (open_decs z decs_nil) = decs_nil.
 Proof.
