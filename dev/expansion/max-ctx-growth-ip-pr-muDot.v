@@ -369,6 +369,12 @@ with subtyp : pmode -> tmode -> ctx -> typ -> typ -> nat -> Prop :=
       subtyp m oktrans G T1 T2 n ->
       subtyp m oktrans G T2 T3 n ->
       subtyp m oktrans G T1 T3 n
+  (* weaking axiom, needed to get env size right for termination measure *)
+  | subtyp_weaken : forall m1 m2 G x S T1 T2 n,
+      subtyp m1 m2 G T1 T2 (n+1) ->
+      x # G ->
+      (* TODO maybe also require that S wf in G? *)
+      subtyp m1 m2 (G & x ~ S) T1 T2 n
 with subdec : pmode -> ctx -> dec -> dec -> nat -> Prop :=
   | subdec_typ : forall m G Lo1 Hi1 Lo2 Hi2 n,
       (* Lo2 <: Lo1 <: Hi1 <: Hi2 *)
@@ -383,11 +389,12 @@ with subdec : pmode -> ctx -> dec -> dec -> nat -> Prop :=
       subtyp m oktrans G S2 S1 n ->
       subtyp m oktrans G T1 T2 n ->
       subdec m G (dec_mtd S1 T1) (dec_mtd S2 T2) n
-  (* weaking axiom, needed to get env size right for termination measure *)
+  (* weaking axiom, needed to get env size right for termination measure
   | subdec_weaken : forall m G1 G2 D1 D2 n,
       subdec m G1 D1 D2 ((ctx_size G2) + n) ->
       ok (G1 & G2) ->
       subdec m (G1 & G2) D1 D2 n
+  *)
 with subdecs : pmode -> ctx -> decs -> decs -> nat -> Prop :=
   | subdecs_empty : forall m G Ds n,
       subdecs m G Ds decs_nil n
@@ -1012,8 +1019,8 @@ Proof.
     assert (n1 <= n2) by omega. apply* subtyp_bind.
   + (* case subtyp_trans *)
     intros. apply subtyp_trans with T2; auto.
-  + (* case subdec_weaken *)
-    introv Sd IH Ok Hle. rename n into n1. refine (subdec_weaken _ _ Ok).
+  + (* case subtyp_weaken *)
+    introv St IH xG Hle. rename n into n1. refine (subtyp_weaken _ _ _ xG).
     apply IH. omega.
   + (* case subdecs_push *)
     intros. apply* subdecs_push.
@@ -1040,7 +1047,6 @@ Qed.
 (* ###################################################################### *)
 (** ** Trivial inversion lemmas *)
 
-(* now needs weakening!
 Lemma invert_subdec_typ_sync_left: forall m G D Lo2 Hi2 n,
    subdec m G D (dec_typ Lo2 Hi2) n ->
    exists Lo1 Hi1, D = (dec_typ Lo1 Hi1) /\
@@ -1050,7 +1056,6 @@ Lemma invert_subdec_typ_sync_left: forall m G D Lo2 Hi2 n,
 Proof.
   introv Sd. inversions Sd. exists Lo1 Hi1. auto.
 Qed.
-*)
 
 (*
 Lemma invert_subdec_fld_sync_left: forall m G D T2,
@@ -1380,6 +1385,7 @@ Proof. intros. apply* exp_has_unique. Qed.
 (* ###################################################################### *)
 (** ** Weakening *)
 
+(*
 Lemma align_env_eq: forall T (E1 E2 F1 F2: env T), E1 & E2 = F1 & F2 ->
    (exists G1 G2 G3, E1 = G1 & G2 /\ E2 = G3 /\ F1 = G1 /\ F2 = G2 & G3)
 \/ (exists G1 G2 G3, F1 = G1 & G2 /\ F2 = G3 /\ E1 = G1 /\ E2 = G2 & G3).
@@ -1388,6 +1394,7 @@ Admitted.
 Lemma ctx_size_cons: forall G1 G2,
   ctx_size (G1 & G2) = (ctx_size G1) + (ctx_size G2).
 Admitted.
+*)
 
 Lemma weakening:
    (forall m G T Ds, exp m G T Ds -> forall G1 G2 G3,
@@ -1462,25 +1469,26 @@ Proof.
     intros. apply subtyp_tmode. apply* H.
   + (* case subtyp_trans *)
     intros. subst. apply* subtyp_trans.
+  + (* case subtyp_weaken *)
+    introv St IH xG Eq Ok. destruct (env_case G3) as [Eq1 | [y [U [G4 Eq1]]]]; subst.
+    - rewrite concat_empty_r in *. subst.
+      destruct (env_case G2) as [Eq2 | [y [U [G4 Eq2]]]]; subst.
+      * rewrite concat_empty_r in *. apply (subtyp_weaken _ _ St xG).
+      * rewrite concat_assoc in *.
+        specialize (IH G (x ~ S & G4) empty).
+        rewrite concat_assoc in IH. repeat rewrite concat_empty_r in IH.
+        refine (subtyp_weaken _ _ (IH eq_refl _) (proj2 (ok_push_inv Ok))). auto.
+    - rewrite concat_assoc in *. apply eq_push_inv in Eq.
+      destruct Eq as [Eq1 [Eq2 Eq3]]. subst.
+      apply subtyp_weaken.
+      * apply* IH.
+      * apply (proj2 (ok_push_inv Ok)).
   + (* case subdec_typ *)
     intros. apply* subdec_typ.
   + (* case subdec_fld *)
     intros. apply* subdec_fld.
   + (* case subdec_mtd *)
     intros. apply* subdec_mtd.
-  + (* case subdec_weaken *)
-    introv Sd IH Ok1 Eq Ok2. apply align_env_eq in Eq.
-    destruct Eq as [ [Ga [Gb [Gc [Eq1 [Eq2 [Eq3 Eq4]]]]]]
-                   | [Ga [Gb [Gc [Eq1 [Eq2 [Eq3 Eq4]]]]]]]; subst.
-    - specialize (IH Ga G3 Gb eq_refl).
-      rewrite concat_assoc in *.
-      refine (subdec_weaken _ (IH _) Ok2). auto.
-    - assert (Eq: Ga & Gb & G3 & Gc = Ga & (Gb & G3 & Gc))
-        by (repeat rewrite concat_assoc; reflexivity).
-      rewrite Eq.
-      refine (@subdec_weaken _ Ga (Gb & G3 & Gc) D1 D2 n _ _).
-      * apply (subdec_max_ctx Sd). repeat rewrite ctx_size_cons. omega.
-      * repeat rewrite concat_assoc. auto.
   + (* case subdecs_empty *)
     intros. apply subdecs_empty.
   + (* case subdecs_push *)
@@ -1677,24 +1685,6 @@ Qed.
 *)
 
 
-Lemma invert_subdec_typ_sync_left: forall m G D Lo2 Hi2 n,
-   subdec m G D (dec_typ Lo2 Hi2) n ->
-   exists n2 Lo1 Hi1, D = (dec_typ Lo1 Hi1) /\
-                      subtyp m oktrans G Lo2 Lo1 n2 /\
-                      subtyp m oktrans G Lo1 Hi1 n2 /\
-                      subtyp m oktrans G Hi1 Hi2 n2.
-Proof.
-  introv Sd. gen_eq D2: (dec_typ Lo2 Hi2). gen Lo2 Hi2. induction Sd.
-  + introv Eq. inversions Eq. eauto 10.
-  + intros. discriminate.
-  + intros. discriminate.
-  + intros. subst. specialize (IHSd _ _ eq_refl).
-    destruct IHSd as [n2 [Lo1 [Hi1 [Eq [St1 [St2 St3]]]]]]. subst.
-    exists n2 Lo1 Hi1. apply (conj eq_refl).
-    repeat split; apply* weaken_subtyp_end.
-Qed.
-
-
 (* ###################################################################### *)
 (** ** The substitution principle *)
 
@@ -1787,11 +1777,19 @@ Admitted.
 
 Axiom okadmit: forall G: ctx, ok G.
 
+(*
 Lemma align_envs_2: forall T (E1 E2 F1 F2: env T) x S,
    E1 & E2 = F1 & x ~ S & F2 ->
    (exists G, F1 = E1 & G /\ E2 = G & x ~ S & F2)
 \/ (exists G, F2 = G & E2 /\ E1 = F1 & x ~ S & G).
 Admitted.
+*)
+
+Lemma subst_ctx_push: forall G x y z T,
+  subst_ctx x y (G & z ~ T) = (subst_ctx x y G) & (z ~ subst_typ x y T).
+Proof.
+  intros. unfold subst_ctx. rewrite map_push. reflexivity.
+Qed.
 
 (* Why (n+1)? Because what counts is not the growth, but the max size. The only reason we
    measure the growth is that it's easier to measure. *)
@@ -1940,20 +1938,30 @@ Proof.
   + (* case subtyp_trans *)
     intros m G T1 T2 T3 St12 IH12 St23 IH23 G1 G2 x Eqm EqG Bi Ok. subst.
     apply* subtyp_trans.
+  + (* case subtyp_weaken *)
+    introv St IH xG Eq Tyy Ok.
+    destruct (env_case G2) as [Eq1 | [x1 [S1 [G4 Eq1]]]]; subst.
+    - unfold subst_ctx. rewrite map_empty. rewrite concat_empty_r in *.
+      apply eq_push_inv in Eq.
+      destruct Eq as [Eq1 [Eq2 Eq3]]. subst x0 S0 G1.
+      (* by St, T1 and T2 are wf in G, so: *)
+      assert (Eq1: (subst_typ x y T1) = T1) by admit.
+      assert (Eq2: (subst_typ x y T2) = T2) by admit.
+      rewrite Eq1. rewrite Eq2. exact St.
+    - rewrite concat_assoc in *.
+      apply eq_push_inv in Eq.
+      destruct Eq as [Eq1 [Eq2 Eq3]]. subst. rename xG into x1G, S into S0.
+      specialize (IH G1 G4 x0 eq_refl Tyy (proj1 (ok_push_inv Ok))).
+      rewrite subst_ctx_push. rewrite concat_assoc.
+      apply (subtyp_weaken _ _ IH).
+      assert (x1G4: x1 # subst_ctx x0 y G4) by apply* subst_ctx_preserves_notin.
+      auto.
   + (* case subdec_typ *)
     intros. apply* subdec_typ.
   + (* case subdec_fld *)
     intros. apply* subdec_fld.
   + (* case subdec_mtd *)
     intros. apply* subdec_mtd.
-  + (* case subdec_weaken *)
-    introv Sd IH Ok1 Eq Tyy Ok2. apply align_envs_2 in Eq.
-    (* 
-    destruct Eq as [[G4 [Eq1 Eq2]] | [G4 [Eq1 Eq2]]]; subst.
-    - repeat rewrite ctx_size_middle. admit
-    *)
-    admit. (* <---- TODO!!!!*)
- 
   + (* case subdecs_empty *)
     intros. apply subdecs_empty.
   + (* case subdecs_push *)
@@ -2569,7 +2577,7 @@ Lemma exp_preserves_sub_base_case: forall m1 m2 G T1 T2 n,
   n = 0 ->
   exp m1 G T1 Ds1 ->
   exp m1 G T2 Ds2 ->
-  Ds2 = decs_nil \/ Ds1 = Ds2.
+  Ds2 = decs_nil \/ Ds1 = Ds2. (* TODO does not hold any more because of subtyp_weaken ax*)
 Proof.
   apply (subtyp_ind (fun m1 m2 G T1 T2 n => forall Ds1 Ds2,
     m1 = pr ->
@@ -2620,9 +2628,13 @@ Proof.
     - left. subst Ds3. exact IH12.
     - auto.
     - right. subst Ds2. exact IH23.
+  + (* case subtyp_weaken *)
+    introv St IH xG Eq1 Eq2 Exp1 Exp2. subst.
+    (* TODO invoke IH for (ctx_size G), which is smaller than (ctx_size (G & x ~ S)) *)
+    admit. (* !!! *)
 Qed.
 
-Print Assumptions exp_preserves_sub_base_case. (* only exp_total *)
+Print Assumptions exp_preserves_sub_base_case.
 
 Lemma egr_exp_preserves_sub_pr_0: forall g, egr_exp_preserves_sub_pr g 0.
 Proof.
@@ -2730,7 +2742,12 @@ Proof.
     (* narrowing with d [smaller than d+1 :-)] *)
     refine (subdecs_trans Sds12 (N _ _ _ _ _ _ _ Sds23 Sds12)).
     symmetry. apply ctx_size_push.
-Qed.
+  + (* case subtyp_weaken *)
+    introv St IH xG Eq1 Eq2 Exp1 Exp2. subst.
+    (* Oh no! subtyp_weaken changes (ctx_size + growth) to (ctx_size-1 + growth+1),
+       and that's just the opposite direction than the termination measure!!!
+       Idea was that it changes to (ctx_size-1 + growth). *)
+Abort.
 
 (* no base case needed for narrowing because [egr_narrowing d] depends on
    [egr_exp_preserves_sub d] anyways *)
@@ -2743,6 +2760,12 @@ Proof.
   - inversions H. (* contradiction *)
   - reflexivity.
 Qed.
+
+(*
+Lemma subdec_weakening_size_trick: forall m G1 G2 D1 D2 n,
+  subdec m G1 D1 D2 ((ctx_size G2) + n) ->
+  subdec m (G1 & G2) D1 D2 n.
+*)
 
 (* TODO does not hold currently, but if we add a weakening axiom to the rules,
    it should work.
@@ -2839,6 +2862,7 @@ Proof.
       destruct H as [D1 Eq]. subst.
       exists (open_dec x D1).
       apply subdec_weakening_size_trick in Sd.
+           (***************************)
       refine (conj _ Sd).
       apply has_pr with (typ_bind DsA) DsA.
       * assert (xG2: x # G2) by admit.
@@ -2869,10 +2893,13 @@ Proof.
       assert (FrD2: z \notin fv_dec D2) by auto.
       rewrite <- (@subst_intro_dec z v D1 FrD1) in P.
       rewrite <- (@subst_intro_dec z v D2 FrD2) in P.
-      (* waste 1: *)
+      (* no more wasted 1 because subst now has (n+1) in conclusion
       assert (Hle: pred d <= d) by omega.
       lets P': (subdec_max_ctx P Hle).
-      refine (conj _ P').
+      refine (conj _ P').*)
+      assert (Eq: (pred d + 1) = d) by admit. (* TODO doesn't hold if d=0!!!*)
+      rewrite Eq in P.
+      refine (conj _ P).
       apply has_pr with (typ_bind Ds1) Ds1.
       * exact BiA.
       * apply exp_bind.
@@ -2932,6 +2959,10 @@ Proof.
     apply subtyp_trans with T2.
     - refine (IHSt12 _ _ _ _ _ eq_refl eq_refl eq_refl _ eq_refl _); assumption.
     - refine (IHSt23 _ _ _ _ _ eq_refl eq_refl eq_refl _ eq_refl _); assumption.
+  + (* case subtyp_weaken *)
+    introv St IH xG Eq1 Eq2 Eq3 Ok Eq4 SdsAB. subst.
+    (* IH is useless, and the outer IHs would need 1 smaller!!! *)
+    admit. (* doesn't work with termination measure!!!*)
   + (* case subdec_typ *)
     intros. subst. apply* subdec_typ.
   + (* case subdec_fld *)
