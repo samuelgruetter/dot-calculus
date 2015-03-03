@@ -442,6 +442,102 @@ with ty_defs : ctx -> defs -> decs -> Prop :=
       ty_def  G d D ->
       ty_defs G (defs_cons n d ds) (decs_cons n D Ds).
 
+
+Inductive dmode: Set := deep | shallow.
+(* deep enters also computational types (typ_bind),
+   shallow only enters non-expansive types (bounds of path types, and/or-types) *)
+
+Inductive wf_typ: dmode -> ctx -> typ -> Prop :=
+  | wf_top : forall m G,
+      wf_typ m G typ_top
+  | wf_bot : forall m G,
+      wf_typ m G typ_bot
+  | wf_bind_deep : forall L G Ds,
+      (forall z, z \notin L -> wf_decs (G & z ~ typ_bind Ds) Ds) ->
+      wf_typ deep G (typ_bind Ds)
+  | wf_bind_shallow : forall G Ds,
+      wf_typ shallow G (typ_bind Ds)
+  | wf_sel1 : forall m G x L Lo Hi,
+      has pr G (trm_var (avar_f x)) L (dec_typ Lo Hi) ->
+      wf_typ m G Lo ->
+      wf_typ m G Hi ->
+      wf_typ m G (typ_sel (pth_var (avar_f x)) L)
+  | wf_sel2 : forall G x L U,
+      has pr G (trm_var (avar_f x)) L (dec_typ typ_bot U) ->
+      (* deep wf-ness of U was already checked at the definition site of x.L (wf_tmem),
+         so it's sufficient to do a shallow check --> allows x.L to appear recursively
+         in U, but only behind a computational type --> following upper bound terminates *)
+      wf_typ shallow G U ->
+      wf_typ deep G (typ_sel (pth_var (avar_f x)) L)
+with wf_dec : ctx -> dec -> Prop :=
+  | wf_tmem : forall G Lo Hi,
+      wf_typ deep G Lo ->
+      wf_typ deep G Hi ->
+      wf_dec G (dec_typ Lo Hi)
+  | wf_fld : forall G T,
+      wf_typ deep G T ->
+      wf_dec G (dec_fld T)
+  | wf_mtd : forall G A R,
+      wf_typ deep G A ->
+      wf_typ deep G R ->
+      wf_dec G (dec_mtd A R)
+with wf_decs : ctx -> decs -> Prop :=
+  | wf_nil : forall G,
+      wf_decs G decs_nil
+  | wf_cons : forall G n D Ds,
+      wf_dec G D ->
+      wf_decs G Ds ->
+      wf_decs G (decs_cons n D Ds).
+
+
+(* maybe returning a set of path types is not needed *)
+
+(* wf_typ G T returns all path types occur in T's bounds in a non-expansive way
+   (i.e. those occurrences which are not guarded by a computational type),
+   including T itself if it's a path type *)
+Inductive wf_typ: dmode -> ctx -> typ -> fset (pth * label) -> Prop :=
+  | wf_top : forall m G,
+      wf_typ m G typ_top \{}
+  | wf_bot : forall m G,
+      wf_typ m G typ_bot \{}
+  | wf_bind_deep : forall L G Ds,
+      (forall z, z \notin L -> wf_decs (G & z ~ typ_bind Ds) Ds) ->
+      wf_typ deep G (typ_bind Ds) \{}
+  | wf_bind_shallow : forall G Ds,
+      wf_typ shallow G (typ_bind Ds) \{}
+  | wf_sel1 : forall m G x L Lo Hi B1 B2,
+      has pr G (trm_var (avar_f x)) L (dec_typ Lo Hi) ->
+      wf_typ m G Lo B1 ->
+      wf_typ m G Hi B2 ->
+      wf_typ m G (typ_sel (pth_var (avar_f x)) L)
+        (B1 \u (B2 \u \{(pth_var (avar_f x), L)}))
+  | wf_sel2 : forall G x L U B,
+      has pr G (trm_var (avar_f x)) L (dec_typ typ_bot U) ->
+      wf_typ shallow G U B ->
+      ((pth_var (avar_f x)), L) \notin B ->
+      wf_typ deep G (typ_sel (pth_var (avar_f x)) L)
+        (B \u \{(pth_var (avar_f x), L)})
+with wf_dec : ctx -> dec -> Prop :=
+  | wf_tmem : forall G Lo Hi B1 B2,
+      wf_typ deep G Lo B1 ->
+      wf_typ deep G Hi B2 ->
+      wf_dec G (dec_typ Lo Hi)
+  | wf_fld : forall G T B,
+      wf_typ deep G T B ->
+      wf_dec G (dec_fld T)
+  | wf_mtd : forall G A R B1 B2,
+      wf_typ deep G A B1 ->
+      wf_typ deep G R B2 ->
+      wf_dec G (dec_mtd A R)
+with wf_decs : ctx -> decs -> Prop :=
+  | wf_nil : forall G,
+      wf_decs G decs_nil
+  | wf_cons : forall G n D Ds,
+      wf_dec G D ->
+      wf_decs G Ds ->
+      wf_decs G (decs_cons n D Ds).
+
+
 Inductive wf_typ: ctx -> typ -> Prop :=
   | wf_top : forall G,
       wf_typ G typ_top
@@ -457,7 +553,7 @@ Inductive wf_typ: ctx -> typ -> Prop :=
       wf_typ G (typ_sel (pth_var (avar_f x)) L)
   | wf_sel2 : forall G x L U,
       has pr G (trm_var (avar_f x)) L (dec_typ typ_bot U) ->
-      (* note: no check on U --> allows recursive class types are possible *)
+      (* note: no check on U --> recursive class types are possible *)
       wf_typ G (typ_sel (pth_var (avar_f x)) L)
 with wf_dec : ctx -> dec -> Prop :=
   | wf_tmem : forall G Lo Hi,
