@@ -490,7 +490,7 @@ with wf_decs : ctx -> decs -> Prop :=
       wf_decs G (decs_cons n D Ds).
 
 
-(* maybe returning a set of path types is not needed *)
+(* returning a set of path types is not needed
 
 (* wf_typ G T returns all path types occur in T's bounds in a non-expansive way
    (i.e. those occurrences which are not guarded by a computational type),
@@ -574,6 +574,7 @@ with wf_decs : ctx -> decs -> Prop :=
       wf_dec G D ->
       wf_decs G Ds ->
       wf_decs G (decs_cons n D Ds).
+*)
 
 (** *** Well-formed store *)
 Inductive wf_sto: sto -> ctx -> Prop :=
@@ -1476,6 +1477,29 @@ Proof. intros. apply* exp_has_unique. Qed.
 Lemma has_unique: forall G v l D1 D2,
   has pr G v l D1 -> has pr G v l D2 -> D1 = D2.
 Proof. intros. apply* exp_has_unique. Qed.
+
+
+(* ###################################################################### *)
+(** ** Expansion total *)
+
+Lemma exp_total: forall m G T, wf_typ m G T -> exists Ds, exp pr G T Ds.
+Proof.
+  introv Wf. induction Wf.
+  + (* case wf_top *)
+    exists decs_nil. apply exp_top.
+  + (* case wf_bot *)
+    admit. (* TODO doesn't work!!! *)
+  + (* case wf_bind_deep *)
+    exists Ds. apply exp_bind.
+  + (* case wf_bind_shallow  *)
+    exists Ds. apply exp_bind.
+  + (* case wf_sel1 *)
+    destruct IHWf2 as [DsHi ExpHi].
+    exists DsHi. apply (exp_sel H ExpHi).
+  + (* case wf_sel2 *)
+    destruct IHWf as [DsU ExpU].
+    exists DsU. apply (exp_sel H ExpU).
+Qed.
 
 
 (* ###################################################################### *)
