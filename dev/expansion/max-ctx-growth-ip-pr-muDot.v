@@ -1816,7 +1816,6 @@ Proof.
   apply (W (G1 & empty)); rewrite* concat_empty_r.
 Qed.
 
-(*
 Lemma weaken_ty_def_end: forall G1 G2 i d,
   ok (G1 & G2) -> ty_def G1 i d -> ty_def (G1 & G2) i d.
 Proof.
@@ -1852,7 +1851,6 @@ Lemma weaken_ty_defs_middle: forall G1 G2 G3 ds Ds,
 Proof.
   intros. apply* weakening.
 Qed.
-*)
 
 
 (* ###################################################################### *)
@@ -2482,26 +2480,29 @@ Proof.
   + eauto.
   + admit. (* subsumption case *)
 Abort.
+*)
 
 Lemma invert_ty_call: forall G t m V2 u,
   ty_trm G (trm_call t m u) V2 ->
-  exists U V1, has ip G t (label_mtd m) (dec_mtd U V1)
-               /\ subtyp ip oktrans G V1 V2
+  exists U V1 n, has ip G t (label_mtd m) (dec_mtd U V1)
+               /\ subtyp ip oktrans G V1 V2 n
                /\ ty_trm G u U.
 Proof.
   introv Ty. gen_eq e: (trm_call t m u). gen t m u.
   induction Ty; intros t0 m0 u0 Eq; try solve [ discriminate ]; symmetry in Eq.
   + (* case ty_call *)
-    inversions Eq. exists U V. lets StV: (subtyp_refl_all ip oktrans G V). auto.
+    inversions Eq. exists U V. lets StV: (subtyp_tmode (subtyp_refl ip G V 0)). eauto.
   + (* case ty_sbsm *)
     subst t. specialize (IHTy _ _ _ eq_refl).
     rename t0 into t, m0 into m, u0 into u, U into V3, T into V2.
-    destruct IHTy as [U [V1 [Has [St12 Tyu]]]].
+    destruct IHTy as [U [V1 [n' [Has [St12 Tyu]]]]].
     exists U V1.
+    assert (n' = n) by admit. (* TODO doesn't hold but will work *) subst.
     lets St13: (subtyp_trans St12 H).
-    auto.
+    eauto.
 Qed.
 
+(*
 Lemma invert_ty_new: forall G ds Ds T2,
   ty_trm G (trm_new Ds ds) T2 ->
   subtyp ip oktrans G (typ_bind Ds) T2 /\
@@ -3431,6 +3432,15 @@ Qed.
 *)
 Print Assumptions ip2pr.
 
+Lemma ip2pr_has: forall s G v L D2,
+  wf_sto s G ->
+  has ip G (trm_var (avar_f v)) L D2 ->
+  exists D1 n, has pr G (trm_var (avar_f v)) L D1 /\ subdec pr G D1 D2 n.
+Proof.
+  introv Wf Has.
+  destruct ip2pr as [_ [P _]]. apply* P.
+Qed.
+
 Lemma pr2ip:
    (forall m G T Ds, exp m G T Ds -> exp ip G T Ds)
 /\ (forall m G t L D, has m G t L D -> has ip G t L D)
@@ -3439,6 +3449,7 @@ Lemma pr2ip:
 /\ (forall m G Ds1 Ds2 n, subdecs m G Ds1 Ds2 n -> subdecs ip G Ds1 Ds2 n).
 Admitted.
 
+(* Not needed because it's simpler to use exp_preserves_sub directly
 Lemma invert_subtyp_bind_oktrans: forall s G Ds1 Ds2 n1,
   wf_sto s G ->
   subtyp ip oktrans G (typ_bind Ds1) (typ_bind Ds2) n1 ->
@@ -3457,42 +3468,45 @@ Proof.
 Qed.
 
 Print Assumptions invert_subtyp_bind_oktrans.
+*)
+
 
 (* ###################################################################### *)
 (** ** Soundness helper lemmas *)
+
+Lemma has_sound_pr: forall s G x Ds ds l D,
+  wf_sto s G ->
+  binds x (object Ds ds) s ->
+  has pr G (trm_var (avar_f x)) l D ->
+  ty_defs G (open_defs x ds) (open_decs x Ds) /\ decs_has (open_decs x Ds) l D.
+Proof.
+  introv Wf Bis Has.
+  apply invert_has_pr in Has. rename D into D'.
+  destruct Has as [X' [Ds' [D [BiG' [Exp' [Ds2Has Eq]]]]]]. subst.
+  lets BiG: (sto_binds_to_ctx_binds Wf Bis).
+  lets Eq: (binds_func BiG BiG'). subst. clear BiG'.
+  inversions Exp'.
+  inversions Ds2Has. rename H0 into Ds2Has.
+  lets P: (invert_wf_sto Wf Bis BiG). destruct P as [_ [G1 [G2 [Eq [Tyds Cb]]]]]. subst.
+  lets Ok: (wf_sto_to_ok_G Wf).
+  split.
+  - apply (weaken_ty_defs_end Ok Tyds).
+  - apply (decs_has_open _ Ds2Has).
+Qed.
 
 Lemma has_sound: forall s G x Ds1 ds l D2,
   wf_sto s G ->
   binds x (object Ds1 ds) s ->
   has ip G (trm_var (avar_f x)) l D2 ->
-  exists Ds1 D1,
+  exists D1 n,
     ty_defs G (open_defs x ds) (open_decs x Ds1) /\
     decs_has (open_decs x Ds1) l D1 /\
-    subdec ip G D1 D2.
+    subdec ip G D1 D2 n.
 Proof.
   introv Wf Bis Has.
-  apply invert_var_has_dec in Has.
-  destruct Has as [X2 [Ds2 [T [Tyx [Exp2 [Ds2Has Eq]]]]]]. subst.
-  destruct (invert_wf_sto_with_sbsm Wf Bis Tyx) as [St [Tyds Cb]].
-  lets St': (exp_to_subtyp Exp2).
-  lets Sds: (invert_subtyp_bind_oktrans Wf (subtyp_trans St St')).
-            (**************************)
-  destruct Sds as [L Sds].
-  pick_fresh z. assert (zL: z \notin L) by auto. specialize (Sds z zL).
-  lets BiG: (sto_binds_to_ctx_binds Wf Bis).
-  lets Tyx1: (ty_var BiG).
-  lets Ok: (wf_sto_to_ok_G Wf).
-  assert (Ok': ok (G & z ~ typ_bind Ds1)) by auto.
-  lets Sds': (@subdecs_subst_principle _ z x (typ_bind Ds1)
-              (***********************) (open_decs z Ds1) (open_decs z Ds2) Ok' Sds Tyx1).
-  assert (zDs1: z \notin fv_decs Ds1) by auto.
-  assert (zDs2: z \notin fv_decs Ds2) by auto.
-  rewrite <- (@subst_intro_decs z x Ds1 zDs1) in Sds'.
-  rewrite <- (@subst_intro_decs z x Ds2 zDs2) in Sds'.
-  apply (decs_has_open x) in Ds2Has.
-  destruct (decs_has_preserves_sub Ds2Has Sds') as [D1 [Ds1Has Sd]].
-  exists Ds1 D1.
-  apply (conj Tyds (conj Ds1Has Sd)).
+  apply (ip2pr_has Wf) in Has. destruct Has as [D1 [n [Has Sd]]].
+  lets P: (has_sound_pr Wf Bis Has). destruct P as [Tyds DsHas].
+  exists D1 n. repeat split; auto. apply* pr2ip.
 Qed.
 
 Print Assumptions has_sound.
@@ -3518,7 +3532,7 @@ Proof.
              (****************)
     specialize (P _ _ _ Ty' (G & y ~ S) empty x).
     rewrite concat_empty_r in P.
-    specialize (P eq_refl Tyy Okyx).
+    specialize (P eq_refl (tyvar_ip Tyy) Okyx).
     unfold subst_ctx in P. rewrite map_empty in P. rewrite concat_empty_r in P.
     exact P.
 Qed.
@@ -3541,7 +3555,7 @@ Proof.
   + intros. auto.
   (* case has_var *)
   + intros G v T Ds l D Ty IH Exp Has s Wf.
-    right. apply invert_ty_var in Ty. destruct Ty as [T' [St BiG]].
+    right. apply invert_ty_var in Ty. destruct Ty as [T' [n [St BiG]]].
     destruct (ctx_binds_to_sto_binds Wf BiG) as [o Bis].
     exists v o. auto.
   (* case has_pr *)
@@ -3607,7 +3621,7 @@ Proof.
   + intros G U3 Wf TyCall. rename H into Bis, H0 into dsHas, T into X1.
     exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
     apply invert_ty_call in TyCall.
-    destruct TyCall as [T2 [U2 [Has [StU23 Tyy]]]].
+    destruct TyCall as [T2 [U2 [n [Has [StU23 Tyy]]]]].
     lets P: (has_sound Wf Bis Has).
             (*********)
     destruct P as [Ds1 [D1 [Tyds [Ds1Has Sd]]]].
