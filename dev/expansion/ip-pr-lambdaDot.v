@@ -28,45 +28,45 @@ Module labels.
   Parameter apply: mtd_label.
 End labels.
 
-Inductive avar : Set :=
-  | avar_b : nat -> avar  (* bound var (de Bruijn index) *)
-  | avar_f : var -> avar. (* free var ("name"), refers to tenv or venv *)
+Inductive avar: Set :=
+  | avar_b: nat -> avar  (* bound var (de Bruijn index) *)
+  | avar_f: var -> avar. (* free var ("name"), refers to tenv or venv *)
 
-Inductive pth : Set :=
-  | pth_var : avar -> pth.
+Inductive pth: Set :=
+  | pth_var: avar -> pth.
 
-Inductive typ : Set :=
-  | typ_top  : typ
-  | typ_bot  : typ
-(*| typ_bind : decs -> typ   { z => decs } *)
-  | typ_bind : decs -> typ (* not a BIND typ, just { decs } *)
-  | typ_sel : pth -> typ_label -> typ (* p.L *)
-with dec : Set :=
-  | dec_typ  : typ_label -> typ -> typ -> dec
-  | dec_fld  : fld_label -> typ -> dec
-  | dec_mtd  : mtd_label -> typ -> typ -> dec
-with decs : Set :=
-  | decs_nil : decs
-  | decs_cons : dec -> decs -> decs.
+Inductive typ: Set :=
+  | typ_top : typ
+  | typ_bot : typ
+(*| typ_bind: decs -> typ   { z => decs } *)
+  | typ_bind: decs -> typ (* not a BIND typ, just { decs } *)
+  | typ_sel: pth -> typ_label -> typ (* p.L *)
+with dec: Set :=
+  | dec_typ : typ_label -> typ -> typ -> dec
+  | dec_fld : fld_label -> typ -> dec
+  | dec_mtd : mtd_label -> typ -> typ -> dec
+with decs: Set :=
+  | decs_nil: decs
+  | decs_cons: dec -> decs -> decs.
 
 (* decs which could possibly be the expansion of bottom *)
-Inductive bdecs : Set :=
-  | bdecs_bot : bdecs
-  | bdecs_decs : decs -> bdecs.
+Inductive bdecs: Set :=
+  | bdecs_bot: bdecs
+  | bdecs_decs: decs -> bdecs.
 
-Inductive trm : Set :=
-  | trm_var  : avar -> trm
-(*| trm_new  : defs -> trm BIND nameless self ref *)
-  | trm_new  : defs -> trm
-  | trm_sel  : trm -> fld_label -> trm
-  | trm_call : trm -> mtd_label -> trm -> trm
-with def : Set :=
-  | def_typ : typ_label -> typ -> typ -> def (* same as dec_typ *)
-  | def_fld : fld_label -> typ -> avar -> def (* cannot have term here, assign it first *)
-  | def_mtd : mtd_label -> typ -> typ -> trm -> def (* one nameless argument *)
-with defs : Set :=
-  | defs_nil : defs
-  | defs_cons : def -> defs -> defs.
+Inductive trm: Set :=
+  | trm_var : avar -> trm
+(*| trm_new : defs -> trm BIND nameless self ref *)
+  | trm_new : defs -> trm
+  | trm_sel : trm -> fld_label -> trm
+  | trm_call: trm -> mtd_label -> trm -> trm
+with def: Set :=
+  | def_typ: typ_label -> typ -> typ -> def (* same as dec_typ *)
+  | def_fld: fld_label -> typ -> avar -> def (* cannot have term here, assign it first *)
+  | def_mtd: mtd_label -> typ -> typ -> trm -> def (* one nameless argument *)
+with defs: Set :=
+  | defs_nil: defs
+  | defs_cons: def -> defs -> defs.
 
 (** *** Typing environment ("Gamma") *)
 Definition ctx := env typ.
@@ -150,18 +150,18 @@ Inductive bdecs_has: bdecs -> dec -> Prop :=
 (** Opening replaces in some syntax a bound variable with dangling index (k) 
    by a free variable x. *)
 
-Definition open_rec_avar (k: nat) (u: var) (a: avar) : avar :=
+Definition open_rec_avar (k: nat) (u: var) (a: avar): avar :=
   match a with
   | avar_b i => If k = i then avar_f u else avar_b i
   | avar_f x => avar_f x
   end.
 
-Definition open_rec_pth (k: nat) (u: var) (p: pth) : pth :=
+Definition open_rec_pth (k: nat) (u: var) (p: pth): pth :=
   match p with
   | pth_var a => pth_var (open_rec_avar k u a)
   end.
 
-Fixpoint open_rec_typ (k: nat) (u: var) (T: typ) { struct T } : typ :=
+Fixpoint open_rec_typ (k: nat) (u: var) (T: typ) { struct T }: typ :=
   match T with
   | typ_top     => typ_top
   | typ_bot     => typ_bot
@@ -169,19 +169,19 @@ Fixpoint open_rec_typ (k: nat) (u: var) (T: typ) { struct T } : typ :=
   | typ_bind Ds => typ_bind (open_rec_decs k u Ds)
   | typ_sel p L => typ_sel (open_rec_pth k u p) L
   end
-with open_rec_dec (k: nat) (u: var) (D: dec) { struct D } : dec :=
+with open_rec_dec (k: nat) (u: var) (D: dec) { struct D }: dec :=
   match D with
   | dec_typ L T U => dec_typ L (open_rec_typ k u T) (open_rec_typ k u U)
   | dec_fld l T   => dec_fld l (open_rec_typ k u T)
   | dec_mtd m T U => dec_mtd m (open_rec_typ k u T) (open_rec_typ k u U)
   end
-with open_rec_decs (k: nat) (u: var) (Ds: decs) { struct Ds } : decs :=
+with open_rec_decs (k: nat) (u: var) (Ds: decs) { struct Ds }: decs :=
   match Ds with
   | decs_nil        => decs_nil
   | decs_cons D Ds' => decs_cons (open_rec_dec k u D) (open_rec_decs k u Ds')
   end.
 
-Fixpoint open_rec_trm (k: nat) (u: var) (t: trm) { struct t } : trm :=
+Fixpoint open_rec_trm (k: nat) (u: var) (t: trm) { struct t }: trm :=
   match t with
   | trm_var a      => trm_var (open_rec_avar k u a)
 (*| trm_new ds     => trm_new (open_rec_defs (S k) u ds) BIND *)
@@ -189,14 +189,14 @@ Fixpoint open_rec_trm (k: nat) (u: var) (t: trm) { struct t } : trm :=
   | trm_sel e n    => trm_sel (open_rec_trm k u e) n
   | trm_call o m a => trm_call (open_rec_trm k u o) m (open_rec_trm k u a)
   end
-with open_rec_def (k: nat) (u: var) (d: def) { struct d } : def :=
+with open_rec_def (k: nat) (u: var) (d: def) { struct d }: def :=
   match d with
   | def_typ L Lo Hi => def_typ L (open_rec_typ k u Lo) (open_rec_typ k u Hi)
   | def_fld f T a => def_fld f (open_rec_typ k u T) (open_rec_avar k u a)
   | def_mtd m T1 T2 e => def_mtd m (open_rec_typ k u T1) (open_rec_typ k u T2)
                        (open_rec_trm (S k) u e)
   end
-with open_rec_defs (k: nat) (u: var) (ds: defs) { struct ds } : defs :=
+with open_rec_defs (k: nat) (u: var) (ds: defs) { struct ds }: defs :=
   match ds with
   | defs_nil => defs_nil
   | defs_cons d tl => defs_cons (open_rec_def k u d) (open_rec_defs k u tl)
@@ -215,57 +215,57 @@ Definition open_defs u l := open_rec_defs  0 u l.
 (* ###################################################################### *)
 (** ** Free variables *)
 
-Definition fv_avar (a: avar) : vars :=
+Definition fv_avar (a: avar): vars :=
   match a with
   | avar_b i => \{}
   | avar_f x => \{x}
   end.
 
-Definition fv_pth (p: pth) : vars :=
+Definition fv_pth (p: pth): vars :=
   match p with
   | pth_var a => fv_avar a
   end.
 
-Fixpoint fv_typ (T: typ) { struct T } : vars :=
+Fixpoint fv_typ (T: typ) { struct T }: vars :=
   match T with
   | typ_top     => \{}
   | typ_bot     => \{}
   | typ_bind Ds => fv_decs Ds
   | typ_sel p L => fv_pth p
   end
-with fv_dec (D: dec) { struct D } : vars :=
+with fv_dec (D: dec) { struct D }: vars :=
   match D with
   | dec_typ _ T U => (fv_typ T) \u (fv_typ U)
   | dec_fld _ T   => (fv_typ T)
   | dec_mtd _ T U => (fv_typ T) \u (fv_typ U)
   end
-with fv_decs (Ds: decs) { struct Ds } : vars :=
+with fv_decs (Ds: decs) { struct Ds }: vars :=
   match Ds with
   | decs_nil          => \{}
   | decs_cons D Ds' => (fv_dec D) \u (fv_decs Ds')
   end.
 
-Definition fv_bdecs (Ds: bdecs) : vars := match Ds with
+Definition fv_bdecs (Ds: bdecs): vars := match Ds with
   | bdecs_decs Ds0 => fv_decs Ds0
   | bdecs_bot => \{}
   end.
 
 (* Since we define defs ourselves instead of using [list def], we don't have any
    termination proof problems: *)
-Fixpoint fv_trm (t: trm) : vars :=
+Fixpoint fv_trm (t: trm): vars :=
   match t with
   | trm_var x        => (fv_avar x)
   | trm_new ds       => (fv_defs ds)
   | trm_sel t l      => (fv_trm t)
   | trm_call t1 m t2 => (fv_trm t1) \u (fv_trm t2)
   end
-with fv_def (d: def) : vars :=
+with fv_def (d: def): vars :=
   match d with
   | def_typ _ T U => (fv_typ T) \u (fv_typ U)
   | def_fld _ T x => (fv_typ T) \u (fv_avar x)
   | def_mtd _ T U u => (fv_typ T) \u (fv_typ U) \u (fv_trm u)
   end
-with fv_defs(ds: defs) : vars :=
+with fv_defs(ds: defs): vars :=
   match ds with
   | defs_nil         => \{}
   | defs_cons d tl   => (fv_defs tl) \u (fv_def d)
@@ -280,34 +280,34 @@ Definition fv_ctx_types(G: ctx): vars := (fv_in_values (fun T => fv_typ T) G).
 (** Note: Terms given by user are closed, so they only contain avar_b, no avar_f.
     Whenever we introduce a new avar_f (only happens in red_new), we choose one
     which is not in the store, so we never have name clashes. *)
-Inductive red : trm -> sto -> trm -> sto -> Prop :=
+Inductive red: trm -> sto -> trm -> sto -> Prop :=
   (* computation rules *)
-  | red_call : forall s x y m T U ds body,
+  | red_call: forall s x y m T U ds body,
       binds x ds s ->
 (*    defs_has (open_defs x ds) (def_mtd m T U body) -> BIND *)
       defs_has              ds  (def_mtd m T U body) ->
       red (trm_call (trm_var (avar_f x)) m (trm_var (avar_f y))) s
           (open_trm y body) s
-  | red_sel : forall s x y l T ds,
+  | red_sel: forall s x y l T ds,
       binds x ds s ->
 (*    defs_has (open_defs x ds) (def_fld l T y) -> BIND *)
       defs_has              ds  (def_fld l T y) ->
       red (trm_sel (trm_var (avar_f x)) l) s
           (trm_var y) s
-  | red_new : forall s ds x,
+  | red_new: forall s ds x,
       x # s ->
       red (trm_new ds) s
           (trm_var (avar_f x)) (s & x ~ ds)
   (* congruence rules *)
-  | red_call1 : forall s o m a s' o',
+  | red_call1: forall s o m a s' o',
       red o s o' s' ->
       red (trm_call o  m a) s
           (trm_call o' m a) s'
-  | red_call2 : forall s x m a s' a',
+  | red_call2: forall s x m a s' a',
       red a s a' s' ->
       red (trm_call (trm_var (avar_f x)) m a ) s
           (trm_call (trm_var (avar_f x)) m a') s'
-  | red_sel1 : forall s o l s' o',
+  | red_sel1: forall s o l s' o',
       red o s o' s' ->
       red (trm_sel o  l) s
           (trm_sel o' l) s'.
@@ -317,10 +317,10 @@ Inductive red : trm -> sto -> trm -> sto -> Prop :=
 (** ** Typing *)
 
 (* tmode = "is transitivity at top level accepted?" *)
-Inductive tmode : Type := notrans | oktrans.
+Inductive tmode: Type := notrans | oktrans.
 
 (* pmode = "do the "has" judgments needed in subtyping have to be precise?" *)
-Inductive pmode : Type := pr | ip.
+Inductive pmode: Type := pr | ip.
 
 (* Does this type, and all types that it syntactically contains, have collapsed
    bounds for all type members? *)
@@ -329,7 +329,7 @@ Inductive cbounds_typ: typ -> Prop :=
       cbounds_typ typ_top
   | cbounds_bot:
       cbounds_typ typ_bot
-  | cbounds_bind : forall Ds,
+  | cbounds_bind: forall Ds,
       cbounds_decs Ds ->
       cbounds_typ (typ_bind Ds)
   | cbounds_sel: forall p L,
@@ -360,105 +360,105 @@ Inductive cbounds_ctx: ctx -> Prop :=
 Definition ctx_size(G: ctx) := LibList.length G.
 
 (* expansion returns a set of decs without opening them *)
-Inductive exp : pmode -> ctx -> typ -> bdecs -> Prop :=
-  | exp_top : forall m G, 
+Inductive exp: pmode -> ctx -> typ -> bdecs -> Prop :=
+  | exp_top: forall m G, 
       exp m G typ_top (bdecs_decs decs_nil)
-  | exp_bot : forall m G,
+  | exp_bot: forall m G,
       exp m G typ_bot bdecs_bot
-  | exp_bind : forall m G Ds,
+  | exp_bind: forall m G Ds,
       exp m G (typ_bind Ds) (bdecs_decs Ds)
-  | exp_sel : forall m G x L Lo Hi Ds,
+  | exp_sel: forall m G x L Lo Hi Ds,
       has m G (trm_var (avar_f x)) (dec_typ L Lo Hi) ->
       exp m G Hi Ds ->
       exp m G (typ_sel (pth_var (avar_f x)) L) Ds
-with has : pmode -> ctx -> trm -> dec -> Prop :=
-  | has_trm : forall G t T Ds D,
+with has: pmode -> ctx -> trm -> dec -> Prop :=
+  | has_trm: forall G t T Ds D,
       ty_trm G t T ->
       exp ip G T Ds ->
       bdecs_has Ds D ->
       (forall z, (open_dec z D) = D) ->
       has ip G t D
-  | has_var : forall G v T Ds D,
+  | has_var: forall G v T Ds D,
       ty_trm G (trm_var (avar_f v)) T ->
       exp ip G T Ds ->
       bdecs_has Ds D ->
       has ip G (trm_var (avar_f v)) D (* BIND (open_dec v D) *)
-  | has_pr : forall G v T Ds D,
+  | has_pr: forall G v T Ds D,
       binds v T G ->
       exp pr G T Ds ->
       bdecs_has Ds D ->
       has pr G (trm_var (avar_f v)) D (* BIND (open_dec v D) *)
-with subtyp : pmode -> tmode -> ctx -> typ -> typ -> nat -> Prop :=
-  | subtyp_refl : forall m G T n,
+with subtyp: pmode -> tmode -> ctx -> typ -> typ -> nat -> Prop :=
+  | subtyp_refl: forall m G T n,
       subtyp m notrans G T T n
-  | subtyp_top : forall m G T n,
+  | subtyp_top: forall m G T n,
       subtyp m notrans G T typ_top n
-  | subtyp_bot : forall m G T n,
+  | subtyp_bot: forall m G T n,
       subtyp m notrans G typ_bot T n
-  | subtyp_bind : forall m G Ds1 Ds2 n,
+  | subtyp_bind: forall m G Ds1 Ds2 n,
       subdecs m G Ds1 Ds2 n ->
       subtyp m notrans G (typ_bind Ds1) (typ_bind Ds2) n
   (* BIND
-  | subtyp_bind : forall L m G Ds1 Ds2 n,
+  | subtyp_bind: forall L m G Ds1 Ds2 n,
       (forall z, z \notin L -> 
          subdecs m (G & z ~ (typ_bind Ds1))
                    (open_decs z Ds1) 
                    (open_decs z Ds2) n) ->
       subtyp m notrans G (typ_bind Ds1) (typ_bind Ds2) (S n)
   *)
-  | subtyp_sel_l : forall m G x L S U T n,
+  | subtyp_sel_l: forall m G x L S U T n,
       has m G (trm_var (avar_f x)) (dec_typ L S U) ->
       subtyp m oktrans G U T n ->
       subtyp m notrans G (typ_sel (pth_var (avar_f x)) L) T n
-  | subtyp_sel_r : forall m G x L S U T n,
+  | subtyp_sel_r: forall m G x L S U T n,
       has m G (trm_var (avar_f x)) (dec_typ L S U) ->
       subtyp m oktrans G S U n -> (* <--- makes proofs a lot easier!! *)
       subtyp m oktrans G T S n ->
       subtyp m notrans G T (typ_sel (pth_var (avar_f x)) L) n
-  | subtyp_tmode : forall m G T1 T2 n,
+  | subtyp_tmode: forall m G T1 T2 n,
       subtyp m notrans G T1 T2 n ->
       subtyp m oktrans G T1 T2 n
-  | subtyp_trans : forall m G T1 T2 T3 n,
+  | subtyp_trans: forall m G T1 T2 T3 n,
       subtyp m oktrans G T1 T2 n ->
       subtyp m oktrans G T2 T3 n ->
       subtyp m oktrans G T1 T3 n
-with subdec : pmode -> ctx -> dec -> dec -> nat -> Prop :=
-  | subdec_typ : forall m G L Lo1 Hi1 Lo2 Hi2 n,
+with subdec: pmode -> ctx -> dec -> dec -> nat -> Prop :=
+  | subdec_typ: forall m G L Lo1 Hi1 Lo2 Hi2 n,
       (* Lo2 <: Lo1 and Hi1 <: Hi2 *)
       subtyp m oktrans G Lo2 Lo1 n ->
       (* subtyp m oktrans G Lo1 Hi1 n <- not needed *)
       subtyp m oktrans G Hi1 Hi2 n ->
       subdec m G (dec_typ L Lo1 Hi1) (dec_typ L Lo2 Hi2) n
-  | subdec_fld : forall m l G T1 T2 n,
+  | subdec_fld: forall m l G T1 T2 n,
       subtyp m oktrans G T1 T2 n ->
       subdec m G (dec_fld l T1) (dec_fld l T2) n
-  | subdec_mtd : forall m0 m G S1 T1 S2 T2 n,
+  | subdec_mtd: forall m0 m G S1 T1 S2 T2 n,
       subtyp m0 oktrans G S2 S1 n ->
       subtyp m0 oktrans G T1 T2 n ->
       subdec m0 G (dec_mtd m S1 T1) (dec_mtd m S2 T2) n
-with subdecs : pmode -> ctx -> decs -> decs -> nat -> Prop :=
-  | subdecs_empty : forall m G Ds n,
+with subdecs: pmode -> ctx -> decs -> decs -> nat -> Prop :=
+  | subdecs_empty: forall m G Ds n,
       subdecs m G Ds decs_nil n
-  | subdecs_push : forall m G Ds1 Ds2 D1 D2 n1,
+  | subdecs_push: forall m G Ds1 Ds2 D1 D2 n1,
       decs_has Ds1 D1 ->
       label_of_dec D1 = label_of_dec D2 ->
       subdec  m G D1  D2  n1 ->
       subdecs m G Ds1 Ds2 n1 ->
       subdecs m G Ds1 (decs_cons D2 Ds2) n1
-  | subdecs_refl : forall m G Ds n,
+  | subdecs_refl: forall m G Ds n,
       subdecs m G Ds Ds n
-with ty_trm : ctx -> trm -> typ -> Prop :=
-  | ty_var : forall G x T,
+with ty_trm: ctx -> trm -> typ -> Prop :=
+  | ty_var: forall G x T,
       binds x T G ->
       ty_trm G (trm_var (avar_f x)) T
-  | ty_sel : forall G t l T,
+  | ty_sel: forall G t l T,
       has ip G t (dec_fld l T) ->
       ty_trm G (trm_sel t l) T
-  | ty_call : forall G t m U V u,
+  | ty_call: forall G t m U V u,
       has ip G t (dec_mtd m U V) ->
       ty_trm G u U ->
       ty_trm G (trm_call t m u) V
-  | ty_new : forall G ds Ds,
+  | ty_new: forall G ds Ds,
       (* BIND
       (forall x, x \notin L ->
                  ty_defs (G & x ~ typ_bind Ds) (open_defs x ds) (open_decs x Ds)) ->
@@ -466,23 +466,23 @@ with ty_trm : ctx -> trm -> typ -> Prop :=
       ty_defs G ds Ds ->
       cbounds_decs Ds ->
       ty_trm G (trm_new ds) (typ_bind Ds)
-  | ty_sbsm : forall G t T U n,
+  | ty_sbsm: forall G t T U n,
       ty_trm G t T ->
       subtyp ip oktrans G T U n ->
       ty_trm G t U
-with ty_def : ctx -> def -> dec -> Prop :=
-  | ty_typ : forall G L S U,
+with ty_def: ctx -> def -> dec -> Prop :=
+  | ty_typ: forall G L S U,
       ty_def G (def_typ L S U) (dec_typ L S U)
-  | ty_fld : forall G l v T,
+  | ty_fld: forall G l v T,
       ty_trm G (trm_var v) T ->
       ty_def G (def_fld l T v) (dec_fld l T)
-  | ty_mtd : forall L G m S T t,
+  | ty_mtd: forall L G m S T t,
       (forall x, x \notin L -> ty_trm (G & x ~ S) (open_trm x t) T) ->
       ty_def G (def_mtd m S T t) (dec_mtd m S T)
-with ty_defs : ctx -> defs -> decs -> Prop :=
-  | ty_dsnil : forall G,
+with ty_defs: ctx -> defs -> decs -> Prop :=
+  | ty_dsnil: forall G,
       ty_defs G defs_nil decs_nil
-  | ty_dscons : forall G ds d Ds D,
+  | ty_dscons: forall G ds d Ds D,
       ty_defs G ds Ds ->
       ty_def  G d D ->
       label_of_def d = label_of_dec D ->
@@ -501,43 +501,43 @@ Inductive dmode: Set := deep | shallow.
    shallow only enters non-expansive types (bounds of path types, and/or-types) *)
 
 Inductive wf_typ: dmode -> ctx -> typ -> Prop :=
-  | wf_top : forall m G,
+  | wf_top: forall m G,
       wf_typ m G typ_top
-  | wf_bot : forall m G,
+  | wf_bot: forall m G,
       wf_typ m G typ_bot
-  | wf_bind_deep : forall L G Ds,
+  | wf_bind_deep: forall L G Ds,
       (forall z, z \notin L -> wf_decs (G & z ~ typ_bind Ds) Ds) ->
       wf_typ deep G (typ_bind Ds)
-  | wf_bind_shallow : forall G Ds,
+  | wf_bind_shallow: forall G Ds,
       wf_typ shallow G (typ_bind Ds)
-  | wf_sel1 : forall m G x L Lo Hi,
+  | wf_sel1: forall m G x L Lo Hi,
       has pr G (trm_var (avar_f x)) L (dec_typ Lo Hi) ->
       wf_typ m G Lo ->
       wf_typ m G Hi ->
       wf_typ m G (typ_sel (pth_var (avar_f x)) L)
-  | wf_sel2 : forall G x L U,
+  | wf_sel2: forall G x L U,
       has pr G (trm_var (avar_f x)) L (dec_typ typ_bot U) ->
       (* deep wf-ness of U was already checked at the definition site of x.L (wf_tmem),
          so it's sufficient to do a shallow check --> allows x.L to appear recursively
          in U, but only behind a computational type --> following upper bound terminates *)
       wf_typ shallow G U ->
       wf_typ deep G (typ_sel (pth_var (avar_f x)) L)
-with wf_dec : ctx -> dec -> Prop :=
-  | wf_tmem : forall G Lo Hi,
+with wf_dec: ctx -> dec -> Prop :=
+  | wf_tmem: forall G Lo Hi,
       wf_typ deep G Lo ->
       wf_typ deep G Hi ->
       wf_dec G (dec_typ Lo Hi)
-  | wf_fld : forall G T,
+  | wf_fld: forall G T,
       wf_typ deep G T ->
       wf_dec G (dec_fld T)
-  | wf_mtd : forall G A R,
+  | wf_mtd: forall G A R,
       wf_typ deep G A ->
       wf_typ deep G R ->
       wf_dec G (dec_mtd A R)
-with wf_decs : ctx -> decs -> Prop :=
-  | wf_nil : forall G,
+with wf_decs: ctx -> decs -> Prop :=
+  | wf_nil: forall G,
       wf_decs G decs_nil
-  | wf_cons : forall G n D Ds,
+  | wf_cons: forall G n D Ds,
       wf_dec G D ->
       wf_decs G Ds ->
       wf_decs G (decs_cons n D Ds).
@@ -545,8 +545,8 @@ with wf_decs : ctx -> decs -> Prop :=
 
 (** *** Well-formed store *)
 Inductive wf_sto: sto -> ctx -> Prop :=
-  | wf_sto_empty : wf_sto empty empty
-  | wf_sto_push : forall s G x ds Ds,
+  | wf_sto_empty: wf_sto empty empty
+  | wf_sto_push: forall s G x ds Ds,
       wf_sto s G ->
       x # s ->
       x # G ->
@@ -657,23 +657,23 @@ Ltac auto_specialize :=
   repeat match goal with
   | Impl: ?Cond ->            _ |- _ => let HC := fresh in 
       assert (HC: Cond) by auto; specialize (Impl HC); clear HC
-  | Impl: forall (_ : ?Cond), _ |- _ => match goal with
+  | Impl: forall (_: ?Cond), _ |- _ => match goal with
       | p: Cond |- _ => specialize (Impl p)
       end
   end.
 
 Ltac gather_vars :=
-  let A := gather_vars_with (fun x : vars      => x         ) in
-  let B := gather_vars_with (fun x : var       => \{ x }    ) in
-  let C := gather_vars_with (fun x : ctx       => (dom x) \u (fv_ctx_types x)) in
-  let D := gather_vars_with (fun x : sto       => dom x     ) in
-  let E := gather_vars_with (fun x : avar      => fv_avar  x) in
-  let F := gather_vars_with (fun x : trm       => fv_trm   x) in
-  let G := gather_vars_with (fun x : def       => fv_def   x) in
-  let H := gather_vars_with (fun x : defs      => fv_defs  x) in
-  let I := gather_vars_with (fun x : typ       => fv_typ   x) in
-  let J := gather_vars_with (fun x : dec       => fv_dec   x) in
-  let K := gather_vars_with (fun x : decs      => fv_decs  x) in
+  let A := gather_vars_with (fun x: vars      => x         ) in
+  let B := gather_vars_with (fun x: var       => \{ x }    ) in
+  let C := gather_vars_with (fun x: ctx       => (dom x) \u (fv_ctx_types x)) in
+  let D := gather_vars_with (fun x: sto       => dom x     ) in
+  let E := gather_vars_with (fun x: avar      => fv_avar  x) in
+  let F := gather_vars_with (fun x: trm       => fv_trm   x) in
+  let G := gather_vars_with (fun x: def       => fv_def   x) in
+  let H := gather_vars_with (fun x: defs      => fv_defs  x) in
+  let I := gather_vars_with (fun x: typ       => fv_typ   x) in
+  let J := gather_vars_with (fun x: dec       => fv_dec   x) in
+  let K := gather_vars_with (fun x: decs      => fv_decs  x) in
   constr:(A \u B \u C \u D \u E \u F \u G \u H \u I \u J \u K).
 
 Ltac pick_fresh x :=
@@ -708,31 +708,31 @@ Definition vars_empty: vars := \{}. (* because tactic [exists] cannot infer type
     substitution. That's why we don't need a judgment asserting that a term
     is locally closed. *)
 
-Definition subst_avar (z: var) (u: var) (a: avar) : avar :=
+Definition subst_avar (z: var) (u: var) (a: avar): avar :=
   match a with
   | avar_b i => avar_b i
   | avar_f x => If x = z then (avar_f u) else (avar_f x)
   end.
 
-Definition subst_pth (z: var) (u: var) (p: pth) : pth :=
+Definition subst_pth (z: var) (u: var) (p: pth): pth :=
   match p with
   | pth_var a => pth_var (subst_avar z u a)
   end.
 
-Fixpoint subst_typ (z: var) (u: var) (T: typ) { struct T } : typ :=
+Fixpoint subst_typ (z: var) (u: var) (T: typ) { struct T }: typ :=
   match T with
   | typ_top     => typ_top
   | typ_bot     => typ_bot
   | typ_bind Ds => typ_bind (subst_decs z u Ds)
   | typ_sel p L => typ_sel (subst_pth z u p) L
   end
-with subst_dec (z: var) (u: var) (D: dec) { struct D } : dec :=
+with subst_dec (z: var) (u: var) (D: dec) { struct D }: dec :=
   match D with
   | dec_typ L T U => dec_typ L (subst_typ z u T) (subst_typ z u U)
   | dec_fld l T   => dec_fld l (subst_typ z u T)
   | dec_mtd m T U => dec_mtd m (subst_typ z u T) (subst_typ z u U)
   end
-with subst_decs (z: var) (u: var) (Ds: decs) { struct Ds } : decs :=
+with subst_decs (z: var) (u: var) (Ds: decs) { struct Ds }: decs :=
   match Ds with
   | decs_nil        => decs_nil
   | decs_cons D Ds' => decs_cons (subst_dec z u D) (subst_decs z u Ds')
@@ -743,27 +743,27 @@ Definition subst_bdecs (z: var) (u: var) (Ds: bdecs) := match Ds with
   | bdecs_bot => bdecs_bot
   end.
 
-Fixpoint subst_trm (z: var) (u: var) (t: trm) : trm :=
+Fixpoint subst_trm (z: var) (u: var) (t: trm): trm :=
   match t with
   | trm_var x        => trm_var (subst_avar z u x)
   | trm_new ds       => trm_new (subst_defs z u ds)
   | trm_sel t l      => trm_sel (subst_trm z u t) l
   | trm_call t1 m t2 => trm_call (subst_trm z u t1) m (subst_trm z u t2)
   end
-with subst_def (z: var) (u: var) (d: def) : def :=
+with subst_def (z: var) (u: var) (d: def): def :=
   match d with
   | def_typ L T1 T2   => def_typ L (subst_typ z u T1) (subst_typ z u T2)
   | def_fld l T x     => def_fld l (subst_typ z u T) (subst_avar z u x)
   | def_mtd m T1 T2 b => def_mtd m (subst_typ z u T1) (subst_typ z u T2) (subst_trm z u b)
   end
-with subst_defs (z: var) (u: var) (ds: defs) : defs :=
+with subst_defs (z: var) (u: var) (ds: defs): defs :=
   match ds with
   | defs_nil => defs_nil
   | defs_cons d rest => defs_cons (subst_def z u d) (subst_defs z u rest)
   end.
 
 
-Definition subst_ctx (z: var) (u: var) (G: ctx) : ctx := map (subst_typ z u) G.
+Definition subst_ctx (z: var) (u: var) (G: ctx): ctx := map (subst_typ z u) G.
 
 
 (* ###################################################################### *)
@@ -782,8 +782,8 @@ Proof.
 Qed.
 
 Lemma subst_fresh_typ_dec_decs: forall x y,
-  (forall T : typ , x \notin fv_typ  T  -> subst_typ  x y T  = T ) /\
-  (forall d : dec , x \notin fv_dec  d  -> subst_dec  x y d  = d ) /\
+  (forall T: typ , x \notin fv_typ  T  -> subst_typ  x y T  = T ) /\
+  (forall d: dec , x \notin fv_dec  d  -> subst_dec  x y d  = d ) /\
   (forall ds: decs, x \notin fv_decs ds -> subst_decs x y ds = ds).
 Proof.
   intros x y. apply typ_mutind; intros; simpls; f_equal*. apply* subst_fresh_pth.
@@ -797,8 +797,8 @@ Proof.
 Qed.
 
 Lemma subst_fresh_trm_def_defs: forall x y,
-  (forall t : trm , x \notin fv_trm  t  -> subst_trm  x y t  = t ) /\
-  (forall d : def , x \notin fv_def  d  -> subst_def  x y d  = d ) /\
+  (forall t: trm , x \notin fv_trm  t  -> subst_trm  x y t  = t ) /\
+  (forall d: def , x \notin fv_def  d  -> subst_def  x y d  = d ) /\
   (forall ds: defs, x \notin fv_defs ds -> subst_defs x y ds = ds).
 Proof.
   intros x y. apply trm_mutind; intros; simpls; f_equal*;
@@ -856,10 +856,10 @@ Qed.
 
 (* "open and then substitute" = "substitute and then open" *)
 Lemma subst_open_commute_typ_dec_decs: forall x y u,
-  (forall t : typ, forall n: nat,
+  (forall t: typ, forall n: nat,
      subst_typ x y (open_rec_typ n u t)
      = open_rec_typ n (subst_fvar x y u) (subst_typ x y t)) /\
-  (forall d : dec , forall n: nat, 
+  (forall d: dec , forall n: nat, 
      subst_dec x y (open_rec_dec n u d)
      = open_rec_dec n (subst_fvar x y u) (subst_dec x y d)) /\
   (forall ds: decs, forall n: nat, 
@@ -871,10 +871,10 @@ Qed.
 
 (* "open and then substitute" = "substitute and then open" *)
 Lemma subst_open_commute_trm_def_defs: forall x y u,
-  (forall t : trm, forall n: nat,
+  (forall t: trm, forall n: nat,
      subst_trm x y (open_rec_trm n u t)
      = open_rec_trm n (subst_fvar x y u) (subst_trm x y t)) /\
-  (forall d : def , forall n: nat, 
+  (forall d: def , forall n: nat, 
      subst_def x y (open_rec_def n u d)
      = open_rec_def n (subst_fvar x y u) (subst_def x y d)) /\
   (forall ds: defs, forall n: nat, 
@@ -1750,15 +1750,15 @@ Qed.
 
 without dependent types:
 
-                  G, x: S |- e : T      G |- u : S
+                  G, x: S |- e: T      G |- u: S
                  ----------------------------------
-                            G |- [u/x]e : T
+                            G |- [u/x]e: T
 
 with dependent types:
 
-                  G1, x: S, G2 |- t : T      G1 |- y : S
+                  G1, x: S, G2 |- t: T      G1 |- y: S
                  ---------------------------------------
-                      G1, [y/x]G2 |- [y/x]t : [y/x]T
+                      G1, [y/x]G2 |- [y/x]t: [y/x]T
 
 
 Note that in general, u is a term, but for our purposes, it suffices to consider
@@ -1834,8 +1834,8 @@ Qed.
 
 (* TODO also need x <> z *)
 Lemma subst_dec_preserves_clo: forall D x y,
-  (forall z : var, open_dec z D = D) ->
-  (forall z : var, open_dec z (subst_dec x y D) = subst_dec x y D).
+  (forall z: var, open_dec z D = D) ->
+  (forall z: var, open_dec z (subst_dec x y D) = subst_dec x y D).
 Admitted.
 
 Lemma subst_ctx_preserves_notin: forall x y z G,
@@ -2244,7 +2244,7 @@ Lemma invert_has: forall G t D,
    (exists T Ds,      ty_trm G t T /\
                       exp ip G T Ds /\
                       bdecs_has Ds D /\
-                      (forall z : var, open_dec z D = D))
+                      (forall z: var, open_dec z D = D))
 \/ (exists x T Ds D', t = (trm_var (avar_f x)) /\
                       ty_trm G (trm_var (avar_f x)) T /\
                       exp ip G T Ds /\
@@ -2388,9 +2388,9 @@ Proof.
     rename t0 into t, m0 into m, u0 into u, U into V3, T into V2.
     destruct IHTy as [U [V1 [n' [Has [St12 Tyu]]]]].
     exists U V1.
-    assert (n' = n) by admit. (* TODO doesn't hold but will work *) subst.
-    lets St13: (subtyp_trans St12 H).
-    eauto.
+    exists (max n n'). refine (conj Has (conj _ Tyu)).
+    apply (subtyp_trans (subtyp_max_ctx St12 (Max.le_max_r n n'))
+                        (subtyp_max_ctx H (Max.le_max_l n n'))).
 Qed.
 
 Lemma invert_ty_new: forall G ds T2,
