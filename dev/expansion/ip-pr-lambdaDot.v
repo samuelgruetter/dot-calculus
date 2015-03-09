@@ -447,7 +447,7 @@ Inductive wf_typ: pmode -> dmode -> ctx -> typ -> Prop :=
       wf_typ m1 m2 G typ_bot
   | wf_bind_deep: forall m G Ds,
       (* BIND (forall z, z \notin L -> wf_decs (G & z ~ typ_bind Ds) Ds) ->*)
-      wf_decs m deep G Ds ->
+      wf_decs m G Ds ->
       wf_typ m deep G (typ_bind Ds)
   | wf_bind_shallow: forall m G Ds,
       wf_typ m shallow G (typ_bind Ds)
@@ -463,26 +463,27 @@ Inductive wf_typ: pmode -> dmode -> ctx -> typ -> Prop :=
          in U, but only behind a computational type --> following upper bound terminates *)
       wf_typ m1 shallow G U ->
       wf_typ m1 deep G (typ_sel (pth_var (avar_f x)) L)
-with wf_dec: pmode -> dmode -> ctx -> dec -> Prop :=
-  | wf_tmem: forall m1 m2 G L Lo Hi,
-      wf_typ m1 m2 G Lo ->
-      wf_typ m1 m2 G Hi ->
-      wf_dec m1 m2 G (dec_typ L Lo Hi)
-  | wf_fld: forall m1 m2 G l T,
-      wf_typ m1 m2 G T ->
-      wf_dec m1 m2 G (dec_fld l T)
-  | wf_mtd: forall m1 m2 G m A R,
-      wf_typ m1 m2 G A ->
-      wf_typ m1 m2 G R ->
-      wf_dec m1 m2 G (dec_mtd m A R)
-with wf_decs: pmode -> dmode -> ctx -> decs -> Prop :=
-  | wf_nil: forall m1 m2 G,
-      wf_decs m1 m2 G decs_nil
-  | wf_cons: forall m1 m2 G D Ds,
-      wf_dec  m1 m2 G D ->
-      wf_decs m1 m2 G Ds ->
+(* wf_dec and wf_decs need no mode, because it's always deep *)
+with wf_dec: pmode -> ctx -> dec -> Prop :=
+  | wf_tmem: forall m G L Lo Hi,
+      wf_typ m deep G Lo ->
+      wf_typ m deep G Hi ->
+      wf_dec m G (dec_typ L Lo Hi)
+  | wf_fld: forall m G l T,
+      wf_typ m deep G T ->
+      wf_dec m G (dec_fld l T)
+  | wf_mtd: forall m1 G m A R,
+      wf_typ m1 deep G A ->
+      wf_typ m1 deep G R ->
+      wf_dec m1 G (dec_mtd m A R)
+with wf_decs: pmode -> ctx -> decs -> Prop :=
+  | wf_nil: forall m G,
+      wf_decs m G decs_nil
+  | wf_cons: forall m G D Ds,
+      wf_dec  m G D ->
+      wf_decs m G Ds ->
       decs_hasnt Ds (label_of_dec D) ->
-      wf_decs m1 m2 G (decs_cons D Ds)
+      wf_decs m G (decs_cons D Ds)
 (* expansion returns a set of decs without opening them *)
 with exp: pmode -> ctx -> typ -> bdecs -> Prop :=
   | exp_top: forall m G,
@@ -490,7 +491,7 @@ with exp: pmode -> ctx -> typ -> bdecs -> Prop :=
   | exp_bot: forall m G,
       exp m G typ_bot bdecs_bot
   | exp_bind: forall m G Ds,
-      wf_decs m shallow G Ds ->
+(*    wf_decs m G Ds -> *)
       exp m G (typ_bind Ds) (bdecs_decs Ds)
   | exp_sel: forall m G x L Lo Hi Ds,
       has m G (trm_var (avar_f x)) (dec_typ L Lo Hi) ->
@@ -516,13 +517,13 @@ with has: pmode -> ctx -> trm -> dec -> Prop :=
       has pr G (trm_var (avar_f v)) D (* BIND (open_dec v D) *)
 with subtyp: pmode -> tmode -> ctx -> typ -> typ -> nat -> Prop :=
   | subtyp_refl: forall m G T n,
-      wf_typ m shallow G T -> (* at use site, we can only require shallow *)
+      wf_typ m deep G T -> (* use wf_sel2 to break cycles *)
       subtyp m notrans G T T n
   | subtyp_top: forall m G T n,
-      wf_typ m shallow G T ->
+      wf_typ m deep G T -> (* use wf_sel2 to break cycles *)
       subtyp m notrans G T typ_top n
   | subtyp_bot: forall m G T n,
-      wf_typ m shallow G T ->
+      wf_typ m deep G T -> (* use wf_sel2 to break cycles *)
       subtyp m notrans G typ_bot T n
   | subtyp_bind: forall m G Ds1 Ds2 n,
       subdecs m G Ds1 Ds2 n ->
@@ -537,11 +538,14 @@ with subtyp: pmode -> tmode -> ctx -> typ -> typ -> nat -> Prop :=
   *)
   | subtyp_sel_l: forall m G x L S U T n,
       has m G (trm_var (avar_f x)) (dec_typ L S U) ->
+      (* for symmetry with subtyp_sel_r, and to ensure wf-ness of S and U *)
+      subtyp m oktrans G S U n ->
       subtyp m oktrans G U T n ->
       subtyp m notrans G (typ_sel (pth_var (avar_f x)) L) T n
   | subtyp_sel_r: forall m G x L S U T n,
       has m G (trm_var (avar_f x)) (dec_typ L S U) ->
-      subtyp m oktrans G S U n -> (* <--- makes proofs a lot easier!! *)
+      (* makes proofs a lot easier, and also ensures wf-ness of S and U *)
+      subtyp m oktrans G S U n ->
       subtyp m oktrans G T S n ->
       subtyp m notrans G T (typ_sel (pth_var (avar_f x)) L) n
   | subtyp_tmode: forall m G T1 T2 n,
@@ -567,7 +571,7 @@ with subdec: pmode -> ctx -> dec -> dec -> nat -> Prop :=
       subdec m0 G (dec_mtd m S1 T1) (dec_mtd m S2 T2) n
 with subdecs: pmode -> ctx -> decs -> decs -> nat -> Prop :=
   | subdecs_empty: forall m G Ds n,
-      wf_decs m shallow G Ds ->
+      wf_decs m G Ds ->
       subdecs m G Ds decs_nil n
   | subdecs_push: forall m G Ds1 Ds2 D1 D2 n1,
       decs_has Ds1 D1 ->
@@ -577,12 +581,12 @@ with subdecs: pmode -> ctx -> decs -> decs -> nat -> Prop :=
       decs_hasnt Ds2 (label_of_dec D2) ->
       subdecs m G Ds1 (decs_cons D2 Ds2) n1
   | subdecs_refl: forall m G Ds n,
-      wf_decs m shallow G Ds ->
+      wf_decs m G Ds ->
       subdecs m G Ds Ds n
 with ty_trm: ctx -> trm -> typ -> Prop :=
   | ty_var: forall G x T,
       binds x T G ->
-      wf_typ ip shallow G T -> (* at use site, we can only require shallow *)
+      wf_typ ip deep G T -> (* use wf_sel2 to break cycles *)
       ty_trm G (trm_var (avar_f x)) T
   | ty_sel: forall G t l T,
       has ip G t (dec_fld l T) ->
@@ -627,12 +631,12 @@ with ty_defs: ctx -> defs -> decs -> Prop :=
       decs_hasnt Ds (label_of_dec D) ->
       ty_defs G (defs_cons d ds) (decs_cons D Ds).
 
-Inductive wf_bdecs: pmode -> dmode -> ctx -> bdecs -> Prop :=
-  | wf_bdecs_bot: forall m1 m2 G,
-      wf_bdecs m1 m2 G bdecs_bot
-  | wf_bdecs_decs: forall m1 m2 G Ds,
-      wf_decs m1 m2 G Ds ->
-      wf_bdecs m1 m2 G (bdecs_decs Ds).
+Inductive wf_bdecs: pmode -> ctx -> bdecs -> Prop :=
+  | wf_bdecs_bot: forall m G,
+      wf_bdecs m G bdecs_bot
+  | wf_bdecs_decs: forall m G Ds,
+      wf_decs m G Ds ->
+      wf_bdecs m G (bdecs_decs Ds).
 
 Inductive subbdecs: pmode -> ctx -> bdecs -> bdecs -> Prop :=
   | subbdecs_bot: forall m G Ds,
@@ -641,14 +645,14 @@ Inductive subbdecs: pmode -> ctx -> bdecs -> bdecs -> Prop :=
       subdecs m G Ds1 Ds2 n ->
       subbdecs m G (bdecs_decs Ds1) (bdecs_decs Ds2).
 
-Inductive wf_ctx: pmode -> dmode -> ctx -> Prop :=
-  | wf_ctx_empty: forall m1 m2,
-      wf_ctx m1 m2 empty
-  | wf_ctx_push: forall m1 m2 G x T,
-      wf_ctx m1 m2 G ->
-      wf_typ m1 m2 G T ->
+Inductive wf_ctx: pmode -> ctx -> Prop :=
+  | wf_ctx_empty: forall m,
+      wf_ctx m empty
+  | wf_ctx_push: forall m G x T,
+      wf_ctx m G ->
+      wf_typ m deep G T ->
       x # G ->
-      wf_ctx m1 m2 (G & x ~ T).
+      wf_ctx m (G & x ~ T).
 
 (** *** Well-formed store *)
 Inductive wf_sto: sto -> ctx -> Prop :=
@@ -711,6 +715,15 @@ with   ty_defs_mut := Induction for ty_defs Sort Prop.
 Combined Scheme ty_mutind from exp_mut, has_mut,
                                subtyp_mut, subdec_mut, subdecs_mut,
                                ty_trm_mut, ty_def_mut, ty_defs_mut.
+
+Scheme subtyp_mutst  := Induction for subtyp  Sort Prop
+with   subdec_mutst  := Induction for subdec  Sort Prop
+with   subdecs_mutst := Induction for subdecs Sort Prop
+with   ty_trm_mutst  := Induction for ty_trm  Sort Prop
+with   ty_def_mutst  := Induction for ty_def  Sort Prop
+with   ty_defs_mutst := Induction for ty_defs Sort Prop.
+Combined Scheme subtyp_ty_mutind from subtyp_mutst, subdec_mutst, subdecs_mutst,
+                               ty_trm_mutst, ty_def_mutst, ty_defs_mutst.
 
 Scheme exp_mutw     := Induction for exp     Sort Prop
 with   has_mutw     := Induction for has     Sort Prop
@@ -1159,70 +1172,93 @@ Qed.
 (* ###################################################################### *)
 (** ** Regularity of Typing *)
 
-Lemma extract_wf_dec_from_wf_decs: forall m1 m2 G Ds D,
-  wf_decs m1 m2 G Ds ->
+Lemma extract_wf_dec_from_wf_decs: forall m G Ds D,
+  wf_decs m G Ds ->
   decs_has Ds D ->
-  wf_dec m1 m2 G D.
+  wf_dec m G D.
 Proof.
-  intros m1 m2 G Ds. induction Ds; introv Wf H.
+  intros m G Ds. induction Ds; introv Wf H.
   - inversions H.
   - inversions H.
     * inversions Wf. assumption.
     * inversions Wf. apply* IHDs.
 Qed.
 
-Lemma extract_wf_dec_from_wf_bdecs: forall m1 m2 G Ds D,
-  wf_ctx m1 m2 G ->
-  wf_bdecs m1 m2 G Ds ->
+Lemma extract_wf_dec_from_wf_bdecs: forall m G Ds D,
+  wf_ctx m G ->
+  wf_bdecs m G Ds ->
   bdecs_has Ds D ->
-  wf_dec m1 m2 G D.
+  wf_dec m G D.
 Proof.
   intros. destruct Ds.
   - inversions* H1.
-  - inversions H1. inversions H0. apply (extract_wf_dec_from_wf_decs H6 H3).
+  - inversions H1. inversions H0. apply (extract_wf_dec_from_wf_decs H5 H3).
 Qed.
 
 Lemma wf_deep_to_shallow: forall m G T,
-  wf_ctx m shallow G -> 
   wf_typ m deep G T ->
   wf_typ m shallow G T.
 Proof.
-  introv WfG WfT. gen_eq m2: deep. induction WfT; intro Eq; subst; eauto.
+  introv WfT. gen_eq m2: deep. induction WfT; intro Eq; subst; eauto.
 Qed.
 
 Hint Resolve extract_wf_dec_from_wf_decs extract_wf_dec_from_wf_bdecs wf_deep_to_shallow.
 
-(* If a type is involved in a typing judgment, it is shallowly well-formed.
-   Note that we cannot prove deep well-formedness, because it would require to check
-   for deep wf-ness at use site of the types, which makes recursive types impossible.
-   No, this is wrong because because wf_sel2 can break the cycles!
-Lemma typing_regular:
-   (forall m G T Ds, exp m G T Ds ->
-      wf_typ m shallow G T /\ wf_bdecs m shallow G Ds)
-/\ (forall m G t D, has m G t D ->
-      wf_dec m shallow G D)
-/\ (forall m1 m2 G T1 T2 n, subtyp m1 m2 G T1 T2 n ->
-      wf_typ m1 shallow G T1 /\ wf_typ m1 shallow G T2)
+(* If a type is involved in a subtyping judgment, it is (deeply) well-formed.
+   (Note that there's still wf_sel2 which can break cycles.) *)
+Lemma subtyping_regular:
+   (forall m1 m2 G T1 T2 n, subtyp m1 m2 G T1 T2 n ->
+      wf_typ m1 deep G T1 /\ wf_typ m1 deep G T2)
 /\ (forall m G D1 D2 n, subdec m G D1 D2 n ->
-      wf_dec m shallow G D1 /\ wf_dec m shallow G D2)
+      wf_dec m G D1 /\ wf_dec m G D2)
 /\ (forall m G Ds1 Ds2 n, subdecs m G Ds1 Ds2 n ->
-      wf_decs m shallow G Ds1 /\ wf_decs m shallow G Ds2)
-/\ (forall G t T, ty_trm G t T ->
-      wf_typ ip shallow G T)
-/\ (forall G d D, ty_def G d D ->
-      wf_dec ip shallow G D)
-/\ (forall G ds Ds, ty_defs G ds Ds ->
-      wf_decs ip shallow G Ds).
+      wf_decs m G Ds1 /\ wf_decs m G Ds2).
 Proof.
-  apply ty_mutind; intros; repeat split; subst;
+  apply mutind3; intros; repeat split; subst;
   repeat match goal with
   | H: _ /\ _ |- _ => destruct H
-  | H: wf_dec _ _ _ (dec_typ _ _ _) |- _ => inversions H
-  | H: wf_dec _ _ _ (dec_fld _ _  ) |- _ => inversions H
-  | H: wf_dec _ _ _ (dec_mtd _ _ _) |- _ => inversions H
+  | H: wf_dec _ _ (dec_typ _ _ _) |- _ => inversions H
+  | H: wf_dec _ _ (dec_fld _ _  ) |- _ => inversions H
+  | H: wf_dec _ _ (dec_mtd _ _ _) |- _ => inversions H
+  | H: wf_bdecs _ _ _             |- _ => inversions H
+  | H: bdecs_has _ _              |- _ => inversions H
   end;
   eauto.
 Qed.
+
+Definition subtyp_regular := proj1 subtyping_regular.
+Definition subdec_regular := proj1 (proj2 subtyping_regular).
+Definition subdecs_regular := proj2 (proj2 subtyping_regular).
+
+(*
+Lemma typing_regular:
+   (forall m G T Ds, exp m G T Ds ->
+      wf_typ m deep G T /\ wf_bdecs m G Ds)
+/\ (forall m G t D, has m G t D ->
+      wf_dec m G D)
+/\ (forall m1 m2 G T1 T2 n, subtyp m1 m2 G T1 T2 n ->
+      wf_typ m1 deep G T1 /\ wf_typ m1 deep G T2)
+/\ (forall m G D1 D2 n, subdec m G D1 D2 n ->
+      wf_dec m G D1 /\ wf_dec m G D2)
+/\ (forall m G Ds1 Ds2 n, subdecs m G Ds1 Ds2 n ->
+      wf_decs m G Ds1 /\ wf_decs m G Ds2)
+/\ (forall G t T, ty_trm G t T ->
+      wf_typ ip deep G T)
+/\ (forall G d D, ty_def G d D ->
+      wf_dec ip G D)
+/\ (forall G ds Ds, ty_defs G ds Ds ->
+      wf_decs ip G Ds).
+
+Definition exp_regular := proj1 typing_regular.
+Definition has_regular := proj1 (proj2 typing_regular).
+Definition subtyp_regular := proj1 (proj2 (proj2 typing_regular)).
+Definition subdec_regular := proj1 (proj2 (proj2 (proj2 typing_regular))).
+Definition subdecs_regular := proj1 (proj2 (proj2 (proj2 (proj2 typing_regular)))).
+Definition ty_trm_regular := proj1 (proj2 (proj2 (proj2 (proj2 (proj2 typing_regular))))).
+Definition ty_def_regular := proj1 (proj2 (proj2 (proj2 (proj2 (proj2
+                                   (proj2 typing_regular)))))).
+Definition ty_defs_regular := proj2 (proj2 (proj2 (proj2 (proj2
+                                   (proj2 (proj2 typing_regular)))))).
 *)
 
 
@@ -1306,12 +1342,12 @@ Proof.
   introv Sd. inversions Sd. auto.
 Qed.
 
-Lemma decs_has_preserves_wf: forall m1 m2 G Ds D,
+Lemma decs_has_preserves_wf: forall m G Ds D,
   decs_has Ds D ->
-  wf_decs m1 m2 G Ds ->
-  wf_dec m1 m2 G D.
+  wf_decs m G Ds ->
+  wf_dec m G D.
 Proof.
-  intros m1 m2 G Ds. induction Ds; introv Has Wf.
+  intros m G Ds. induction Ds; introv Has Wf.
   - inversions Has.
   - inversions Wf. rename d into D0. inversions Has.
     * assumption.
@@ -1319,7 +1355,7 @@ Proof.
 Qed.
 
 Lemma subdec_refl: forall m G D n,
-  wf_dec m shallow G D ->
+  wf_dec m G D ->
   subdec m G D D n.
 Proof.
   introv Wf. inversions Wf; auto.
@@ -1350,8 +1386,8 @@ Lemma wf_sto_to_ok_G: forall s G,
   wf_sto s G -> ok G.
 Proof. intros. induction H; jauto. Qed.
 
-Lemma wf_ctx_to_ok: forall m1 m2 G,
-  wf_ctx m1 m2 G -> ok G.
+Lemma wf_ctx_to_ok: forall m G,
+  wf_ctx m G -> ok G.
 Proof. intros. induction H; jauto. Qed.
 
 Hint Resolve wf_sto_to_ok_s wf_sto_to_ok_G wf_ctx_to_ok.
@@ -1660,9 +1696,9 @@ Proof. intros. apply* exp_has_unique. Qed.
 
 
 (* ###################################################################### *)
-(** ** Expansion total
+(** ** Expansion total *)
 
-Lemma exp_total: forall m G T, wf_typ m G T -> exists Ds, exp pr G T Ds.
+Lemma exp_total: forall m1 m2 G T, wf_typ m1 m2 G T -> exists Ds, exp m1 G T Ds.
 Proof.
   introv Wf. induction Wf.
   + (* case wf_top *)
@@ -1681,7 +1717,7 @@ Proof.
     exists DsU. apply (exp_sel H ExpU).
 Qed.
 
-Print Assumptions exp_total.*)
+Print Assumptions exp_total.
 
 
 (* ###################################################################### *)
@@ -1711,14 +1747,14 @@ Lemma weakening:
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
       wf_typ m1 m2 (G1 & G2 & G3) T)
-/\ (forall m1 m2 G D, wf_dec m1 m2 G D -> forall G1 G2 G3,
+/\ (forall m G D, wf_dec m G D -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
-      wf_dec m1 m2 (G1 & G2 & G3) D)
-/\ (forall m1 m2 G Ds, wf_decs m1 m2 G Ds -> forall G1 G2 G3,
+      wf_dec m (G1 & G2 & G3) D)
+/\ (forall m G Ds, wf_decs m G Ds -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
-      wf_decs m1 m2 (G1 & G2 & G3) Ds)
+      wf_decs m (G1 & G2 & G3) Ds)
 /\ (forall m1 m2 G T1 T2 n, subtyp m1 m2 G T1 T2 n -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
@@ -2136,8 +2172,8 @@ Qed.
 
 Lemma wf_in_empty_has_no_fv:
    (forall m1 m2 G T , wf_typ  m1 m2 G T  -> G = empty -> m2 = deep -> fv_typ  T  = \{}) 
-/\ (forall m1 m2 G D , wf_dec  m1 m2 G D  -> G = empty -> m2 = deep -> fv_dec  D  = \{}) 
-/\ (forall m1 m2 G Ds, wf_decs m1 m2 G Ds -> G = empty -> m2 = deep -> fv_decs Ds = \{}).
+/\ (forall m     G D , wf_dec  m     G D  -> G = empty ->              fv_dec  D  = \{}) 
+/\ (forall m     G Ds, wf_decs m     G Ds -> G = empty ->              fv_decs Ds = \{}).
 Proof.
   apply wf_mutind; intros; subst; try discriminate; simpl;
   try match goal with
@@ -2155,8 +2191,8 @@ Qed.
 
 Lemma fv_subset_dom_ctx:
    (forall m1 m2 G T , wf_typ  m1 m2 G T  -> m2 = deep -> (fv_typ  T ) \c (dom G)) 
-/\ (forall m1 m2 G D , wf_dec  m1 m2 G D  -> m2 = deep -> (fv_dec  D ) \c (dom G)) 
-/\ (forall m1 m2 G Ds, wf_decs m1 m2 G Ds -> m2 = deep -> (fv_decs Ds) \c (dom G))
+/\ (forall m     G D , wf_dec  m     G D  ->              (fv_dec  D ) \c (dom G)) 
+/\ (forall m     G Ds, wf_decs m     G Ds ->              (fv_decs Ds) \c (dom G))
 /\ (forall m G t D, has m G t D -> forall x, t = (trm_var (avar_f x)) -> x \in (dom G))
 /\ (forall G t T, ty_trm G t T  -> forall x, t = (trm_var (avar_f x)) -> x \in (dom G)).
 Proof.
@@ -2254,7 +2290,7 @@ Proof.
 Qed.
 
 Lemma fv_ctx_types_subset_dom_ctx: forall m1 G,
-  wf_ctx m1 deep G ->
+  wf_ctx m1 G ->
   (fv_ctx_types G) \c (dom G).
 Proof.
   introv Wf. gen_eq m2: deep. induction Wf; intro Eq; subst.
@@ -2267,7 +2303,7 @@ Proof.
 Qed.
 
 Lemma notin_G_to_notin_fv_ctx_types: forall m1 G x,
-  wf_ctx m1 deep G ->
+  wf_ctx m1 G ->
   x # G ->
   x \notin fv_ctx_types G.
 Proof.
@@ -2307,7 +2343,7 @@ Qed.
 *)
 
 Lemma middle_notin: forall m1 G1 x S G2,
-  wf_ctx m1 deep (G1 & x ~ S & G2) ->
+  wf_ctx m1 (G1 & x ~ S & G2) ->
   x # G1 /\
   x \notin fv_ctx_types G1 /\
   x \notin fv_typ S /\
@@ -2467,57 +2503,57 @@ Lemma subst_principles: forall y S,
    (forall m G T Ds, exp m G T Ds -> forall G1 G2 x,
      G = G1 & x ~ S & G2 ->
      tyvar m G1 y S ->
-     wf_ctx m deep (G1 & x ~ S & G2) ->
+     wf_ctx m (G1 & x ~ S & G2) ->
      exp m (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_bdecs x y Ds))
 /\ (forall m G t D, has m G t D -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
      tyvar m G1 y S ->
-     wf_ctx m deep (G1 & x ~ S & G2) ->
+     wf_ctx m (G1 & x ~ S & G2) ->
      has m (G1 & (subst_ctx x y G2)) (subst_trm x y t) (subst_dec x y D))
 /\ (forall m1 m2 G T, wf_typ m1 m2 G T -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
      tyvar m1 G1 y S ->
-     wf_ctx m1 deep (G1 & x ~ S & G2) ->
+     wf_ctx m1 (G1 & x ~ S & G2) ->
      wf_typ m1 m2 (G1 & (subst_ctx x y G2)) (subst_typ x y T))
-/\ (forall m1 m2 G D, wf_dec m1 m2 G D -> forall G1 G2 x,
+/\ (forall m G D, wf_dec m G D -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     tyvar m1 G1 y S ->
-     wf_ctx m1 deep (G1 & x ~ S & G2) ->
-     wf_dec m1 m2 (G1 & (subst_ctx x y G2)) (subst_dec x y D))
-/\ (forall m1 m2 G Ds, wf_decs m1 m2 G Ds -> forall G1 G2 x,
+     tyvar m G1 y S ->
+     wf_ctx m (G1 & x ~ S & G2) ->
+     wf_dec m (G1 & (subst_ctx x y G2)) (subst_dec x y D))
+/\ (forall m G Ds, wf_decs m G Ds -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     tyvar m1 G1 y S ->
-     wf_ctx m1 deep (G1 & x ~ S & G2) ->
-     wf_decs m1 m2 (G1 & (subst_ctx x y G2)) (subst_decs x y Ds))
+     tyvar m G1 y S ->
+     wf_ctx m (G1 & x ~ S & G2) ->
+     wf_decs m (G1 & (subst_ctx x y G2)) (subst_decs x y Ds))
 /\ (forall m1 m2 G T U n, subtyp m1 m2 G T U n -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
      tyvar m1 G1 y S ->
-     wf_ctx m1 deep (G1 & x ~ S & G2) ->
+     wf_ctx m1 (G1 & x ~ S & G2) ->
      subtyp m1 m2 (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_typ x y U) (n+1))
 /\ (forall m G D1 D2 n, subdec m G D1 D2 n -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
      tyvar m G1 y S ->
-     wf_ctx m deep (G1 & x ~ S & G2) ->
+     wf_ctx m (G1 & x ~ S & G2) ->
      subdec m (G1 & (subst_ctx x y G2)) (subst_dec x y D1) (subst_dec x y D2) (n+1))
 /\ (forall m G Ds1 Ds2 n, subdecs m G Ds1 Ds2 n -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
      tyvar m G1 y S ->
-     wf_ctx m deep (G1 & x ~ S & G2) ->
+     wf_ctx m (G1 & x ~ S & G2) ->
      subdecs m (G1 & (subst_ctx x y G2)) (subst_decs x y Ds1) (subst_decs x y Ds2) (n+1))
 /\ (forall G t T, ty_trm G t T -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
      tyvar ip G1 y S ->
-     wf_ctx ip deep (G1 & x ~ S & G2) ->
+     wf_ctx ip (G1 & x ~ S & G2) ->
      ty_trm (G1 & (subst_ctx x y G2)) (subst_trm x y t) (subst_typ x y T))
 /\ (forall G d D, ty_def G d D -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
      tyvar ip G1 y S ->
-     wf_ctx ip deep (G1 & x ~ S & G2) ->
+     wf_ctx ip (G1 & x ~ S & G2) ->
      ty_def (G1 & (subst_ctx x y G2)) (subst_def x y d) (subst_dec x y D))
 /\ (forall G ds Ds, ty_defs G ds Ds -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
      tyvar ip G1 y S ->
-     wf_ctx ip deep (G1 & x ~ S & G2) ->
+     wf_ctx ip (G1 & x ~ S & G2) ->
      ty_defs (G1 & (subst_ctx x y G2)) (subst_defs x y ds) (subst_decs x y Ds)).
 Proof.
   intros y S. apply ty_wf_mutind.
@@ -2656,11 +2692,12 @@ Proof.
     unfold subst_ctx. apply IH. apply okadmit.
 *)
   + (* case subtyp_sel_l *)
-    intros m G v L Lo Hi T n Has IHHas St IHSt G1 G2 x EqG Bi Ok. subst.
-    specialize (IHSt _ _ _ eq_refl Bi Ok).
+    intros m G v L Lo Hi T n Has IHHas St1 IHSt1 St2 IHSt2 G1 G2 x EqG Bi Ok. subst.
+    specialize (IHSt1 _ _ _ eq_refl Bi Ok).
+    specialize (IHSt2 _ _ _ eq_refl Bi Ok).
     specialize (IHHas _ _ _ eq_refl Bi Ok).
     simpl in *.
-    case_if; apply (subtyp_sel_l IHHas IHSt).
+    case_if; apply (subtyp_sel_l IHHas IHSt1 IHSt2).
   + (* case subtyp_sel_r *)
     intros m G v L Lo Hi T n Has IHHas St1 IHSt1 St2 IHSt2 G1 G2 x EqG Bi Ok. subst.
     specialize (IHSt1 _ _ _ eq_refl Bi Ok).
@@ -2780,7 +2817,7 @@ Qed.
 Print Assumptions subst_principles.
 
 Lemma trm_subst_principle: forall G x y t S T,
-  wf_ctx ip deep (G & x ~ S) ->
+  wf_ctx ip (G & x ~ S) ->
   ty_trm (G & x ~ S) t T ->
   ty_trm G (trm_var (avar_f y)) S ->
   ty_trm G (subst_trm x y t) (subst_typ x y T).
@@ -2795,7 +2832,7 @@ Proof.
 Qed.
 
 Lemma pr_subdec_subst_principle: forall G x y S D1 D2 n,
-  wf_ctx pr deep (G & x ~ S) ->
+  wf_ctx pr (G & x ~ S) ->
   subdec pr (G & x ~ S) D1 D2 n ->
   binds y S G ->
   subdec pr G (subst_dec x y D1) (subst_dec x y D2) (n+1).
@@ -2809,7 +2846,7 @@ Proof.
 Qed.
 
 Lemma pr_subdecs_subst_principle: forall G x y S Ds1 Ds2 n,
-  wf_ctx pr deep (G & x ~ S) ->
+  wf_ctx pr (G & x ~ S) ->
   subdecs pr (G & x ~ S) Ds1 Ds2 n ->
   binds y S G ->
   subdecs pr G (subst_decs x y Ds1) (subst_decs x y Ds2) (n+1).
@@ -2823,7 +2860,7 @@ Proof.
 Qed.
 
 Lemma subdecs_subst_principle: forall G x y S Ds1 Ds2 n,
-  wf_ctx ip deep (G & x ~ S) ->
+  wf_ctx ip (G & x ~ S) ->
   subdecs ip (G & x ~ S) Ds1 Ds2 n ->
   ty_trm G (trm_var (avar_f y)) S ->
   subdecs ip G (subst_decs x y Ds1) (subst_decs x y Ds2) (n+1).
@@ -3044,7 +3081,7 @@ Proof.
   induction Ty; intros t0 m0 u0 Eq; try solve [ discriminate ]; symmetry in Eq.
   + (* case ty_call *)
     inversions Eq. exists U V.
-    assert (WfV: wf_typ ip shallow G V) by admit. (* TODO *)
+    assert (WfV: wf_typ ip deep G V) by admit. (* TODO *)
     lets StV: (subtyp_tmode (@subtyp_refl ip G V 0 WfV)). eauto.
   + (* case ty_sbsm *)
     subst t. specialize (IHTy _ _ _ eq_refl).
@@ -3071,7 +3108,7 @@ Proof.
   induction Ty; intros ds' Eq; try (solve [ discriminate ]); symmetry in Eq.
   + (* case ty_new *)
     inversions Eq. exists 0 Ds.
-    assert (Wf: wf_typ ip shallow G (typ_bind Ds)) by auto.
+    assert (Wf: wf_typ ip deep G (typ_bind Ds)) by admit.
     apply (conj (subtyp_tmode (subtyp_refl _ Wf))).
     auto.
   + (* case ty_sbsm *)
@@ -3806,14 +3843,14 @@ Lemma ip2pr:
       m1 = ip ->
       simple_ctx G ->
       wf_typ pr m2 G T)
-/\ (forall m1 m2 G D, wf_dec m1 m2 G D ->
-      m1 = ip ->
+/\ (forall m G D, wf_dec m G D ->
+      m = ip ->
       simple_ctx G ->
-      wf_dec pr m2 G D)
-/\ (forall m1 m2 G Ds, wf_decs m1 m2 G Ds ->
-      m1 = ip ->
+      wf_dec pr G D)
+/\ (forall m G Ds, wf_decs m G Ds ->
+      m = ip ->
       simple_ctx G ->
-      wf_decs pr m2 G Ds)
+      wf_decs pr G Ds)
 /\ (forall m1 m2 G T1 T2 n1, subtyp m1 m2 G T1 T2 n1 ->
       m1 = ip ->
       simple_ctx G ->
@@ -3838,10 +3875,9 @@ Proof.
     apply (conj (exp_top _ _)).
     inversions H0. apply* subdecs_empty.
   + (* case exp_bind *)
-    introv WfDs IHWfDs Eq1 Eq2 Wf. subst. inversions Eq2.
+    introv Eq1 Eq2 Wf. subst. inversions Eq2.
     exists Ds2 0.
-    specialize (IHWfDs eq_refl Wf).
-    apply (conj (exp_bind IHWfDs)).
+    apply (conj (exp_bind _ _ _)).
     apply subdecs_refl. apply IHWfDs.
   + (* case exp_sel *)
     introv Has IHHas Exp IHExp Eq1 Eq2 Sc. subst. rename Hi into Hi2, Lo into Lo2.
@@ -3850,6 +3886,7 @@ Proof.
     destruct IHHas as [D1 [n2 [Has1 Sd]]].
     apply invert_subdec_typ_sync_left in Sd.
     destruct Sd as [Lo1 [Hi1 [Eq [StLo StHi]]]]. subst.
+    destruct (subtyp_regular StHi) as [WfHi1 _].
     (* invoke typing_regular to get Hi1 wf, then exp_total *)
     assert (E: exists Ds0, exp pr G Hi1 Ds0) by Admit. (* hopefully by wf_sto... *)
     destruct E as [Ds0 ExpHi1].
