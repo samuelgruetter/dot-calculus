@@ -3849,31 +3849,15 @@ Proof.
 Qed.
 *)
 
-Lemma exp_preserves_sub_pr: forall G T1 T2 Ds1 Ds2 n1,
-  subtyp pr oktrans G T1 T2 n1 ->
-  exp pr G T1 Ds1 ->
-  exp pr G T2 Ds2 ->
-  subbdecs pr G Ds1 Ds2.
-(* BIND
-  exists L n2, forall z, z \notin L ->
-    subdecs pr (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2) n2 *)
-Admitted.
-(*
+Lemma subbdecs_trans: forall m G Ds1 Ds2 Ds3,
+  subbdecs m G Ds1 Ds2 -> subbdecs m G Ds2 Ds3 -> subbdecs m G Ds1 Ds3.
 Proof.
-  introv St Exp1 Exp2.
-  destruct (putting_it_together (ctx_size G) n1) as [E _].
-  unfold egr_exp_preserves_sub_pr in E.
-  specialize (E oktrans _ _ _ _ _ _ St eq_refl eq_refl Exp1 Exp2).
-  destruct E as [L Sds]. exists L (pred n1).
-  exact Sds.
+  introv Sds12 Sds23. inversions Sds12; inversions Sds23; eauto.
+  apply subbdecs_decs with (max n n0).
+  apply subdecs_trans with Ds4.
+  - apply (subdecs_max_ctx H). apply Max.le_max_l.
+  - apply (subdecs_max_ctx H3). apply Max.le_max_r.
 Qed.
-*)
-
-(*
-Axiom wf_typ_admit: forall m1 m2 G T, wf_typ m1 m2 G T.
-Axiom wf_dec_admit: forall m1 m2 G D, wf_dec m1 m2 G D.
-Axiom wf_decs_admit: forall m1 m2 G Ds, wf_decs m1 m2 G Ds.
-*)
 
 Inductive simple_ctx: ctx -> Prop :=
 | simple_ctx_empty: simple_ctx empty
@@ -3900,15 +3884,106 @@ Proof.
     * eauto.
 Qed.
 
-Lemma subbdecs_trans: forall m G Ds1 Ds2 Ds3,
-  subbdecs m G Ds1 Ds2 -> subbdecs m G Ds2 Ds3 -> subbdecs m G Ds1 Ds3.
+Lemma exp_preserves_wf: forall G T Ds,
+  wf_typ pr deep G T ->
+  simple_ctx G ->
+  exp pr G T Ds ->
+  wf_bdecs pr G Ds.
 Proof.
-  introv Sds12 Sds23. inversions Sds12; inversions Sds23; eauto.
-  apply subbdecs_decs with (max n n0).
-  apply subdecs_trans with Ds4.
-  - apply (subdecs_max_ctx H). apply Max.le_max_l.
-  - apply (subdecs_max_ctx H3). apply Max.le_max_r.
+  introv WfT. gen_eq m1: pr. gen_eq m2: deep. gen Ds.
+  induction WfT; introv Eq1 Eq2 Sc Exp; subst;
+  inversions Exp; auto; try discriminate.
+  - lets Eq: (has_unique H H4). simpl in Eq. specialize (Eq eq_refl). inversions Eq.
+    apply* IHWfT2.
+  - lets Eq: (has_unique H H4). simpl in Eq. specialize (Eq eq_refl). inversions Eq.
+    clear IHWfT.
+    apply invert_has_pr in H. destruct H as [X [DsX [D' [Bi [Exp [DsHas Eq]]]]]].
+    subst.
+    destruct (binds_simple_ctx Sc Bi) as [DsX' Eq]. subst. inversions Exp.
+    rename DsX' into DsX. inversions DsHas.
+Abort.
+
+Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2 n1,
+  subtyp pr m2 G T1 T2 n1 ->
+  exp pr G T1 Ds1 ->
+  exp pr G T2 Ds2 ->
+  subbdecs pr G Ds1 Ds2.
+Proof.
+  introv St. gen_eq m1: pr. gen Ds1 Ds2. gen m1 m2 G T1 T2 n1 St.
+  apply (subtyp_ind (fun m1 m2 G T1 T2 n => forall Ds1 Ds2,
+    m1 = pr ->
+    exp m1 G T1 Ds1 ->
+    exp m1 G T2 Ds2 ->
+    subbdecs m1 G Ds1 Ds2)).
+  + (* case subtyp_refl *)
+    introv n Wf Eq Exp1 Exp2. subst.
+    lets Eq: (exp_unique Exp1 Exp2). subst. destruct Ds2.
+    - apply subbdecs_bot.
+    - apply subbdecs_refl.
+  + (* case subtyp_top *)
+    introv n Wf Eq Exp1 Exp2. subst. inversions Exp2. destruct Ds1.
+    - apply subbdecs_bot.
+    - refine (subbdecs_decs (subdecs_empty _ _)). admit. (* TODO exp_preserves_wf *)
+  + (* case subtyp_bot *)
+    introv n Wf Eq Exp1 Exp2. subst. inversions Exp1. apply subbdecs_bot.
+  + (* case subtyp_bind *)
+    introv Sds Eq1 Exp1 Exp2. subst. inversions Exp1. inversions Exp2.
+    apply (subbdecs_decs Sds).
+  + (* case subtyp_sel_l *)
+    introv Has2 St1 IHSt1 St2 IHSt2 Eq1 Exp1 Exp2. subst.
+    apply invert_exp_sel in Exp1. destruct Exp1 as [Lo1 [Hi1 [Has1 Exp1]]].
+    lets Eq: (has_unique Has2 Has1).
+    simpl in Eq. specialize (Eq eq_refl). inversions Eq.
+    apply IHSt2; auto.
+  + (* case subtyp_sel_r *)
+    introv Has St1 IHSt1 St2 IHSt2 Eq1 Exp1 Exp2.
+    rename S into Lo, U into Hi. subst.
+    apply invert_exp_sel in Exp2. destruct Exp2 as [Lo' [Hi' [Has' Exp2]]].
+    lets Eq: (has_unique Has' Has).
+    simpl in Eq. specialize (Eq eq_refl). inversions Eq. clear Has'.
+    destruct (subtyp_regular St2) as [_ WfLo].
+    lets ExpLo: (exp_total WfLo).
+    destruct ExpLo as [DsLo ExpLo].
+    specialize (IHSt1 DsLo Ds2 eq_refl ExpLo Exp2).
+    specialize (IHSt2 Ds1 DsLo eq_refl Exp1 ExpLo).
+    apply (subbdecs_trans IHSt2 IHSt1).
+  + (* case subtyp_tmode *)
+    introv St IHSt Eq1 Exp1 Exp2. apply IHSt; auto.
+  + (* case subtyp_trans *)
+    introv St12 IH12 St23 IH23 Eq1 Exp1 Exp3. subst. rename Ds2 into Ds3.
+    destruct (subtyp_regular St23) as [Wf2 _].
+    lets Exp2: (exp_total Wf2).
+    destruct Exp2 as [Ds2 Exp2].
+    apply subbdecs_trans with Ds2; auto.
+  (* no idea where this var comes from, but here's a trick: *)
+  Grab Existential Variables. apply 7.
 Qed.
+
+Print Assumptions exp_preserves_sub_pr.
+
+(*
+Lemma exp_preserves_sub_pr: forall G T1 T2 Ds1 Ds2 n1,
+  subtyp pr oktrans G T1 T2 n1 ->
+  exp pr G T1 Ds1 ->
+  exp pr G T2 Ds2 ->
+(* BIND *)
+  exists L n2, forall z, z \notin L ->
+    subdecs pr (G & z ~ typ_bind Ds1) (open_decs z Ds1) (open_decs z Ds2) n2.
+Proof.
+  introv St Exp1 Exp2.
+  destruct (putting_it_together (ctx_size G) n1) as [E _].
+  unfold egr_exp_preserves_sub_pr in E.
+  specialize (E oktrans _ _ _ _ _ _ St eq_refl eq_refl Exp1 Exp2).
+  destruct E as [L Sds]. exists L (pred n1).
+  exact Sds.
+Qed.
+*)
+
+(*
+Axiom wf_typ_admit: forall m1 m2 G T, wf_typ m1 m2 G T.
+Axiom wf_dec_admit: forall m1 m2 G D, wf_dec m1 m2 G D.
+Axiom wf_decs_admit: forall m1 m2 G Ds, wf_decs m1 m2 G Ds.
+*)
 
 Lemma ip2pr:
    (forall m G T Ds2, exp m G T Ds2 ->
