@@ -442,17 +442,14 @@ Inductive dmode: Set := deep | shallow.
 
 Inductive wf_typ: pmode -> dmode -> ctx -> typ -> Prop :=
   | wf_top: forall m1 m2 G,
-      wf_ctx m1 m2 G ->
       wf_typ m1 m2 G typ_top
   | wf_bot: forall m1 m2 G,
-      wf_ctx m1 m2 G ->
       wf_typ m1 m2 G typ_bot
   | wf_bind_deep: forall m G Ds,
       (* BIND (forall z, z \notin L -> wf_decs (G & z ~ typ_bind Ds) Ds) ->*)
       wf_decs m deep G Ds ->
       wf_typ m deep G (typ_bind Ds)
   | wf_bind_shallow: forall m G Ds,
-      wf_ctx m shallow G -> 
       wf_typ m shallow G (typ_bind Ds)
   | wf_sel1: forall m1 m2 G x L Lo Hi,
       has m1 G (trm_var (avar_f x)) (dec_typ L Lo Hi) ->
@@ -480,28 +477,17 @@ with wf_dec: pmode -> dmode -> ctx -> dec -> Prop :=
       wf_dec m1 m2 G (dec_mtd m A R)
 with wf_decs: pmode -> dmode -> ctx -> decs -> Prop :=
   | wf_nil: forall m1 m2 G,
-      wf_ctx m1 m2 G ->
       wf_decs m1 m2 G decs_nil
   | wf_cons: forall m1 m2 G D Ds,
       wf_dec  m1 m2 G D ->
       wf_decs m1 m2 G Ds ->
       decs_hasnt Ds (label_of_dec D) ->
       wf_decs m1 m2 G (decs_cons D Ds)
-with wf_ctx: pmode -> dmode -> ctx -> Prop :=
-  | wf_ctx_empty: forall m1 m2,
-      wf_ctx m1 m2 empty
-  | wf_ctx_push: forall m1 m2 G x T,
-      wf_ctx m1 m2 G ->
-      wf_typ m1 m2 G T ->
-      x # G ->
-      wf_ctx m1 m2 (G & x ~ T)
 (* expansion returns a set of decs without opening them *)
 with exp: pmode -> ctx -> typ -> bdecs -> Prop :=
   | exp_top: forall m G,
-      wf_ctx m shallow G -> 
       exp m G typ_top (bdecs_decs decs_nil)
   | exp_bot: forall m G,
-      wf_ctx m shallow G -> 
       exp m G typ_bot bdecs_bot
   | exp_bind: forall m G Ds,
       wf_decs m shallow G Ds ->
@@ -633,7 +619,6 @@ with ty_def: ctx -> def -> dec -> Prop :=
       ty_def G (def_mtd m S T t) (dec_mtd m S T)
 with ty_defs: ctx -> defs -> decs -> Prop :=
   | ty_dsnil: forall G,
-      wf_ctx ip shallow G -> 
       ty_defs G defs_nil decs_nil
   | ty_dscons: forall G ds d Ds D,
       ty_defs G ds Ds ->
@@ -656,7 +641,6 @@ Inductive subbdecs: pmode -> ctx -> bdecs -> bdecs -> Prop :=
       subdecs m G Ds1 Ds2 n ->
       subbdecs m G (bdecs_decs Ds1) (bdecs_decs Ds2).
 
-(*
 Inductive wf_ctx: pmode -> dmode -> ctx -> Prop :=
   | wf_ctx_empty: forall m1 m2,
       wf_ctx m1 m2 empty
@@ -665,7 +649,6 @@ Inductive wf_ctx: pmode -> dmode -> ctx -> Prop :=
       wf_typ m1 m2 G T ->
       x # G ->
       wf_ctx m1 m2 (G & x ~ T).
-*)
 
 (** *** Well-formed store *)
 Inductive wf_sto: sto -> ctx -> Prop :=
@@ -1184,18 +1167,13 @@ Hint Resolve extract_wf_dec_from_wf_decs extract_wf_dec_from_wf_bdecs wf_deep_to
 
 (* If a type is involved in a typing judgment, it is shallowly well-formed.
    Note that we cannot prove deep well-formedness, because it would require to check
-   for deep wf-ness at use site of the types, which makes recursive types impossible. *)
+   for deep wf-ness at use site of the types, which makes recursive types impossible.
+   No, this is wrong because because wf_sel2 can break the cycles!
 Lemma typing_regular:
    (forall m G T Ds, exp m G T Ds ->
       wf_typ m shallow G T /\ wf_bdecs m shallow G Ds)
 /\ (forall m G t D, has m G t D ->
       wf_dec m shallow G D)
-/\ (forall m1 m2 G T, wf_typ m1 m2 G T ->
-      wf_ctx m1 shallow G)
-/\ (forall m1 m2 G D, wf_dec m1 m2 G D ->
-      wf_ctx m1 shallow G)
-/\ (forall m1 m2 G Ds, wf_decs m1 m2 G Ds ->
-      wf_ctx m1 shallow G)
 /\ (forall m1 m2 G T1 T2 n, subtyp m1 m2 G T1 T2 n ->
       wf_typ m1 shallow G T1 /\ wf_typ m1 shallow G T2)
 /\ (forall m G D1 D2 n, subdec m G D1 D2 n ->
@@ -1209,7 +1187,7 @@ Lemma typing_regular:
 /\ (forall G ds Ds, ty_defs G ds Ds ->
       wf_decs ip shallow G Ds).
 Proof.
-  apply ty_wf_mutind; intros; repeat split; subst;
+  apply ty_mutind; intros; repeat split; subst;
   repeat match goal with
   | H: _ /\ _ |- _ => destruct H
   | H: wf_dec _ _ _ (dec_typ _ _ _) |- _ => inversions H
@@ -1218,6 +1196,7 @@ Proof.
   end;
   eauto.
 Qed.
+*)
 
 
 (* ###################################################################### *)
