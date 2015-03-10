@@ -3149,44 +3149,48 @@ Qed.
 
 Lemma invert_ty_sel: forall G t l T,
   ty_trm G (trm_sel t l) T ->
+  (* we have this disjunction because otherwise the base case needed subtyp_refl,
+     which requires wf-ness of T, but we don't want to deal with wf-ness here *)
+  has ip G t (dec_fld l T) \/
   exists T' n, subtyp ip oktrans G T' T n /\ has ip G t (dec_fld l T').
 Proof.
   introv Ty. gen_eq t0: (trm_sel t l). gen t l.
   induction Ty; intros t' l' Eq; try (solve [ discriminate ]).
-  + inversions Eq. exists T 0. refine (conj _ H). refine (subtyp_tmode (subtyp_refl _ _)).
-    admit. (* TODO get wf-ness *)
+  + inversions Eq. left. assumption.
   + subst. rename t' into t, l' into l. specialize (IHTy _ _ eq_refl).
-    destruct IHTy as [T' [n' [St Has]]]. exists T' (max n n'). split.
-    - lets Hle1: (Max.le_max_l n n'). lets Hle2: (Max.le_max_r n n').
-      apply (subtyp_trans (subtyp_max_ctx St Hle2) (subtyp_max_ctx H Hle1)).
-    - exact Has.
+    right. destruct IHTy as [IHTy | IHTy].
+    * exists T n. split; assumption.
+    * destruct IHTy as [T' [n' [St Has]]]. exists T' (max n n'). split.
+      - lets Hle1: (Max.le_max_l n n'). lets Hle2: (Max.le_max_r n n').
+        apply (subtyp_trans (subtyp_max_ctx St Hle2) (subtyp_max_ctx H Hle1)).
+      - exact Has.
 Qed.
 
 Lemma invert_ty_call: forall G t m V2 u,
   ty_trm G (trm_call t m u) V2 ->
   exists U V1 n, has ip G t (dec_mtd m U V1)
-               /\ subtyp ip oktrans G V1 V2 n
+               /\ (subtyp ip oktrans G V1 V2 n \/ V1 = V2)
                /\ ty_trm G u U.
 Proof.
   introv Ty. gen_eq e: (trm_call t m u). gen t m u.
   induction Ty; intros t0 m0 u0 Eq; try solve [ discriminate ]; symmetry in Eq.
   + (* case ty_call *)
-    inversions Eq. exists U V.
-    assert (WfV: wf_typ ip deep G V) by admit. (* TODO *)
-    lets StV: (subtyp_tmode (@subtyp_refl ip G V 0 WfV)). eauto.
+    inversions Eq. exists U V 0. auto.
   + (* case ty_sbsm *)
     subst t. specialize (IHTy _ _ _ eq_refl).
     rename t0 into t, m0 into m, u0 into u, U into V3, T into V2.
     destruct IHTy as [U [V1 [n' [Has [St12 Tyu]]]]].
     exists U V1.
     exists (max n n'). refine (conj Has (conj _ Tyu)).
-    apply (subtyp_trans (subtyp_max_ctx St12 (Max.le_max_r n n'))
-                        (subtyp_max_ctx H (Max.le_max_l n n'))).
+    destruct St12 as [St12 | Eq].
+    - left. apply (subtyp_trans (subtyp_max_ctx St12 (Max.le_max_r n n'))
+                                  (subtyp_max_ctx H (Max.le_max_l n n'))).
+    - subst. left. apply (subtyp_max_ctx H (Max.le_max_l n n')).
 Qed.
 
 Lemma invert_ty_new: forall G ds T2,
   ty_trm G (trm_new ds) T2 ->
-  exists n Ds, subtyp ip oktrans G (typ_bind Ds) T2 n /\
+  exists n Ds, (subtyp ip oktrans G (typ_bind Ds) T2 n \/ (typ_bind Ds) = T2) /\
                ty_defs G ds Ds /\
                cbounds_decs Ds.
 (*
@@ -3198,16 +3202,15 @@ Proof.
   introv Ty. gen_eq t0: (trm_new ds). gen ds.
   induction Ty; intros ds' Eq; try (solve [ discriminate ]); symmetry in Eq.
   + (* case ty_new *)
-    inversions Eq. exists 0 Ds.
-    assert (Wf: wf_typ ip deep G (typ_bind Ds)) by admit.
-    apply (conj (subtyp_tmode (subtyp_refl _ Wf))).
-    auto.
+    inversions Eq. exists 0 Ds. auto.
   + (* case ty_sbsm *)
     subst. rename ds' into ds. specialize (IHTy _ eq_refl).
     destruct IHTy as [n0 [Ds [St IHTy]]]. exists (max n n0) Ds.
     refine (conj _ IHTy).
-    apply (subtyp_trans (subtyp_max_ctx St (Max.le_max_r n n0))
-                        (subtyp_max_ctx H (Max.le_max_l n n0))).
+    destruct St as [St | Eq].
+    * left. apply (subtyp_trans (subtyp_max_ctx St (Max.le_max_r n n0))
+                                (subtyp_max_ctx H (Max.le_max_l n n0))).
+    * subst. left. apply (subtyp_max_ctx H (Max.le_max_l n n0)).
 Qed.
 
 (*
@@ -4702,22 +4705,24 @@ Proof.
       apply weaken_subtyp_end. auto.
       lets Hle1: (Max.le_max_l n n1).
       lets Hle2: (Max.le_max_r n n1).
-      apply (subtyp_trans (subtyp_max_ctx StU12 Hle2) (subtyp_max_ctx StU23 Hle1)).
+      destruct StU23 as [StU23 | Eq].
+      * apply (subtyp_trans (subtyp_max_ctx StU12 Hle2) (subtyp_max_ctx StU23 Hle1)).
+      * subst U3. apply (subtyp_max_ctx StU12 Hle2).
     - refine (ty_sbsm _ StT). refine (ty_sbsm _ StT3). apply (ty_var Biy).
   (* red_sel *)
   + intros G T3 Wf TySel. rename H into Bis, H0 into dsHas.
     exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
     apply invert_ty_sel in TySel.
-    destruct TySel as [T2 [n [StT23 Has]]].
-    lets P: (has_sound Wf Bis Has).
+    destruct TySel as [Has | [T2 [n [StT23 Has]]]]; (
+    lets P: (has_sound Wf Bis Has);
             (*********)
-    destruct P as [Ds1 [D1 [n1 [Tyds [Ds1Has Sd]]]]].
-    apply invert_subdec_fld_sync_left in Sd.
-    destruct Sd as [T1 [Eq StT12]]. subst D1.
-    refine (ty_sbsm _ StT23).
-    refine (ty_sbsm _ StT12).
-    lets P: (invert_ty_fld_inside_ty_defs Tyds dsHas Ds1Has).
-    destruct P as [P Eq]. subst. exact P.
+    destruct P as [Ds1 [D1 [n1 [Tyds [Ds1Has Sd]]]]];
+    apply invert_subdec_fld_sync_left in Sd;
+    destruct Sd as [T1 [Eq StT12]]; subst D1;
+    try refine (ty_sbsm _ StT23);
+    refine (ty_sbsm _ StT12);
+    lets P: (invert_ty_fld_inside_ty_defs Tyds dsHas Ds1Has);
+    destruct P as [P Eq]; subst; exact P).
   (* red_new *)
   + introv Wf Ty.
     apply invert_ty_new in Ty.
@@ -4726,8 +4731,10 @@ Proof.
     assert (xG: x # G) by apply* sto_unbound_to_ctx_unbound.
     split.
     - apply (wf_sto_push Wf H xG Tyds Cb).
-      destruct (subtyp_regular StT12) as [WfDs1 _]. inversions WfDs1. apply* ip2pr.
-      apply (wf_sto_to_simple_ctx Wf).
+      destruct StT12 as [StT12 | Eq].
+      * destruct (subtyp_regular StT12) as [WfDs1 _]. inversions WfDs1. apply* ip2pr.
+        apply (wf_sto_to_simple_ctx Wf).
+      * 
     - lets Ok: (wf_sto_to_ok_G Wf). assert (Okx: ok (G & x ~ (typ_bind Ds1))) by auto.
       apply (weaken_subtyp_end Okx) in StT12.
       refine (ty_sbsm _ StT12). apply ty_var. apply binds_push_eq.
