@@ -399,8 +399,27 @@ Inductive tmode: Type := notrans | oktrans.
 (* pmode = "do the "has" judgments needed in subtyping have to be precise?" *)
 Inductive pmode: Type := pr | ip.
 
-(* Does this type, and all types that it syntactically contains, have collapsed
+(*
+(* Does this type/dec/decs, and all types that it syntactically contains, have collapsed
    bounds for all type members? *)
+Inductive cbounds_dec: dec -> Prop :=
+  | cbounds_dec_typ_1: forall L T,
+      cbounds_dec (dec_typ L T T) (* <-- that's the whole point *)
+  | cbounds_dec_typ_2: forall L T,
+      cbounds_dec (dec_typ L typ_bot T) (* <-- also allowed, for recursive types *)
+  | cbounds_dec_fld: forall l T,
+      cbounds_dec (dec_fld l T)
+  | cbounds_dec_mtd: forall m T U,
+      cbounds_dec (dec_mtd m T U).
+
+Inductive cbounds_decs: decs -> Prop :=
+  | cbounds_nil:
+      cbounds_decs decs_nil
+  | cbounds_cons: forall D Ds,
+      cbounds_dec D ->
+      cbounds_decs Ds ->
+      cbounds_decs (decs_cons D Ds).
+
 Inductive cbounds_typ: typ -> Prop :=
   | cbounds_top:
       cbounds_typ typ_top
@@ -410,15 +429,34 @@ Inductive cbounds_typ: typ -> Prop :=
       cbounds_decs Ds ->
       cbounds_typ (typ_bind Ds)
   | cbounds_sel: forall p L,
-      cbounds_typ (typ_sel p L)
+      cbounds_typ (typ_sel p L).
+*)
+
+Inductive cbounds_typ: typ -> Prop :=
+  | cbounds_top:
+      cbounds_typ typ_top
+  | cbounds_bot:
+      cbounds_typ typ_bot
+  | cbounds_bind: forall Ds,
+      cbounds_decs Ds ->
+      cbounds_typ (typ_bind Ds)
+  | cbounds_sel: forall p L,
+      cbounds_typ (typ_sel p L) (* we don't enter the bounds *)
 with cbounds_dec: dec -> Prop :=
-  | cbounds_dec_typ: forall L T,
+  | cbounds_dec_typ_1: forall L T,
+      cbounds_typ T ->
       cbounds_dec (dec_typ L T T) (* <-- that's the whole point *)
+  | cbounds_dec_typ_2: forall L T,
+      cbounds_typ T ->
+      cbounds_dec (dec_typ L typ_bot T) (* <-- also allowed, for recursive types *)
   | cbounds_dec_fld: forall l T,
+      cbounds_typ T ->
       cbounds_dec (dec_fld l T)
   | cbounds_dec_mtd: forall m T U,
+      cbounds_typ T ->
+      cbounds_typ U ->
       cbounds_dec (dec_mtd m T U)
-with cbounds_decs: decs -> Prop :=
+with  cbounds_decs: decs -> Prop :=
   | cbounds_nil:
       cbounds_decs decs_nil
   | cbounds_cons: forall D Ds,
@@ -821,6 +859,11 @@ with   subdecs_mut8 := Induction for subdecs Sort Prop.
 Combined Scheme mutind8 from exp_mut8, has_mut8,
                              wf_typ_mut8, wf_dec_mut8, wf_decs_mut8,
                              subtyp_mut8, subdec_mut8, subdecs_mut8.
+
+Scheme cbounds_typ_mut  := Induction for cbounds_typ  Sort Prop
+with   cbounds_dec_mut  := Induction for cbounds_dec  Sort Prop
+with   cbounds_decs_mut := Induction for cbounds_decs Sort Prop.
+Combined Scheme cbounds_mutind from cbounds_typ_mut, cbounds_dec_mut, cbounds_decs_mut.
 
 (*
 Scheme wf_typ_mut  := Induction for wf_typ  Sort Prop
@@ -3859,29 +3902,176 @@ Proof.
   - apply (subdecs_max_ctx H3). apply Max.le_max_r.
 Qed.
 
+(* "good bounds"
+Inductive gbounds_dec: ctx -> dec -> Prop :=
+| gbounds_tmem: forall G L Lo Hi n,
+    subtyp pr oktrans G Lo Hi n ->
+    gbounds_dec G (dec_typ L Lo Hi)
+| gbounds_fld: forall G l T,
+    gbounds_dec G (dec_fld l T)
+| gbounds_mtd: forall G m U V,
+    gbounds_dec G (dec_mtd m U V).
+
+Inductive gbounds_decs: ctx -> decs -> Prop :=
+| gbounds_nil: forall G,
+    gbounds_decs G decs_nil
+| gbounds_cons: forall G D Ds,
+    gbounds_dec G D ->
+    gbounds_decs G Ds ->
+    gbounds_decs G (decs_cons D Ds).
+
+Inductive gbounds_typ: ctx -> typ -> Prop :=
+| gbounds_top: forall G, gbounds_typ G typ_top
+| gbounds_bot: forall G, gbounds_typ G typ_bot
+| gbounds_bind: forall G Ds,
+    gbounds_decs G Ds ->
+    gbounds_typ G (typ_bind Ds)
+| gbounds_sel: forall G x L,
+    gbounds_typ G (typ_sel (pth_var x) L).
+*)
+
+Inductive gbounds_typ: ctx -> typ -> Prop :=
+| gbounds_top: forall G, gbounds_typ G typ_top
+| gbounds_bot: forall G, gbounds_typ G typ_bot
+| gbounds_bind: forall G Ds,
+    gbounds_decs G Ds ->
+    gbounds_typ G (typ_bind Ds)
+| gbounds_sel: forall G x L,
+    gbounds_typ G (typ_sel (pth_var x) L) (* don't enter path types *)
+with gbounds_dec: ctx -> dec -> Prop :=
+| gbounds_tmem: forall G L Lo Hi n,
+    subtyp pr oktrans G Lo Hi n ->
+    gbounds_typ G Lo ->
+    gbounds_typ G Hi ->
+    gbounds_dec G (dec_typ L Lo Hi)
+| gbounds_fld: forall G l T,
+    gbounds_typ G T ->
+    gbounds_dec G (dec_fld l T)
+| gbounds_mtd: forall G m U V,
+    gbounds_typ G U ->
+    gbounds_typ G V ->
+    gbounds_dec G (dec_mtd m U V)
+with gbounds_decs: ctx -> decs -> Prop :=
+| gbounds_nil: forall G,
+    gbounds_decs G decs_nil
+| gbounds_cons: forall G D Ds,
+    gbounds_dec G D ->
+    gbounds_decs G Ds ->
+    gbounds_decs G (decs_cons D Ds).
+
+Hint Constructors gbounds_typ gbounds_dec gbounds_decs.
+
+Lemma cbounds_to_gbounds:
+   (forall T , cbounds_typ  T  -> forall G, wf_typ  pr deep G T  -> gbounds_typ  G T ) 
+/\ (forall D , cbounds_dec  D  -> forall G, wf_dec  pr      G D  -> gbounds_dec  G D ) 
+/\ (forall Ds, cbounds_decs Ds -> forall G, wf_decs pr      G Ds -> gbounds_decs G Ds).
+Proof.
+  apply cbounds_mutind; intros; auto;
+  try match goal with
+  | H: _ |- _ => solve [inversions H; eauto 10]
+  end.
+  Grab Existential Variables. apply 0. apply 0.
+Qed.
+
+(* 
+Lemma cbounds_dec_to_gbounds_dec: forall G D,
+  cbounds_dec D ->
+  wf_dec pr G D ->
+  gbounds_dec G D.
+Proof.
+  introv Cb. gen G. induction Cb; introv Wf; inversions Wf; eauto.
+  Grab Existential Variables. apply 0. apply 0.
+Qed.
+
+Hint Resolve cbounds_dec_to_gbounds_dec.
+
+Lemma cbounds_decs_to_gbounds_decs: forall G Ds,
+  cbounds_decs Ds ->
+  wf_decs pr G Ds ->
+  gbounds_decs G Ds.
+Proof.
+  introv Cb. gen G. induction Cb; introv Wf; inversions Wf; eauto.
+Qed.
+
+Lemma cbounds_decs_to_gbounds_decs: forall G Ds,
+  cbounds_decs Ds ->
+  wf_decs pr G Ds ->
+  gbounds_decs G Ds.
+*)
+
 Inductive simple_ctx: ctx -> Prop :=
 | simple_ctx_empty: simple_ctx empty
 | simple_ctx_push: forall G x Ds,
     x # G ->
     simple_ctx G ->
+    gbounds_decs G Ds ->
     simple_ctx (G & x ~ (typ_bind Ds)).
 
 Hint Constructors simple_ctx.
 
 Lemma wf_sto_to_simple_ctx: forall s G,
   wf_sto s G -> simple_ctx G.
-Proof. intros. induction H; auto. Qed.
-
-Lemma binds_simple_ctx: forall x T G,
-  simple_ctx G ->
-  binds x T G ->
-  exists Ds, T = typ_bind Ds.
 Proof.
-  introv Sc. gen x T. induction Sc; introv Bi.
-  - false (binds_empty_inv Bi).
-  - apply binds_push_inv in Bi. destruct Bi as [[Eq1 Eq2] | [Ne Bi]].
-    * subst. eauto.
-    * eauto.
+  intros. induction H.
+  - auto.
+  - apply simple_ctx_push; auto. apply* cbounds_to_gbounds.
+Qed.
+
+Scheme gbounds_typ_mut  := Induction for gbounds_typ  Sort Prop
+with   gbounds_dec_mut  := Induction for gbounds_dec  Sort Prop
+with   gbounds_decs_mut := Induction for gbounds_decs Sort Prop.
+Combined Scheme gbounds_mutind from gbounds_typ_mut, gbounds_dec_mut, gbounds_decs_mut.
+
+Lemma weaken_gbounds:
+   (forall G T , gbounds_typ  G T  -> forall x U, ok (G & x ~ U) ->
+                 gbounds_typ  (G & x ~ U) T ) 
+/\ (forall G D , gbounds_dec  G D  -> forall x U, ok (G & x ~ U) ->
+                 gbounds_dec  (G & x ~ U) D ) 
+/\ (forall G Ds, gbounds_decs G Ds -> forall x U, ok (G & x ~ U) ->
+                 gbounds_decs (G & x ~ U) Ds).
+Proof.
+  apply gbounds_mutind; intros; eauto.
+  apply (weaken_subtyp_end H1) in s. eauto.
+Qed.
+
+Lemma invert_simple_ctx: forall G,
+  simple_ctx G ->
+  ok G /\ forall x T, binds x T G -> exists Ds, T = typ_bind Ds /\ gbounds_decs G Ds.
+Proof.
+  introv Sc. induction Sc.
+  - split.
+    * auto.
+    * introv Bi. false (binds_empty_inv Bi).
+  - assert (Ok': ok (G & x ~ typ_bind Ds)) by auto_star.
+    apply (conj Ok').
+    introv Bi. apply binds_push_inv in Bi. destruct Bi as [[Eq1 Eq2] | [Ne Bi]].
+    * subst. exists Ds. apply (conj eq_refl).
+      apply* weaken_gbounds.
+    * destruct IHSc as [Ok F].
+      specialize (F x0 T Bi). destruct F as [Ds0 [Eq Gb]]. subst.
+      exists Ds0. apply (conj eq_refl). apply* weaken_gbounds.
+Qed.
+
+Lemma invert_gbounds_decs: forall G Ds D,
+  gbounds_decs G Ds ->
+  decs_has Ds D ->
+  gbounds_dec G D.
+Proof.
+  intros G Ds. induction Ds; introv Gb DsHas; inversions Gb; inversions DsHas; eauto.
+Qed.
+
+Lemma has_good_bounds: forall G x L Lo Hi,
+  simple_ctx G ->
+  has pr G (trm_var (avar_f x)) (dec_typ L Lo Hi) ->
+  exists n, subtyp pr oktrans G Lo Hi n.
+Proof.
+  introv Sc Has.
+  destruct (invert_simple_ctx Sc) as [Ok F].
+  apply invert_has_pr in Has. destruct Has as [T [Ds' [D' [Bi [Exp [DsHas Eq]]]]]]. subst.
+  specialize (F _ _ Bi). destruct F as [Ds [Eq Gb]]. subst.
+  inversions Exp.
+  inversions DsHas.
+  lets P: (invert_gbounds_decs Gb H0). inversions P. eauto.
 Qed.
 
 Lemma exp_preserves_wf: forall G T Ds,
@@ -3899,7 +4089,8 @@ Proof.
     clear IHWfT.
     apply invert_has_pr in H. destruct H as [X [DsX [D' [Bi [Exp [DsHas Eq]]]]]].
     subst.
-    destruct (binds_simple_ctx Sc Bi) as [DsX' Eq]. subst. inversions Exp.
+    destruct  (invert_simple_ctx Sc) as [_ P]. specialize (P _ _ Bi).
+    destruct P as [DsX' [Eq Gb]]. subst. inversions Exp.
     rename DsX' into DsX. inversions DsHas.
 Abort.
 
@@ -3938,6 +4129,7 @@ Proof.
   + (* case subtyp_sel_r *)
     introv Has St1 IHSt1 St2 IHSt2 Eq1 Exp1 Exp2.
     rename S into Lo, U into Hi. subst.
+    (* note: here it's crucial that subtyp_sel_r has Lo<:Hi as a premise *)
     apply invert_exp_sel in Exp2. destruct Exp2 as [Lo' [Hi' [Has' Exp2]]].
     lets Eq: (has_unique Has' Has).
     simpl in Eq. specialize (Eq eq_refl). inversions Eq. clear Has'.
@@ -4078,11 +4270,12 @@ Proof.
     auto_specialize.
     destruct IHExp as [Dsm [Expm Sds2]].
     destruct IHTy as [X1 [n [BiG St]]].
-    lets E: (binds_simple_ctx Sc BiG). destruct E as [Ds1 Eq]. subst X1.
+    destruct (invert_simple_ctx Sc) as [_ E].
+    specialize (E _ _ BiG). destruct E as [Ds1 [Eq Gb]]. subst X1.
     lets Exp1: (exp_bind pr G Ds1).
     lets Sds1: (exp_preserves_sub_pr St Exp1 Expm).
                (********************)
-    (* BIND: need to apply narrowing in Sds2 first!) *)
+    (* BIND: need to apply narrowing in Sds2 first! *)
     lets Sds: (subbdecs_trans Sds1 Sds2).
     (* to make sure subst and inversions still work: *)
     assert (Clo': True -> open_dec v D2 = D2) by auto. clear Clo.
@@ -4105,7 +4298,8 @@ Proof.
     auto_specialize.
     destruct IHExp as [Dsm [Expm Sds2]].
     destruct IHTy as [X1 [n [BiG St]]].
-    lets E: (binds_simple_ctx Sc BiG). destruct E as [Ds1 Eq]. subst X1.
+    destruct (invert_simple_ctx Sc) as [_ E].
+    specialize (E _ _ BiG). destruct E as [Ds1 [Eq Gb]]. subst X1.
     lets Exp1: (exp_bind pr G Ds1).
     lets Sds1: (exp_preserves_sub_pr St Exp1 Expm).
                (********************)
@@ -4168,27 +4362,37 @@ Proof.
     destruct IHSt2 as [n0 IHSt2].
     apply invert_subdec_typ_sync_left in Sd.
     destruct Sd as [Lo1 [Hi1 [Eq [StLo StHi]]]]. subst D1.
-    exists (max n0 n2).
+    (* Before, we got Lo1<:Hi1 out of Sd, but this premise had to be removed from 
+       subdecs_typ because otherwise the (L: Top..Bot) of decs_bot is not a subdec
+       of anything.
+       So now we use has_good_bounds, but this requires a good context. *)
+    lets P: (has_good_bounds Sc Has1). destruct P as [n1 StLoHi].
+    exists (max n1 (max n0 n2)).
     apply subtyp_tmode.
     apply (subtyp_sel_l Has1).
-    - admit. (* TODO this is why subdec should also require Lo1<:Hi1, but what about
-          the members of decs_bot??? *)
-    - apply subtyp_trans with U.
+    - apply (subtyp_max_ctx StLoHi). apply Max.le_max_l.
+    - refine (subtyp_max_ctx _ (Max.le_max_r _ _)).
+      apply subtyp_trans with U.
       * apply (subtyp_max_ctx StHi). apply Max.le_max_r.
       * apply (subtyp_max_ctx IHSt2). apply Max.le_max_l.
-  + (* case subtyp_sel_l *)
+  + (* case subtyp_sel_r *)
     introv Has2 IHHas St1 IHSt1 St2 IHSt2 Eq Sc. subst. auto_specialize.
     destruct IHHas as [D1 [n2 [Has1 Sd]]].
     clear IHSt1.
     destruct IHSt2 as [n0 IHSt2].
     apply invert_subdec_typ_sync_left in Sd.
     destruct Sd as [Lo1 [Hi1 [Eq [StLo StHi]]]]. subst D1.
-    exists (max n0 n2).
+    (* Before, we got Lo1<:Hi1 out of Sd, but this premise had to be removed from 
+       subdecs_typ because otherwise the (L: Top..Bot) of decs_bot is not a subdec
+       of anything.
+       So now we use has_good_bounds, but this requires a good context. *)
+    lets P: (has_good_bounds Sc Has1). destruct P as [n1 StLoHi].
+    exists (max n1 (max n0 n2)).
     apply subtyp_tmode.
     apply (subtyp_sel_r Has1).
-    - admit. (* TODO this is why subdec should also require Lo1<:Hi1, but what about
-          the members of decs_bot??? *)
-    - apply subtyp_trans with S.
+    - apply (subtyp_max_ctx StLoHi). apply Max.le_max_l.
+    - refine (subtyp_max_ctx _ (Max.le_max_r _ _)).
+      apply subtyp_trans with S.
       * apply (subtyp_max_ctx IHSt2). apply Max.le_max_l.
       * apply (subtyp_max_ctx StLo). apply Max.le_max_r.
   + (* case subtyp_tmode *) auto.
