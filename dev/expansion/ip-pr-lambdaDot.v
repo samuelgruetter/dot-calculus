@@ -2013,6 +2013,14 @@ Proof.
   apply (weaken_exp_middle Ok Exp).
 Qed.
 
+Lemma weaken_wf_decs_end: forall m G1 G2 Ds,
+  ok (G1 & G2) -> wf_decs m G1 Ds -> wf_decs m (G1 & G2) Ds.
+Proof.
+  introv Ok Wf. destruct weakening as [_ [_[_ [_  [W _]]]]].
+  specialize (W m G1 Ds Wf G1 G2 empty).
+  repeat rewrite concat_empty_r in W. apply* W.
+Qed.
+
 Lemma weaken_subtyp_middle: forall m1 m2 G1 G2 G3 S U n,
   ok (G1 & G2 & G3) -> 
   subtyp m1 m2 (G1      & G3) S U n ->
@@ -4005,6 +4013,7 @@ Inductive simple_ctx: ctx -> Prop :=
     x # G ->
     simple_ctx G ->
     gbounds_decs G Ds ->
+    wf_decs pr G Ds ->
     simple_ctx (G & x ~ (typ_bind Ds)).
 
 Hint Constructors simple_ctx.
@@ -4036,7 +4045,11 @@ Qed.
 
 Lemma invert_simple_ctx: forall G,
   simple_ctx G ->
-  ok G /\ forall x T, binds x T G -> exists Ds, T = typ_bind Ds /\ gbounds_decs G Ds.
+  ok G /\
+  forall x T, binds x T G -> exists Ds,
+     T = typ_bind Ds /\
+     gbounds_decs G Ds /\
+     wf_decs pr G Ds.
 Proof.
   introv Sc. induction Sc.
   - split.
@@ -4046,10 +4059,14 @@ Proof.
     apply (conj Ok').
     introv Bi. apply binds_push_inv in Bi. destruct Bi as [[Eq1 Eq2] | [Ne Bi]].
     * subst. exists Ds. apply (conj eq_refl).
-      apply* weaken_gbounds.
+      split.
+      + apply* weaken_gbounds.
+      + apply* weaken_wf_decs_end.
     * destruct IHSc as [Ok F].
       specialize (F x0 T Bi). destruct F as [Ds0 [Eq Gb]]. subst.
-      exists Ds0. apply (conj eq_refl). apply* weaken_gbounds.
+      exists Ds0. apply (conj eq_refl). split.
+      + apply* weaken_gbounds.
+      + apply* weaken_wf_decs_end.
 Qed.
 
 Lemma invert_gbounds_decs: forall G Ds D,
@@ -4068,34 +4085,37 @@ Proof.
   introv Sc Has.
   destruct (invert_simple_ctx Sc) as [Ok F].
   apply invert_has_pr in Has. destruct Has as [T [Ds' [D' [Bi [Exp [DsHas Eq]]]]]]. subst.
-  specialize (F _ _ Bi). destruct F as [Ds [Eq Gb]]. subst.
+  specialize (F _ _ Bi). destruct F as [Ds [Eq [Gb _]]]. subst.
   inversions Exp.
   inversions DsHas.
   lets P: (invert_gbounds_decs Gb H0). inversions P. eauto.
 Qed.
 
 Lemma exp_preserves_wf: forall G T Ds,
+  exp pr G T Ds ->
   wf_typ pr deep G T ->
   simple_ctx G ->
-  exp pr G T Ds ->
   wf_bdecs pr G Ds.
 Proof.
-  introv WfT. gen_eq m1: pr. gen_eq m2: deep. gen Ds.
-  induction WfT; introv Eq1 Eq2 Sc Exp; subst;
-  inversions Exp; auto; try discriminate.
-  - lets Eq: (has_unique H H4). simpl in Eq. specialize (Eq eq_refl). inversions Eq.
-    apply* IHWfT2.
-  - lets Eq: (has_unique H H4). simpl in Eq. specialize (Eq eq_refl). inversions Eq.
-    clear IHWfT.
-    apply invert_has_pr in H. destruct H as [X [DsX [D' [Bi [Exp [DsHas Eq]]]]]].
-    subst.
-    destruct  (invert_simple_ctx Sc) as [_ P]. specialize (P _ _ Bi).
-    destruct P as [DsX' [Eq Gb]]. subst. inversions Exp.
-    rename DsX' into DsX. inversions DsHas.
-Abort.
+  introv Exp. gen_eq m: pr. induction Exp; introv Eq Wf Sc; subst.
+  - auto.
+  - auto.
+  - inversions Wf. auto.
+  - inversions Wf.
+    + (* case wf_sel1: simple, because everything we need is packed in Wf *)
+      lets Eq: (has_unique H H2). simpl in Eq. specialize (Eq eq_refl). inversions Eq.
+      auto.
+    + (* case wf_sel2: Wf only contains shallow wf-ness of U, but we need deep,
+         so we have to get it out if simple_ctx G. *)
+      lets Eq: (has_unique H H3). simpl in Eq. specialize (Eq eq_refl). inversions Eq.
+      apply* IHExp.
+      lets P: (has_good_bounds Sc H). destruct P as [n St].
+      destruct (subtyp_regular St) as [_ WfU]. exact WfU.
+Qed.
 
 Lemma exp_preserves_sub_pr: forall m2 G T1 T2 Ds1 Ds2 n1,
   subtyp pr m2 G T1 T2 n1 ->
+  simple_ctx G ->
   exp pr G T1 Ds1 ->
   exp pr G T2 Ds2 ->
   subbdecs pr G Ds1 Ds2.
@@ -4103,31 +4123,33 @@ Proof.
   introv St. gen_eq m1: pr. gen Ds1 Ds2. gen m1 m2 G T1 T2 n1 St.
   apply (subtyp_ind (fun m1 m2 G T1 T2 n => forall Ds1 Ds2,
     m1 = pr ->
+    simple_ctx G ->
     exp m1 G T1 Ds1 ->
     exp m1 G T2 Ds2 ->
     subbdecs m1 G Ds1 Ds2)).
   + (* case subtyp_refl *)
-    introv n Wf Eq Exp1 Exp2. subst.
+    introv n Wf Eq Sc Exp1 Exp2. subst.
     lets Eq: (exp_unique Exp1 Exp2). subst. destruct Ds2.
     - apply subbdecs_bot.
     - apply subbdecs_refl.
   + (* case subtyp_top *)
-    introv n Wf Eq Exp1 Exp2. subst. inversions Exp2. destruct Ds1.
+    introv n Wf Eq Sc Exp1 Exp2. subst. inversions Exp2. destruct Ds1 as [|Ds1].
     - apply subbdecs_bot.
-    - refine (subbdecs_decs (subdecs_empty _ _)). admit. (* TODO exp_preserves_wf *)
+    - refine (subbdecs_decs (subdecs_empty _ _)).
+      lets P: (exp_preserves_wf Exp1 Wf Sc). inversions P. assumption.
   + (* case subtyp_bot *)
-    introv n Wf Eq Exp1 Exp2. subst. inversions Exp1. apply subbdecs_bot.
+    introv n Wf Eq Sc Exp1 Exp2. subst. inversions Exp1. apply subbdecs_bot.
   + (* case subtyp_bind *)
-    introv Sds Eq1 Exp1 Exp2. subst. inversions Exp1. inversions Exp2.
+    introv Sds Eq1 Sc Exp1 Exp2. subst. inversions Exp1. inversions Exp2.
     apply (subbdecs_decs Sds).
   + (* case subtyp_sel_l *)
-    introv Has2 St1 IHSt1 St2 IHSt2 Eq1 Exp1 Exp2. subst.
+    introv Has2 St1 IHSt1 St2 IHSt2 Eq1 Sc Exp1 Exp2. subst.
     apply invert_exp_sel in Exp1. destruct Exp1 as [Lo1 [Hi1 [Has1 Exp1]]].
     lets Eq: (has_unique Has2 Has1).
     simpl in Eq. specialize (Eq eq_refl). inversions Eq.
     apply IHSt2; auto.
   + (* case subtyp_sel_r *)
-    introv Has St1 IHSt1 St2 IHSt2 Eq1 Exp1 Exp2.
+    introv Has St1 IHSt1 St2 IHSt2 Eq1 Sc Exp1 Exp2.
     rename S into Lo, U into Hi. subst.
     (* note: here it's crucial that subtyp_sel_r has Lo<:Hi as a premise *)
     apply invert_exp_sel in Exp2. destruct Exp2 as [Lo' [Hi' [Has' Exp2]]].
@@ -4136,13 +4158,13 @@ Proof.
     destruct (subtyp_regular St2) as [_ WfLo].
     lets ExpLo: (exp_total WfLo).
     destruct ExpLo as [DsLo ExpLo].
-    specialize (IHSt1 DsLo Ds2 eq_refl ExpLo Exp2).
-    specialize (IHSt2 Ds1 DsLo eq_refl Exp1 ExpLo).
+    specialize (IHSt1 DsLo Ds2 eq_refl Sc ExpLo Exp2).
+    specialize (IHSt2 Ds1 DsLo eq_refl Sc Exp1 ExpLo).
     apply (subbdecs_trans IHSt2 IHSt1).
   + (* case subtyp_tmode *)
     introv St IHSt Eq1 Exp1 Exp2. apply IHSt; auto.
   + (* case subtyp_trans *)
-    introv St12 IH12 St23 IH23 Eq1 Exp1 Exp3. subst. rename Ds2 into Ds3.
+    introv St12 IH12 St23 IH23 Eq1 Sc Exp1 Exp3. subst. rename Ds2 into Ds3.
     destruct (subtyp_regular St23) as [Wf2 _].
     lets Exp2: (exp_total Wf2).
     destruct Exp2 as [Ds2 Exp2].
@@ -4249,7 +4271,7 @@ Proof.
       - apply subbdecs_bot.
     * (* case Ds0 <> bdecs_bot *)
     *)
-    lets Sds01: (exp_preserves_sub_pr StHi ExpHi1 ExpHi2).
+    lets Sds01: (exp_preserves_sub_pr StHi Sc ExpHi1 ExpHi2).
                 (********************)
     (* destruct Sds01 as [L1 Sds01]. BIND *)
     exists Ds0. split.
@@ -4271,9 +4293,9 @@ Proof.
     destruct IHExp as [Dsm [Expm Sds2]].
     destruct IHTy as [X1 [n [BiG St]]].
     destruct (invert_simple_ctx Sc) as [_ E].
-    specialize (E _ _ BiG). destruct E as [Ds1 [Eq Gb]]. subst X1.
+    specialize (E _ _ BiG). destruct E as [Ds1 [Eq [Gb WfDs1]]]. subst X1.
     lets Exp1: (exp_bind pr G Ds1).
-    lets Sds1: (exp_preserves_sub_pr St Exp1 Expm).
+    lets Sds1: (exp_preserves_sub_pr St Sc Exp1 Expm).
                (********************)
     (* BIND: need to apply narrowing in Sds2 first! *)
     lets Sds: (subbdecs_trans Sds1 Sds2).
@@ -4283,11 +4305,10 @@ Proof.
     - (* case subbdecs_refl *)
       exists D2 0. split.
       * apply (has_pr BiG Exp1 Ds2Has).
-      * apply subdec_refl. admit. (* TODO should work because D2 occurs in G *)
+      * apply subdec_refl. inversions Ds2Has.
+        apply (decs_has_preserves_wf H0 WfDs1).
     - (* case subbdecs_decs *)
       rename Ds3 into Ds2.
-      (* should work because Ds1 appears in G
-      assert (WfDs1: wf_decs pr G Ds1) by admit. *)
       inversions Ds2Has.
       lets P: (decs_has_preserves_sub H0 H2).
       destruct P as [D1 [Eq [Ds1Has Sd]]].
@@ -4299,9 +4320,9 @@ Proof.
     destruct IHExp as [Dsm [Expm Sds2]].
     destruct IHTy as [X1 [n [BiG St]]].
     destruct (invert_simple_ctx Sc) as [_ E].
-    specialize (E _ _ BiG). destruct E as [Ds1 [Eq Gb]]. subst X1.
+    specialize (E _ _ BiG). destruct E as [Ds1 [Eq [Gb WfDs1]]]. subst X1.
     lets Exp1: (exp_bind pr G Ds1).
-    lets Sds1: (exp_preserves_sub_pr St Exp1 Expm).
+    lets Sds1: (exp_preserves_sub_pr St Sc Exp1 Expm).
                (********************)
     (* BIND: need to apply narrowing in Sds2 first!) *)
     lets Sds: (subbdecs_trans Sds1 Sds2).
@@ -4309,11 +4330,10 @@ Proof.
     - (* case subbdecs_refl *)
       exists D2 0. split.
       * apply (has_pr BiG Exp1 Ds2Has).
-      * apply subdec_refl. admit. (* TODO should work because D2 occurs in G *)
+      * apply subdec_refl. inversions Ds2Has.
+        apply (decs_has_preserves_wf H0 WfDs1).
     - (* case subbdecs_decs *)
       rename Ds3 into Ds2.
-      (* should work because Ds1 appears in G
-      assert (WfDs1: wf_decs pr G Ds1) by admit. *)
       inversions Ds2Has.
       lets P: (decs_has_preserves_sub H0 H2).
       destruct P as [D1 [Eq [Ds1Has Sd]]].
@@ -4428,7 +4448,9 @@ Proof.
     auto_specialize.
     exists T 0.
     apply (conj Bi).
-    apply subtyp_tmode. refine (subtyp_refl _ _). admit. (* wf-ness *)
+    destruct (invert_simple_ctx Sc) as [_ E].
+    specialize (E _ _ Bi). destruct E as [Ds1 [Eq [Gb WfDs1]]]. subst T.
+    apply subtyp_tmode. refine (subtyp_refl _ _). apply (wf_bind_deep WfDs1).
   + (* case ty_sbsm *)
     introv Ty IHTy St IHSt Sc Eq. subst.
     auto_specialize.
