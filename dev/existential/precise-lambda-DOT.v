@@ -1244,8 +1244,10 @@ Lemma invert_wf_sto: forall s G,
   wf_sto s G ->
   forall x T2,
   ty_trm G (trm_var (avar_f x)) T2 ->
-  exists ds G1 G2 T1,
-    G = G1 & x ~ T1 & G2 /\ 
+  exists ds T1 s1 s2 G1 G2,
+    s = s1 & x ~ ds & s2 /\
+    G = G1 & x ~ T1 & G2 /\
+    wf_sto s1 G1 /\ 
     ty_defs G1 ds T1.
 Proof.
   intros s G Wf. induction Wf; intros.
@@ -1255,14 +1257,12 @@ Proof.
     unfold binds in BiG. rewrite get_push in BiG.
     case_if.
     - inversions BiG.
-      exists ds G (@empty typ) Y2. rewrite concat_empty_r.
-      apply (conj eq_refl H1).
+      exists ds Y2 s (@empty defs) G (@empty typ). do 2 rewrite concat_empty_r. auto.
     - specialize (IHWf y Y2 (ty_var BiG)).
-      destruct IHWf as [dsY [G1 [G2 [Y' [EqG TydsY]]]]]. subst.
+      destruct IHWf as [dsY [Y' [s1 [s2 [G1 [G2 [Eqs [EqG [Wf1 TydsY]]]]]]]]]. subst.
       lets Eq: (binds_middle_eq_inv BiG (wf_sto_to_ok_G Wf)). subst Y'.
-      exists dsY G1 (G2 & x ~ X) Y2.
-      rewrite concat_assoc.
-      apply (conj eq_refl TydsY).
+      exists dsY Y2 s1 (s2 & x ~ ds) G1 (G2 & x ~ X).
+      do 2 rewrite concat_assoc. auto.
 Qed.
 
 (*
@@ -1366,10 +1366,46 @@ Lemma strengthen_typ_has: forall G1 x T G2 D,
 Admitted.
 
 (* Corresponds to "expansion is total".
-   TODO: also needs wf-ness of T. *)
-Lemma has_decidable: forall G T l,
+   TODO: also needs wf-ness of T.
+   Doesn't hold if there are circular upper bounds (only possible if self refs).
+   We can exclude circular upper bounds in realizable envs, but not in any env,
+   which might get bad through narrowing+intersection. *)
+Definition has_decidable_for(n: nat) := forall s G T l x,
+  ctx_size G = n ->
+  wf_sto s G ->
+  binds x T G -> (* <- just to get realizability *)
   typ_hasnt G T l \/ exists D, typ_has G T D /\ label_of_dec D = l.
+
+Lemma has_decidable_for_base: has_decidable_for 0.
+Proof.
+  introv Eq Wf Bi. apply ctx_size_zero_inv in Eq. subst.
+  exfalso. apply (binds_empty_inv Bi).
+Qed.
+
+Lemma has_decidable_step: forall n,
+  (forall k, k <= n -> has_decidable_for k) ->
+  has_decidable_for (S n).
+Proof.
+  intros n IH. introv Eq Wf Bi.
+  lets P: (invert_wf_sto Wf (ty_var Bi)).
+  destruct P as [ds [T' [s1 [s2 [G1 [G2 [Eqs [EqG [Wf1 Tyds]]]]]]]]]. subst.
+  lets Ok: (wf_sto_to_ok_G Wf).
+  lets Eq2: (binds_middle_eq_inv Bi Ok). subst T'.
+  lets xNs: (wf_sto_to_x_notin_G
+  lets Wf2: (wf_sto_push Wf1 
+  induction Tyds.
+  + left. apply typ_top_hasnt.
+  + 
+Qed.
 Admitted.
+
+
+Lemma subtyp_preserves_is_bot_step: forall n,
+  (forall k, k <= n -> subtyp_preserves_is_bot_for k) ->
+ subtyp_preserves_is_bot_for (S n).
+Proof.
+  intros n IH. unfold subtyp_preserves_is_bot_for in *.
+
 
 (* narrowing needed for function calls *)
 Lemma narrowing:

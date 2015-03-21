@@ -303,9 +303,12 @@ Inductive union_dec: dec -> dec -> dec -> Prop :=
     (dec_mtd m T1 U1) || (dec_mtd m T2 U2) == (dec_mtd m (typ_and T1 T2) (typ_or U1 U2))
 where "D1 || D2 == D3" := (union_dec D1 D2 D3).
 
-(* To try out:
-   - allow transitivity only with a no-path-type in the middle (restrictive! really?)
-     or two modes, simp and full, and show that simp <=> full
+(* Don't try out these:
+   - allow transitivity only with a no-path-type in the middle (simp),
+     add mode where path type in the middle is allowed (full)
+     simp is not strong enough for what we need in invert_ty_var
+     simp <=> full should hold, but is very hard to prove because imprecision
+     on middle p.L
    - require that p.L in the middle of transitivity rule has good bounds
      doesnt' work because of imprecision (see below)
    *)
