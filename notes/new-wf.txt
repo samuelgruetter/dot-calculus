@@ -1,0 +1,54 @@
+
+Today [3.3.2015] I solved a problem for which I had no idea how to solve before. It's the following: Define a wellformedness judgment such that you can show that all wellformed types have an expansion (lemma "exp_total").
+
+This is quite important because narrowing and exp_preserves_sub both need exp_total.
+
+So far, I was using the wf-rules of the FOOL'12 paper:
+
+G |- p has L: S..U    G |- S wf    G |- U wf
+-------------------------------------------- TSEL-WF1
+G |- p.L wf
+
+G |- p |- L: Bot..U
+------------------- TSEL-WF2
+G |- p.L wf
+
+With these rules, given a z of type { z => L: Bot..z.L }, the type z.L is wf, but has no expansion.
+
+Now Julien Crétin's thesis uses two terms which are very useful here: He classifies types into "computational types" (those which have introduction forms in the terms, such as pairs and arrow types, or typ_bind in muDOT) and "non-expansive types" (those which are just a different, more general way to look at the same term, e.g. union/intersection types, or the bounds of path types).
+Then, he defines well-foundedness for System F functors in Figure 3.17, and uses the computational/non-expansive classification to classify the functors as well-founded/non-expansive.
+
+For DOT, we can do something somehow similar [don't worry if you don't see the link, maybe there's none ;-)]. The wf judgment for types is parameterized by a mode, which can be "deep" or "shallow". The idea is that wf-deep enters into all types, whereas wf-shallow only enters into non-expansive types, but not into computational types.
+Note that the wf judgment for decs has no mode, because it's always deep.
+
+The relevant rules are:
+
+G, z: {z=>Ds} |- Ds wf
+---------------------- wf_bind_deep
+G |- {z=>Ds} wf deep
+
+(no premises)
+----------------------- wf_bind_shallow
+G |- {z=>Ds} wf shallow
+
+G |- p has L: S..U
+G |- S wf m
+G |- U wf m
+------------------ wf_sel1
+G |- p.L wf m
+
+G |- p has L: Bot..U
+G |- U wf shallow
+-------------------- wf_sel2 
+G |- U wf deep
+
+
+Now observe that given a z of type { z => L: Bot..z.L }, the type z.L is not wf, because we would have to show that its upper bound is shallowly wf, but its upper bound is again z.L, so there's no finite proof.
+However, defining a recursive list such as in {z => List: Bot..{_ => head: Top, tail: z.List }} is perfectly possible, because to prove that z.List is wf, we can apply wf_sel2, so we need to show that its upper bound, which is a record type, is wf, which we can trivially do using wf_bind_shallow.
+
+I wrote this new wf judgment in Coq (see https://github.com/samuelgruetter/dot-calculus/blob/4864a10d4f22e041e27bb784ea6def65b1876b08/dev/expansion/max-ctx-growth-ip-pr-muDot.v#L478), and showing exp_total with it is easy:
+https://github.com/samuelgruetter/dot-calculus/blob/4864a10d4f22e041e27bb784ea6def65b1876b08/dev/expansion/max-ctx-growth-ip-pr-muDot.v#L1445
+
+It seems to me that what I'm describing here is quite obvious [except maybe how it relates to Crétin's thesis], but still, I only realized it now...
+
+
