@@ -185,6 +185,12 @@ Top and Bot have no members. The typ_ex_has rule is the interesting one.
       ------------------------ (typ_ex_has)
           G |- ∃x:S U has D
 
+        G, x: S |- U has L: Lo..Hi
+ ----------------------------------------- (typ_ex_has_typ)
+ G |- (∃x:S U) has L: (∃x:S Lo)..(∃x:S Hi)
+
+and the same for fields and methods
+ 
 TODO: Do we have to substitute a self reference in D by x?
            G |- x: T
           G |- T has D

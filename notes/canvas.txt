@@ -1,0 +1,16 @@
+
+
+
+type Canvas = ∃m:ColorModule.{ def setFillColor: m.Color -> Unit, ... }
+
+val m: ColorModule = getRGBColorModule; new { def setFillColor(c: m.Color): Unit = {...}, ...}
+
+
+let G = {m: ColorModule} and let's typecheck 
+
+
+G |- m: ColorModule     { def setFillColor: m.Color -> Unit } <: { def setFillColor: m.Color -> Unit }
+---------------------------------------------------- subtyp_ex_r
+G |- { def setFillColor: m.Color -> Unit } <: Canvas              G |- new {...} : { def setFillColor: m.Color -> Unit }
+------------------------------------------------------------------------------------------------------------- ty_sbsm
+G |- new { def setFillColor(c: m.Color): Unit = {...}} : Canvas

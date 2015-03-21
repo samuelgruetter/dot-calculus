@@ -1,0 +1,42 @@
+
+(z: {def fact: Nat -> Nat} => {
+  def fact(n: Nat): Nat = if n == 0 then 1 else z.fact(n-1)
+})
+:
+∃z:{def fact: Nat -> Nat} {def fact: Nat -> Nat}
+
+not quite what we want
+--> don't use ty_ex_intro, but use ty_new, which is a primitive we need to get recursion
+
+
+new {z =>
+  def fact(n: Nat): Nat = if n == 0 then 1 else z.fact(n-1)
+}
+:
+∃z:{def fact: Nat -> Nat} z.type
+
+but what we actually want is to show just this:
+
+{def fact: Nat -> Nat}
+
+
+
+(glob: {type List: ..., val empty: ...} => {
+  type List: Bot .. ∃z: {
+    type T: Bot .. Top
+    def head: Unit -> T
+    def tail: Unit -> glob.List & {T = z.T}
+  } z.type
+  
+  val empty: glob.List & {T = Bot} = (z: glob.List & {T = Bot} => {
+    type T = Bot
+    // head and tail on empty list loop infinitely
+    def head(u: Unit): Bot = z.head(u)
+    def tail(u: Unit): glob.List & {T = Bot} = z.tail(u)
+  })
+})
+
+
+
+
+
