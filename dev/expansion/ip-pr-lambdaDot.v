@@ -700,6 +700,10 @@ Scheme s2001 := Induction for pth_has Sort Prop
 with   s2002 := Induction for pth_ty  Sort Prop.
 Combined Scheme pth_has_ty_mutind from s2001, s2002.
 
+Scheme s3001 := Induction for trm_has Sort Prop
+with   s3002 := Induction for ty_trm  Sort Prop.
+Combined Scheme trm_has_ty_mutind from s3001, s3002.
+
 Scheme exp_mut20  := Induction for exp Sort Prop
 with   has_mut20  := Induction for pth_has Sort Prop.
 Combined Scheme exp_has_mutind from exp_mut20, has_mut20.
@@ -820,8 +824,11 @@ Ltac pick_fresh x :=
 Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
   apply_fresh_base T gather_vars x.
 
-Hint Constructors exp pth_has trm_has wf_typ wf_dec wf_decs
-                  subtyp subdec subdecs ty_trm ty_def ty_defs.
+Hint Constructors
+  wf_typ wf_dec wf_decs
+  exp pth_has pth_ty trm_has 
+  subtyp subdec subdecs
+  ty_trm ty_def ty_defs.
 Hint Constructors wf_bdecs subbdecs wf_ctx wf_sto.
 Hint Constructors defs_hasnt defs_has decs_hasnt decs_has bdecs_has.
 
@@ -1922,6 +1929,15 @@ Proof.
   apply (W m (G1 & empty)); rewrite* concat_empty_r.
 Qed.
 
+Lemma weaken_trm_has_end: forall G1 G2 t d,
+  ok (G1 & G2) -> trm_has G1 t d -> trm_has (G1 & G2) t d.
+Proof.
+  intros.
+  destruct weakening as [_ [_ [_ [_ [_ [_ [W _]]]]]]].
+  rewrite <- (concat_empty_r (G1 & G2)).
+  apply (W (G1 & empty)); rewrite* concat_empty_r.
+Qed.
+
 Lemma weaken_pth_ty_end: forall m G1 G2 p T,
   ok (G1 & G2) -> pth_ty m G1 p T -> pth_ty m (G1 & G2) p T.
 Proof.
@@ -2824,9 +2840,8 @@ Qed.
 (* ###################################################################### *)
 (** ** More inversion lemmas *)
 
-(*
 Lemma invert_var_has_dec: forall G x D,
-  has ip G (trm_var (avar_f x)) D ->
+  trm_has G (trm_var (avar_f x)) D ->
   exists T Ds D', ty_trm G (trm_var (avar_f x)) T /\
                   exp ip G T Ds /\
                   bdecs_has Ds D' /\
@@ -2840,7 +2855,7 @@ Proof.
 Qed.
 
 Lemma invert_has: forall G t D,
-   has ip G t D ->
+   trm_has G t D ->
    (exists T Ds,      ty_trm G t T /\
                       exp ip G T Ds /\
                       bdecs_has Ds D /\
@@ -2859,7 +2874,7 @@ Proof.
 Qed.
 
 Lemma invert_var_has_dec_typ: forall G x l S U,
-  has ip G (trm_var (avar_f x)) (dec_typ l S U) ->
+  trm_has G (trm_var (avar_f x)) (dec_typ l S U) ->
   exists X Ds S' U', ty_trm G (trm_var (avar_f x)) X /\
                      exp ip G X Ds /\
                      bdecs_has Ds (dec_typ l S' U') /\
@@ -2875,7 +2890,7 @@ Proof.
 Qed.
 
 Lemma invert_var_has_dec_fld: forall G x l T,
-  has ip G (trm_var (avar_f x)) (dec_fld l T) ->
+  trm_has G (trm_var (avar_f x)) (dec_fld l T) ->
   exists X Ds T', ty_trm G (trm_var (avar_f x)) X /\
                   exp ip G X Ds /\
                   bdecs_has Ds (dec_fld l T') /\
@@ -2890,7 +2905,7 @@ Proof.
 Qed.
 
 Lemma invert_var_has_dec_mtd: forall G x l S U,
-  has ip G (trm_var (avar_f x)) (dec_mtd l S U) ->
+  trm_has G (trm_var (avar_f x)) (dec_mtd l S U) ->
   exists X Ds S' U', ty_trm G (trm_var (avar_f x)) X /\
                      exp ip G X Ds /\
                      bdecs_has Ds (dec_mtd l S' U') /\
@@ -2905,17 +2920,6 @@ Proof.
   exists X Ds S U. auto.
 Qed.
 
-Lemma invert_has_pr: forall G x D,
-  has pr G (trm_var (avar_f x)) D ->
-  exists T Ds D', binds x T G /\
-                  exp pr G T Ds /\
-                  bdecs_has Ds D' /\
-                  D = D' (* BIND open_dec x D' *).
-Proof.
-  introv Has. inversions Has. exists T Ds D. auto.
-Qed.
-*)
-
 Lemma invert_exp_sel: forall m G v L Ds,
   exp m G (typ_sel (pth_var (avar_f v)) L) Ds ->
   exists Lo Hi, pth_has m G (pth_var (avar_f v)) (dec_typ L Lo Hi) /\
@@ -2924,51 +2928,46 @@ Proof.
   introv Exp. inversions Exp. exists Lo Hi. auto.
 Qed.
 
-(*
 Lemma invert_ty_sel: forall G t l T,
   ty_trm G (trm_sel t l) T ->
-  (* we have this disjunction because otherwise the base case needed subtyp_refl,
-     which requires wf-ness of T, but we don't want to deal with wf-ness here *)
-  has ip G t (dec_fld l T) \/
-  exists T' n, subtyp ip oktrans G T' T n /\ has ip G t (dec_fld l T').
+  exists T' n, subtyp ip G T' T n /\ trm_has G t (dec_fld l T').
 Proof.
   introv Ty. gen_eq t0: (trm_sel t l). gen t l.
   induction Ty; intros t' l' Eq; try (solve [ discriminate ]).
-  + inversions Eq. left. assumption.
+  + inversions Eq. exists T 0. refine (conj _ H).
+    apply subtyp_refl. apply trm_has_regular in H. inversions H. assumption.
   + subst. rename t' into t, l' into l. specialize (IHTy _ _ eq_refl).
-    right. destruct IHTy as [IHTy | IHTy].
-    * exists T n. split; assumption.
-    * destruct IHTy as [T' [n' [St Has]]]. exists T' (max n n'). split.
-      - lets Hle1: (Max.le_max_l n n'). lets Hle2: (Max.le_max_r n n').
-        apply (subtyp_trans (subtyp_max_ctx St Hle2) (subtyp_max_ctx H Hle1)).
-      - exact Has.
+    destruct IHTy as [T' [n' [St Has]]]. exists T' (max n n'). split.
+    - lets Hle1: (Max.le_max_l n n'). lets Hle2: (Max.le_max_r n n').
+      apply (subtyp_trans (subtyp_max_ctx St Hle2) (subtyp_max_ctx H Hle1)).
+    - exact Has.
 Qed.
 
 Lemma invert_ty_call: forall G t m V2 u,
   ty_trm G (trm_call t m u) V2 ->
-  exists U V1 n, has ip G t (dec_mtd m U V1)
-               /\ (subtyp ip oktrans G V1 V2 n \/ V1 = V2)
+  exists U V1 n, trm_has G t (dec_mtd m U V1)
+               /\ (subtyp ip G V1 V2 n)
                /\ ty_trm G u U.
 Proof.
   introv Ty. gen_eq e: (trm_call t m u). gen t m u.
   induction Ty; intros t0 m0 u0 Eq; try solve [ discriminate ]; symmetry in Eq.
   + (* case ty_call *)
-    inversions Eq. exists U V 0. auto.
+    inversions Eq. exists U V 0. apply (conj H). split.
+    - apply subtyp_refl. apply trm_has_regular in H. inversions H. assumption.
+    - auto.
   + (* case ty_sbsm *)
     subst t. specialize (IHTy _ _ _ eq_refl).
     rename t0 into t, m0 into m, u0 into u, U into V3, T into V2.
     destruct IHTy as [U [V1 [n' [Has [St12 Tyu]]]]].
     exists U V1.
     exists (max n n'). refine (conj Has (conj _ Tyu)).
-    destruct St12 as [St12 | Eq].
-    - left. apply (subtyp_trans (subtyp_max_ctx St12 (Max.le_max_r n n'))
-                                  (subtyp_max_ctx H (Max.le_max_l n n'))).
-    - subst. left. apply (subtyp_max_ctx H (Max.le_max_l n n')).
+    apply (subtyp_trans (subtyp_max_ctx St12 (Max.le_max_r n n'))
+                        (subtyp_max_ctx H (Max.le_max_l n n'))).
 Qed.
 
 Lemma invert_ty_new: forall G ds T2,
   ty_trm G (trm_new ds) T2 ->
-  exists n Ds, subtyp ip oktrans G (typ_bind Ds) T2 n /\
+  exists n Ds, subtyp ip G (typ_bind Ds) T2 n /\
                ty_defs G ds Ds /\
                cbounds_decs Ds /\
                wf_decs ip G Ds.
@@ -2981,7 +2980,8 @@ Proof.
   introv Ty. gen_eq t0: (trm_new ds). gen ds.
   induction Ty; intros ds' Eq; try (solve [ discriminate ]); symmetry in Eq.
   + (* case ty_new *)
-    inversions Eq. exists 0 Ds. auto.
+    inversions Eq. exists 0 Ds.
+    lets Wf: (ty_defs_regular H). auto.
   + (* case ty_sbsm *)
     subst. rename ds' into ds. specialize (IHTy _ eq_refl).
     destruct IHTy as [n0 [Ds [St IHTy]]]. exists (max n n0) Ds.
@@ -2989,7 +2989,6 @@ Proof.
     apply (subtyp_trans (subtyp_max_ctx St (Max.le_max_r n n0))
                         (subtyp_max_ctx H (Max.le_max_l n n0))).
 Qed.
-*)
 
 (*
 Lemma invert_wf_sto_with_weakening: forall s G,
@@ -3622,16 +3621,17 @@ Proof.
 Qed.
 
 Lemma pr2ip:
-   (forall m G T Ds, exp m G T Ds -> exp ip G T Ds)
-/\ (forall m G t D, has m G t D -> has ip G t D)
-/\ (forall m1 m2 G T, wf_typ m1 m2 G T -> wf_typ ip m2 G T)
+   (forall m1 m2 G T, wf_typ m1 m2 G T -> wf_typ ip m2 G T)
 /\ (forall m G D, wf_dec m G D -> wf_dec ip G D)
 /\ (forall m G Ds, wf_decs m G Ds -> wf_decs ip G Ds)
-/\ (forall m1 m2 G T1 T2 n, subtyp m1 m2 G T1 T2 n -> subtyp ip m2 G T1 T2 n)
+/\ (forall m G T Ds, exp m G T Ds -> exp ip G T Ds)
+/\ (forall m G t D, pth_has m G t D -> pth_has ip G t D)
+/\ (forall m G p T, pth_ty m G p T -> pth_ty ip G p T)
+/\ (forall m G T1 T2 n, subtyp m G T1 T2 n -> subtyp ip G T1 T2 n)
 /\ (forall m G D1 D2 n, subdec m G D1 D2 n -> subdec ip G D1 D2 n)
 /\ (forall m G Ds1 Ds2 n, subdecs m G Ds1 Ds2 n -> subdecs ip G Ds1 Ds2 n).
 Proof.
-  apply mutind8; intros; eauto.
+  apply mutind9; intros; eauto.
 Qed.
 
 Lemma pr2ip_ctx: forall m G, wf_ctx m G -> wf_ctx ip G.
@@ -3641,6 +3641,23 @@ Proof.
   - apply wf_ctx_push; auto. apply* pr2ip.
 Qed.
 
+Lemma trm_has_ty_to_pth_has_ty:
+   (forall G t D, trm_has G t D ->
+     forall x, t = trm_var (avar_f x) -> pth_has ip G (pth_var (avar_f x)) D)
+/\ (forall G t T, ty_trm G t T ->
+     forall x, t = trm_var (avar_f x) -> pth_ty ip G (pth_var (avar_f x)) T).
+Proof.
+  apply trm_has_ty_mutind; try solve [intros; discriminate]; eauto.
+  introv Bi Wf Eq. inversions Eq. eauto.
+Qed.
+
+Lemma trm_has_to_pth_has: forall G x D,
+  trm_has G (trm_var (avar_f x)) D ->
+  pth_has ip G (pth_var (avar_f x)) D.
+Proof.
+  introv Has. apply* trm_has_ty_to_pth_has_ty.
+Qed.
+
 
 (* ###################################################################### *)
 (** ** Soundness helper lemmas *)
@@ -3648,13 +3665,13 @@ Qed.
 Lemma has_sound_pr: forall s G x ds D,
   wf_sto s G ->
   binds x ds s ->
-  has pr G (trm_var (avar_f x)) D ->
+  pth_has pr G (pth_var (avar_f x)) D ->
 (*ty_defs G (open_defs x ds) (open_decs x Ds) /\ decs_has (open_decs x Ds) l D*)
   exists Ds, ty_defs G ds Ds /\ decs_has Ds D.
 Proof.
   introv Wf Bis Has.
-  apply invert_has_pr in Has. rename D into D'.
-  destruct Has as [X' [Ds' [D [BiG' [Exp' [Ds2Has Eq]]]]]]. subst.
+  inversion Has as [A1 A2 A3 A4 X' Ds' BiG' Exp' Ds2Has]. subst.
+  inversions BiG'. rename H2 into BiG'.
   lets BiG: (sto_binds_to_ctx_binds Wf Bis). destruct BiG as [Ds BiG].
   lets Eq: (binds_func BiG BiG'). subst. clear BiG'.
   inversions Exp'.
@@ -3671,7 +3688,7 @@ Qed.
 Lemma has_sound: forall s G x ds D2,
   wf_sto s G ->
   binds x ds s ->
-  has ip G (trm_var (avar_f x)) D2 ->
+  trm_has G (trm_var (avar_f x)) D2 ->
   exists Ds1 D1 n,
 (* BIND
     ty_defs G (open_defs x ds) (open_decs x Ds1) /\
@@ -3681,7 +3698,8 @@ Lemma has_sound: forall s G x ds D2,
     subdec ip G D1 D2 n.
 Proof.
   introv Wf Bis Has.
-  apply (ip2pr_has Wf) in Has. destruct Has as [D1 [n [Has Sd]]].
+  apply trm_has_to_pth_has in Has. apply (ip2pr_pth_has Wf) in Has.
+  destruct Has as [D1 [n [Has Sd]]].
   lets P: (has_sound_pr Wf Bis Has). destruct P as [Ds [Tyds DsHas]].
   exists Ds D1 n. repeat split; auto. apply* pr2ip.
 Qed.
@@ -3698,32 +3716,30 @@ Proof.
   set (progress_for := fun s e =>
                          (exists e' s', red e s e' s') \/
                          (exists x o, e = (trm_var (avar_f x)) /\ binds x o s)).
-  apply (ty_has_mutind
-    (fun m G e d Has => forall s, wf_sto s G -> m = ip -> progress_for s e)
-    (fun G e T Ty    => forall s, wf_sto s G ->           progress_for s e));
+  apply (trm_has_ty_mutind
+    (fun G e d Has => forall s, wf_sto s G -> progress_for s e)
+    (fun G e T Ty  => forall s, wf_sto s G -> progress_for s e));
     unfold progress_for; clear progress_for.
-  (* case has_trm *)
-  + intros. auto.
-  (* case has_var *)
-  + introv Ty IH Exp Has Wf.
+  + (* case has_trm *)
+    intros. auto.
+  + (* case has_var *)
+    introv Ty IH Exp Has WfD Wf.
     right.
     lets WfG: (pr2ip_ctx (wf_sto_to_wf_ctx Wf)).
     apply (invert_ty_var WfG) in Ty. destruct Ty as [T' [n [St BiG]]].
     destruct (ctx_binds_to_sto_binds Wf BiG) as [o Bis].
     exists v o. auto.
-  (* case has_pr *)
-  + intros. discriminate.
-  (* case ty_var *)
-  + intros G x T BiG s Wf.
+  + (* case ty_var *)
+    intros G x T BiG WfT s Wf.
     right. destruct (ctx_binds_to_sto_binds Wf BiG) as [o Bis].
     exists x o. auto.
-  (* case ty_sel *)
-  + introv Has IH Wf.
-    left. specialize (IH s Wf eq_refl). destruct IH as [IH | IH].
-    (* receiver is an expression *)
-    - destruct IH as [s' [e' IH]]. do 2 eexists. apply (red_sel1 l IH).
-    (* receiver is a var *)
-    - destruct IH as [x [ds [Eq Bis]]]. subst.
+  + (* case ty_sel *)
+    introv Has IH Wf.
+    left. specialize (IH s Wf). destruct IH as [IH | IH].
+    - (* receiver is an expression *)
+      destruct IH as [s' [e' IH]]. do 2 eexists. apply (red_sel1 l IH).
+    - (* receiver is a var *)
+      destruct IH as [x [ds [Eq Bis]]]. subst.
       lets P: (has_sound Wf Bis Has).
               (*********)
       destruct P as [Ds1 [D1 [n [Tyds [Ds1Has Sd]]]]].
@@ -3732,9 +3748,9 @@ Proof.
       simpl in Eq. destruct d; simpl in Eq; inversions Eq.
       exists (trm_var a) s.
       apply (red_sel Bis dsHas).
-  (* case ty_call *)
-  + intros G t m U V u Has IHrec Tyu IHarg s Wf. left.
-    specialize (IHrec s Wf eq_refl). destruct IHrec as [IHrec | IHrec].
+  + (* case ty_call *)
+    intros G t m U V u Has IHrec Tyu IHarg s Wf. left.
+    specialize (IHrec s Wf). destruct IHrec as [IHrec | IHrec].
     - (* case receiver is an expression *)
       destruct IHrec as [s' [e' IHrec]]. do 2 eexists. apply (red_call1 m _ IHrec).
     - (* case receiver is  a var *)
@@ -3752,13 +3768,13 @@ Proof.
         simpl in Eq. destruct d; simpl in Eq; inversions Eq.
         exists (open_trm y t1) s.
         apply (red_call y Bis dsHas).
-  (* case ty_new *)
-  + intros G ds Ds Tyds Cb WfDs s Wf.
+  + (* case ty_new *)
+    intros G ds Ds Tyds Cb s Wf.
     left. pick_fresh x.
     exists (trm_var (avar_f x)) (s & x ~ ds).
     apply* red_new.
-  (* case ty_sbsm *)
-  + intros. auto_specialize. assumption.
+  + (* case ty_sbsm *)
+    intros. auto_specialize. assumption.
 Qed.
 
 Print Assumptions progress_result.
@@ -3772,8 +3788,8 @@ Theorem preservation_proof:
   exists H, wf_sto s' (G & H) /\ ty_trm (G & H) e' T.
 Proof.
   intros s e s' e' Red. induction Red.
-  (* red_call *)
-  + intros G U3 Wf TyCall. rename H into Bis, H0 into dsHas, T into X1.
+  + (* red_call *)
+    intros G U3 Wf TyCall. rename H into Bis, H0 into dsHas, T into X1.
     exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
     apply invert_ty_call in TyCall.
     destruct TyCall as [T2 [U2 [n [Has [StU23 Tyy]]]]].
@@ -3805,26 +3821,24 @@ Proof.
       apply weaken_subtyp_end. auto.
       lets Hle1: (Max.le_max_l n n1).
       lets Hle2: (Max.le_max_r n n1).
-      destruct StU23 as [StU23 | Eq].
-      * apply (subtyp_trans (subtyp_max_ctx StU12 Hle2) (subtyp_max_ctx StU23 Hle1)).
-      * subst U3. apply (subtyp_max_ctx StU12 Hle2).
-    - refine (ty_sbsm _ StT). refine (ty_sbsm _ StT3). apply (ty_var Biy).
-  (* red_sel *)
-  + intros G T3 Wf TySel. rename H into Bis, H0 into dsHas.
+      apply (subtyp_trans (subtyp_max_ctx StU12 Hle2) (subtyp_max_ctx StU23 Hle1)).
+    - refine (pth_ty_sbsm _ StT). refine (pth_ty_sbsm _ StT3). apply (pth_ty_var _ Biy).
+  + (* red_sel *)
+    intros G T3 Wf TySel. rename H into Bis, H0 into dsHas.
     exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
     apply invert_ty_sel in TySel.
-    destruct TySel as [Has | [T2 [n [StT23 Has]]]]; (
-    lets P: (has_sound Wf Bis Has);
+    destruct TySel as [T2 [n [StT23 Has]]].
+    lets P: (has_sound Wf Bis Has).
             (*********)
-    destruct P as [Ds1 [D1 [n1 [Tyds [Ds1Has Sd]]]]];
-    apply invert_subdec_fld_sync_left in Sd;
-    destruct Sd as [T1 [Eq StT12]]; subst D1;
-    try refine (ty_sbsm _ StT23);
-    refine (ty_sbsm _ StT12);
-    lets P: (invert_ty_fld_inside_ty_defs Tyds dsHas Ds1Has);
-    destruct P as [P Eq]; subst; exact P).
-  (* red_new *)
-  + introv Wf Ty.
+    destruct P as [Ds1 [D1 [n1 [Tyds [Ds1Has Sd]]]]].
+    apply invert_subdec_fld_sync_left in Sd.
+    destruct Sd as [T1 [Eq StT12]]. subst D1.
+    try refine (ty_sbsm _ StT23).
+    refine (ty_sbsm _ StT12).
+    lets P: (invert_ty_fld_inside_ty_defs Tyds dsHas Ds1Has).
+    destruct P as [P Eq]. subst. exact P.
+  + (* red_new *)
+    introv Wf Ty.
     apply invert_ty_new in Ty.
     destruct Ty as [n [Ds1 [StT12 [Tyds [Cb WfDs]]]]].
     exists (x ~ (typ_bind Ds1)).
@@ -3834,10 +3848,12 @@ Proof.
       apply (wf_sto_to_simple_ctx Wf).
     - lets Ok: (wf_sto_to_ok_G Wf). assert (Okx: ok (G & x ~ (typ_bind Ds1))) by auto.
       apply (weaken_subtyp_end Okx) in StT12.
-      refine (ty_sbsm _ StT12). apply ty_var. apply binds_push_eq.
+      refine (ty_sbsm _ StT12). apply ty_var.
+      * apply binds_push_eq.
+      * destruct (subtyp_regular StT12) as [W _]. exact W.
   (*
-  (* red_new *)
-  + rename T into Ds1. intros G T2 Wf Ty.
+  + (* red_new *)
+    rename T into Ds1. intros G T2 Wf Ty.
     apply invert_ty_new in Ty.
     destruct Ty as [StT12 [L [Tyds Cb]]].
     exists (x ~ (typ_bind Ds1)).
@@ -3852,8 +3868,8 @@ Proof.
       apply (weaken_subtyp_end Okx) in StT12.
       refine (ty_sbsm _ StT12). apply ty_var. apply binds_push_eq.
   *)
-  (* red_call1 *)
-  + intros G Tr2 Wf TyCall.
+  + (* red_call1 *)
+    intros G Tr2 Wf TyCall.
     apply invert_ty_call in TyCall.
     destruct TyCall as [Ta [Tr1 [n [Has [St Tya]]]]].
     apply invert_has in Has.
@@ -3863,58 +3879,38 @@ Proof.
       specialize (IHRed G To Wf Tyo). destruct IHRed as [H [Wf' Tyo']].
       lets Ok: (wf_sto_to_ok_G Wf').
       exists H. apply (conj Wf').
-      destruct St as [St | Eq].
-      * apply (weaken_subtyp_end Ok) in St.
-        refine (ty_sbsm _ St).
-        apply (@ty_call (G & H) o' m Ta Tr1 a).
-        + refine (has_trm Tyo' _ DsHas Clo).
-          apply (weaken_exp_end Ok Exp).
-        + apply (weaken_ty_trm_end Ok Tya).
-      * subst. apply (@ty_call (G & H) o' m Ta Tr2 a).
-        + refine (has_trm Tyo' _ DsHas Clo).
-          apply (weaken_exp_end Ok Exp).
-        + apply (weaken_ty_trm_end Ok Tya).
+      apply (weaken_subtyp_end Ok) in St.
+      refine (ty_sbsm _ St).
+      apply (@ty_call (G & H) o' m Ta Tr1 a).
+      - refine (has_trm Tyo' _ DsHas Clo _).
+        * apply (weaken_exp_end Ok Exp).
+        * lets WfTa: (ty_trm_regular Tya).
+          apply (weaken_wf_typ_end Ok) in WfTa.
+          destruct (subtyp_regular St) as [WfTr1 _].
+          apply (wf_mtd _ WfTa WfTr1).
+      - apply (weaken_ty_trm_end Ok Tya).
     }
     (* case has_var *) {
       destruct Has as [x [Tx [Ds [D' [Eqx _]]]]]. subst.
       inversion Red. (* contradiction: vars don't step *)
     }
-  (* red_call2 *)
-  + intros G Tr2 Wf TyCall.
+  + (* red_call2 *)
+    intros G Tr2 Wf TyCall.
     apply invert_ty_call in TyCall.
     destruct TyCall as [Ta [Tr1 [n [Has [St Tya]]]]].
     specialize (IHRed G Ta Wf Tya).
     destruct IHRed as [H [Wf' Tya']].
     exists H. apply (conj Wf').
     lets Ok: wf_sto_to_ok_G Wf'.
-    destruct St as [St | Eq].
-    * apply (weaken_subtyp_end Ok) in St.
-      refine (ty_sbsm _ St).
-      apply (@ty_call (G & H) _ m Ta Tr1 a').
-      - apply (weaken_has_end Ok Has).
-      - assumption.
-    * subst. apply (@ty_call (G & H) _ m Ta Tr2 a').
-      - apply (weaken_has_end Ok Has).
-      - assumption.
-  (* red_sel1 *)
-  + intros G T2 Wf TySel.
+    apply (weaken_subtyp_end Ok) in St.
+    refine (ty_sbsm _ St).
+    apply (@ty_call (G & H) _ m Ta Tr1 a').
+    - apply (weaken_trm_has_end Ok Has).
+    - assumption.
+  + (* red_sel1 *)
+    intros G T2 Wf TySel.
     apply invert_ty_sel in TySel.
-    destruct TySel as [Has | [T1 [n [St Has]]]].
-    {
-    apply invert_has in Has.
-    destruct Has as [Has | Has].
-    - (* case has_trm *)
-      destruct Has as [To [Ds [Tyo [Exp [DsHas Clo]]]]].
-      specialize (IHRed G To Wf Tyo). destruct IHRed as [H [Wf' Tyo']].
-      lets Ok: (wf_sto_to_ok_G Wf').
-      exists H. apply (conj Wf').
-      apply (@ty_sel (G & H) o' l T2).
-      refine (has_trm Tyo' _ DsHas Clo).
-      apply (weaken_exp_end Ok Exp).
-    - (* case has_var *)
-      destruct Has as [x [Tx [Ds [D' [Eqx _]]]]]. subst.
-      inversion Red. (* contradiction: vars don't step *)
-    } {
+    destruct TySel as [T1 [n [St Has]]].
     apply invert_has in Has.
     destruct Has as [Has | Has].
     - (* case has_trm *)
@@ -3924,12 +3920,12 @@ Proof.
       exists H. apply (conj Wf').
       apply (weaken_subtyp_end Ok) in St.
       refine (ty_sbsm _ St). apply (@ty_sel (G & H) o' l T1).
-      refine (has_trm Tyo' _ DsHas Clo).
-      apply (weaken_exp_end Ok Exp).
+      refine (has_trm Tyo' _ DsHas Clo _).
+      * apply (weaken_exp_end Ok Exp).
+      * destruct (subtyp_regular St) as [W _]. apply (wf_fld _ W).
     - (* case has_var *)
       destruct Has as [x [Tx [Ds [D' [Eqx _]]]]]. subst.
       inversion Red. (* contradiction: vars don't step *)
-    }
 Qed.
 
 Theorem preservation_result: preservation.
