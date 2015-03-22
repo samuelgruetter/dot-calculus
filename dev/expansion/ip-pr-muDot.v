@@ -38,8 +38,7 @@ Inductive pth: Set :=
 Inductive typ: Set :=
   | typ_top : typ
   | typ_bot : typ
-(*| typ_bind: decs -> typ   { z => decs } *)
-  | typ_bind: decs -> typ (* not a BIND typ, just { decs } *)
+  | typ_bind: decs -> typ (* { z => decs } (nameless self ref) *)
   | typ_sel: pth -> typ_label -> typ (* p.L *)
 with dec: Set :=
   | dec_typ : typ_label -> typ -> typ -> dec
@@ -56,8 +55,7 @@ Inductive bdecs: Set :=
 
 Inductive trm: Set :=
   | trm_var : avar -> trm
-(*| trm_new : defs -> trm BIND nameless self ref *)
-  | trm_new : defs -> trm
+  | trm_new : defs -> trm (* with nameless self ref *)
   | trm_sel : trm -> fld_label -> trm
   | trm_call: trm -> mtd_label -> trm -> trm
 with def: Set :=
@@ -166,8 +164,7 @@ Fixpoint open_rec_typ (k: nat) (u: var) (T: typ) { struct T }: typ :=
   match T with
   | typ_top     => typ_top
   | typ_bot     => typ_bot
-(*| typ_bind Ds => typ_bind (open_rec_decs (S k) u Ds) BIND *)
-  | typ_bind Ds => typ_bind (open_rec_decs k u Ds)
+  | typ_bind Ds => typ_bind (open_rec_decs (S k) u Ds)
   | typ_sel p L => typ_sel (open_rec_pth k u p) L
   end
 with open_rec_dec (k: nat) (u: var) (D: dec) { struct D }: dec :=
@@ -185,8 +182,7 @@ with open_rec_decs (k: nat) (u: var) (Ds: decs) { struct Ds }: decs :=
 Fixpoint open_rec_trm (k: nat) (u: var) (t: trm) { struct t }: trm :=
   match t with
   | trm_var a      => trm_var (open_rec_avar k u a)
-(*| trm_new ds     => trm_new (open_rec_defs (S k) u ds) BIND *)
-  | trm_new ds     => trm_new (open_rec_defs    k  u ds)
+  | trm_new ds     => trm_new (open_rec_defs (S k) u ds)
   | trm_sel e n    => trm_sel (open_rec_trm k u e) n
   | trm_call o m a => trm_call (open_rec_trm k u o) m (open_rec_trm k u a)
   end
@@ -211,6 +207,17 @@ Definition open_decs u l := open_rec_decs  0 u l.
 Definition open_trm  u e := open_rec_trm   0 u e.
 Definition open_def  u d := open_rec_def   0 u d.
 Definition open_defs u l := open_rec_defs  0 u l.
+
+(** ** Locally closed
+Definition lc_avar(a: avar) := forall k z, open_rec_avar k z a = a.
+Definition lc_pth(p: pth) := forall k z, open_rec_pth k z p = p.
+Definition lc_typ(t: typ) := forall k z, open_rec_typ k z t = t.
+Definition lc_dec(d: dec) := forall k z, open_rec_dec k z d = d.
+Definition lc_decs(ds: decs) := forall k z, open_rec_decs k z ds = ds.
+Definition lc_trm(t: trm) := forall k z, open_rec_trm k z t = t.
+Definition lc_def(d: def) := forall k z, open_rec_def k z d = d.
+Definition lc_defs(ds: defs) := forall k z, open_rec_defs k z ds = ds.
+*)
 
 
 (* ###################################################################### *)
@@ -285,14 +292,12 @@ Inductive red: trm -> sto -> trm -> sto -> Prop :=
   (* computation rules *)
   | red_call: forall s x y m T U ds body,
       binds x ds s ->
-(*    defs_has (open_defs x ds) (def_mtd m T U body) -> BIND *)
-      defs_has              ds  (def_mtd m T U body) ->
+      defs_has (open_defs x ds) (def_mtd m T U body) ->
       red (trm_call (trm_var (avar_f x)) m (trm_var (avar_f y))) s
           (open_trm y body) s
   | red_sel: forall s x y l ds,
       binds x ds s ->
-(*    defs_has (open_defs x ds) (def_fld l y) -> BIND *)
-      defs_has              ds  (def_fld l y) ->
+      defs_has (open_defs x ds) (def_fld l y) ->
       red (trm_sel (trm_var (avar_f x)) l) s
           (trm_var y) s
   | red_new: forall s ds x,
@@ -371,9 +376,8 @@ Inductive wf_typ: pmode -> dmode -> ctx -> typ -> Prop :=
       wf_typ m1 m2 G typ_top
   | wf_bot: forall m1 m2 G,
       wf_typ m1 m2 G typ_bot
-  | wf_bind_deep: forall m G Ds,
-      (* BIND (forall z, z \notin L -> wf_decs (G & z ~ typ_bind Ds) Ds) ->*)
-      wf_decs m G Ds ->
+  | wf_bind_deep: forall L m G Ds,
+      (forall z, z \notin L -> wf_decs m (G & z ~ typ_bind Ds) (open_decs z Ds)) ->
       wf_typ m deep G (typ_bind Ds)
   | wf_bind_shallow: forall m G Ds,
       wf_typ m shallow G (typ_bind Ds)
@@ -427,11 +431,11 @@ with exp: pmode -> ctx -> typ -> bdecs -> Prop :=
    Note: Contrary to trm_has, pth_has is not regular wrt wf-ness, because it's used
    to define wf-ness, so if it was, we'd need infinite derivations to prove wf-ness. *)
 with pth_has: pmode -> ctx -> pth -> dec -> Prop :=
-  | pth_has_rule: forall m G p D T Ds,
-      pth_ty m G p T ->
+  | pth_has_rule: forall m G x D T Ds,
+      pth_ty m G (pth_var (avar_f x)) T ->
       exp m G T Ds ->
       bdecs_has Ds D ->
-      pth_has m G p D (* BIND: open_dec *)
+      pth_has m G (pth_var (avar_f x)) (open_dec x D)
 with pth_ty: pmode -> ctx -> pth -> typ -> Prop :=
   | pth_ty_var: forall m x T G,
       binds x T G ->
@@ -445,15 +449,15 @@ with trm_has: ctx -> trm -> dec -> Prop :=
       ty_trm G t T ->
       exp ip G T Ds ->
       bdecs_has Ds D ->
-      (forall z, (open_dec z D) = D) ->
+      (* wf_dec also checks that D doesn't contain the free var of expansion *)
       wf_dec ip G D ->
       trm_has G t D
   | has_var: forall G v T Ds D,
       ty_trm G (trm_var (avar_f v)) T ->
       exp ip G T Ds ->
       bdecs_has Ds D ->
-      wf_dec ip G D ->
-      trm_has G (trm_var (avar_f v)) D (* BIND (open_dec v D) *)
+      wf_dec ip G (open_dec v D) ->
+      trm_has G (trm_var (avar_f v)) (open_dec v D)
 with subtyp: pmode -> ctx -> typ -> typ -> nat -> Prop :=
   | subtyp_refl: forall m G T n,
       wf_typ m deep G T -> (* use wf_sel2 to break cycles *)
@@ -464,17 +468,18 @@ with subtyp: pmode -> ctx -> typ -> typ -> nat -> Prop :=
   | subtyp_bot: forall m G T n,
       wf_typ m deep G T -> (* use wf_sel2 to break cycles *)
       subtyp m G typ_bot T n
-  | subtyp_bind: forall m G Ds1 Ds2 n,
-      subdecs m G Ds1 Ds2 n ->
-      subtyp m G (typ_bind Ds1) (typ_bind Ds2) n
-  (* BIND
   | subtyp_bind: forall L m G Ds1 Ds2 n,
       (forall z, z \notin L -> 
-         subdecs m (G & z ~ (typ_bind Ds1))
+         subdecs m (G & z ~ typ_bind Ds1)
                    (open_decs z Ds1) 
-                   (open_decs z Ds2) n) ->
-      subtyp m notrans G (typ_bind Ds1) (typ_bind Ds2) (S n)
-  *)
+                   (open_decs z Ds2) n) ->  (*
+      The above hypothesis allows us to extract wf-ness of (open_decs z Ds1) and
+      (open_decs z Ds2), for both with (typ_bind Ds1) added to env.
+      For Ds2, that's not what we need (want to prove wf-ness of (typ_bind Ds2),
+      so we check it again with the env we want: *)
+      (forall z, z \notin L -> 
+         wf_decs m (G & z ~ typ_bind Ds2) (open_decs z Ds2)) ->
+      subtyp m G (typ_bind Ds1) (typ_bind Ds2) (S n)
   | subtyp_sel_l: forall m G x L Lo Hi n,
       pth_has m G (pth_var (avar_f x)) (dec_typ L Lo Hi) ->
       (* for symmetry with subtyp_sel_r, and to ensure wf-ness of Lo and Hi *)
@@ -530,12 +535,9 @@ with ty_trm: ctx -> trm -> typ -> Prop :=
       trm_has G t (dec_mtd m U V) ->
       ty_trm G u U ->
       ty_trm G (trm_call t m u) V
-  | ty_new: forall G ds Ds,
-      (* BIND
+  | ty_new: forall L G ds Ds,
       (forall x, x \notin L ->
                  ty_defs (G & x ~ typ_bind Ds) (open_defs x ds) (open_decs x Ds)) ->
-      *)
-      ty_defs G ds Ds ->
       cbounds_decs Ds ->
       (* not needed because it follows from ty_defs:
       wf_decs ip G Ds -> *)
@@ -596,17 +598,28 @@ Inductive wf_ctx: pmode -> ctx -> Prop :=
 (** *** Well-formed store *)
 Inductive wf_sto: sto -> ctx -> Prop :=
   | wf_sto_empty: wf_sto empty empty
+  | wf_sto_push: forall L s G x ds Ds,
+      wf_sto s G ->
+      x # s ->
+      x # G ->
+      (forall z, z \notin L \/ z = x ->
+         ty_defs (G & z ~ typ_bind Ds) (open_defs z ds) (open_decs z Ds)) ->
+      cbounds_decs Ds ->
+      (* needed because ty_defs_regular only gives imprecise wf_decs: *)
+      (forall z, z \notin L \/ z = x ->
+         wf_decs pr (G & z ~ typ_bind Ds) (open_decs z Ds)) ->
+      wf_sto (s & x ~ ds) (G & x ~ typ_bind Ds).
+(*
   | wf_sto_push: forall s G x ds Ds,
       wf_sto s G ->
       x # s ->
       x # G ->
-      (* What's below is the same as the ty_new rule, but we don't use ty_trm,
-         because it could be subsumption *)
-      (*ty_defs (G & x ~ typ_bind Ds) (open_defs x ds) (open_decs x Ds) -> *)
-      ty_defs G ds Ds ->
+      ty_defs (G & x ~ typ_bind Ds) (open_defs x ds) (open_decs x Ds) ->
       cbounds_decs Ds ->
-      wf_decs pr G Ds -> (* or alternatively, makes sure that this follows from ty_defs *)
+      (* needed because ty_defs_regular only gives imprecise wf_decs: *)
+      wf_decs pr (G & x ~ typ_bind Ds) (open_decs x Ds) ->
       wf_sto (s & x ~ ds) (G & x ~ typ_bind Ds).
+*)
 
 
 (* ###################################################################### *)
@@ -1220,6 +1233,9 @@ Definition subdecs_regular := proj2 (proj2 subtyping_regular).
 Lemma typing_regular:
    (forall G t D, trm_has G t D ->
       wf_dec ip G D)
+(* no need to be so complicated: whatever D it has, D is wf
+        (exists x, t = trm_var (avar_f x) /\ wf_dec ip G (open_dec x D))
+     \/ ((forall x, open_dec x D = D) /\ wf_dec ip G D)) *)
 /\ (forall m G T1 T2 n, subtyp m G T1 T2 n ->
       wf_typ m deep G T1 /\ wf_typ m deep G T2)
 /\ (forall m G D1 D2 n, subdec m G D1 D2 n ->
@@ -1233,7 +1249,7 @@ Lemma typing_regular:
 /\ (forall G ds Ds, ty_defs G ds Ds ->
       wf_decs ip G Ds).
 Proof.
-  apply has_sub_ty_mutind; intros; repeat split; subst;
+  apply has_sub_ty_mutind; try solve [intros; repeat split; subst;
   repeat match goal with
   | H: _ /\ _ |- _ => destruct H
   | H: wf_dec _ _ (dec_typ _ _ _) |- _ => inversions H
@@ -1242,7 +1258,13 @@ Proof.
   | H: wf_bdecs _ _ _             |- _ => inversions H
   | H: bdecs_has _ _              |- _ => inversions H
   end;
-  eauto.
+  eauto].
+  (* case subtyp_bind *)
+  introv Sds IHSds IHWf. split.
+  + apply_fresh wf_bind_deep as z. assert (zL: z \notin L) by auto.
+    auto_specialize. auto_star.
+  + apply_fresh wf_bind_deep as z. assert (zL: z \notin L) by auto.
+    auto_specialize. auto_star.
 Qed.
 
 Definition trm_has_regular := proj1                                    typing_regular     .
@@ -1268,11 +1290,9 @@ Proof.
   apply mutind3; try solve [intros; [constructor*
     || apply* subtyp_sel_l
     || apply* subtyp_sel_r]].
-  (*
   + (* case subtyp_bind *)
-    introv Sds IHSds Hle. rename n into n1. destruct n2 as [|n2]; [omega | idtac].
+    introv Sds IHSds Wf Hle. rename n into n1. destruct n2 as [|n2]; [omega | idtac].
     assert (n1 <= n2) by omega. apply* subtyp_bind.
-  *)
   + (* case subtyp_trans *)
     intros. apply subtyp_trans with T2; auto.
   + (* case subdecs_push *)
@@ -1462,8 +1482,7 @@ Lemma invert_wf_sto: forall s G,
       exists Ds,
         T = (typ_bind Ds) /\ exists G1 G2,
         G = G1 & x ~ typ_bind Ds & G2 /\ 
-(*      ty_defs (G1 & x ~ typ_bind Ds) (open_defs x ds) (open_decs x Ds) /\ *)
-        ty_defs G1 ds Ds /\
+        ty_defs (G1 & x ~ typ_bind Ds) (open_defs x ds) (open_decs x Ds) /\
         cbounds_decs Ds.
 Proof.
   intros s G Wf. induction Wf; intros.
@@ -1471,7 +1490,7 @@ Proof.
   + unfold binds in *. rewrite get_push in *.
     case_if.
     - inversions H4. inversions H5. exists Ds. split. reflexivity.
-      exists G (@empty typ). rewrite concat_empty_r. auto.
+      exists G (@empty typ). rewrite concat_empty_r. repeat split; auto.
     - specialize (IHWf x0 ds0 T H4 H5).
       destruct IHWf as [Ds0 [Eq [G1 [G2 [EqG [Ty F]]]]]]. subst.
       exists Ds0. apply (conj eq_refl).
@@ -1678,10 +1697,13 @@ Proof.
   + inversions H2. 
     specialize (H eq_refl (dec_typ L Lo0 Hi0)). simpl in H.
     specialize (H eq_refl H7). inversions H. apply* (H0 eq_refl).
-  + inversions H1. inversions H2. inversions H0. inversions p0.
-    lets Eq: (binds_func H2 H7). subst.
-    specialize (H eq_refl Ds0 H1). subst Ds0.
-    rewrite (bdecs_has_unique b H3 H4). reflexivity.
+  + inversions H2. inversions H4. inversions p.
+    lets Eq: (binds_func H6 H4). subst.
+    specialize (H eq_refl Ds0 H5). subst Ds0.
+    rewrite (bdecs_has_unique b H8).
+    - reflexivity.
+    - unfold label_of_dec in *.
+      destruct D; destruct D0; simpl in *; (assumption || discriminate).
 Qed.
 
 Lemma exp_unique: forall G T Ds1 Ds2,
@@ -1789,7 +1811,11 @@ Proof.
   apply all_mutind.
   + (* case wf_top *) eauto.
   + (* case wf_bot *) eauto.
-  + (* case wf_bind_deep *) eauto.
+  + (* case wf_bind_deep *)
+    introv Sds IHSds Eq Ok. subst. apply_fresh wf_bind_deep as z.
+    assert (zL: z \notin L) by auto.
+    specialize (IHSds z zL G1 G2 (G3 & z ~ typ_bind Ds)).
+    repeat rewrite concat_assoc in IHSds. apply* IHSds.
   + (* case wf_bind_shallow *) eauto.
   + (* case wf_sel1 *) eauto.
   + (* case wf_sel2 *) eauto.
@@ -1815,7 +1841,13 @@ Proof.
   + (* case subtyp_refl *) eauto.
   + (* case subtyp_top *) eauto.
   + (* case subtyp_bot *) eauto.
-  + (* case subtyp_bind *) eauto.
+  + (* case subtyp_bind *)
+    introv Sds IHSds Wf2 IHWf2 Eq Ok. subst.
+    apply_fresh subtyp_bind as z; assert (zL: z \notin L) by auto.
+    - specialize (IHSds z zL G1 G2 (G3 & z ~ typ_bind Ds1)).
+      repeat rewrite concat_assoc in IHSds. apply* IHSds.
+    - specialize (IHWf2 z zL G1 G2 (G3 & z ~ typ_bind Ds2)).
+      repeat rewrite concat_assoc in IHWf2. apply* IHWf2.
   + (* case subtyp_sel_l *) eauto.
   + (* case subtyp_sel_r *) eauto.
   + (* case subtyp_trans *) eauto.
@@ -1834,7 +1866,11 @@ Proof.
     - apply* H.
   + (* case ty_sel *) eauto.
   + (* case ty_call *) eauto.
-  + (* case ty_new *) eauto.
+  + (* case ty_new *)
+    introv Tyds IH Cb Eq Ok. subst. apply_fresh ty_new as z; try assumption.
+    assert (zL: z \notin L) by auto.
+    specialize (IH z zL G1 G2 (G3 & z ~ typ_bind Ds)).
+    repeat rewrite concat_assoc in IH. apply* IH.
   + (* case ty_sbsm *) eauto.
   + (* case ty_typ *) eauto.
   + (* case ty_fld *) eauto.
@@ -1851,18 +1887,6 @@ Proof.
   + (* case ty_dsnil *) eauto.
   + (* case ty_dscons *) eauto.
 Qed.
-
-(*
-  + (* case subtyp_bind *)
-    introv Sds IHSds Eq1 Ok. subst.
-    apply_fresh subtyp_bind as z.
-    rewrite <- concat_assoc.
-    assert (zL: z \notin L) by auto.
-    specialize (Sds z zL).
-    refine (IHSds z zL G1 G2 (G3 & z ~ typ_bind Ds1) _ _).
-      * rewrite <- concat_assoc. reflexivity.
-      * rewrite concat_assoc. auto.
-*)
 
 Print Assumptions weakening.
 
@@ -2192,15 +2216,16 @@ Proof.
   intros. destruct has_ty_empty as [_ P]. apply* P.
 Qed.
 
+(*
 Lemma wf_in_empty_has_no_fv:
    (forall m1 m2 G T , wf_typ  m1 m2 G T  -> G = empty -> m2 = deep -> fv_typ  T  = \{}) 
 /\ (forall m     G D , wf_dec  m     G D  -> G = empty ->              fv_dec  D  = \{}) 
 /\ (forall m     G Ds, wf_decs m     G Ds -> G = empty ->              fv_decs Ds = \{}).
 Proof.
-  apply wf_mutind; intros; subst; try discriminate; simpl;
+  apply wf_mutind; try solve [intros; subst; try discriminate; simpl;
   try match goal with
   | H: pth_has _ empty _ _                 |- _ => false (has_empty H)
-  | H: ty_trm empty (trm_var (avar_f _)) _ |- _ => false (ty_var_empty H)
+  | H: pth_ty empty (pth_var (avar_f _)) _ |- _ => false (ty_var_empty H)
   end;
   repeat match goal with
   | H: ?x = ?x -> _ |- _ => specialize (H eq_refl)
@@ -2208,8 +2233,16 @@ Proof.
   repeat match goal with
   | H: _ = \{} |- _ => rewrite H
   end;
-  try rewrite union_same; reflexivity.
+  try rewrite union_same; reflexivity].
+  (* case wf_bind_deep *)
+  introv WfDs IH Eq1 Eq2. subst. clear IH (* useless *).
+  pick_fresh z. assert (zL: z \notin L) by auto. specialize (IH z zL).
 Qed.
+*)
+
+Lemma fv_decs_open: forall z Ds,
+  fv_decs (open_decs z Ds) = (fv_decs Ds) \u \{ z }.
+Admitted.
 
 Lemma fv_subset_dom_ctx:
    (forall m1 m2 G T , wf_typ  m1 m2 G T  -> m2 = deep -> (fv_typ  T ) \c (dom G)) 
@@ -2227,7 +2260,16 @@ Proof.
   | H: _ \in _ \u _ |- _ => rewrite in_union in H
   end;
   auto_star]).
-  - auto.
+  - unfold subset in *. intros x xIn.
+    pick_fresh z. assert (zL: z \notin L) by auto. specialize (H z zL).
+    rewrite (fv_decs_open z Ds) in H. rewrite dom_push in H.
+    specialize (H x).
+    do 2 rewrite in_union in H. specialize (H (or_introl xIn)).
+    destruct H as [H | H].
+    * assert (zx: z \notin \{ x }) by auto. apply notin_singleton in zx.
+      rewrite in_singleton in H. rewrite H in zx. false* zx.
+    * exact H.
+  - inversions H0. apply* H.
   - inversions H. unfold binds in b. apply (get_some_inv b).
   - auto.
 Qed.
@@ -2352,6 +2394,15 @@ Proof.
   intros. unfold subst_ctx. rewrite map_concat. reflexivity.
 Qed.
 
+(*
+Lemma subst_avar_preserves_lc: forall x y, has_trm
+  forall p, lc_avar p -> lc_pth (subst_avar x y p).
+Proof.
+  intros. specialize (H z). destruct p.
+  - simpl in *. case_if. reflexivity.
+  - simpl. unfold open_avar, open_rec_avar. case_if; reflexivity.
+Qed.
+
 Lemma subst_avar_preserves_clo: forall x y,
   forall p, (forall z, open_avar z p = p) ->
             (forall z, open_avar z (subst_avar x y p) = (subst_avar x y p)).
@@ -2371,6 +2422,51 @@ Proof.
   rewrite H1. apply H1.
 Qed.
 
+Lemma subst_pth_preserves_clo: forall x y,
+  forall p, (forall z, open_pth z p = p) ->
+            (forall z, open_pth z (subst_pth x y p) = (subst_pth x y p)).
+Proof.
+  intros. destruct p. simpl. f_equal.
+  apply subst_avar_preserves_clo.
+  intros. specialize (H z0). unfold open_pth, open_rec_pth in H. inversion H.
+  rewrite H1. apply H1.
+Qed.
+
+Lemma subst_lc: forall x y,
+   (forall T , lc_typ  T  -> lc_typ  (subst_typ  x y T ))
+/\ (forall D , lc_dec  D  -> lc_dec  (subst_dec  x y D ))
+/\ (forall Ds, lc_decs Ds -> lc_decs (subst_decs x y Ds)).
+Proof.
+  intros.
+  apply typ_mutind; unfold lc_typ, lc_dec, lc_decs in *; intros; simpl; try reflexivity;
+  ((unfold open_typ, open_rec_typ; fold open_rec_decs) ||
+   (unfold open_dec, open_rec_dec; fold open_rec_typ) ||
+   (unfold open_decs, open_rec_decs; fold open_rec_decs; fold open_rec_dec));
+  f_equal;
+  try (lets P: (@subst_pth_preserves_clo x y p));
+  try match goal with
+  | H: _ |- _ => apply H
+  end. ;
+  intros z0;
+  match goal with
+  | H: forall _, _ = _ |- _ => specialize (H z0)
+  end). ;
+  match goal with
+  | E: _ = _ |- _ => inversion E
+  end;
+  match goal with
+  | E: _ = _ |- _ => solve [rewrite E; assumption]
+  end). ].
+  (* case typ_bind *)
+  introv IH Clo.
+  assert (C: forall z : var, open_decs z d = d). {
+    intro z. specialize (Clo z).
+    unfold open_typ, open_rec_typ in Clo. fold open_rec_decs in Clo.
+    inversion Clo. clear Clo.
+    rewrite H0. apply H0.
+  IH.
+Qed.
+
 Lemma subst_clo: forall x y,
    (forall T , (forall z, open_typ  z T  = T) ->
                (forall z, open_typ  z (subst_typ  x y T ) = (subst_typ  x y T )))
@@ -2380,7 +2476,7 @@ Lemma subst_clo: forall x y,
                (forall z, open_decs z (subst_decs x y Ds) = (subst_decs x y Ds))).
 Proof.
   intros.
-  apply typ_mutind; intros; simpl; try reflexivity;
+  apply typ_mutind; try solve [intros; simpl; try reflexivity;
   ((unfold open_typ, open_rec_typ; fold open_rec_decs) ||
    (unfold open_dec, open_rec_dec; fold open_rec_typ) ||
    (unfold open_decs, open_rec_decs; fold open_rec_decs; fold open_rec_dec));
@@ -2398,10 +2494,19 @@ Proof.
   end;
   match goal with
   | E: _ = _ |- _ => solve [rewrite E; assumption]
-  end.
+  end].
+  (* case typ_bind *)
+  introv IH Clo.
+  assert (C: forall z : var, open_decs z d = d). {
+    intro z. specialize (Clo z).
+    unfold open_typ, open_rec_typ in Clo. fold open_rec_decs in Clo.
+    inversion Clo. clear Clo.
+    rewrite H0. apply H0.
+  IH.
 Qed.
 
 Definition subst_dec_preserves_clo(x y: var) := proj1 (proj2 (subst_clo x y)).
+*)
 
 Lemma subst_ctx_preserves_notin: forall x y z G,
   z # G -> z # (subst_ctx x y G).
@@ -2518,7 +2623,16 @@ Proof.
   + (* case wf_bot *)
     intros. subst. apply* wf_bot.
   + (* case wf_bind_deep *)
-    intros. subst. apply* wf_bind_deep.
+    introv WfDs IH Eq Tyy WfG. subst.
+    apply_fresh wf_bind_deep as z. fold subst_decs.
+    assert (zL: z \notin L) by auto. specialize (IH z zL G1 (G2 & z ~ typ_bind Ds) x).
+    repeat rewrite concat_assoc in IH. specialize (IH eq_refl Tyy).
+    rewrite subst_ctx_push in IH. simpl in IH.
+    repeat rewrite concat_assoc in IH.
+    lets P: (@subst_open_commute_decs x y z Ds).
+    unfold subst_fvar in P. assert (x <> z) by auto. case_if.
+    rewrite P in IH. apply IH.
+    apply (wf_ctx_push WfG (wf_bind_deep WfDs)). auto.
   + (* case wf_bind_shallow *)
     intros. subst. apply* wf_bind_shallow.
   + (* case wf_sel1 *)
@@ -2573,8 +2687,14 @@ Proof.
     introv Ty IHTy Exp IHExp DsHas Eq Tyy Wf. subst.
     specialize (IHTy _ _ _ eq_refl Tyy Wf).
     specialize (IHExp _ _ _ eq_refl Tyy Wf).
-    apply* pth_has_rule.
-    apply (subst_bdecs_has x y DsHas).
+    rename x0 into z.
+    unfold subst_pth, subst_avar in *.
+    assert (Eq: (If x = z then avar_f y else avar_f x)
+              = (avar_f (If z = x then y else x))) by (case_if; case_if; reflexivity).
+    rewrite Eq in *.
+    rewrite subst_open_commute_dec.
+    unfold subst_fvar.
+    apply (pth_has_rule IHTy IHExp (subst_bdecs_has _ _ DsHas)).
   + (* case pth_ty_var *)
     introv Bi Eq Tyy WfG. subst. rename x into z, x0 into x.
     lets Ok: (wf_ctx_to_ok WfG).
@@ -2606,31 +2726,35 @@ Proof.
     - apply* IHTy.
     - apply* IHSt.
   + (* case has_trm *)
-    introv Ty IHTy Exp IHExp DsHas Clo WfD IHWf Eq Tyy. introv Wf. subst.
+    introv Ty IHTy Exp IHExp DsHas WfD IHWf Eq Tyy Wf. subst.
     specialize (IHTy _ _ _ eq_refl Tyy Wf).
     apply has_trm with (subst_typ x y T) (subst_bdecs x y Ds).
     - exact IHTy.
     - apply* IHExp.
     - apply* subst_bdecs_has.
-    - apply (subst_dec_preserves_clo _ _ Clo).
     - apply* IHWf.
   + (* case has_var *)
     introv Ty IHTy Exp IHExp DsHas WfD IHWf Eq Tyy. introv Wf. subst.
     specialize (IHTy _ _ _ eq_refl Tyy Wf). simpl in *. case_if.
     - (* case z = x *)
-      (* rewrite (subst_open_commute_dec x y x D). unfold subst_fvar. case_if. BIND *)
+      rewrite (subst_open_commute_dec x y x D). unfold subst_fvar. case_if.
       apply has_var with (subst_typ x y T) (subst_bdecs x y Ds).
       * exact IHTy.
       * apply* IHExp.
       * apply (subst_bdecs_has x y DsHas).
-      * apply* IHWf.
+      * lets P: (@subst_open_commute_dec x y x D). unfold subst_fvar in P. case_if.
+        rewrite <- P.
+        apply* IHWf.
     - (* case z <> x *)
-      (* rewrite (subst_open_commute_dec x y z D). unfold subst_fvar. case_if. BIND *)
+      rename v into z.
+      rewrite (subst_open_commute_dec x y z D). unfold subst_fvar. case_if.
       apply has_var with (subst_typ x y T) (subst_bdecs x y Ds).
       * exact IHTy.
       * apply* IHExp.
       * apply (subst_bdecs_has x y DsHas).
-      * apply* IHWf.
+      * lets P: (@subst_open_commute_dec x y z D). unfold subst_fvar in P. case_if.
+        rewrite <- P.
+        apply* IHWf.
   + (* case subtyp_refl *)
     intros. subst. apply* subtyp_refl.
   + (* case subtyp_top *)
@@ -2638,27 +2762,36 @@ Proof.
   + (* case subtyp_bot *)
     intros. simpl. apply* subtyp_bot.
   + (* case subtyp_bind *)
-    intros m G Ds1 Ds2 n Sds IH G1 G2 x EqG Bi Ok. subst.
-    apply subtyp_bind. fold subst_decs.
-    specialize (IH G1 G2 x).
-    specialize (IH eq_refl Bi).
-    apply (IH Ok).
-(*
-  + (* case subtyp_bind *)
-    intros L m G Ds1 Ds2 n Sds IH G1 G2 x EqG Bi Ok. subst.
-    apply_fresh subtyp_bind as z. fold subst_decs.
-    assert (zL: z \notin L) by auto.
-    specialize (IH z zL G1 (G2 & z ~ typ_bind Ds1) x).
-    rewrite concat_assoc in IH.
-    specialize (IH eq_refl Bi).
-    unfold subst_ctx in IH. rewrite map_push in IH. simpl in IH.
-    rewrite concat_assoc in IH.
-    rewrite (subst_open_commute_decs x y z Ds1) in IH.
-    rewrite (subst_open_commute_decs x y z Ds2) in IH.
-    unfold subst_fvar in IH.
-    assert (x <> z) by auto. case_if.
-    unfold subst_ctx. apply IH. apply okadmit.
-*)
+    intros L m G Ds1 Ds2 n Sds IHSds Wf2 IHWf2 G1 G2 x EqG Bi WfG. subst.
+    apply_fresh subtyp_bind as z; fold subst_decs; assert (zL: z \notin L) by auto.
+    - specialize (IHSds z zL G1 (G2 & z ~ typ_bind Ds1) x).
+      rewrite concat_assoc in IHSds.
+      specialize (IHSds eq_refl Bi).
+      unfold subst_ctx in IHSds. rewrite map_push in IHSds. simpl in IHSds.
+      rewrite concat_assoc in IHSds.
+      rewrite (subst_open_commute_decs x y z Ds1) in IHSds.
+      rewrite (subst_open_commute_decs x y z Ds2) in IHSds.
+      unfold subst_fvar in IHSds.
+      assert (x <> z) by auto. case_if.
+      unfold subst_ctx. apply IHSds.
+      apply (wf_ctx_push WfG).
+      * apply_fresh wf_bind_deep as v.
+        assert (vL: v \notin L) by auto. specialize (Sds v vL).
+        destruct (subdecs_regular Sds) as [Wf1 _]. exact Wf1.
+      * auto.
+    - specialize (IHWf2 z zL G1 (G2 & z ~ typ_bind Ds2) x).
+      repeat rewrite concat_assoc in IHWf2.
+      specialize (IHWf2 eq_refl Bi).
+      rewrite subst_ctx_push in IHWf2.
+      repeat rewrite concat_assoc in IHWf2. simpl in IHWf2.
+      lets P: (@subst_open_commute_decs x y z Ds2). unfold subst_fvar in P.
+      assert (x <> z) by auto. case_if.
+      rewrite <- P.
+      apply IHWf2.
+      apply (wf_ctx_push WfG).
+      * apply_fresh wf_bind_deep as v.
+        assert (vL: v \notin L) by auto. apply (Wf2 v vL).
+      * auto.
   + (* case subtyp_sel_l *)
     intros m G v L Lo Hi n Has IHHas St1 IHSt1 G1 G2 x EqG Tyy Wf. subst.
     specialize (IHSt1 _ _ _ eq_refl Tyy Wf).
@@ -2720,18 +2853,9 @@ Proof.
   + (* case ty_call *)
     intros G t m U V u Has IHt Tyu IHu G1 G2 x Eq Bi Ok. apply* ty_call.
   + (* case ty_new *)
-    intros G ds Ds Tyds IHTyds Cb G1 G2 x Eq Bi Ok. subst G.
-    apply ty_new.
-    - fold subst_defs.
-      specialize (IHTyds G1 G2 x).
-      specialize (IHTyds eq_refl Bi).
-      unfold subst_ctx in IHTyds. unfold subst_ctx.
-      apply IHTyds. auto.
-    - apply (subst_decs_preserves_cbounds _ _ Cb).
-(*+ case ty_new
-    intros L G ds Ds Tyds IHTyds Cb G1 G2 x Eq Bi Ok. subst G.
+    intros L G ds Ds Tyds IHTyds Cb G1 G2 x Eq Bi Wf. subst G.
     apply_fresh ty_new as z.
-    - fold subst_defs.
+    - fold subst_defs. fold subst_decs.
       lets C: (@subst_open_commute_defs x y z ds).
       unfolds open_defs. unfold subst_fvar in C. case_var.
       rewrite <- C.
@@ -2743,8 +2867,13 @@ Proof.
       specialize (IHTyds z zL G1 (G2 & z ~ typ_bind Ds) x). rewrite concat_assoc in IHTyds.
       specialize (IHTyds eq_refl Bi).
       unfold subst_ctx in IHTyds. rewrite map_push in IHTyds. unfold subst_ctx.
-      apply IHTyds. auto.
-    - apply (subst_decs_preserves_cbounds _ _ Cb). *)
+      apply IHTyds.
+      apply (wf_ctx_push Wf).
+      * apply_fresh wf_bind_deep as v.
+        assert (vL: v \notin L) by auto. specialize (Tyds v vL).
+        apply (ty_defs_regular Tyds).
+      * auto.
+    - apply (subst_decs_preserves_cbounds _ _ Cb).
   + (* case ty_sbsm *)
     intros G t T U n Ty IHTy St IHSt G1 G2 x Eq Bi Ok. subst.
     apply ty_sbsm with (subst_typ x y T) (n+1).
