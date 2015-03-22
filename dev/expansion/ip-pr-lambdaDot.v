@@ -62,7 +62,8 @@ Inductive trm: Set :=
   | trm_call: trm -> mtd_label -> trm -> trm
 with def: Set :=
   | def_typ: typ_label -> typ -> typ -> def (* same as dec_typ *)
-  | def_fld: fld_label -> typ -> avar -> def (* cannot have term here, assign it first *)
+  | def_fld: fld_label -> avar -> def (* Cannot have term here, assign it first to a var.
+    The type of that var can then be looked up in the env -> no need to give type here. *)
   | def_mtd: mtd_label -> typ -> typ -> trm -> def (* one nameless argument *)
 with defs: Set :=
   | defs_nil: defs
@@ -88,7 +89,7 @@ Definition typ_arrow(T1 T2: typ) :=
 
 Definition label_of_def(d: def): label := match d with
 | def_typ L _ _ => label_typ L
-| def_fld l _ _ => label_fld l
+| def_fld l _ => label_fld l
 | def_mtd m _ _ _ => label_mtd m
 end.
 
@@ -192,7 +193,7 @@ Fixpoint open_rec_trm (k: nat) (u: var) (t: trm) { struct t }: trm :=
 with open_rec_def (k: nat) (u: var) (d: def) { struct d }: def :=
   match d with
   | def_typ L Lo Hi => def_typ L (open_rec_typ k u Lo) (open_rec_typ k u Hi)
-  | def_fld f T a => def_fld f (open_rec_typ k u T) (open_rec_avar k u a)
+  | def_fld f a => def_fld f (open_rec_avar k u a)
   | def_mtd m T1 T2 e => def_mtd m (open_rec_typ k u T1) (open_rec_typ k u T2)
                        (open_rec_trm (S k) u e)
   end
@@ -262,7 +263,7 @@ Fixpoint fv_trm (t: trm): vars :=
 with fv_def (d: def): vars :=
   match d with
   | def_typ _ T U => (fv_typ T) \u (fv_typ U)
-  | def_fld _ T x => (fv_typ T) \u (fv_avar x)
+  | def_fld _ x => (fv_avar x)
   | def_mtd _ T U u => (fv_typ T) \u (fv_typ U) \u (fv_trm u)
   end
 with fv_defs(ds: defs): vars :=
@@ -288,10 +289,10 @@ Inductive red: trm -> sto -> trm -> sto -> Prop :=
       defs_has              ds  (def_mtd m T U body) ->
       red (trm_call (trm_var (avar_f x)) m (trm_var (avar_f y))) s
           (open_trm y body) s
-  | red_sel: forall s x y l T ds,
+  | red_sel: forall s x y l ds,
       binds x ds s ->
-(*    defs_has (open_defs x ds) (def_fld l T y) -> BIND *)
-      defs_has              ds  (def_fld l T y) ->
+(*    defs_has (open_defs x ds) (def_fld l y) -> BIND *)
+      defs_has              ds  (def_fld l y) ->
       red (trm_sel (trm_var (avar_f x)) l) s
           (trm_var y) s
   | red_new: forall s ds x,
@@ -550,7 +551,7 @@ with ty_def: ctx -> def -> dec -> Prop :=
       ty_def G (def_typ L S U) (dec_typ L S U)
   | ty_fld: forall G l v T,
       ty_trm G (trm_var v) T ->
-      ty_def G (def_fld l T v) (dec_fld l T)
+      ty_def G (def_fld l v) (dec_fld l T)
   | ty_mtd: forall L G m S T t,
       (* needed because we'll put S into the ctx *)
       wf_typ ip deep G S ->
@@ -900,7 +901,7 @@ Fixpoint subst_trm (z: var) (u: var) (t: trm): trm :=
 with subst_def (z: var) (u: var) (d: def): def :=
   match d with
   | def_typ L T1 T2   => def_typ L (subst_typ z u T1) (subst_typ z u T2)
-  | def_fld l T x     => def_fld l (subst_typ z u T) (subst_avar z u x)
+  | def_fld l x     => def_fld l (subst_avar z u x)
   | def_mtd m T1 T2 b => def_mtd m (subst_typ z u T1) (subst_typ z u T2) (subst_trm z u b)
   end
 with subst_defs (z: var) (u: var) (ds: defs): defs :=
@@ -1532,12 +1533,11 @@ Proof.
   simpl in H. specialize (H eq_refl). inversions* H. 
 Qed.
 
-Lemma invert_ty_fld_inside_ty_defs: forall G ds Ds l v T T',
+Lemma invert_ty_fld_inside_ty_defs: forall G ds Ds l v T,
   ty_defs G ds Ds ->
-  defs_has ds (def_fld l T v) ->
-  decs_has Ds (dec_fld l T') ->
-  (* conclusion is the premise needed to construct a ty_fld: *)
-  ty_trm G (trm_var v) T /\ T' = T.
+  defs_has ds (def_fld l v) ->
+  decs_has Ds (dec_fld l T) ->
+  ty_trm G (trm_var v) T.
 Proof.
   introv HdsDs dsHas DsHas.
   lets H: (extract_ty_def_from_ty_defs HdsDs dsHas DsHas).
@@ -3835,8 +3835,7 @@ Proof.
     destruct Sd as [T1 [Eq StT12]]. subst D1.
     try refine (ty_sbsm _ StT23).
     refine (ty_sbsm _ StT12).
-    lets P: (invert_ty_fld_inside_ty_defs Tyds dsHas Ds1Has).
-    destruct P as [P Eq]. subst. exact P.
+    apply (invert_ty_fld_inside_ty_defs Tyds dsHas Ds1Has).
   + (* red_new *)
     introv Wf Ty.
     apply invert_ty_new in Ty.
