@@ -2969,18 +2969,23 @@ Qed.
 (* ###################################################################### *)
 (** ** More inversion lemmas *)
 
+Lemma wf_clo_dec: forall m G D,
+  wf_dec m G D -> forall z, open_dec z D = D.
+Admitted.
+
 Lemma invert_var_has_dec: forall G x D,
   trm_has G (trm_var (avar_f x)) D ->
   exists T Ds D', ty_trm G (trm_var (avar_f x)) T /\
                   exp ip G T Ds /\
                   bdecs_has Ds D' /\
-                  (* BIND open_dec x D'*) D' = D.
+                  wf_dec ip G D /\
+                  open_dec x D' = D.
 Proof.
   introv Has. inversions Has.
   (* case has_trm *)
-  + subst. exists T Ds D. auto.
+  + subst. exists T Ds D. lets Eq: (wf_clo_dec H2 x). auto.
   (* case has_var *)
-  + exists T Ds D. auto.
+  + exists T Ds D0. auto.
 Qed.
 
 Lemma invert_has: forall G t D,
@@ -2988,18 +2993,19 @@ Lemma invert_has: forall G t D,
    (exists T Ds,      ty_trm G t T /\
                       exp ip G T Ds /\
                       bdecs_has Ds D /\
-                      (forall z: var, open_dec z D = D))
+                      wf_dec ip G D)
 \/ (exists x T Ds D', t = (trm_var (avar_f x)) /\
                       ty_trm G (trm_var (avar_f x)) T /\
                       exp ip G T Ds /\
                       bdecs_has Ds D' /\
-                      (* BIND open_dec x D'*) D' = D).
+                      wf_dec ip G D /\
+                      open_dec x D' = D).
 Proof.
   introv Has. inversions Has.
   (* case has_trm *)
   + subst. left. exists T Ds. auto.
   (* case has_var *)
-  + right. exists v T Ds D. auto.
+  + right. exists v T Ds D0. auto 10.
 Qed.
 
 Lemma invert_var_has_dec_typ: forall G x l S U,
@@ -3007,15 +3013,15 @@ Lemma invert_var_has_dec_typ: forall G x l S U,
   exists X Ds S' U', ty_trm G (trm_var (avar_f x)) X /\
                      exp ip G X Ds /\
                      bdecs_has Ds (dec_typ l S' U') /\
-                     (* BIND open_typ x S' *) S' = S /\
-                     (* BIND open_typ x U' *) U' = U.
+                     open_typ x S' = S /\
+                     open_typ x U' = U.
 Proof.
   introv Has. apply invert_var_has_dec in Has.
-  destruct Has as [X [Ds [D [Tyx [Exp [Has Eq]]]]]].
-  destruct D as [ Lo Hi | T' | S' U' ]; try solve [ inversion Eq ].
+  destruct Has as [X [Ds [D [Tyx [Exp [Has [Wf Eq]]]]]]].
+  destruct D as [ L Lo Hi | l0 T' | m S' U' ]; try solve [ inversion Eq ].
   unfold open_dec, open_rec_dec in Eq. fold open_rec_typ in Eq.
   inversions Eq.
-  exists X Ds S U. auto.
+  exists X Ds Lo Hi. auto.
 Qed.
 
 Lemma invert_var_has_dec_fld: forall G x l T,
@@ -3023,14 +3029,14 @@ Lemma invert_var_has_dec_fld: forall G x l T,
   exists X Ds T', ty_trm G (trm_var (avar_f x)) X /\
                   exp ip G X Ds /\
                   bdecs_has Ds (dec_fld l T') /\
-                  (* BIND open_typ x T'*) T' = T.
+                  open_typ x T' = T.
 Proof.
   introv Has. apply invert_var_has_dec in Has.
-  destruct Has as [X [Ds [D [Tyx [Exp [Has Eq]]]]]].
-  destruct D as [ Lo Hi | T' | T1 T2 ]; try solve [ inversion Eq ].
+  destruct Has as [X [Ds [D [Tyx [Exp [Has [Wf Eq]]]]]]].
+  destruct D as [ L Lo Hi | l0 T' | m T1 T2 ]; try solve [ inversion Eq ].
   unfold open_dec, open_rec_dec in Eq. fold open_rec_typ in Eq.
   inversions Eq.
-  exists X Ds T. auto.
+  exists X Ds T'. auto.
 Qed.
 
 Lemma invert_var_has_dec_mtd: forall G x l S U,
@@ -3038,15 +3044,15 @@ Lemma invert_var_has_dec_mtd: forall G x l S U,
   exists X Ds S' U', ty_trm G (trm_var (avar_f x)) X /\
                      exp ip G X Ds /\
                      bdecs_has Ds (dec_mtd l S' U') /\
-                     (* BIND open_typ x S'*) S' = S /\
-                     (* BIND open_typ x U'*) U' = U.
+                     open_typ x S' = S /\
+                     open_typ x U' = U.
 Proof.
   introv Has. apply invert_var_has_dec in Has.
-  destruct Has as [X [Ds [D [Tyx [Exp [Has Eq]]]]]].
-  destruct D as [ Lo Hi | T' | S' U' ]; try solve [ inversion Eq ].
+  destruct Has as [X [Ds [D [Tyx [Exp [Has [Wf Eq]]]]]]].
+  destruct D as [ L Lo Hi | l0 T' | m S' U' ]; try solve [ inversion Eq ].
   unfold open_dec, open_rec_dec in Eq. fold open_rec_typ in Eq.
   inversions Eq.
-  exists X Ds S U. auto.
+  exists X Ds S' U'. auto.
 Qed.
 
 Lemma invert_exp_sel: forall m G v L Ds,
@@ -3096,68 +3102,27 @@ Qed.
 
 Lemma invert_ty_new: forall G ds T2,
   ty_trm G (trm_new ds) T2 ->
-  exists n Ds, subtyp ip G (typ_bind Ds) T2 n /\
-               ty_defs G ds Ds /\
-               cbounds_decs Ds /\
-               wf_decs ip G Ds.
-(*
-  exists L, (forall x, x \notin L ->
-               ty_defs (G & x ~ typ_bind Ds) (open_defs x ds) (open_decs x Ds)) /\
-            cbounds_decs Ds.
-*)
+  exists L n Ds,
+    subtyp ip G (typ_bind Ds) T2 n /\
+    (forall x, x \notin L ->
+       ty_defs (G & x ~ typ_bind Ds) (open_defs x ds) (open_decs x Ds)) /\
+    cbounds_decs Ds.
 Proof.
   introv Ty. gen_eq t0: (trm_new ds). gen ds.
   induction Ty; intros ds' Eq; try (solve [ discriminate ]); symmetry in Eq.
   + (* case ty_new *)
-    inversions Eq. exists 0 Ds.
-    lets Wf: (ty_defs_regular H). auto.
+    inversions Eq. exists L 0 Ds. repeat split; auto.
+    apply subtyp_refl.
+    apply_fresh wf_bind_deep as z. assert (zL: z \notin L) by auto. specialize (H z zL).
+    apply (ty_defs_regular H).
   + (* case ty_sbsm *)
     subst. rename ds' into ds. specialize (IHTy _ eq_refl).
-    destruct IHTy as [n0 [Ds [St IHTy]]]. exists (max n n0) Ds.
-    refine (conj _ IHTy).
+    destruct IHTy as [L [n0 [Ds [St [IHTy Cb]]]]]. exists L (max n n0) Ds.
+    repeat split; auto.
     apply (subtyp_trans (subtyp_max_ctx St (Max.le_max_r n n0))
                         (subtyp_max_ctx H (Max.le_max_l n n0))).
 Qed.
 
-(*
-Lemma invert_wf_sto_with_weakening: forall s G,
-  wf_sto s G ->
-  forall x ds Ds T,
-    binds x (object Ds ds) s -> 
-    binds x T G 
-    -> T = (typ_bind Ds) 
-    /\ ty_defs G (open_defs x ds) (open_decs x Ds)
-    /\ cbounds_decs Ds.
-Proof.
-  introv Wf Bs BG.
-  lets P: (invert_wf_sto Wf).
-  specialize (P x ds Ds T Bs BG).
-  destruct P as [EqT [G1 [G2 [EqG [Ty F]]]]]. subst.
-  apply (conj eq_refl).
-  lets Ok: (wf_sto_to_ok_G Wf).
-  split.
-  + apply (weaken_ty_defs_end Ok Ty).
-  + exact F.
-Qed.
-
-Lemma invert_wf_sto_with_sbsm: forall s G,
-  wf_sto s G ->
-  forall x ds Ds T, 
-    binds x (object Ds ds) s ->
-    ty_trm G (trm_var (avar_f x)) T (* <- instead of binds *)
-    -> exists n, subtyp ip oktrans G (typ_bind Ds) T n
-    /\ ty_defs G (open_defs x ds) (open_decs x Ds)
-    /\ cbounds_decs Ds.
-Proof.
-  introv Wf Bis Tyx.
-  apply invert_ty_var in Tyx. destruct Tyx as [T'' [St BiG]].
-  destruct (invert_wf_sto_with_weakening Wf Bis BiG) as [EqT [Tyds F]].
-  subst T''.
-  lets Ok: (wf_sto_to_ok_G Wf).
-  apply (conj St).
-  auto.
-Qed.
-*)
 
 
 (* ------------------------------------------------------------------------- *)
@@ -3279,8 +3244,8 @@ Qed.
 Inductive gbounds_typ: ctx -> typ -> Prop :=
 | gbounds_top: forall G, gbounds_typ G typ_top
 | gbounds_bot: forall G, gbounds_typ G typ_bot
-| gbounds_bind: forall G Ds,
-    gbounds_decs G Ds ->
+| gbounds_bind: forall L G Ds,
+    (forall z, z \notin L -> gbounds_decs (G & z ~ typ_bind Ds) (open_decs z Ds)) ->
     gbounds_typ G (typ_bind Ds)
 | gbounds_sel: forall G x L,
     gbounds_typ G (typ_sel (pth_var x) L) (* don't enter path types *)
@@ -3307,25 +3272,37 @@ with gbounds_decs: ctx -> decs -> Prop :=
 
 Hint Constructors gbounds_typ gbounds_dec gbounds_decs.
 
+Lemma open_preserves_cbounds_decs: forall z Ds,
+  cbounds_decs Ds -> cbounds_decs (open_decs z Ds).
+Admitted.
+
 Lemma cbounds_to_gbounds:
-   (forall T , cbounds_typ  T  -> forall G, wf_typ  pr deep G T  -> gbounds_typ  G T ) 
-/\ (forall D , cbounds_dec  D  -> forall G, wf_dec  pr      G D  -> gbounds_dec  G D ) 
-/\ (forall Ds, cbounds_decs Ds -> forall G, wf_decs pr      G Ds -> gbounds_decs G Ds).
+   (forall m1 m2 G T, wf_typ m1 m2 G T -> m1 = pr -> m2 = deep ->
+      cbounds_typ T -> gbounds_typ  G T) 
+/\ (forall m1 G D, wf_dec m1 G D -> m1 = pr ->
+      cbounds_dec D -> gbounds_dec G D) 
+/\ (forall m1 G Ds, wf_decs m1 G Ds -> m1 = pr ->
+      cbounds_decs Ds -> gbounds_decs G Ds).
 Proof.
-  apply cbounds_mutind; intros; auto;
+  apply wf_mutind; intros; subst; auto;
   try match goal with
-  | H: _ |- _ => solve [inversions H; eauto 10]
+  | H: _ |- _ => solve [inversions H; eauto]
   end.
+  apply_fresh gbounds_bind as z.
+  inversions H2. apply (open_preserves_cbounds_decs z) in H3.
+  assert (zL: z \notin L) by auto. apply (H z zL eq_refl H3).
   Grab Existential Variables. apply 0. apply 0.
 Qed.
 
 Inductive simple_ctx: ctx -> Prop :=
 | simple_ctx_empty: simple_ctx empty
-| simple_ctx_push: forall G x Ds,
+| simple_ctx_push: forall L G x Ds,
     x # G ->
     simple_ctx G ->
-    gbounds_decs G Ds ->
-    wf_decs pr G Ds ->
+    (forall z, z \notin L \/ z = x ->
+       gbounds_decs (G & z ~ typ_bind Ds) (open_decs z Ds)) ->
+    (forall z, z \notin L \/ z = x ->
+       wf_decs pr (G & z ~ typ_bind Ds) (open_decs z Ds)) ->
     simple_ctx (G & x ~ (typ_bind Ds)).
 
 Hint Constructors simple_ctx.
@@ -3334,8 +3311,13 @@ Lemma wf_sto_to_simple_ctx: forall s G,
   wf_sto s G -> simple_ctx G.
 Proof.
   intros. induction H.
-  - auto.
-  - apply simple_ctx_push; auto. apply* cbounds_to_gbounds.
+  - apply simple_ctx_empty.
+  - apply simple_ctx_push with L; auto.
+    intros z zL.
+    specialize (H2 z zL). specialize (H4 z zL).
+    destruct cbounds_to_gbounds as [_ [_ P]].
+    apply (P _ _ _ H4 eq_refl).
+    apply (open_preserves_cbounds_decs _ H3).
 Qed.
 
 Scheme gbounds_typ_mut  := Induction for gbounds_typ  Sort Prop
@@ -3352,9 +3334,13 @@ Lemma weaken_gbounds:
                  gbounds_decs (G & x ~ U) Ds).
 Proof.
   apply gbounds_mutind; intros; eauto.
+  (* TODO weaken in middle 
   apply (weaken_subtyp_end H1) in s. eauto.
 Qed.
+*)
+Admitted.
 
+(*
 Lemma invert_simple_ctx: forall G,
   simple_ctx G ->
   ok G /\
@@ -3388,12 +3374,15 @@ Lemma invert_gbounds_decs: forall G Ds D,
 Proof.
   intros G Ds. induction Ds; introv Gb DsHas; inversions Gb; inversions DsHas; eauto.
 Qed.
+*)
 
 Lemma has_good_bounds: forall G x L Lo Hi,
   simple_ctx G ->
   pth_has pr G (pth_var (avar_f x)) (dec_typ L Lo Hi) ->
   exists n, subtyp pr G Lo Hi n.
 Proof.
+Admitted.
+(*
   introv Sc Has.
   destruct (invert_simple_ctx Sc) as [Ok F].
   inversion Has as [A1 A2 A3 A4 T Ds' Bi Exp DsHas]. subst.
@@ -3403,27 +3392,33 @@ Proof.
   inversions DsHas.
   lets P: (invert_gbounds_decs Gb H0). inversions P. eauto.
 Qed.
+*)
 
 Lemma exp_preserves_wf: forall G T Ds,
-  exp pr G T Ds ->
+  exp pr G T (bdecs_decs Ds) ->
   wf_typ pr deep G T ->
   simple_ctx G ->
-  wf_bdecs pr G Ds.
+  exists L, forall z, z \notin L -> wf_decs pr (G & z ~ typ_bind Ds) (open_decs z Ds).
 Proof.
-  introv Exp. gen_eq m: pr. induction Exp; introv Eq Wf Sc; subst.
-  - auto.
-  - auto.
-  - inversions Wf. auto.
-  - inversions Wf.
+  introv Exp. gen_eq m: pr. gen_eq Ds0: (bdecs_decs Ds). gen Ds.
+  induction Exp; introv Eq1 Eq2 Wf Sc; inversions Eq1.
+  - (* case exp_top *)
+    eauto.
+    (* case exp_bot: contradiction solved by inversions above *)
+  - (* case exp_bind *)
+    inversions Wf. exists L. exact H1.
+  - (* case exp_sel *)
+    inversions Wf.
     + (* case wf_sel1: simple, because everything we need is packed in Wf *)
-      lets Eq: (has_unique H H2). simpl in Eq. specialize (Eq eq_refl). inversions Eq.
+      lets Eq: (has_unique H H3). simpl in Eq. specialize (Eq eq_refl). inversions Eq.
       auto.
     + (* case wf_sel2: Wf only contains shallow wf-ness of U, but we need deep,
          so we have to get it out if simple_ctx G. *)
-      lets Eq: (has_unique H H3). simpl in Eq. specialize (Eq eq_refl). inversions Eq.
+      lets Eq: (has_unique H H4). simpl in Eq. specialize (Eq eq_refl). inversions Eq.
       apply* IHExp.
       lets P: (has_good_bounds Sc H). destruct P as [n St].
       destruct (subtyp_regular St) as [_ WfU]. exact WfU.
+  Grab Existential Variables. apply \{}.
 Qed.
 
 Lemma exp_preserves_sub_pr: forall G T1 T2 Ds1 Ds2 n1,
