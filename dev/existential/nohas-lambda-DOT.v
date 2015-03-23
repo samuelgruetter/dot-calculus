@@ -776,6 +776,214 @@ Proof.
   apply* subst_undo_trm_def_defs.
 Qed.
 
+(* ###################################################################### *)
+(** ** Transitivity *)
+
+Hint Constructors subtyp subdec.
+
+Lemma middle_top_transitivity: forall G T1 T3,
+(*subtyp G T1 typ_top (<- needs no hyp) *)
+  subtyp G typ_top T3 ->
+  subtyp G T1 T3.
+Proof.
+  introv St23. gen_eq T2: typ_top. gen T1.
+  induction St23; introv Eq1; subst; eauto; try discriminate.
+Qed.
+
+Lemma middle_bot_transitivity: forall G T1 T3,
+  subtyp G T1 typ_bot ->
+  (* subtyp G typ_bot T3 (<- needs no hyp) *)
+  subtyp G T1 T3.
+Proof.
+  introv St12. gen_eq T2: typ_bot. gen T3.
+  induction St12; introv Eq1; subst; eauto; try discriminate.
+Qed.
+
+Lemma ty_var_mix_bounds: forall G a L Lo1 Hi1 Lo2 Hi2,
+  ty_trm G (trm_var a) (typ_rcd (dec_typ L Lo1 Hi1)) ->
+  ty_trm G (trm_var a) (typ_rcd (dec_typ L Lo2 Hi2)) ->
+  ty_trm G (trm_var a) (typ_rcd (dec_typ L Lo1 Hi2)).
+Abort.
+
+(* TODO how can we prove this?? *)
+Lemma ty_var_good_bounds: forall G a L Lo1 Hi1 Lo2 Hi2,
+  ty_trm G (trm_var a) (typ_rcd (dec_typ L Lo1 Hi1)) ->
+  ty_trm G (trm_var a) (typ_rcd (dec_typ L Lo2 Hi2)) ->
+  subtyp G Lo1 Hi2.
+Admitted.
+
+Definition pair_lt(p1 p2: nat*nat): Prop := (fst p1) < (fst p2) /\ (snd p1) < (snd p2).
+
+Definition ms := (@well_founded_induction_type_2 nat nat pair_lt).
+
+Axiom holds: forall P: Prop, P.
+
+Lemma transitivity: forall G T1 T2 T3,
+  subtyp G T1 T2 ->
+  subtyp G T2 T3 ->
+  subtyp G T1 T3.
+Proof.
+  introv St12 St23. induction St12.
+  + (* case subtyp_refl *) eauto.
+  + (* case subtyp_top *)
+    apply (middle_top_transitivity _ St23).
+  + (* case subtyp_bot *) eauto.
+  + (* case subtyp_rcd *)
+    gen_eq T2: (typ_rcd D2). induction St23; introv Eq; subst.
+    - (* case subtyp_refl *) eauto.
+    - (* case subtyp_top *) eauto.
+    - (* case subtyp_bot *) discriminate.
+    - (* case subtyp_rcd *)
+      inversions Eq.
+      admit. (* TODO subdecs_trans *)
+    - (* case subtyp_sel_l *) discriminate.
+    - (* case subtyp_sel_r *)
+      apply subtyp_sel_r with Hi.
+      apply (ty_sbsm H0).
+      apply subtyp_rcd.
+      refine (subdec_typ _ _ (subtyp_refl _ _)).
+      apply (subtyp_rcd H).
+    - (* case subtyp_and *) eauto.
+    - (* case subtyp_and_l *) discriminate.
+    - (* case subtyp_and_r *) discriminate.
+    - (* case subtyp_or *) discriminate.
+    - (* case subtyp_or_l *) eauto.
+    - (* case subtyp_or_r *) eauto.
+  + (* case subtyp_sel_l *) eauto.
+  + (* case subtyp_sel_r *)
+    gen_eq T2: (typ_sel a L). induction St23; introv Eq; subst.
+    - (* case subtyp_refl *) eauto.
+    - (* case subtyp_top *) eauto.
+    - (* case subtyp_bot *) discriminate.
+    - (* case subtyp_rcd *) discriminate.
+    - (* case subtyp_sel_l *)
+      inversions Eq.
+      apply (ty_var_good_bounds H H0).
+    - (* case subtyp_sel_r *)
+      apply subtyp_sel_r with Hi0.
+      apply (ty_sbsm H0).
+      apply subtyp_rcd.
+      refine (subdec_typ _ _ (subtyp_refl _ _)).
+      apply (subtyp_sel_r H).
+    - (* case subtyp_and *) eauto.
+    - (* case subtyp_and_l *) discriminate.
+    - (* case subtyp_and_r *) discriminate.
+    - (* case subtyp_or *) discriminate.
+    - (* case subtyp_or_l *) eauto.
+    - (* case subtyp_or_r *) eauto.
+  + (* case subtyp_and *)
+    rename T1 into T2a, T2 into T2b, S into T1.
+    gen_eq T2: (typ_and T2a T2b). induction St23; introv Eq; subst.
+    - (* case subtyp_refl *) eauto.
+    - (* case subtyp_top *) eauto.
+    - (* case subtyp_bot *) discriminate.
+    - (* case subtyp_rcd *) discriminate.
+    - (* case subtyp_sel_l *) discriminate.
+    - (* case subtyp_sel_r *)
+      apply subtyp_sel_r with Hi.
+      apply (ty_sbsm H).
+      apply subtyp_rcd.
+      refine (subdec_typ _ _ (subtyp_refl _ _)).
+      apply (subtyp_and St12_1 St12_2).
+    - (* case subtyp_and *)
+      rename T0 into T3a, T2 into T3b. clear IHSt12_1 IHSt12_2 IHSt23_1 IHSt23_2.
+      (* use IH, decreasing on rhs, to get: *)
+      assert (St13a: subtyp G T1 T3a) by apply holds.
+      assert (St13b: subtyp G T1 T3b) by apply holds.
+      apply (subtyp_and St13a St13b).
+    - (* case subtyp_and_l *)
+      inversions Eq. rename U into T3.
+      (* T1 <: T2a & T2b <: T3
+            |            |
+            V            V
+         T1 <: T2a   T2a <: T3
+         T1 <: T2b
+        So we can invoke IH on T1<:T2a<:T3 and decrease on both arguments -> OK *)
+      apply holds.
+    - (* case subtyp_and_r *)
+      (* same as above *)
+      apply holds.
+    - (* case subtyp_or *) discriminate.
+    - (* case subtyp_or_l *)
+      rename T0 into T3a, T2 into T3b.
+      apply subtyp_or_l.
+      apply holds. (* decreases on rhs *)
+    - (* case subtyp_or_r *)
+      rename T0 into T3a, T2 into T3b.
+      apply subtyp_or_r.
+      apply holds. (* decreases on rhs *)
+  + (* case subtyp_and_l *)
+    rename T1 into T1a, T2 into T1b, U into T2.
+    apply subtyp_and_l.
+    (*     T1a & T1b <: T2 <: T3
+                     |     |
+                     V     V
+                 T1a <: T2 <: T3  
+        decreases on lhs, stays on rhs -> ok *)
+    apply holds.
+  + (* case subtyp_and_r *)
+    rename T1 into T1a, T2 into T1b, U into T2.
+    apply subtyp_and_r.
+    (*     T1a & T1b <: T2 <: T3
+                     |     |
+                     V     V
+                 T1b <: T2 <: T3  
+        decreases on lhs, stays on rhs -> ok *)
+    apply holds.
+  + (* case subtyp_or *)
+    rename T1 into T1a, T2 into T1b, S into T2.
+    (* use IH, decreasing on lhs, to get: *)
+    assert (St1a3: subtyp G T1a T3) by apply holds.
+    assert (St1b3: subtyp G T1b T3) by apply holds.
+    apply (subtyp_or St1a3 St1b3).
+  + (* case subtyp_or_l *)
+    rename T1 into T2a, T2 into T2b, U into T1.
+    gen_eq T2: (typ_or T2a T2b). inversions St23; introv Eq; subst.
+    - (* case subtyp_refl *) eauto.
+    - (* case subtyp_top *) eauto.
+    - (* case subtyp_bot *) discriminate.
+    - (* case subtyp_rcd *) discriminate.
+    - (* case subtyp_sel_l *) discriminate.
+    - (* case subtyp_sel_r *)
+      apply subtyp_sel_r with Hi.
+      apply (ty_sbsm H).
+      apply subtyp_rcd.
+      refine (subdec_typ _ _ (subtyp_refl _ _)).
+      apply (subtyp_or_l _ St12).
+    - (* case subtyp_and *)
+      rename T0 into T3a, T4 into T3b.
+      (* use IH, decreasing on rhs, to get: *)
+      assert (St13a: subtyp G T1 T3a) by apply holds.
+      assert (St13b: subtyp G T1 T3b) by apply holds.
+      apply (subtyp_and St13a St13b).
+    - (* case subtyp_and_l *) discriminate.
+    - (* case subtyp_and_r *) discriminate.
+    - (* case subtyp_or *)
+      inversions Eq.
+      (* T1 <: (T2a | T2b) <: T3
+            |              |
+            V              V
+         T1 <: T2a     T2a <: T3
+                       T2b <: T3
+      So we can invoke IH on T1<:T2a<:T3 and decrease on both arguments -> OK *)
+      apply holds.
+    - (* case subtyp_or_l *)
+      rename T0 into T3a, T4 into T3b.
+      apply subtyp_or_l.
+      (* T1 <: (T2a | T2b) <: (T3a | T3b)
+            |              |
+            V              V
+          keep (T2a | T2b) <: T3a
+      decreases on rhs, stays same on lhs  *)
+      apply holds.  
+    - (* case subtyp_or_r *)
+      apply holds. (* same as above *)
+  + (* case subtyp_or_r *)
+    apply holds. (* symmetric to subtyp_or_l *)
+Qed.
+
+Print Assumptions transitivity.
+
 
 (* ###################################################################### *)
 (** ** Trivial inversion lemmas *)
