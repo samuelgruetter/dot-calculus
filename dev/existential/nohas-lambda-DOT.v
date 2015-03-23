@@ -310,8 +310,6 @@ Inductive trans_middle_ok: ctx -> typ -> Prop :=
 | trans_middle_ok_or:  forall G T1 T2, trans_middle_ok G (typ_or  T1 T2).
 *)
 
-(* Note: We have an explicit transitivity rule, which allows us to simplify
-   subtyp_sel_l/r, and/or *)
 Inductive subtyp: ctx -> typ -> typ -> Prop :=
   | subtyp_refl: forall G T,
       subtyp G T T
@@ -322,44 +320,45 @@ Inductive subtyp: ctx -> typ -> typ -> Prop :=
   | subtyp_rcd: forall G D1 D2,
       subdec G D1 D2 ->
       subtyp G (typ_rcd D1) (typ_rcd D2)
-  | subtyp_sel_l: forall G a X L Lo Hi,
-      ty_trm G (trm_var a) X ->
-      subtyp G X (typ_rcd (dec_typ L Lo Hi)) ->
-      (*subtyp G Lo Hi ->*)
+  | subtyp_sel_l: forall G a L Lo Hi,
+      ty_trm G (trm_var a) (typ_rcd (dec_typ L Lo Hi)) ->
       subtyp G (typ_sel a L) Hi
-  | subtyp_sel_r: forall G a X L Lo Hi,
-      ty_trm G (trm_var a) X ->
-      subtyp G X (typ_rcd (dec_typ L Lo Hi)) ->
-      (*subtyp G Lo Hi ->*)
+  | subtyp_sel_r: forall G a L Lo Hi,
+      ty_trm G (trm_var a) (typ_rcd (dec_typ L Lo Hi)) ->
       subtyp G Lo (typ_sel a L)
   | subtyp_and: forall G S T1 T2,
       subtyp G S T1 ->
       subtyp G S T2 ->
       subtyp G S (typ_and T1 T2)
-  | subtyp_and_l: forall G T1 T2,
-      subtyp G (typ_and T1 T2) T1
-  | subtyp_and_r: forall G T1 T2,
-      subtyp G (typ_and T1 T2) T2
-  | subtyp_and_rcd: forall G D1 D2 D3,
-      D1 && D2 == D3 ->
-      subtyp G (typ_and (typ_rcd D1) (typ_rcd D2)) (typ_rcd D3)
+  | subtyp_and_l: forall G T1 T2 U,
+      subtyp G T1 U ->
+      subtyp G (typ_and T1 T2) U
+  | subtyp_and_r: forall G T1 T2 U,
+      subtyp G T2 U ->
+      subtyp G (typ_and T1 T2) U
   | subtyp_or: forall G T1 T2 S,
       subtyp G T1 S ->
       subtyp G T2 S ->
       subtyp G (typ_or T1 T2) S
-  | subtyp_or_l: forall G T1 T2,
-      subtyp G T1 (typ_or T1 T2)
-  | subtyp_or_r: forall G T1 T2,
-      subtyp G T2 (typ_or T1 T2)
+  | subtyp_or_l: forall G U T1 T2,
+      subtyp G U T1 ->
+      subtyp G U (typ_or T1 T2)
+  | subtyp_or_r: forall G U T1 T2,
+      subtyp G U T2 ->
+      subtyp G U (typ_or T1 T2)
 (* needed?
-  | subtyp_or_rcd: forall G D1 D2 D3,
+  ! subtyp_and_rcd: forall G D1 D2 D3,
+      D1 && D2 == D3 ->
+      subtyp G (typ_and (typ_rcd D1) (typ_rcd D2)) (typ_rcd D3)
+
+  ! subtyp_or_rcd: forall G D1 D2 D3,
       D1 || D2 == D0 ->
       subtyp G (typ_rcd D0) (typ_or (typ_rcd D1) (typ_rcd D2))
-*)
-  | subtyp_trans: forall G T1 T2 T3,
+  ! subtyp_trans: forall G T1 T2 T3,
       subtyp G T1 T2 ->
       subtyp G T2 T3 ->
       subtyp G T1 T3
+*)
 with subdec: ctx -> dec -> dec -> Prop :=
   | subdec_typ: forall G L Lo1 Hi1 Lo2 Hi2,
       subtyp G Lo2 Lo1 ->
@@ -898,6 +897,7 @@ Proof.
     - auto.
 Qed.
 
+(* TODO needs subtyping transitivity
 Lemma invert_ty_var: forall G x T,
   ty_trm G (trm_var (avar_f x)) T ->
   exists T', subtyp G T' T /\ binds x T' G.
@@ -913,7 +913,7 @@ Proof.
       * apply H.
     - apply Bi.
 Qed.
-
+*)
 
 (* ###################################################################### *)
 (** ** Weakening *)
@@ -947,7 +947,6 @@ Proof.
   apply ty_mutind; intros; subst; auto.
   apply* subtyp_sel_l.
   apply* subtyp_sel_r.
-  apply* subtyp_trans.
   apply ty_var. apply* binds_weaken.
   apply* ty_sel.
   apply* ty_call.
