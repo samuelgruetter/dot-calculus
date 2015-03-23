@@ -4,6 +4,8 @@ lambda-DOT:
 Lambda calculus with records, abstract type members, union and intersection types,
 but without self references in types, and thus without recursive types nor recursive
 functions.
+
+nohas = no "has" judgment, but use type assignment instead
 *)
 
 Set Implicit Arguments.
@@ -39,14 +41,11 @@ Inductive avar : Set :=
   | avar_b : nat -> avar  (* bound var (de Bruijn index) *)
   | avar_f : var -> avar. (* free var ("name"), refers to store or ctx *)
 
-Inductive pth : Set :=
-  | pth_var : avar -> pth.
-
 Inductive typ : Set :=
   | typ_top  : typ
   | typ_bot  : typ
-  | typ_rcd  : dec -> typ (* {D}, no self reference *)
-  | typ_sel  : pth -> typ_label -> typ (* p.L *)
+  | typ_rcd  : dec -> typ (* {D}, no self reference for the moment *)
+  | typ_sel  : avar -> typ_label -> typ (* p.L *)
   | typ_and  : typ -> typ -> typ
   | typ_or   : typ -> typ -> typ
 with dec : Set :=
@@ -132,17 +131,12 @@ Definition open_rec_avar (k: nat) (u: var) (a: avar) : avar :=
   | avar_f x => avar_f x
   end.
 
-Definition open_rec_pth (k: nat) (u: var) (p: pth) : pth :=
-  match p with
-  | pth_var a => pth_var (open_rec_avar k u a)
-  end.
-
 Fixpoint open_rec_typ (k: nat) (u: var) (T: typ) { struct T } : typ :=
   match T with
   | typ_top       => typ_top
   | typ_bot       => typ_bot
   | typ_rcd D     => typ_rcd (open_rec_dec k u D)
-  | typ_sel p L   => typ_sel (open_rec_pth k u p) L
+  | typ_sel a L   => typ_sel (open_rec_avar k u a) L
   | typ_and T1 T2 => typ_and (open_rec_typ k u T1) (open_rec_typ k u T2)
   | typ_or  T1 T2 => typ_or  (open_rec_typ k u T1) (open_rec_typ k u T2)
   end
@@ -174,7 +168,6 @@ with open_rec_defs (k: nat) (u: var) (ds: defs) { struct ds } : defs :=
   end.
 
 Definition open_avar u a := open_rec_avar  0 u a.
-Definition open_pth  u p := open_rec_pth   0 u p.
 Definition open_typ  u t := open_rec_typ   0 u t.
 Definition open_dec  u d := open_rec_dec   0 u d.
 Definition open_trm  u e := open_rec_trm   0 u e.
@@ -191,17 +184,12 @@ Definition fv_avar (a: avar) : vars :=
   | avar_f x => \{x}
   end.
 
-Definition fv_pth (p: pth) : vars :=
-  match p with
-  | pth_var a => fv_avar a
-  end.
-
 Fixpoint fv_typ (T: typ) { struct T } : vars :=
   match T with
   | typ_top       => \{}
   | typ_bot       => \{}
   | typ_rcd D     => (fv_dec D)
-  | typ_sel p L   => (fv_pth p)
+  | typ_sel a L   => (fv_avar a)
   | typ_and T U   => (fv_typ T) \u (fv_typ U)
   | typ_or  T U   => (fv_typ T) \u (fv_typ U)
   end
@@ -276,10 +264,6 @@ Inductive red : trm -> sto -> trm -> sto -> Prop :=
 (* ###################################################################### *)
 (** ** Typing *)
 
-Definition pth2trm(p: pth): trm := match p with
-  | pth_var a => trm_var a
-end.
-
 Reserved Notation "D1 && D2 == D3" (at level 40).
 Reserved Notation "D1 || D2 == D3" (at level 40).
 
@@ -338,16 +322,16 @@ Inductive subtyp: ctx -> typ -> typ -> Prop :=
   | subtyp_rcd: forall G D1 D2,
       subdec G D1 D2 ->
       subtyp G (typ_rcd D1) (typ_rcd D2)
-  | subtyp_sel_l: forall G p X L Lo Hi,
-      ty_trm G (pth2trm p) X ->
+  | subtyp_sel_l: forall G a X L Lo Hi,
+      ty_trm G (trm_var a) X ->
       subtyp G X (typ_rcd (dec_typ L Lo Hi)) ->
       (*subtyp G Lo Hi ->*)
-      subtyp G (typ_sel p L) Hi
-  | subtyp_sel_r: forall G p X L Lo Hi,
-      ty_trm G (pth2trm p) X ->
+      subtyp G (typ_sel a L) Hi
+  | subtyp_sel_r: forall G a X L Lo Hi,
+      ty_trm G (trm_var a) X ->
       subtyp G X (typ_rcd (dec_typ L Lo Hi)) ->
       (*subtyp G Lo Hi ->*)
-      subtyp G Lo (typ_sel p L)
+      subtyp G Lo (typ_sel a L)
   | subtyp_and: forall G S T1 T2,
       subtyp G S T1 ->
       subtyp G S T2 ->
@@ -557,17 +541,12 @@ Definition subst_avar (z: var) (u: var) (a: avar) : avar :=
   | avar_f x => If x = z then (avar_f u) else (avar_f x)
   end.
 
-Definition subst_pth (z: var) (u: var) (p: pth) : pth :=
-  match p with
-  | pth_var a => pth_var (subst_avar z u a)
-  end.
-
 Fixpoint subst_typ (z: var) (u: var) (T: typ) { struct T } : typ :=
   match T with
   | typ_top     => typ_top
   | typ_bot     => typ_bot
   | typ_rcd D   => typ_rcd (subst_dec z u D)
-  | typ_sel p L => typ_sel (subst_pth z u p) L
+  | typ_sel a L => typ_sel (subst_avar z u a) L
   | typ_and T1 T2 => typ_and (subst_typ z u T1) (subst_typ z u T2)
   | typ_or  T1 T2 => typ_or  (subst_typ z u T1) (subst_typ z u T2)
   end
@@ -609,17 +588,11 @@ Proof.
   intros. destruct* a. simpl. case_var*. simpls. notin_false.
 Qed.
 
-Lemma subst_fresh_pth: forall x y,
-  (forall p: pth, x \notin fv_pth p -> subst_pth x y p = p).
-Proof.
-  intros. destruct p. simpl. f_equal. apply* subst_fresh_avar.
-Qed.
-
 Lemma subst_fresh_typ_dec_decs: forall x y,
   (forall T : typ , x \notin fv_typ  T  -> subst_typ  x y T  = T ) /\
   (forall d : dec , x \notin fv_dec  d  -> subst_dec  x y d  = d ).
 Proof.
-  intros x y. apply typ_mutind; intros; simpls; f_equal*. apply* subst_fresh_pth.
+  intros x y. apply typ_mutind; intros; simpls; f_equal*. apply* subst_fresh_avar.
 Qed.
 
 Definition subst_fresh_typ(x y: var) := proj1 (subst_fresh_typ_dec_decs x y).
@@ -673,15 +646,6 @@ Proof.
   + case_var*.
 Qed.
 
-Lemma subst_open_commute_pth: forall x y u,
-  (forall p: pth, forall n: Datatypes.nat,
-    subst_pth x y (open_rec_pth n u p) 
-    = open_rec_pth n (subst_fvar x y u) (subst_pth x y p)).
-Proof.
-  intros. unfold subst_pth, open_pth, open_rec_pth. destruct p.
-  f_equal. apply subst_open_commute_avar.
-Qed.
-
 (* "open and then substitute" = "substitute and then open" *)
 Lemma subst_open_commute_typ_dec_decs: forall x y u,
   (forall t : typ, forall n: Datatypes.nat,
@@ -691,7 +655,7 @@ Lemma subst_open_commute_typ_dec_decs: forall x y u,
      subst_dec x y (open_rec_dec n u d)
      = open_rec_dec n (subst_fvar x y u) (subst_dec x y d)).
 Proof.
-  intros. apply typ_mutind; intros; simpl; f_equal*. apply subst_open_commute_pth.
+  intros. apply typ_mutind; intros; simpl; f_equal*. apply subst_open_commute_avar.
 Qed.
 
 (* "open and then substitute" = "substitute and then open" *)
@@ -776,21 +740,13 @@ Proof.
   + unfold fv_avar in H. assert (y <> v) by auto. repeat case_if; reflexivity.
 Qed.
 
-Lemma subst_undo_pth: forall x y,
-  (forall p, y \notin fv_pth p -> (subst_pth y x (subst_pth x y p)) = p).
-Proof.
-  intros. destruct p. unfold subst_pth. f_equal.
-  unfold fv_pth in H.
-  apply* subst_undo_avar.
-Qed.
-
 Lemma subst_undo_typ_dec_decs: forall x y,
    (forall T , y \notin fv_typ  T  -> (subst_typ  y x (subst_typ  x y T )) = T )
 /\ (forall D , y \notin fv_dec  D  -> (subst_dec  y x (subst_dec  x y D )) = D ).
 Proof.
   intros.
   apply typ_mutind; intros; simpl; unfold fv_typ, fv_dec in *; f_equal*.
-  apply* subst_undo_pth.
+  apply* subst_undo_avar.
 Qed.
 
 Lemma subst_undo_trm_def_defs: forall x y,
