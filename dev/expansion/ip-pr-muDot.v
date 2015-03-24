@@ -1166,6 +1166,166 @@ Proof.
   apply* subst_undo_trm_def_defs.
 Qed.
 
+Lemma middle_top_transitivity: forall G T1 T3 n,
+(*subtyp ip G T1 typ_top n (<- needs no hyp) *)
+  subtyp ip G typ_top T3 n ->
+  subtyp ip G T1 T3 n.
+Proof.
+  introv St23. gen_eq T2: typ_top. gen T1. gen_eq m: ip.
+  induction St23; introv Eq1 Eq2; subst.
+  + (* case subtyp_refl *)
+    apply subtyp_top. admit. (* wf *)
+  + (* case subtyp_top *)
+    apply subtyp_top. admit. (* wf *)
+  + (* case subtyp_bot *)
+    discriminate.
+  + (* case subtyp_bind *)
+    discriminate.
+  + (* case subtyp_sel_l *)
+    discriminate.
+  + (* case subtyp_sel_r *)
+    (* has-sbsm *)
+    assert (Has: pth_has ip G (pth_var (avar_f x)) (dec_typ L T1 Hi)) by admit.
+    apply (subtyp_sel_r Has).
+    apply (IHSt23 eq_refl T1 eq_refl).
+  + (* case subtyp_trans *) admit.
+Qed.
+
+Lemma middle_bot_transitivity: forall G T1 T3 n,
+  subtyp ip G T1 typ_bot n ->
+  (* subtyp ip G typ_bot T3 n (<- needs no hyp) *)
+  subtyp ip G T1 T3 n.
+Proof.
+  introv St12. gen_eq T2: typ_bot. gen T3. gen_eq m: ip.
+  induction St12; introv Eq1 Eq2; subst.
+  + (* case subtyp_refl *)
+    apply subtyp_bot. admit. (* wf *)
+  + (* case subtyp_top *)
+    discriminate.
+  + (* case subtyp_bot *)
+    apply subtyp_bot. admit. (* wf *)
+  + (* case subtyp_bind *)
+    discriminate.
+  + (* case subtyp_sel_l *)
+    (* has-sbsm *)
+    assert (Has: pth_has ip G (pth_var (avar_f x)) (dec_typ L Lo T3)) by admit.
+    apply (subtyp_sel_l Has).
+    apply (IHSt12 eq_refl T3 eq_refl).    
+  + (* case subtyp_sel_r *)
+    discriminate.
+  + (* case subtyp_trans *) admit.
+Qed.
+
+Lemma transitivity: forall G T1 T2 T3 n,
+  subtyp ip G T1 T2 n ->
+  subtyp ip G T2 T3 n ->
+  subtyp ip G T1 T3 n.
+Proof.
+  introv St12. gen_eq m: ip. induction St12; introv Eq St23; subst.
+  + (* case subtyp_refl *)
+    assumption.
+  + (* case subtyp_top *)
+    apply (middle_top_transitivity _ St23).
+  + (* case subtyp_bot *)
+    apply subtyp_bot. admit. (* wf *)
+  + (* case subtyp_bind *)
+    gen_eq T2: (typ_bind Ds2). gen_eq m: ip. gen_eq n0: (S n).
+    induction St23; introv Eq1 Eq2 Eq3; subst.
+    - (* case subtyp_refl *)
+      apply (subtyp_bind H H0).
+    - (* case subtyp_top *)
+      apply subtyp_top. admit. (* wf *)
+    - (* case subtyp_bot *)
+      discriminate.
+    - (* case subtyp_bind *)
+      inversions Eq1. inversions Eq3.
+      (* subdecs trans, narrowing before *) admit.
+    - (* case subtyp_sel_l *)
+      discriminate.
+    - (* case subtyp_sel_r *)
+      specialize (IHSt23 H H0 eq_refl eq_refl eq_refl).
+      assert (Has2: pth_has ip G (pth_var (avar_f x)) (dec_typ L0 (typ_bind Ds1) Hi))
+        by admit. (* has-sbsm *)
+      apply (subtyp_sel_r Has2 IHSt23).
+    - (* case subtyp_trans *) admit.
+  + (* case subtyp_sel_l *)
+    specialize (IHSt12 eq_refl St23).
+    assert (Has2: pth_has ip G (pth_var (avar_f x)) (dec_typ L Lo T3))
+      by admit. (* has-sbsm *)
+    apply (subtyp_sel_l Has2 IHSt12).
+  + (* case subtyp_sel_r *)
+    gen_eq m: ip. gen_eq T2: (typ_sel (pth_var (avar_f x)) L).
+    induction St23; introv Eq1 Eq2; subst.
+    - (* case subtyp_refl *)
+      apply (subtyp_sel_r H St12).
+    - (* case subtyp_top *)
+      apply subtyp_top. admit. (* wf *)
+    - (* case subtyp_bot *)
+      discriminate.
+    - (* case subtyp_bind *)
+      discriminate.
+    - (* case subtyp_sel_l *)
+      inversions Eq1.
+      (* we have H:  x has L:Lo..Hi
+             and H0: x has L:Lo0..Hi0,
+        so somehow by env-good-bounds, Lo<:Hi0 *)
+      admit.
+    - (* case subtyp_sel_r *)
+      specialize (IHSt23 H St12).
+      lets St: (subtyp_sel_r H St12).
+      assert (Has2: pth_has ip G (pth_var (avar_f x0))
+                       (dec_typ L0 Lo Hi0)) by admit. (* has-sbsm *)
+      apply (subtyp_sel_r Has2).
+      refine (IHSt23 _ eq_refl eq_refl).
+      (* ????????????? *) admit.
+    - (* case subtyp_trans *) admit.
+  + (* case subtyp_trans *) admit.
+Qed.
+
+Lemma transitivity0: forall G T1 T2 T3 n ,
+  subtyp ip G T1 T2 n ->
+  subtyp ip G T2 T3 n ->
+  subtyp ip G T1 T3 n.
+Proof.
+  intros G T1 T2. gen G T1. destruct T2; introv St12 St23.
+  + apply (middle_top_transitivity _ St23).
+  + apply (middle_bot_transitivity _ St12).
+  + admit.
+Abort.
+
+Lemma trans: forall m G T1 T2 n,
+  subtyp m G T1 T2 n ->
+  m = ip ->
+  (forall T0, subtyp ip G T0 T1 n -> subtyp ip G T0 T2 n) /\
+  (forall T3, subtyp ip G T2 T3 n -> subtyp ip G T1 T3 n).
+Proof.
+  introv St. induction St; introv Eq; subst; (split; [introv St01 | introv St23]);
+  try (specialize (IHSt eq_refl); destruct IHSt as [IH1 IH2]).
+  + (* case subtyp_refl *)
+    assumption.
+  + (* case subtyp_refl *)
+    assumption.
+  + (* case subtyp_top *)
+    apply subtyp_top. admit. (* wf *)
+  + (* case subtyp_top *)
+    apply (middle_top_transitivity _ St23).
+  + (* case subtyp_bot *)
+    apply (middle_bot_transitivity _ St01).
+  + (* case subtyp_bot *)
+    apply subtyp_bot. admit. (* wf *)
+  + (* case subtyp_bind *)
+    admit. (* middle-not-sel-transitivity? *)
+  + (* case subtyp_bind *)
+    admit. (* middle-not-sel-transitivity? *)
+  + (* case subtyp_sel_l *)
+
+  + (* case subtyp_sel_l *)
+  + (* case subtyp_sel_r *) eauto.
+  + (* case subtyp_sel_r *) eauto.
+  + (* case subtyp_trans *) eauto.
+
+Qed.
+
 
 (* ###################################################################### *)
 (** ** Regularity of Typing *)
