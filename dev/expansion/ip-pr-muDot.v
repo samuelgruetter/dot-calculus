@@ -1613,7 +1613,13 @@ Qed.
 
 Lemma decs_hasnt_open: forall Ds l z,
   decs_hasnt Ds l -> decs_hasnt (open_decs z Ds) l.
-Admitted.
+Proof.
+  introv Hasnt. induction Hasnt.
+  + apply decs_hasnt_nil.
+  + apply decs_hasnt_cons.
+    - fold open_rec_decs. apply IHHasnt.
+    - fold open_rec_dec. rewrite label_of_dec_open. assumption.
+Qed.
 
 (* The converse does not hold because
    [(open_dec z D1) = (open_dec z D2)] does not imply [D1 = D2]. *)
