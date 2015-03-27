@@ -2721,14 +2721,17 @@ Proof.
     - fold subst_trm.
       assert (zL: z \notin L) by auto.
       specialize (IFr z zL G1 (G2 & z ~ typ_bind Ds) x).
-      assert (A: subst_ctx x y (G2 & z ~ typ_bind Ds) = subst_ctx x y G2 & (z ~ typ_bind (subst_decs x y Ds))).
+      assert (A: subst_ctx x y (G2 & z ~ typ_bind Ds) 
+               = subst_ctx x y G2 & (z ~ typ_bind (subst_decs x y Ds))). {
         unfold subst_ctx. rewrite map_push. simpl. reflexivity.
+      }
       rewrite <- concat_assoc. rewrite <- A.
-      assert (B: open_trm z (subst_trm x y t) = subst_trm x y (open_trm z t)).
+      assert (B: open_trm z (subst_trm x y t) = subst_trm x y (open_trm z t)). {
         rewrite subst_open_commute_trm. unfold subst_fvar.
         assert (x <> z) by auto.
         assert (C: (If x = z then y else z) = z). apply If_r; assumption.
         rewrite C. reflexivity.
+      }
       rewrite B.
       apply IFr; eauto.
       * rewrite <- concat_assoc. reflexivity.
@@ -3927,7 +3930,9 @@ Proof.
     - lets Ok: (wf_sto_to_ok_G Wf). assert (Okx: ok (G & x ~ (typ_bind Ds1))) by auto.
       apply (weaken_subtyp_end Okx) in StT12.
       refine (ty_sbsm _ StT12).
-      assert (Gwf: wf_ctx ip G). apply pr2ip_ctx with (m:=pr). apply wf_sto_to_wf_ctx with (s:=s). assumption.
+      assert (Gwf: wf_ctx ip G). {
+        apply pr2ip_ctx with (m:=pr). apply wf_sto_to_wf_ctx with (s:=s). assumption.
+      }
       pick_fresh x'. assert (Frx': x' \notin L) by auto.
       apply ty_new_change_var with (x:=x').
       apply wf_ctx_push; auto.
