@@ -185,7 +185,7 @@ with open_rec_decs (k: nat) (u: var) (Ds: decs) { struct Ds }: decs :=
 Fixpoint open_rec_trm (k: nat) (u: var) (t: trm) { struct t }: trm :=
   match t with
   | trm_var a      => trm_var (open_rec_avar k u a)
-  | trm_new ds t0  => trm_new (open_rec_defs k u ds) (open_rec_trm (S k) u t0)
+  | trm_new ds t0  => trm_new (open_rec_defs (S k) u ds) (open_rec_trm (S k) u t0)
   | trm_sel e n    => trm_sel (open_rec_trm k u e) n
   | trm_call o m a => trm_call (open_rec_trm k u o) m (open_rec_trm k u a)
   end
@@ -297,7 +297,7 @@ Inductive red: trm -> sto -> trm -> sto -> Prop :=
   | red_new: forall s ds t x,
       x # s ->
       red (trm_new ds t) s
-          (open_trm x t) (s & x ~ ds)
+          (open_trm x t) (s & x ~ (open_defs x ds))
   (* congruence rules *)
   | red_call1: forall s o m a s' o',
       red o s o' s' ->
@@ -522,9 +522,10 @@ with ty_trm: ctx -> trm -> typ -> Prop :=
       ty_trm G u U ->
       ty_trm G (trm_call t m u) V
   | ty_new: forall L G ds t T Ds,
-      ty_defs G ds Ds ->
+      (forall x, x \notin L ->
+       ty_defs (G & x ~ typ_bind (open_decs x Ds)) (open_defs x ds) (open_decs x Ds)) ->
       cbounds_decs Ds ->
-      (forall x, x \notin L -> ty_trm (G & x ~ typ_bind Ds) (open_trm x t) T) ->
+      (forall x, x \notin L -> ty_trm (G & x ~ typ_bind (open_decs x Ds)) (open_trm x t) T) ->
       wf_typ ip deep G T ->
       ty_trm G (trm_new ds t) T
   | ty_sbsm: forall G t T U n,
