@@ -1821,7 +1821,12 @@ Proof.
   + (* case ty_new *)
     intros. subst. apply_fresh ty_new as x; eauto.
     * rewrite <- concat_assoc.
-      refine (H0 x _ G1 G2 (G3 & x ~ typ_bind Ds) _ _).
+      refine (H x _ G1 G2 (G3 & x ~ typ_bind (open_decs x Ds)) _ _).
+      - auto.
+      - rewrite <- concat_assoc. reflexivity.
+      - rewrite concat_assoc. auto.
+    * rewrite <- concat_assoc.
+      refine (H0 x _ G1 G2 (G3 & x ~ typ_bind (open_decs x Ds)) _ _).
       - auto.
       - symmetry. apply concat_assoc.
       - rewrite concat_assoc. auto.
