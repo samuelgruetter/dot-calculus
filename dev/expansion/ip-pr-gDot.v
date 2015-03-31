@@ -2776,23 +2776,6 @@ Proof.
       repeat rewrite concat_assoc in IWDs.
       unfold subst_ctx.
       apply* IWDs.
-(*+ case ty_new
-    intros L G ds Ds Tyds IHTyds Cb G1 G2 x Eq Bi Ok. subst G.
-    apply_fresh ty_new as z.
-    - fold subst_defs.
-      lets C: (@subst_open_commute_defs x y z ds).
-      unfolds open_defs. unfold subst_fvar in C. case_var.
-      rewrite <- C.
-      lets D: (@subst_open_commute_decs x y z Ds).
-      unfolds open_defs. unfold subst_fvar in D. case_var.
-      rewrite <- D.
-      rewrite <- concat_assoc.
-      assert (zL: z \notin L) by auto.
-      specialize (IHTyds z zL G1 (G2 & z ~ typ_bind Ds) x). rewrite concat_assoc in IHTyds.
-      specialize (IHTyds eq_refl Bi).
-      unfold subst_ctx in IHTyds. rewrite map_push in IHTyds. unfold subst_ctx.
-      apply IHTyds. auto.
-    - apply (subst_decs_preserves_cbounds _ _ Cb). *)
   + (* case ty_sbsm *)
     intros G t T U n Ty IHTy St IHSt G1 G2 x Eq Bi Ok. subst.
     apply ty_sbsm with (subst_typ x y T) (n+1).
@@ -2817,6 +2800,9 @@ Proof.
       specialize (IH eq_refl Tyy).
       unfold subst_ctx in IH. rewrite map_push in IH. unfold subst_ctx.
       apply IH. apply wf_ctx_push; auto.
+      refine (weaken_wf_typ_end _ WfU).
+      apply wf_ctx_to_ok in WfG.
+      auto.
   + (* case ty_dsnil *)
     intros. apply ty_dsnil.
   + (* case ty_dscons *)
