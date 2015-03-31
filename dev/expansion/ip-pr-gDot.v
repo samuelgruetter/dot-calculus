@@ -2741,38 +2741,41 @@ Proof.
       rewrite concat_assoc in IHTyds.
       assert (Ok': wf_ctx ip (G1 & x ~ S & G2 & z ~ typ_bind (open_decs z Ds))). {
         apply wf_ctx_push; auto.
-        specialize (WDs z zL).
-        (* need to show
-           wf_typ ip deep (G1 & x ~ S & G2) (typ_bind (open_decs z Ds))
-           but there's no basis for this without the extra (z ~ typ_bind ...)
-         *)
-        admit.
       }
       specialize (IHTyds Ok').
-      unfold subst_ctx in IHTyds. unfold subst_ctx.
-      apply IHTyds. auto.
+      unfold subst_ctx in IHTyds. rewrite map_push in IHTyds. simpl in IHTyds.
+      rewrite concat_assoc in IHTyds.
+      assert (Eqz: subst_fvar x y z = z) by (unfold subst_fvar; case_var*).
+      lets P: (@subst_open_commute_decs x y z Ds). rewrite Eqz in P.
+      rewrite P in IHTyds. clear P.
+      lets P: (@subst_open_commute_defs x y z ds). rewrite Eqz in P.
+      rewrite P in IHTyds. clear P.
+      unfold subst_ctx. apply IHTyds.
     - apply (subst_decs_preserves_cbounds _ _ Cb).
     - fold subst_trm.
       assert (zL: z \notin L) by auto.
-      specialize (IFr z zL G1 (G2 & z ~ typ_bind Ds) x).
-      assert (A: subst_ctx x y (G2 & z ~ typ_bind Ds) 
-               = subst_ctx x y G2 & (z ~ typ_bind (subst_decs x y Ds))). {
-        unfold subst_ctx. rewrite map_push. simpl. reflexivity.
-      }
-      rewrite <- concat_assoc. rewrite <- A.
-      assert (B: open_trm z (subst_trm x y t) = subst_trm x y (open_trm z t)). {
-        rewrite subst_open_commute_trm. unfold subst_fvar.
-        assert (x <> z) by auto.
-        assert (C: (If x = z then y else z) = z). apply If_r; assumption.
-        rewrite C. reflexivity.
-      }
-      rewrite B.
-      apply IFr; eauto.
-      * rewrite <- concat_assoc. reflexivity.
-      * rewrite concat_assoc. apply wf_ctx_push; eauto.
-        apply wf_bind_deep. apply ty_defs_regular with ds; auto.
+      specialize (ITy z zL G1 (G2 & z ~ typ_bind (open_decs z Ds)) x).
+      assert (Eqz: subst_fvar x y z = z) by (unfold subst_fvar; case_var*).
+      lets A: (@subst_open_commute_decs x y z Ds). rewrite Eqz in A.
+      rewrite <- A.
+      lets B: (@subst_open_commute_trm x y z t). rewrite Eqz in B.
+      rewrite <- B.
+      unfold subst_ctx in ITy. rewrite map_push in ITy. simpl in ITy.
+      repeat rewrite concat_assoc in ITy.
+      unfold subst_ctx.
+      apply ITy; auto.
     - specialize (IWfT G1 G2 x).
       apply IWfT; eauto.
+    - assert (zL: z \notin L) by auto.
+      specialize (IWDs z zL G1 (G2 & z ~ typ_bind (open_decs z Ds)) x).
+      repeat rewrite concat_assoc in IWDs.
+      assert (Eqz: subst_fvar x y z = z) by (unfold subst_fvar; case_var*).
+      lets A: (@subst_open_commute_decs x y z Ds). rewrite Eqz in A.
+      rewrite <- A.
+      unfold subst_ctx in IWDs. rewrite map_push in IWDs. simpl in IWDs.
+      repeat rewrite concat_assoc in IWDs.
+      unfold subst_ctx.
+      apply* IWDs.
 (*+ case ty_new
     intros L G ds Ds Tyds IHTyds Cb G1 G2 x Eq Bi Ok. subst G.
     apply_fresh ty_new as z.
