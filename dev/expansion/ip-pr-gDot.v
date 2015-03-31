@@ -2292,9 +2292,11 @@ Proof.
   - unfold subset. intros. rewrite fv_ctx_types_empty in H.
     exfalso. apply (in_empty_elim H).
   - rewrite fv_ctx_types_push. rewrite dom_push.
-    apply subset_union_l. apply union_subset. split.
-    * apply (IHWf eq_refl).
-    * destruct fv_subset_dom_ctx as [P _]. apply* P.
+    apply union_subset. split.
+    * apply subset_union_l. apply (IHWf eq_refl).
+    * destruct fv_subset_dom_ctx as [P _].
+      specialize (P m deep (G & x ~ T) T H eq_refl).
+      rewrite dom_push in P. exact P.
 Qed.
 
 Lemma notin_G_to_notin_fv_ctx_types: forall m1 G x,
@@ -2310,7 +2312,7 @@ Lemma middle_notin: forall m1 G1 x S G2,
   wf_ctx m1 (G1 & x ~ S & G2) ->
   x # G1 /\
   x \notin fv_ctx_types G1 /\
-  x \notin fv_typ S /\
+(*x \notin fv_typ S /\ <-- does not hold any more *)
   x \notin dom G2.
 Proof.
   introv Wf. gen_eq G: (G1 & x ~ S & G2). gen_eq m2: deep. gen G1 x S G2.
@@ -2322,7 +2324,7 @@ Proof.
       clear IHWf.
       repeat split; auto.
       + apply (notin_G_to_notin_fv_ctx_types Wf H0).
-      + apply (notin_G_to_notin_fv_typ H H0).
+      (* + apply (notin_G_to_notin_fv_typ H H0). *)
     * subst. rewrite concat_assoc in Eq. apply eq_push_inv in Eq.
       destruct Eq as [Eq1 [Eq2 Eq3]]. subst z U G.
       specialize (IHWf _ _ _ _ eq_refl eq_refl). auto_star.
@@ -2581,7 +2583,7 @@ Proof.
   + (* case pth_ty_var *)
     introv Bi Eq Tyy WfG. subst. rename x into z, x0 into x.
     lets Ok: (wf_ctx_to_ok WfG).
-    destruct (middle_notin WfG) as [xG1 [N2 [N3 N4]]]. clear xG1 N4.
+    destruct (middle_notin WfG) as [xG1 [N2 N4]].
     unfold subst_pth, subst_avar. case_var.
     - (* case z = x *)
       assert (EqST: T = S) by apply (binds_middle_eq_inv Bi Ok). subst.
@@ -2590,7 +2592,9 @@ Proof.
       destruct P as [S' [n [St Biy']]].
       lets yG2: (ok_concat_binds_left_to_notin_right (ok_remove Ok) Biy').
       apply (@subst_ctx_preserves_notin x y y G2) in yG2.
-      rewrite (@subst_fresh_typ x y S N3).
+      destruct (subtyp_regular St) as [_ WfS].
+      lets xS: (notin_G_to_notin_fv_typ WfS xG1).
+      rewrite (@subst_fresh_typ x y S xS).
       apply weaken_pth_ty_end; [unfold subst_ctx; auto | idtac].
       destruct m.
       * (* case precise *)
@@ -2698,7 +2702,7 @@ Proof.
   + (* case ty_var *)
     introv Bi WfT IHWf Eq Tyy WfG. subst. rename x into z, x0 into x.
     lets Ok: (wf_ctx_to_ok WfG).
-    destruct (middle_notin WfG) as [xG1 [N2 [N3 N4]]]. clear xG1 N4.
+    destruct (middle_notin WfG) as [xG1 [N2 N4]].
     unfold subst_trm, subst_avar. case_var.
     - (* case z = x *)
       assert (EqST: T = S) by apply (binds_middle_eq_inv Bi Ok). subst.
@@ -2709,7 +2713,9 @@ Proof.
       apply (@subst_ctx_preserves_notin x y y G2) in yG2.
       apply weaken_ty_trm_end.
       * unfold subst_ctx. auto.
-      * rewrite (@subst_fresh_typ x y S N3).
+      * destruct (subtyp_regular St) as [_ WfS].
+        lets xS: (notin_G_to_notin_fv_typ WfS xG1).
+        rewrite (@subst_fresh_typ x y S xS).
         refine (ty_sbsm _ St). apply (ty_var Biy). apply (invert_wf_ctx WfG1 Biy).
     - (* case z <> x *)
       apply ty_var.
