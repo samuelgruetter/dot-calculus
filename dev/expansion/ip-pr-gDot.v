@@ -580,7 +580,7 @@ Inductive wf_ctx: pmode -> ctx -> Prop :=
       wf_ctx m empty
   | wf_ctx_push: forall m G x T,
       wf_ctx m G ->
-      wf_typ m deep G T ->
+      wf_typ m deep (G & x ~ T) T -> (* <-- allow x to occur in T *)
       x # G ->
       wf_ctx m (G & x ~ T).
 
@@ -592,11 +592,11 @@ Inductive wf_sto: sto -> ctx -> Prop :=
       x # s ->
       x # G ->
       (* What's below is the same as the ty_new rule, but we don't use ty_trm,
-         because it could be subsumption *)
-      (*ty_defs (G & x ~ typ_bind Ds) (open_defs x ds) (open_decs x Ds) -> *)
-      ty_defs G ds Ds ->
+         because it could be subsumption.
+         Note that ds and Ds were already opened with x. *)
+      ty_defs (G & x ~ typ_bind Ds) ds Ds ->
       cbounds_decs Ds ->
-      wf_decs pr G Ds -> (* or alternatively, makes sure that this follows from ty_defs *)
+      wf_decs pr (G & x ~ typ_bind Ds) Ds ->
       wf_sto (s & x ~ ds) (G & x ~ typ_bind Ds).
 
 
@@ -1450,7 +1450,7 @@ Lemma invert_wf_sto: forall s G,
         T = (typ_bind Ds) /\ exists G1 G2,
         G = G1 & x ~ typ_bind Ds & G2 /\ 
 (*      ty_defs (G1 & x ~ typ_bind Ds) (open_defs x ds) (open_decs x Ds) /\ *)
-        ty_defs G1 ds Ds /\
+        ty_defs (G1 & x ~ typ_bind Ds) ds Ds /\
         cbounds_decs Ds.
 Proof.
   intros s G Wf. induction Wf; intros.
@@ -2034,7 +2034,7 @@ Proof.
   introv Wf. gen x T. induction Wf. 
   - introv Bi. false (binds_empty_inv Bi).
   - introv Bi. apply binds_push_inv in Bi. destruct Bi as [[Eq1 Eq2]|[Ne Bi]].
-    * subst. apply* weaken_wf_typ_end.
+    * subst. assumption.
     * apply* weaken_wf_typ_end.
 Qed.
 
