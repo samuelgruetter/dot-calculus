@@ -527,6 +527,7 @@ with ty_trm: ctx -> trm -> typ -> Prop :=
       cbounds_decs Ds ->
       (forall x, x \notin L -> ty_trm (G & x ~ typ_bind (open_decs x Ds)) (open_trm x t) T) ->
       wf_typ ip deep G T ->
+      (forall x, x \notin L -> wf_typ ip deep (G & x ~ typ_bind (open_decs x Ds)) (typ_bind (open_decs x Ds))) ->
       ty_trm G (trm_new ds t) T
   | ty_sbsm: forall G t T U n,
       ty_trm G t T ->
@@ -1830,6 +1831,11 @@ Proof.
       - auto.
       - symmetry. apply concat_assoc.
       - rewrite concat_assoc. auto.
+    * rewrite <- concat_assoc.
+      refine (H2 x _ G1 G2 (G3 & x ~ typ_bind (open_decs x Ds)) _ _).
+      - auto.
+      - rewrite concat_assoc. reflexivity.
+      - rewrite concat_assoc. auto.
   + (* case ty_sbsm *) eauto.
   + (* case ty_typ *) eauto.
   + (* case ty_fld *) eauto.
@@ -2715,12 +2721,25 @@ Proof.
   + (* case ty_call *)
     intros G t m U V u Has IHt Tyu IHu G1 G2 x Eq Bi Ok. apply* ty_call.
   + (* case ty_new *)
-    intros L G ds t T Ds Tyds IHTyds Cb Fr IFr WfT IWfT G1 G2 x Eq Bi Ok.
+    intros L G ds t T Ds Tyds IHTyds Cb Fr IFr WfT IWfT IWDs G1 G2 x Eq Bi Ok.
     subst G.
     apply_fresh ty_new as z.
     - fold subst_defs.
-      specialize (IHTyds G1 G2 x).
+      assert (zL: z \notin L) by auto.
+      specialize (IHTyds z zL).
+      specialize (IHTyds G1 (G2 & z ~ typ_bind (open_decs z Ds)) x).
+      rewrite <- concat_assoc in IHTyds.
       specialize (IHTyds eq_refl Bi).
+      rewrite concat_assoc in IHTyds.
+      assert (Ok': wf_ctx ip (G1 & x ~ S & G2 & z ~ typ_bind (open_decs z Ds))). {
+        apply wf_ctx_push; auto.
+        (* need to show
+           wf_typ ip deep (G1 & x ~ S & G2) (typ_bind (open_decs z Ds))
+           but there's no basis for this
+         *)
+        admit.
+      }
+      specialize (IHTyds Ok').
       unfold subst_ctx in IHTyds. unfold subst_ctx.
       apply IHTyds. auto.
     - apply (subst_decs_preserves_cbounds _ _ Cb).
