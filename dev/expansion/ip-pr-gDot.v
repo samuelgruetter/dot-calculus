@@ -2721,7 +2721,7 @@ Proof.
   + (* case ty_call *)
     intros G t m U V u Has IHt Tyu IHu G1 G2 x Eq Bi Ok. apply* ty_call.
   + (* case ty_new *)
-    intros L G ds t T Ds Tyds IHTyds Cb Fr IFr WfT IWfT IWDs G1 G2 x Eq Bi Ok.
+    intros L G ds t T Ds Tyds IHTyds Cb Ty ITy WfT IWfT WDs IWDs G1 G2 x Eq Bi Ok.
     subst G.
     apply_fresh ty_new as z.
     - fold subst_defs.
@@ -2733,9 +2733,10 @@ Proof.
       rewrite concat_assoc in IHTyds.
       assert (Ok': wf_ctx ip (G1 & x ~ S & G2 & z ~ typ_bind (open_decs z Ds))). {
         apply wf_ctx_push; auto.
+        specialize (WDs z zL).
         (* need to show
            wf_typ ip deep (G1 & x ~ S & G2) (typ_bind (open_decs z Ds))
-           but there's no basis for this
+           but there's no basis for this without the extra (z ~ typ_bind ...)
          *)
         admit.
       }
