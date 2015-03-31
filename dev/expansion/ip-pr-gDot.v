@@ -525,9 +525,11 @@ with ty_trm: ctx -> trm -> typ -> Prop :=
       (forall x, x \notin L ->
        ty_defs (G & x ~ typ_bind (open_decs x Ds)) (open_defs x ds) (open_decs x Ds)) ->
       cbounds_decs Ds ->
-      (forall x, x \notin L -> ty_trm (G & x ~ typ_bind (open_decs x Ds)) (open_trm x t) T) ->
+      (forall x, x \notin L -> 
+       ty_trm (G & x ~ typ_bind (open_decs x Ds)) (open_trm x t) T) ->
       wf_typ ip deep G T ->
-      (forall x, x \notin L -> wf_typ ip deep (G & x ~ typ_bind (open_decs x Ds)) (typ_bind (open_decs x Ds))) ->
+      (forall x, x \notin L ->
+       wf_decs ip (G & x ~ typ_bind (open_decs x Ds)) (open_decs x Ds)) ->
       ty_trm G (trm_new ds t) T
   | ty_sbsm: forall G t T U n,
       ty_trm G t T ->
