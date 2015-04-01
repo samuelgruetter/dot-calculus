@@ -3007,6 +3007,7 @@ Proof.
   destructs 3 (eq_push_inv H). subst~.
 Qed.
 
+(*
 Lemma wf_ctx_push2 : forall m G x y S,
   wf_ctx m (G & x ~ S) -> wf_ctx m (G & y ~ S) -> x <> y ->
   wf_ctx m (G & (y ~ S) & (x ~ S)).
@@ -3042,6 +3043,7 @@ Proof.
     auto.
 Qed.
 
+
 Lemma invert_ty_new: forall G ds t T2,
   ty_trm G (trm_new ds t) T2 ->
   exists L n T Ds,
@@ -3067,7 +3069,7 @@ Proof.
     apply (subtyp_trans (subtyp_max_ctx St (Max.le_max_r n n0))
                         (subtyp_max_ctx H (Max.le_max_l n n0))).
 Qed.
-
+*)
 (*
 Lemma invert_ty_new: forall G ds T2,
   ty_trm G (trm_new ds) T2 ->
