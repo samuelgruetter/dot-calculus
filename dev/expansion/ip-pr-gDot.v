@@ -3785,8 +3785,7 @@ Proof.
   symmetry in Eq0. inversions Eq0.
   lets Ok: (wf_sto_to_ok_G Wf).
   exists Ds. split.
-  - rewrite <- concat_assoc. rewrite <- concat_assoc in Ok.
-    apply (weaken_ty_defs_end Ok Tyds).
+  - apply (weaken_ty_defs_end Ok Tyds).
   - apply Ds2Has.
 Qed.
 
