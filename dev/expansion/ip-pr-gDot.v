@@ -3038,16 +3038,21 @@ Proof.
     exact P.
     auto.
 Qed.
-
+*)
 
 Lemma invert_ty_new: forall G ds t T2,
   ty_trm G (trm_new ds t) T2 ->
   exists L n T Ds,
     subtyp ip G T T2 n /\
-    (forall x, x \notin L -> ty_trm (G & x ~ typ_bind Ds) (open_trm x t) T) /\
-    ty_defs G ds Ds /\
+    (forall x, x \notin L ->
+     ty_trm (G & x ~ typ_bind (open_decs x Ds)) (open_trm x t) T) /\
+    (forall x, x \notin L ->
+     ty_defs (G & x ~ typ_bind (open_decs x Ds))
+             (open_defs x ds)
+             (open_decs x Ds)) /\
     cbounds_decs Ds /\
-    wf_decs ip G Ds.
+    (forall x, x \notin L ->
+     wf_decs ip (G & x ~ typ_bind (open_decs x Ds)) (open_decs x Ds)).
 Proof.
   introv Ty. gen_eq t0: (trm_new ds t). gen ds.
   induction Ty; intros ds' Eq; try (solve [ discriminate ]); symmetry in Eq.
@@ -3057,6 +3062,7 @@ Proof.
     split. eauto.
     split. assumption.
     split. assumption.
+    intros z zFr. specialize (H z zFr).
     lets Wf: (ty_defs_regular H). auto.
   + (* case ty_sbsm *)
     subst. rename ds' into ds. specialize (IHTy _ eq_refl).
@@ -3065,7 +3071,7 @@ Proof.
     apply (subtyp_trans (subtyp_max_ctx St (Max.le_max_r n n0))
                         (subtyp_max_ctx H (Max.le_max_l n n0))).
 Qed.
-*)
+
 (*
 Lemma invert_ty_new: forall G ds T2,
   ty_trm G (trm_new ds) T2 ->
@@ -3939,13 +3945,12 @@ Proof.
     apply (invert_ty_fld_inside_ty_defs Tyds dsHas Ds1Has).
   + (* red_new *)
     introv Wf Ty.
-    (* TODO *) admit.
-    (*
     apply invert_ty_new in Ty.
     destruct Ty as [L [n [T1 [Ds1 [StT12 [Ty1 [Tyds [Cb WfDs]]]]]]]].
     exists (x ~ (typ_bind Ds1)).
     assert (xG: x # G) by apply* sto_unbound_to_ctx_unbound.
     split.
+    (* TODO *)
     - apply (wf_sto_push Wf H xG Tyds Cb). apply* ip2pr.
       apply (wf_sto_to_simple_ctx Wf).
     - lets Ok: (wf_sto_to_ok_G Wf). assert (Okx: ok (G & x ~ (typ_bind Ds1))) by auto.
@@ -3960,7 +3965,6 @@ Proof.
       apply wf_ctx_push; auto.
       auto. unfold fv_typ. simpl. fold fv_decs. auto. auto.
       auto.
-     *)
   (*
   + (* red_new *)
     rename T into Ds1. intros G T2 Wf Ty.
