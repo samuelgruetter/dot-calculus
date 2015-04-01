@@ -3873,9 +3873,9 @@ Proof.
         exists (open_trm y t1) s.
         apply (red_call y Bis dsHas).
   + (* case ty_new *)
-    intros L G ds t T Ds Tyds Cb Is Iwf.
+    intros L G ds t T Ds Tyds Cb TyT Is Iwf IwfDs.
     left. pick_fresh x. specialize (Is x).
-    exists (open_trm x t) (s & x ~ ds).
+    exists (open_trm x t) (s & x ~ (open_defs x ds)).
     apply* red_new.
   + (* case ty_sbsm *)
     intros. auto_specialize. assumption.
