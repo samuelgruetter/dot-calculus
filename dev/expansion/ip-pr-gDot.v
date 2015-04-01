@@ -3302,8 +3302,8 @@ Inductive simple_ctx: ctx -> Prop :=
 | simple_ctx_push: forall G x Ds,
     x # G ->
     simple_ctx G ->
-    gbounds_decs G Ds ->
-    wf_decs pr G Ds ->
+    gbounds_decs (G & x ~ typ_bind Ds) Ds ->
+    wf_decs pr (G & x ~ typ_bind Ds) Ds ->
     simple_ctx (G & x ~ (typ_bind Ds)).
 
 Hint Constructors simple_ctx.
@@ -3349,9 +3349,7 @@ Proof.
     apply (conj Ok').
     introv Bi. apply binds_push_inv in Bi. destruct Bi as [[Eq1 Eq2] | [Ne Bi]].
     * subst. exists Ds. apply (conj eq_refl).
-      split.
-      + apply* weaken_gbounds.
-      + apply* weaken_wf_decs_end.
+      split; auto.
     * destruct IHSc as [Ok F].
       specialize (F x0 T Bi). destruct F as [Ds0 [Eq Gb]]. subst.
       exists Ds0. apply (conj eq_refl). split.
