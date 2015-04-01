@@ -528,8 +528,10 @@ with ty_trm: ctx -> trm -> typ -> Prop :=
       (forall x, x \notin L -> 
        ty_trm (G & x ~ typ_bind (open_decs x Ds)) (open_trm x t) T) ->
       wf_typ ip deep G T ->
-      (forall x, x \notin L ->
-       wf_decs ip (G & x ~ typ_bind (open_decs x Ds)) (open_decs x Ds)) ->
+     (* not needed, because implied by regularity of ty_defs above
+     (forall x, x \notin L ->
+      wf_decs ip (G & x ~ typ_bind (open_decs x Ds)) (open_decs x Ds)) ->
+     *)
       ty_trm G (trm_new ds t) T
   | ty_sbsm: forall G t T U n,
       ty_trm G t T ->
@@ -1833,11 +1835,6 @@ Proof.
       - auto.
       - symmetry. apply concat_assoc.
       - rewrite concat_assoc. auto.
-    * rewrite <- concat_assoc.
-      refine (H2 x _ G1 G2 (G3 & x ~ typ_bind (open_decs x Ds)) _ _).
-      - auto.
-      - rewrite concat_assoc. reflexivity.
-      - rewrite concat_assoc. auto.
   + (* case ty_sbsm *) eauto.
   + (* case ty_typ *) eauto.
   + (* case ty_fld *) eauto.
@@ -2729,7 +2726,7 @@ Proof.
   + (* case ty_call *)
     intros G t m U V u Has IHt Tyu IHu G1 G2 x Eq Bi Ok. apply* ty_call.
   + (* case ty_new *)
-    intros L G ds t T Ds Tyds IHTyds Cb Ty ITy WfT IWfT WDs IWDs G1 G2 x Eq Bi Ok.
+    intros L G ds t T Ds Tyds IHTyds Cb Ty ITy WfT IWfT G1 G2 x Eq Bi Ok.
     subst G.
     apply_fresh ty_new as z.
     - fold subst_defs.
@@ -2740,7 +2737,12 @@ Proof.
       specialize (IHTyds eq_refl Bi).
       rewrite concat_assoc in IHTyds.
       assert (Ok': wf_ctx ip (G1 & x ~ S & G2 & z ~ typ_bind (open_decs z Ds))). {
-        apply wf_ctx_push; auto.
+        apply wf_ctx_push.
+        - auto.
+        - apply wf_bind_deep.
+          specialize (Tyds z zL).
+          eapply ty_defs_regular. apply Tyds.
+        - auto.
       }
       specialize (IHTyds Ok').
       unfold subst_ctx in IHTyds. rewrite map_push in IHTyds. simpl in IHTyds.
@@ -2764,18 +2766,12 @@ Proof.
       repeat rewrite concat_assoc in ITy.
       unfold subst_ctx.
       apply ITy; auto.
+      apply wf_ctx_push; auto.
+      apply wf_bind_deep.
+      specialize (Tyds z zL).
+      eapply ty_defs_regular. apply Tyds.
     - specialize (IWfT G1 G2 x).
       apply IWfT; eauto.
-    - assert (zL: z \notin L) by auto.
-      specialize (IWDs z zL G1 (G2 & z ~ typ_bind (open_decs z Ds)) x).
-      repeat rewrite concat_assoc in IWDs.
-      assert (Eqz: subst_fvar x y z = z) by (unfold subst_fvar; case_var*).
-      lets A: (@subst_open_commute_decs x y z Ds). rewrite Eqz in A.
-      rewrite <- A.
-      unfold subst_ctx in IWDs. rewrite map_push in IWDs. simpl in IWDs.
-      repeat rewrite concat_assoc in IWDs.
-      unfold subst_ctx.
-      apply* IWDs.
   + (* case ty_sbsm *)
     intros G t T U n Ty IHTy St IHSt G1 G2 x Eq Bi Ok. subst.
     apply ty_sbsm with (subst_typ x y T) (n+1).
@@ -3873,7 +3869,7 @@ Proof.
         exists (open_trm y t1) s.
         apply (red_call y Bis dsHas).
   + (* case ty_new *)
-    intros L G ds t T Ds Tyds Cb TyT Is Iwf IwfDs.
+    intros L G ds t T Ds Tyds Cb TyT Is Iwf.
     left. pick_fresh x. specialize (Is x).
     exists (open_trm x t) (s & x ~ (open_defs x ds)).
     apply* red_new.
