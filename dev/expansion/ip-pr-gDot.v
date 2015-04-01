@@ -3000,7 +3000,7 @@ Proof.
 Qed.
 
 Lemma wf_ctx_push_inv : forall m G x T,
-  wf_ctx m (G & x ~ T) -> wf_ctx m G /\ wf_typ m deep G T /\ x # G.
+  wf_ctx m (G & x ~ T) -> wf_ctx m G /\ wf_typ m deep (G & x ~ T) T /\ x # G.
 Proof.
   intros. inverts H as H1 H2 H3.
   false (empty_push_inv H1).
