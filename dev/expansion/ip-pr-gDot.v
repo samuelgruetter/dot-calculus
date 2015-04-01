@@ -3913,7 +3913,8 @@ Proof.
            (*******************)
     - apply wf_ctx_push.
       * apply (pr2ip_ctx (wf_sto_to_wf_ctx Wf)).
-      * destruct (subtyp_regular StT) as [_ WfT1]. exact WfT1.
+      * destruct (subtyp_regular StT) as [_ WfT1].
+        apply weaken_wf_typ_end; auto.
       * auto.
     - assert (y'L0: y' \notin L0) by auto. specialize (Tybody y' y'L0).
       destruct Tybody as [Tybody [Eq1 Eq2]]. subst X1 U.
@@ -3938,6 +3939,8 @@ Proof.
     apply (invert_ty_fld_inside_ty_defs Tyds dsHas Ds1Has).
   + (* red_new *)
     introv Wf Ty.
+    (* TODO *) admit.
+    (*
     apply invert_ty_new in Ty.
     destruct Ty as [L [n [T1 [Ds1 [StT12 [Ty1 [Tyds [Cb WfDs]]]]]]]].
     exists (x ~ (typ_bind Ds1)).
@@ -3957,6 +3960,7 @@ Proof.
       apply wf_ctx_push; auto.
       auto. unfold fv_typ. simpl. fold fv_decs. auto. auto.
       auto.
+     *)
   (*
   + (* red_new *)
     rename T into Ds1. intros G T2 Wf Ty.
