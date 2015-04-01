@@ -931,6 +931,8 @@ Proof.
 Qed.
 
 Definition subst_fresh_typ(x y: var) := proj1 (subst_fresh_typ_dec_decs x y).
+Definition subst_fresh_dec(x y: var) := proj1 (proj2 (subst_fresh_typ_dec_decs x y)).
+Definition subst_fresh_decs(x y: var) := proj2 (proj2 (subst_fresh_typ_dec_decs x y)).
 
 Lemma subst_fresh_bdecs: forall x y Ds, x \notin fv_bdecs Ds -> subst_bdecs x y Ds = Ds.
 Proof.
@@ -945,6 +947,10 @@ Proof.
   intros x y. apply trm_mutind; intros; simpls; f_equal*;
     (apply* subst_fresh_avar || apply* subst_fresh_typ_dec_decs).
 Qed.
+
+Definition subst_fresh_trm(x y: var) := proj1 (subst_fresh_trm_def_defs x y).
+Definition subst_fresh_def(x y: var) := proj1 (proj2 (subst_fresh_trm_def_defs x y)).
+Definition subst_fresh_defs(x y: var) := proj2 (proj2 (subst_fresh_trm_def_defs x y)).
 
 Lemma invert_fv_ctx_types_push: forall x z T G,
   x \notin fv_ctx_types (G & z ~ T) -> x \notin fv_typ T /\ x \notin (fv_ctx_types G).
@@ -1880,6 +1886,12 @@ Proof.
   assert (Eq2: G1 & G2 = G1 & G2 & empty) by (rewrite concat_empty_r; reflexivity).
   rewrite Eq1 in Exp. rewrite Eq2 in Ok. rewrite Eq2.
   apply (weaken_exp_middle Ok Exp).
+Qed.
+
+Lemma weaken_wf_typ_middle: forall m1 m2 G1 G2 G3 T,
+  ok (G1 & G2 & G3) -> wf_typ m1 m2 (G1 & G3) T -> wf_typ m1 m2 (G1 & G2 & G3) T.
+Proof.
+  intros. apply* weakening.
 Qed.
 
 Lemma weaken_wf_typ_end: forall m1 m2 G1 G2 T,
@@ -3003,17 +3015,17 @@ Proof.
   destructs 3 (eq_push_inv H). subst~.
 Qed.
 
-(*
-Lemma wf_ctx_push2 : forall m G x y S,
-  wf_ctx m (G & x ~ S) -> wf_ctx m (G & y ~ S) -> x <> y ->
-  wf_ctx m (G & (y ~ S) & (x ~ S)).
+Lemma wf_ctx_push2 : forall m G x y S1 S2,
+  wf_ctx m (G & x ~ S1) -> wf_ctx m (G & y ~ S2) -> x <> y ->
+  wf_ctx m (G & y ~ S2 & x ~ S1).
 Proof.
   introv Hx Hy Neq.
   apply wf_ctx_push_inv in Hx. inversion Hx as [H [Hwf Frx]].
   apply wf_ctx_push; auto.
-  + apply weaken_wf_typ_end. apply (wf_ctx_to_ok Hy). assumption.
+  refine (weaken_wf_typ_middle _ Hwf). auto_star.
 Qed.
 
+(*
 Lemma ty_new_change_var: forall x y G S t T,
   wf_ctx ip (G & x ~ S) -> wf_ctx ip (G & y ~ S) ->
   x \notin fv_trm t -> x \notin fv_typ S -> x \notin fv_typ T ->
@@ -3037,6 +3049,39 @@ Proof.
     rewrite subst_fresh_typ in P.
     exact P.
     auto.
+Qed.
+*)
+
+Lemma ty_open_trm_change_var: forall x y G Ds t T,
+  wf_ctx ip (G & x ~ typ_bind (open_decs x Ds)) ->
+  wf_ctx ip (G & y ~ typ_bind (open_decs y Ds)) ->
+  x \notin fv_trm t -> x \notin fv_decs Ds -> x \notin fv_typ T ->
+  ty_trm (G & x ~ typ_bind (open_decs x Ds)) (open_trm x t) T ->
+  ty_trm (G & y ~ typ_bind (open_decs y Ds)) (open_trm y t) T.
+Proof.
+  introv Wfx Wfy Frt FrDs FrT Ty.
+  destruct (classicT (x = y)) as [Eq | Ne].
+  + subst. assumption.
+  + assert (Okyx: wf_ctx ip (G & y ~ typ_bind (open_decs y Ds)
+                               & x ~ typ_bind (open_decs x Ds))). {
+      apply wf_ctx_push2; auto.
+    }
+    assert (Okyx': ok (G & y ~ typ_bind (open_decs y Ds)
+                               & x ~ typ_bind (open_decs x Ds)))
+      by destruct* (wf_ctx_push_inv Wfx).
+    lets Ty': (weaken_ty_trm_middle Okyx' Ty).
+    rewrite* (@subst_intro_trm x y t).
+    destruct (subst_principles y (typ_bind (open_decs y Ds)))
+         as [_ [_ [_ [_ [_ [_ [_ [_ [_ [_ [P _]]]]]]]]]]].
+    specialize (P _ _ _ Ty' (G & y ~ (typ_bind (open_decs y Ds))) empty x).
+    rewrite concat_empty_r in P.
+    assert (Tyy: pth_ty ip (G & y ~ (typ_bind (open_decs y Ds)))
+       (pth_var (avar_f y)) (typ_bind (open_decs y Ds))) by auto.
+Admitted.
+(*
+    specialize (P eq_refl Tyy Okyx). (* TODO doesn't work! *)
+    unfold subst_ctx in P. rewrite map_empty in P. rewrite concat_empty_r in P.
+    exact P.
 Qed.
 *)
 
@@ -3946,25 +3991,23 @@ Proof.
   + (* red_new *)
     introv Wf Ty.
     apply invert_ty_new in Ty.
-    destruct Ty as [L [n [T1 [Ds1 [StT12 [Ty1 [Tyds [Cb WfDs]]]]]]]].
-    exists (x ~ (typ_bind Ds1)).
+    destruct Ty as [L [n [T1 [Ds [StT12 [Ty1 [Tyds [Cb WfDs]]]]]]]].
+    exists (x ~ (typ_bind (open_decs x Ds))).
     assert (xG: x # G) by apply* sto_unbound_to_ctx_unbound.
+    pick_fresh x'.
+    assert (x'L: x' \notin L) by auto.
+    specialize (Tyds x' x'L). specialize (WfDs x' x'L). specialize (Ty1 x' x'L).
+    lets WfG: (pr2ip_ctx (wf_sto_to_wf_ctx Wf)).
     split.
-    (* TODO *)
-    - apply (wf_sto_push Wf H xG Tyds Cb). apply* ip2pr.
-      apply (wf_sto_to_simple_ctx Wf).
-    - lets Ok: (wf_sto_to_ok_G Wf). assert (Okx: ok (G & x ~ (typ_bind Ds1))) by auto.
-      apply (weaken_subtyp_end Okx) in StT12.
-      refine (ty_sbsm _ StT12).
-      assert (Gwf: wf_ctx ip G). {
-        apply pr2ip_ctx with (m:=pr). apply wf_sto_to_wf_ctx with (s:=s). assumption.
-      }
-      pick_fresh x'. assert (Frx': x' \notin L) by auto.
-      apply ty_new_change_var with (x:=x').
-      apply wf_ctx_push; auto.
-      apply wf_ctx_push; auto.
-      auto. unfold fv_typ. simpl. fold fv_decs. auto. auto.
-      auto.
+    - admit. (* TODO *)
+    - apply ty_open_trm_change_var with (x:=x').
+      * apply wf_ctx_push; auto.
+      * apply wf_ctx_push; auto. admit.
+      * auto.
+      * unfold fv_typ. simpl. fold fv_decs. auto.
+      * auto.
+      * refine (ty_sbsm Ty1 (weaken_subtyp_end _ StT12)).
+        lets OkG: (wf_sto_to_ok_G Wf). auto.
   (*
   + (* red_new *)
     rename T into Ds1. intros G T2 Wf Ty.
