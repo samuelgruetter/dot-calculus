@@ -1551,11 +1551,160 @@ Qed.
 (* ###################################################################### *)
 (** ** Soundness helper lemmas *)
 
-Lemma swap_sub_and_has: forall G T1 T2 D2,
+(* subdec D0 D1
+   subdec D0 D2
+   --------------------
+   subdec D0 (D1 /\ D2)
+*)
+Lemma subdec_and: forall G D0 D1 D2 D12,
+  subdec G D0 D1 ->
+  subdec G D0 D2 ->
+  D1 && D2 == D12 ->
+  subdec G D0 D12.
+Proof.
+  introv Sd01 Sd02 I. inversions I; inversions Sd01; inversions Sd02; eauto.
+Qed.
+
+(* subdec D1 D
+   subdec D2 D
+   -------------------
+   subdec (D1 \/ D2) D
+*)
+Lemma subdec_or: forall G D D1 D2 D12,
+  subdec G D1 D ->
+  subdec G D2 D ->
+  D1 || D2 == D12 ->
+  subdec G D12 D.
+Proof.
+  introv Sd01 Sd02 I. inversions I; inversions Sd01; inversions Sd02; eauto.
+Qed.
+
+(* 
+  subdec D0 D1
+  --------------------
+  subdec D0 (D1 \/ D2)
+*)
+Lemma subdec_or_l: forall G D0 D1 D2 D12,
+  subdec G D0 D1 ->
+  D1 || D2 == D12 ->
+  subdec G D0 D12.
+Proof.
+  introv Sd u. inversions u; inversions Sd; eauto.
+Qed.
+
+(* 
+  subdec D0 D2
+  --------------------
+  subdec D0 (D1 \/ D2)
+*)
+Lemma subdec_or_r: forall G D0 D1 D2 D12,
+  subdec G D0 D2 ->
+  D1 || D2 == D12 ->
+  subdec G D0 D12.
+Proof.
+  introv Sd u. inversions u; inversions Sd; eauto.
+Qed.
+
+Lemma intersect_dec_total: forall D1 D2,
+  label_of_dec D1 = label_of_dec D2 ->
+  exists D12, D1 && D2 == D12.
+Proof.
+  introv Eq. destruct D1; destruct D2; inversions Eq; eexists.
+  - eapply intersect_dec_typ.
+  - eapply intersect_dec_fld.
+  - eapply intersect_dec_mtd.
+Qed.
+
+Lemma union_dec_total: forall D1 D2,
+  label_of_dec D1 = label_of_dec D2 ->
+  exists D12, D1 || D2 == D12.
+Proof.
+  introv Eq. destruct D1; destruct D2; inversions Eq; eexists.
+  - eapply union_dec_typ.
+  - eapply union_dec_fld.
+  - eapply union_dec_mtd.
+Qed.
+
+Lemma swap_sub_and_typ_has: forall G T1 T2 D2,
   subtyp G T1 T2 ->
   typ_has G T2 D2 ->
   exists D1, typ_has G T1 D1 /\ subdec G D1 D2.
-Admitted.
+Proof.
+  introv St. gen D2. induction St; introv THas.
+  + (* case subtyp_refl *) eauto.
+  + (* case subtyp_top *)
+    inversions THas.
+  + (* case subtyp_bot *)
+    destruct D2; eauto.
+  + (* case subtyp_rcd *)
+    inversions THas. eauto.
+  + (* case subtyp_sel_l *)
+    specialize (IHSt _ THas). destruct IHSt as [D1 [UHas Sd]]. eauto.
+  + (* case subtyp_sel_r *)
+    rename H into Bi, H0 into XHas.
+    inversions THas. rename T0 into X', H1 into Bi', H3 into XHas', H5 into UHas.
+    lets Eq: (binds_func Bi' Bi). subst X'. clear Bi'.
+    lets Eq: (typ_has_unique XHas' XHas eq_refl). inversions Eq. clear XHas'.
+             (**************)
+    specialize (IHSt1 _ UHas). destruct IHSt1 as [D1 [SHas Sd12]].
+    specialize (IHSt2 _ SHas). destruct IHSt2 as [D0 [THas Sd01]].
+    exists D0. apply (conj THas). apply (subdec_trans Sd01 Sd12).
+  + (* case subtyp_and *)
+    inversions THas.
+    - eauto.
+    - eauto.
+    - rename D2 into D, D0 into D2.
+      specialize (IHSt1 _ H1). destruct IHSt1 as [D0 [SHasD0 Sd1]].
+      specialize (IHSt2 _ H3). destruct IHSt2 as [D0' [SHasD0' Sd2]].
+      remember (label_of_dec D) as l eqn: Eq.
+      assert (Eq1: l = label_of_dec D1) by (inversions H5; simpl in *; reflexivity).
+      assert (Eq2: l = label_of_dec D2) by (inversions H5; simpl in *; assumption).
+      lets Eq0: (subdec_to_label_of_dec_eq Sd1). rewrite <- Eq1 in Eq0.
+      lets Eq0': (subdec_to_label_of_dec_eq Sd2). rewrite <- Eq2 in Eq0'.
+      rewrite <- Eq0' in Eq0.
+      lets EqD0: (typ_has_unique SHasD0 SHasD0' Eq0). subst D0'. clear Eq0 SHasD0'.
+                 (**************)
+      rename Eq0' into Eq0; symmetry in Eq0.
+      exists D0. apply (conj SHasD0).
+      apply (subdec_and Sd1 Sd2 H5).
+  + (* case subtyp_and_l *)
+    rename D2 into D.
+    specialize (IHSt _ THas). destruct IHSt as [D1 [T1Has Sd]].
+    (* TODO need to decide if T2 has or hasn't (label_of_dec D) *)
+    admit.
+  + (* case subtyp_and_r *)
+    rename D2 into D.
+    specialize (IHSt _ THas). destruct IHSt as [D2 [T2Has Sd]].
+    (* TODO need to decide if T2 has or hasn't (label_of_dec D) *)
+    admit.
+  + (* case subtyp_or *)
+    rename D2 into D.
+    specialize (IHSt1 _ THas). destruct IHSt1 as [D1 [T1Has Sd1]].
+    specialize (IHSt2 _ THas). destruct IHSt2 as [D2 [T2Has Sd2]].
+    lets Eq12: (subdec_to_label_of_dec_eq Sd1).
+    rewrite <- (subdec_to_label_of_dec_eq Sd2) in Eq12.
+    lets P: (union_dec_total _ _ Eq12). destruct P as [D12 u].
+    exists D12. split.
+    - apply (typ_or_has T1Has T2Has u).
+    - apply (subdec_or Sd1 Sd2 u).
+  + (* case subtyp_or_l *)
+    inversions THas. rename D2 into D, D0 into D2.
+    specialize (IHSt _ H1). destruct IHSt as [D0 [SHas Sd]].
+    exists D0. apply (conj SHas).
+    apply (subdec_or_l Sd H5).
+  + (* case subtyp_or_r *)
+    inversions THas. rename D2 into D, D0 into D2.
+    specialize (IHSt _ H3). destruct IHSt as [D0 [SHas Sd]].
+    exists D0. apply (conj SHas).
+    apply (subdec_or_r Sd H5).
+  + (* case subtyp_trans *)
+    rename D2 into D3, THas into T3Has.
+    specialize (IHSt2 _ T3Has). destruct IHSt2 as [D2 [T2Has Sd23]].
+    specialize (IHSt1 _ T2Has). destruct IHSt1 as [D1 [T1Has Sd12]].
+    exists D1. apply (conj T1Has). apply (subdec_trans Sd12 Sd23).
+Qed.
+
+Print Assumptions swap_sub_and_typ_has. (* TODO *)
 
 (* Because T is wf in G1, we can drop everything to the right of G1.
    Note: Wouldn't work with imprecise typing, because D there could be
@@ -1565,6 +1714,7 @@ Lemma strengthen_typ_has: forall G1 x T G2 D,
   typ_has G1 T D.
 Admitted.
 
+(*
 (* Corresponds to "expansion is total".
    TODO: also needs wf-ness of T.
    Doesn't hold if there are circular upper bounds (only possible if self refs).
@@ -1605,7 +1755,7 @@ Lemma subtyp_preserves_is_bot_step: forall n,
  subtyp_preserves_is_bot_for (S n).
 Proof.
   intros n IH. unfold subtyp_preserves_is_bot_for in *.
-
+*)
 
 (* narrowing needed for function calls *)
 Lemma narrowing:
@@ -1664,7 +1814,8 @@ Proof.
     destruct Sd as [Lo1 [Hi1 [Eq [StLo21 StHi12]]]]. subst.
     specialize (IHHiHas _ _ _ _ _ eq_refl StS).
     destruct IHHiHas as [Dm [Hi2Hasm Sdm2]].
-    lets P: (swap_sub_and_has StHi12 Hi2Hasm). (* <------- *)
+    lets P: (swap_sub_and_typ_has StHi12 Hi2Hasm).
+            (********************)
     destruct P as [D1 [Hi1Has1 Sd1m]].
     apply binds_middle_inv in Bix.
     destruct Bix as [Bix | [[xG2 [Eq1 Eq2]]|[xG2 [Ne Bix]]]].
@@ -1676,13 +1827,15 @@ Proof.
       subst x0 T.
       clear StLo21 StHi12 Lo1 Hi1 Hi1Has1 THas1 D1 Sd1m.
       lets S2Has: (strengthen_typ_has THas2).
-      lets P: (swap_sub_and_has StS S2Has). (* <--------- *)
+      lets P: (swap_sub_and_typ_has StS S2Has).
+              (********************)
       destruct P as [DT [S1Has Sd]].
       apply invert_subdec_typ_sync_left in Sd.
       destruct Sd as [Lo1 [Hi1 [Eq [StLo21 StHi12]]]]. subst.
       apply (weaken_subtyp_end (okadmit (G1 & x ~ S1))) in StHi12.
       apply (weaken_subtyp_end (okadmit (G1 & x ~ S1 & G2))) in StHi12.
-      lets P: (swap_sub_and_has StHi12 Hi2Hasm). (* <--------- *)
+      lets P: (swap_sub_and_typ_has StHi12 Hi2Hasm).
+              (********************)
       destruct P as [D1 [Hi1Has1 Sd1m]].
       apply (weaken_typ_has_end (okadmit (G1 & x ~ S1))) in S1Has.
       apply (weaken_typ_has_end (okadmit (G1 & x ~ S1 & G2))) in S1Has.
@@ -1695,8 +1848,12 @@ Proof.
       * apply (subdec_trans Sd1m Sdm2). (* <-- will need narrowing once we have self refs *)
   + (* case typ_and_has_1 *)
     intros G U V D2 UHas IHUHas VHasnt IHVHasnt. introv Eq St. subst.
-
-    intros. subst. auto_star. eauto 10.
+    specialize (IHUHas _ _ _ _ _ eq_refl St). destruct IHUHas as [D1 [UHas' Sd]].
+    specialize (IHVHasnt _ _ _ _ _ eq_refl St).
+    exists D1. refine (conj _ Sd).
+    apply (typ_and_has_1 UHas').
+    rewrite (subdec_to_label_of_dec_eq Sd).
+    exact IHVHasnt.
   + (* case typ_and_has_2 *)
     admit.
   + (* case typ_and_has_12 *)
