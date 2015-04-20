@@ -332,60 +332,181 @@ Inductive union_dec: dec -> dec -> dec -> Prop :=
     (dec_mtd m T1 U1) || (dec_mtd m T2 U2) == (dec_mtd m (typ_and T1 T2) (typ_or U1 U2))
 where "D1 || D2 == D3" := (union_dec D1 D2 D3).
 
-(* on paper: G |- T ∍z D
-   in Coq: "has" returns a dec without opening it
-   but in lambda-DOT, there are no self-references anyways *)
-Inductive typ_has: ctx -> typ -> dec -> Prop :=
-(*| typ_top_has: typ_top has nothing *)
-  | typ_bot_has_typ: forall G L, typ_has G typ_bot (dec_typ L typ_top typ_bot)
-  | typ_bot_has_fld: forall G l, typ_has G typ_bot (dec_fld l typ_bot)
-  | typ_bot_has_mtd: forall G m, typ_has G typ_bot (dec_mtd m typ_top typ_bot)
-  | typ_rcd_has: forall G D,
-      typ_has G (typ_rcd D) D
-  | typ_sel_has: forall G x T L Lo Hi D,
-      binds x T G ->
-      typ_has G T (dec_typ L Lo Hi) ->
-      typ_has G Hi D ->
-      typ_has G (typ_sel (pth_var (avar_f x)) L) D
-  | typ_and_has_1: forall G T1 T2 D,
-      typ_has G T1 D ->
-      typ_hasnt G T2 (label_of_dec D) ->
-      typ_has G (typ_and T1 T2) D
-  | typ_and_has_2: forall G T1 T2 D,
-      typ_hasnt G T1 (label_of_dec D) ->
-      typ_has G T2 D ->
-      typ_has G (typ_and T1 T2) D
-  | typ_and_has_12: forall G T1 T2 D1 D2 D3,
-      typ_has G T1 D1 ->
-      typ_has G T2 D2 ->
-      D1 && D2 == D3 ->
-      typ_has G (typ_and T1 T2) D3
-  | typ_or_has: forall G T1 T2 D1 D2 D3,
-      typ_has G T1 D1 ->
-      typ_has G T2 D2 ->
-      D1 || D2 == D3 ->
-      typ_has G (typ_or T1 T2) D3
-with typ_hasnt: ctx -> typ -> label -> Prop :=
-  | typ_top_hasnt: forall G l, typ_hasnt G typ_top l
-(*| typ_bot_hasnt: There's no label that typ_bot hasn't. *)
-  | typ_rcd_hasnt: forall G D l,
+Definition dec_bot(l: label): dec := match l with
+  | label_typ L => dec_typ L typ_top typ_bot
+  | label_fld l => dec_fld l typ_bot
+  | label_mtd m => dec_mtd m typ_top typ_bot
+end.
+
+Inductive lookup_res: Set :=
+  | found: dec -> lookup_res
+  | notfound: lookup_res
+  | notwf: lookup_res
+  | timeout: lookup_res.
+
+Definition wont_happen := timeout.
+
+Fixpoint lookup(n1: nat)(h: fset (var * typ_label))(G: ctx)(T: typ)(l: label): lookup_res :=
+match n1 with
+| 0 => timeout
+| S n => match T with
+  | typ_top => notfound
+  | typ_bot => found (dec_bot l)
+  | typ_rcd D => If label_of_dec D = l then found D else notfound
+  | typ_sel p L => let (a) := p in match a with
+     | avar_f x => If (x, L) \in h then
+         found (dec_typ L typ_top typ_bot) (* TODO make switch to return "cyclic" error *)
+       else (* TODO let X = type of x in G...
+         match (lookup n (h \u \{ (x, L) }) G X L) *)
+       notwf
+     | avar_b _ => notwf
+     end
+  | typ_and T1 T2 => match (lookup n h G T1 l), (lookup n h G T2 l) with
+    | (found D1), (found D2) => match D1, D2 with
+      | (dec_typ L S1 U1), (dec_typ _ S2 U2)
+        => found (dec_typ L (typ_or S1 S2) (typ_and U1 U2))
+      | (dec_fld f U1), (dec_fld _ U2)
+        => found (dec_fld f (typ_and U1 U2))
+      | (dec_mtd m S1 U1), (dec_mtd _ S2 U2)
+        => found (dec_mtd m (typ_or S1 S2) (typ_and U1 U2))
+      | _, _ => wont_happen
+      end
+    | (found D1), notfound => found D1
+    | notfound, (found D2) => found D2
+    | notfound, notfound => notfound
+    | notwf, _ => notwf
+    | _, notwf => notwf
+    | timeout, _ => timeout
+    | _, timeout => timeout
+    end
+  | typ_or T1 T2 => notwf
+  end
+end.
+
+(* "typ_has" + "typ_hasnt" 
+G |- T has D   (with history h)   <==>   lookup_impl h G T (label_of_dec D) (Some D)
+G |- T hasnt l (with history h)   <==>   lookup_impl h G T l None
+
+This is too much in-between function and relation...
+Inductive lookup_impl:
+  fset (var * typ_label) -> ctx -> typ -> label -> option dec -> Prop :=
+  | lookup_top: forall h G l,
+      lookup_impl h G typ_top l None
+  | lookup_bot: forall h G l,
+      lookup_impl h G typ_bot l (Some (dec_bot l))
+  | lookup_rcd_found: forall h G l D,
+      l = label_of_dec D ->
+      lookup_impl h G (typ_rcd D) l (Some D)
+  | lookup_rcd_notfound: forall h G l D,
       l <> label_of_dec D ->
-      typ_hasnt G (typ_rcd D) l
-  | typ_sel_hasnt: forall G x T L Lo Hi l,
+      lookup_impl h G (typ_rcd D) l None
+  | lookup_sel_break: forall h G x L l,
+      (x, L) \in h ->
+      lookup_impl h G (typ_sel (pth_var (avar_f x)) L) l (Some (dec_bot l))
+  | lookup_sel: forall h G x T L Lo Hi l D,
       binds x T G ->
-      typ_has G T (dec_typ L Lo Hi) ->
-      typ_hasnt G Hi l ->
-      typ_hasnt G (typ_sel (pth_var (avar_f x)) L) l
-  | typ_and_hasnt: forall G T1 T2 l, 
-      typ_hasnt G T1 l ->
-      typ_hasnt G T2 l ->
-      typ_hasnt G (typ_and T1 T2) l
-  | typ_or_hasnt_1: forall G T1 T2 l,
-      typ_hasnt G T1 l ->
-      typ_hasnt G (typ_or T1 T2) l
-  | typ_or_hasnt_2: forall G T1 T2 l,
-      typ_hasnt G T2 l ->
-      typ_hasnt G (typ_or T1 T2) l
+      lookup_impl (h \u \{(x,L)}) G T (label_typ L) (dec_typ L Lo Hi) ->
+      lookup_impl (h \u \{(x,L)}) G Hi l D ->
+      lookup_impl h G (typ_sel (pth_var (avar_f x)) L) l D
+  | typ_and_has_1: forall h G T1 T2 D,
+      typ_has_impl h G T1 D ->
+      typ_hasnt_impl h G T2 (label_of_dec D) ->
+      typ_has_impl h G (typ_and T1 T2) D
+  | typ_and_has_2: forall h G T1 T2 D,
+      typ_hasnt_impl h G T1 (label_of_dec D) ->
+      typ_has_impl h G T2 D ->
+      typ_has_impl h G (typ_and T1 T2) D
+  | typ_and_has_12: forall h G T1 T2 D1 D2 D3,
+      typ_has_impl h G T1 D1 ->
+      typ_has_impl h G T2 D2 ->
+      D1 && D2 == D3 ->
+      typ_has_impl h G (typ_and T1 T2) D3
+  | typ_or_has: forall h G T1 T2 D1 D2 D3,
+      typ_has_impl h G T1 D1 ->
+      typ_has_impl h G T2 D2 ->
+      D1 || D2 == D3 ->
+      typ_has_impl h G (typ_or T1 T2) D3
+with typ_hasnt_impl: fset (var * typ_label) -> ctx -> typ -> label -> Prop :=
+  | typ_top_hasnt: forall h G l,
+      typ_hasnt_impl h G typ_top l
+(*| typ_bot_hasnt: There's no label that typ_bot hasn't. *)
+  | typ_rcd_hasnt: forall h G D l,
+      l <> label_of_dec D ->
+      typ_hasnt_impl h G (typ_rcd D) l
+(*| typ_sel_hasnt_break: does not exist, because if cyclic, we return a bottom-dec *)
+  | typ_sel_hasnt: forall h G x T L Lo Hi l,
+      binds x T G ->
+      typ_has_impl   (h \u \{(x,L)}) G T (dec_typ L Lo Hi) ->
+      typ_hasnt_impl (h \u \{(x,L)}) G Hi l ->
+      typ_hasnt_impl h G (typ_sel (pth_var (avar_f x)) L) l
+  | typ_and_hasnt: forall h G T1 T2 l, 
+      typ_hasnt_impl h G T1 l ->
+      typ_hasnt_impl h G T2 l ->
+      typ_hasnt_impl h G (typ_and T1 T2) l
+  | typ_or_hasnt_1: forall h G T1 T2 l,
+      typ_hasnt_impl h G T1 l ->
+      typ_hasnt_impl h G (typ_or T1 T2) l
+  | typ_or_hasnt_2: forall h G T1 T2 l,
+      typ_hasnt_impl h G T2 l ->
+      typ_hasnt_impl h G (typ_or T1 T2) l.
+*)
+
+(* typ_has_impl keeps history of already-seen path types *)
+Inductive typ_has_impl: fset (var * typ_label) -> ctx -> typ -> dec -> Prop :=
+(*| typ_top_has: typ_top has nothing *)
+  | typ_bot_has: forall h G l,
+      typ_has_impl h G typ_bot (dec_bot l)
+  | typ_rcd_has: forall h G D,
+      typ_has_impl h G (typ_rcd D) D
+  | typ_sel_has_break: forall h G x L,
+      (x, L) \in h ->
+      typ_has_impl h G (typ_sel (pth_var (avar_f x)) L) (dec_typ L typ_top typ_bot)
+  | typ_sel_has: forall h G x T L Lo Hi D,
+      binds x T G ->
+      typ_has_impl (h \u \{(x,L)}) G T (dec_typ L Lo Hi) ->
+      typ_has_impl (h \u \{(x,L)}) G Hi D ->
+      typ_has_impl h G (typ_sel (pth_var (avar_f x)) L) D
+  | typ_and_has_1: forall h G T1 T2 D,
+      typ_has_impl h G T1 D ->
+      typ_hasnt_impl h G T2 (label_of_dec D) ->
+      typ_has_impl h G (typ_and T1 T2) D
+  | typ_and_has_2: forall h G T1 T2 D,
+      typ_hasnt_impl h G T1 (label_of_dec D) ->
+      typ_has_impl h G T2 D ->
+      typ_has_impl h G (typ_and T1 T2) D
+  | typ_and_has_12: forall h G T1 T2 D1 D2 D3,
+      typ_has_impl h G T1 D1 ->
+      typ_has_impl h G T2 D2 ->
+      D1 && D2 == D3 ->
+      typ_has_impl h G (typ_and T1 T2) D3
+  | typ_or_has: forall h G T1 T2 D1 D2 D3,
+      typ_has_impl h G T1 D1 ->
+      typ_has_impl h G T2 D2 ->
+      D1 || D2 == D3 ->
+      typ_has_impl h G (typ_or T1 T2) D3
+with typ_hasnt_impl: fset (var * typ_label) -> ctx -> typ -> label -> Prop :=
+  | typ_top_hasnt: forall h G l,
+      typ_hasnt_impl h G typ_top l
+(*| typ_bot_hasnt: There's no label that typ_bot hasn't. *)
+  | typ_rcd_hasnt: forall h G D l,
+      l <> label_of_dec D ->
+      typ_hasnt_impl h G (typ_rcd D) l
+(*| typ_sel_hasnt_break: does not exist, because if cyclic, we return a bottom-dec *)
+  | typ_sel_hasnt: forall h G x T L Lo Hi l,
+      binds x T G ->
+      typ_has_impl   (h \u \{(x,L)}) G T (dec_typ L Lo Hi) ->
+      typ_hasnt_impl (h \u \{(x,L)}) G Hi l ->
+      typ_hasnt_impl h G (typ_sel (pth_var (avar_f x)) L) l
+  | typ_and_hasnt: forall h G T1 T2 l, 
+      typ_hasnt_impl h G T1 l ->
+      typ_hasnt_impl h G T2 l ->
+      typ_hasnt_impl h G (typ_and T1 T2) l
+  | typ_or_hasnt_1: forall h G T1 T2 l,
+      typ_hasnt_impl h G T1 l ->
+      typ_hasnt_impl h G (typ_or T1 T2) l
+  | typ_or_hasnt_2: forall h G T1 T2 l,
+      typ_hasnt_impl h G T2 l ->
+      typ_hasnt_impl h G (typ_or T1 T2) l
 with subtyp: ctx -> typ -> typ -> Prop :=
   | subtyp_refl: forall G T,
       subtyp G T T
@@ -398,13 +519,13 @@ with subtyp: ctx -> typ -> typ -> Prop :=
       subtyp G (typ_rcd D1) (typ_rcd D2)
   | subtyp_sel_l: forall G x X L S U T,
       binds x X G ->
-      typ_has G X (dec_typ L S U) ->
+      typ_has_impl \{} G X (dec_typ L S U) ->
       (*subtyp G S U -> <--- not needed because if U has D, then p.L has D as well *)
       subtyp G U T ->
       subtyp G (typ_sel (pth_var (avar_f x)) L) T
   | subtyp_sel_r: forall G x X L S U T,
       binds x X G ->
-      typ_has G X (dec_typ L S U) ->
+      typ_has_impl \{} G X (dec_typ L S U) ->
       subtyp G S U -> (* <--- makes proofs a lot easier!! *)
       subtyp G T S ->
       subtyp G T (typ_sel (pth_var (avar_f x)) L)
@@ -456,11 +577,11 @@ with ty_trm: ctx -> trm -> typ -> Prop :=
       ty_trm G (trm_var (avar_f x)) T
   | ty_sel: forall G t T l U,
       ty_trm G t T ->
-      typ_has G T (dec_fld l U) ->
+      typ_has_impl \{} G T (dec_fld l U) ->
       ty_trm G (trm_sel t l) U
   | ty_call: forall G t T m U1 U2 V u,
       ty_trm G t T ->
-      typ_has G T (dec_mtd m U2 V) ->
+      typ_has_impl \{} G T (dec_mtd m U2 V) ->
       ty_trm G u U1 ->
       subtyp G U1 U2 -> (* <- explicit subsumption *)
       ty_trm G (trm_call t m u) V
@@ -512,6 +633,8 @@ with can_add: ctx -> defs -> def -> Prop :=
       defs_hasnt ds (label_mtd m) ->
       can_add G ds (def_mtd m T1 T2 t).
 
+Notation typ_has G T D := (typ_has_impl \{} G T D).
+
 (** *** Well-formed store *)
 Inductive wf_sto: sto -> ctx -> Prop :=
   | wf_sto_empty : wf_sto empty empty
@@ -559,8 +682,8 @@ Scheme typ_mut  := Induction for typ  Sort Prop
 with   dec_mut  := Induction for dec  Sort Prop.
 Combined Scheme typ_mutind from typ_mut, dec_mut.
 
-Scheme typ_has_mut   := Induction for typ_has   Sort Prop
-with   typ_hasnt_mut := Induction for typ_hasnt Sort Prop
+Scheme typ_has_mut   := Induction for typ_has_impl   Sort Prop
+with   typ_hasnt_mut := Induction for typ_hasnt_impl Sort Prop
 with   subtyp_mut    := Induction for subtyp    Sort Prop
 with   subdec_mut    := Induction for subdec    Sort Prop
 with   ty_trm_mut    := Induction for ty_trm    Sort Prop
@@ -575,8 +698,8 @@ Scheme subtyp_mut2  := Induction for subtyp  Sort Prop
 with   subdec_mut2  := Induction for subdec  Sort Prop.
 Combined Scheme subtyp_subdec_mut from subtyp_mut2, subdec_mut2.
 
-Scheme typ_has_mut2 := Induction for typ_has Sort Prop
-with typ_hasnt_mut2 := Induction for typ_hasnt Sort Prop.
+Scheme typ_has_mut2 := Induction for typ_has_impl Sort Prop
+with typ_hasnt_mut2 := Induction for typ_hasnt_impl Sort Prop.
 Combined Scheme typ_has_hasnt_mut from typ_has_mut2, typ_hasnt_mut2.
 
 (* ###################################################################### *)
@@ -601,7 +724,7 @@ Ltac pick_fresh x :=
 Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
   apply_fresh_base T gather_vars x.
 
-Hint Constructors typ_has typ_hasnt subtyp subdec ty_trm ty_def ty_defs can_add.
+Hint Constructors typ_has_impl typ_hasnt_impl subtyp subdec ty_trm ty_def ty_defs can_add.
 Hint Constructors defs_has defs_hasnt.
 
 Lemma fresh_push_eq_inv: forall A x a (E: env A),
@@ -1016,14 +1139,14 @@ Qed.
 (** ** Weakening *)
 
 Lemma weakening:
-   (forall G T D, typ_has G T D -> forall G1 G2 G3,
+   (forall h G T D, typ_has_impl h G T D -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
-      typ_has (G1 & G2 & G3) T D)
-/\ (forall G T l, typ_hasnt G T l -> forall G1 G2 G3,
+      typ_has_impl h (G1 & G2 & G3) T D)
+/\ (forall h G T l, typ_hasnt_impl h G T l -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
-      typ_hasnt (G1 & G2 & G3) T l)
+      typ_hasnt_impl h (G1 & G2 & G3) T l)
 /\ (forall G T1 T2, subtyp G T1 T2 -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
@@ -1142,7 +1265,7 @@ Lemma weaken_typ_has_end: forall G1 G2 T D,
   typ_has (G1 & G2) T D.
 Proof.
   introv Ok THas. destruct weakening as [W _].
-  specialize (W G1 T D THas G1 G2 empty). repeat rewrite concat_empty_r in W.
+  specialize (W \{} G1 T D THas G1 G2 empty). repeat rewrite concat_empty_r in W.
   apply (W eq_refl Ok).
 Qed.
 
