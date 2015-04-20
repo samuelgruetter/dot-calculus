@@ -634,6 +634,7 @@ with can_add: ctx -> defs -> def -> Prop :=
       can_add G ds (def_mtd m T1 T2 t).
 
 Notation typ_has G T D := (typ_has_impl \{} G T D).
+Notation typ_hasnt G T l := (typ_hasnt_impl \{} G T l).
 
 (** *** Well-formed store *)
 Inductive wf_sto: sto -> ctx -> Prop :=
@@ -1501,7 +1502,7 @@ Proof.
   introv Eq3 Eq4. inversions Eq3; inversions Eq4; reflexivity.
 Qed.
 
-(* need to prove the same things several times to make sure we always have an IH *)
+(* need to prove the same things several times to make sure we always have an IH 
 Lemma typ_has_unique_and_not_hasnt:
    (forall G T D1, typ_has G T D1 ->
         (forall D2, typ_has G T D2 -> label_of_dec D1 = label_of_dec D2 -> D1 = D2)
@@ -1650,25 +1651,27 @@ Proof.
 Qed.
 
 Print Assumptions typ_has_unique_and_not_hasnt.
-
+*)
 Lemma typ_has_unique: forall G T D1 D2,
   typ_has G T D1 ->
   typ_has G T D2 ->
   label_of_dec D1 = label_of_dec D2 ->
   D1 = D2.
+Admitted. (*
 Proof.
   introv H1 H2 Eq.
   destruct typ_has_unique_and_not_hasnt as [P _].
   specialize (P G T D1 H1). destruct P as [P _]. apply (P _ H2 Eq).
-Qed.
+Qed.*)
 
 Lemma not_typ_has_and_hasnt: forall G T D,
   typ_has G T D -> typ_hasnt G T (label_of_dec D) -> False.
+Admitted. (*
 Proof.
   introv Has Hasnt.
   destruct typ_has_unique_and_not_hasnt as [_ P].
   apply (P G T (label_of_dec D) Hasnt D eq_refl Has).
-Qed.
+Qed.*)
 
 
 (* ###################################################################### *)
@@ -1748,6 +1751,171 @@ Proof.
   - eapply union_dec_mtd.
 Qed.
 
+(* "needs_lookup G T h" means "in order to look up a member in type T, we must
+   also lookup members in all x.L in h, but not more" *)
+Inductive needs_lookups: ctx -> typ -> fset (var * typ_label) -> Prop :=
+  | needs_lookups_top: forall G,
+      needs_lookups G typ_top \{}
+  | needs_lookups_bot: forall G,
+      needs_lookups G typ_bot \{}
+  | needs_lookups_rcd: forall G D,
+      needs_lookups G (typ_rcd D) \{}
+  | needs_lookups_sel: forall G x X L Lo Hi h1 h2,
+      binds x X G ->
+      needs_lookups G X h1 ->
+      typ_has G X (dec_typ L Lo Hi) ->
+      needs_lookups G Hi h2 ->
+      needs_lookups G (typ_sel (pth_var (avar_f x)) L) (h1 \u h2)
+  | needs_lookups_and: forall G T1 T2 h1 h2,
+      needs_lookups G T1 h1 ->
+      needs_lookups G T2 h2 ->
+      needs_lookups G (typ_and T1 T2) (h1 \u h2)
+  | needs_lookups_or: forall G T1 T2 h1 h2,
+      needs_lookups G T1 h1 ->
+      needs_lookups G T2 h2 ->
+      needs_lookups G (typ_or T1 T2) (h1 \u h2).
+
+(* an object to measure the size of an fset *)
+Inductive finite(A: Type): fset A -> Prop := 
+  | finite_nil: finite \{}
+  | finite_cons: forall s v,
+      finite s -> finite (\{ v } \u s).
+
+Lemma fset_is_finite: forall (A: Type) (s: fset A), finite s.
+Proof.
+  intros. destruct (fset_finite s) as [l Eq]. gen s.
+  induction l; intros.
+  + rewrite from_list_nil in Eq. subst. apply finite_nil.
+  + rewrite from_list_cons in Eq. subst. apply finite_cons. apply (IHl _ eq_refl).
+Qed.
+
+Definition wf_typ(G: ctx)(T: typ) := True.
+
+Lemma collect_path_types: forall G,
+  exists h, forall x X L Lo Hi,
+    binds x X G ->
+    typ_has G X (dec_typ L Lo Hi) ->
+    (x, L) \in h.
+Proof.
+  (* doesn't hold because if X has cyclic upper bounds, it has a decl for each type
+    label, so h is not finite! 
+    make number of type labels finite?? *)
+Abort.
+
+Lemma collect_path_types: forall G1 G2,
+  exists h, forall x L, wf_typ (G1 & G2) (typ_sel (pth_var (avar_f x)) L) -> (x, L) \in h.
+Proof.
+  intros G1 G2. gen_eq G: (G1 & G2). gen G2 G1.
+  apply (env_ind (fun G2 => forall G1, G = G1 & G2 ->
+   exists h, forall (x : var) (L : typ_label),
+     wf_typ G (typ_sel (pth_var (avar_f x)) L) -> (x, L) \in h)).
+  + introv Eq.
+
+
+ lets Eq: (concat_empty_r G1). gen Eq.
+ rewrite <- (concat_empty_r G1). gen_eq G2: (@empty typ).
+Qed.
+
+(* "needs_lookup G T h" means "in order to look up a member in type T, we must
+   also lookup members in all x.L in h, and maybe even more" 
+Inductive needs_lookups: ctx -> typ -> fset (var * typ_label) -> Prop :=
+  | needs_lookups_base: forall G T,
+      needs_lookups G T \{}
+  | needs_lookups_sel: forall G x X L Lo Hi h1 h2,
+      binds x X G ->
+      needs_lookups G X h1 ->
+      typ_has G X (dec_typ L Lo Hi) ->
+      needs_lookups G Hi h2 ->
+      needs_lookups G (typ_sel (pth_var (avar_f x)) L) (h1 \u h2)
+  | needs_lookups_and: forall G T1 T2 h1 h2,
+      needs_lookups G T1 h1 ->
+      needs_lookups G T2 h2 ->
+      needs_lookups G (typ_and T1 T2) (h1 \u h2)
+  | needs_lookups_or: forall G T1 T2 h1 h2,
+      needs_lookups G T1 h1 ->
+      needs_lookups G T2 h2 ->
+      needs_lookups G (typ_or T1 T2) (h1 \u h2).
+
+Definition cycle(G: ctx)(T: typ) := exists x L h,
+  (x, L) \in h /\ needs_lookups G (typ_sel (pth_var (avar_f x)) L) h.
+*)
+
+Lemma hm:
+   (forall h G T D1, typ_has_impl h G T D1 ->
+      typ_has G T D1 \/ cycle G T)
+/\ (forall h G T l, typ_hasnt_impl h G T l ->
+      typ_hasnt G T l \/ cycle G T).
+Proof.
+  apply typ_has_hasnt_mut.
+
+
+(* for every typ_has/typ_hasnt judgment with some history h,
+   either it also holds without the history h,
+   or there's a cycle. *)
+Lemma no_history_or_cycle:
+   (forall h G T D1, typ_has_impl h G T D1 ->
+      typ_has G T D1 \/ cycle G T)
+/\ (forall h G T l, typ_hasnt_impl h G T l ->
+      typ_hasnt G T l \/ cycle G T).
+Proof.
+  apply typ_has_hasnt_mut.
+  + (* case typ_bot_has *) eauto.
+  + (* case typ_rcd_has *) eauto.
+  + (* case typ_sel_has_break *)
+    introv In.
+  + (* case typ_sel_has *) admit.
+  + (* case typ_and_has_1 *) admit.
+  + (* case typ_and_has_2 *) admit.
+  + (* case typ_and_has_12 *) admit.
+  + (* case typ_or_has *) admit.
+  + (* case typ_top_hasnt *) admit.
+  + (* case typ_rcd_hasnt *) admit.
+  + (* case typ_sel_hasnt *) admit.
+  + (* case typ_and_hasnt *) admit.
+  + (* case typ_or_hasnt_1 *) admit.
+  + (* case typ_or_hasnt_2 *) admit.
+Qed.
+
+
+(*
+Inductive cycle: ctx -> typ -> Prop :=
+  | cycle_indeed: forall x L h,
+      (x, L) \in h ->
+      needs_lookup G (typ_sel (pth_var (avar_f x)) L) h.*)
+
+(*
+Inductive trace: ctx -> typ -> typ -> Prop :=
+  | trace_1: forall G A B,
+      binds x (typ_sel (pth_var (avar_f y)) M) G ->
+      trace G A B
+  | trace_2: forall G X x L Lo y M,
+      binds x X G ->
+      typ_has G X (dec_typ L Lo (typ_sel (pth_var (avar_f y)) M)) ->
+      trace G x L y M.
+
+(* trace of what you've to do when looking up a member in a type 
+  (= deciding typ_has/typ_hasnt)
+  "trace G x L y M" means "when trying to lookup some member in x.L, 
+   you'll also have to lookup some (not necessarily the same) member in y.M"
+ *)
+
+Inductive trace: ctx -> var -> typ_label -> var -> typ_label -> Prop :=
+  | trace_10: forall G x L y M,
+      binds x (typ_sel (pth_var (avar_f y)) M) G ->
+      trace G x L y M
+  | trace_20: forall G X x L Lo y M,
+      binds x X G ->
+      typ_has G X (dec_typ L Lo (typ_sel (pth_var (avar_f y)) M)) ->
+      trace G x L y M
+  | trace_1: forall G x L y M,
+      binds x (typ_sel (pth_var (avar_f y)) M) G ->
+      trace G x L y M
+  | trace_2: forall G X x L Lo y M,
+      binds x X G ->
+      typ_has G X (dec_typ L Lo (typ_sel (pth_var (avar_f y)) M)) ->
+      trace G x L y M.
+*)
+
 Lemma swap_sub_and_typ_has: forall G T1 T2 D2,
   subtyp G T1 T2 ->
   typ_has G T2 D2 ->
@@ -1758,11 +1926,16 @@ Proof.
   + (* case subtyp_top *)
     inversions THas.
   + (* case subtyp_bot *)
-    destruct D2; eauto.
+    exists (dec_bot (label_of_dec D2)). apply (conj (typ_bot_has _ _ _)). 
+    destruct D2; simpl; eauto.
   + (* case subtyp_rcd *)
     inversions THas. eauto.
   + (* case subtyp_sel_l *)
-    specialize (IHSt _ THas). destruct IHSt as [D1 [UHas Sd]]. eauto.
+    specialize (IHSt _ THas). destruct IHSt as [D1 [UHas Sd]].
+    exists D1. refine (conj _ Sd).
+    apply typ_sel_has with X S U.
+    (* if (x: x.L) in G, we have a cycle, which contradicts T <: x.L,
+       because types involved in subtyping judgments don't have cycles *)
   + (* case subtyp_sel_r *)
     rename H into Bi, H0 into XHas.
     inversions THas. rename T0 into X', H1 into Bi', H3 into XHas', H5 into UHas.
