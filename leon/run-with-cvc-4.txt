@@ -1,0 +1,11 @@
+
+Download binary from http://cvc4.cs.nyu.edu/downloads/
+
+Put it into PATH
+
+Call leon like this:
+
+./leon --solvers=smt-cvc4 ../dot-calculus/leon/muDot2.scala
+
+
+

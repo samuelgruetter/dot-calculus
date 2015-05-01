@@ -485,7 +485,8 @@ object muDOT {
   would be sufficient to build pick any dsA != dsB to get a counterexample.
   
   But when considering this VC, leon doesn't return any answer for more than a minute
-  --> abort the leon experiment, disappointed :-(
+  --> (this was with z3)
+  With cvc4, it finds a counterexample :-)
   */
   def narrow_subdecs_end(g: ctx, z: avar, dsA: decs, dsB: decs, ds1: decs, ds2: decs,
     sdsAB: subdecs, sds12: subdecs): subdecs = {
@@ -498,6 +499,59 @@ object muDOT {
   } ensuring {sds => sds.ok && sds.ctx == ctx_cons(g, z, typ_bind(z, dsA)) &&
                      sds.decs1 == ds1 && sds.decs2 == ds2}
 
+  def ctx_concat(g1: ctx, g2: ctx): ctx = g2 match {
+    case ctx_nil => g1
+    case ctx_cons(g2rest, x, t) => ctx_cons(ctx_concat(g1, g2rest), x, t)
+  }
+  
+  def narrow_subdecs(g1: ctx, g2: ctx, z: avar, dsA: decs, dsB: decs, ds1: decs, ds2: decs,
+    sdsAB: subdecs, sds12: subdecs): subdecs = {
+    require(sdsAB.ok && sdsAB.ctx == ctx_cons(g1, z, typ_bind(z, dsA)) &&
+            sdsAB.decs1 == dsA && sdsAB.decs2 == dsB &&
+            sds12.ok && sds12.ctx == ctx_concat(ctx_cons(g1, z, typ_bind(z, dsB)), g2) &&
+            sds12.decs1 == ds1 && sds12.decs2 == ds2)
+    
+    sds12 match {
+      case subdecs_nil => subdecs_nil
+      case subdecs_cons(g, ds1, ds2, ds1has, sd, sds, ds2hasnt) => subdecs_cons(g, ds1, ds2, ds1has, 
+        narrow_subdec(g1, g2, z, dsA, dsB, sd.dec1, sd.dec2, sdsAB, sd),
+        narrow_subdecs(g1, g2, z, dsA, dsB, sds.decs1, sds.decs2, sdsAB, sds),
+        ds2hasnt)
+    }
+  } ensuring {sds => sds.ok && sds.ctx == ctx_concat(ctx_cons(g1, z, typ_bind(z, dsA)), g2) &&
+                     sds.decs1 == ds1 && sds.decs2 == ds2}
+
+  def narrow_subdec(g1: ctx, g2: ctx, z: avar, dsA: decs, dsB: decs, d1: dec, d2: dec,
+    sdsAB: subdecs, sd12: subdec): subdec = {
+    require(sdsAB.ok && sdsAB.ctx == ctx_cons(g1, z, typ_bind(z, dsA)) &&
+            sdsAB.decs1 == dsA && sdsAB.decs2 == dsB &&
+            sd12.ok && sd12.ctx == ctx_concat(ctx_cons(g1, z, typ_bind(z, dsB)), g2) &&
+            sd12.dec1 == d1 && sd12.dec2 == d2)
+    
+    sd12 match {
+      case subdec_typ(g, d1, d2, stlo, sthi) => subdec_typ(g, d1, d2, 
+        narrow_subtyp(g1, g2, z, dsA, dsB, stlo.typ2, stlo.typ1, sdsAB, stlo),
+        narrow_subtyp(g1, g2, z, dsA, dsB, sthi.typ1, sthi.typ2, sdsAB, sthi))
+      case subdec_fld(g, d1, d2, st) => subdec_fld(g, d1, d2, 
+        narrow_subtyp(g1, g2, z, dsA, dsB, st.typ1, st.typ2, sdsAB, st))
+      case subdec_mtd(g, d1, d2, starg, stret) => subdec_mtd(g, d1, d2,
+        narrow_subtyp(g1, g2, z, dsA, dsB, starg.typ2, starg.typ1, sdsAB, starg),
+        narrow_subtyp(g1, g2, z, dsA, dsB, stret.typ1, stret.typ2, sdsAB, stret))
+    }
+  } ensuring {sd => sd.ok && sd.ctx == ctx_concat(ctx_cons(g1, z, typ_bind(z, dsA)), g2) &&
+                    sd.dec1 == d1 && sd.dec2 == d2}
+
+  def narrow_subtyp(g1: ctx, g2: ctx, z: avar, dsA: decs, dsB: decs, t1: typ, t2: typ,
+    sdsAB: subdecs, st12: subtyp): subtyp = {
+    require(sdsAB.ok && sdsAB.ctx == ctx_cons(g1, z, typ_bind(z, dsA)) &&
+            sdsAB.decs1 == dsA && sdsAB.decs2 == dsB &&
+            st12.ok && st12.ctx == ctx_concat(ctx_cons(g1, z, typ_bind(z, dsB)), g2) &&
+            st12.typ1 == t1 && st12.typ2 == t2)
+    
+    st12
+  } ensuring {st => st.ok && st.ctx == ctx_concat(ctx_cons(g1, z, typ_bind(z, dsA)), g2) &&
+                    st.typ1 == t1 && st.typ2 == t2}  
+    
 }
 
 
