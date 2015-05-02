@@ -316,6 +316,12 @@ Definition dec_bot(l: label): dec := match l with
   | label_mtd m => dec_mtd m typ_top typ_bot
 end.
 
+Definition dec_top(l: label): dec := match l with
+  | label_typ L => dec_typ L typ_bot typ_top
+  | label_fld l => dec_fld l typ_top
+  | label_mtd m => dec_mtd m typ_bot typ_top
+end.
+
 Inductive lookup_res: Set :=
   | found: dec -> lookup_res
   | notfound: lookup_res
@@ -429,7 +435,7 @@ with typ_hasnt_impl: fset (var * typ_label) -> ctx -> typ -> label -> Prop :=
       typ_hasnt_impl h G (typ_or T1 T2) l.
 *)
 
-(* typ_has_impl keeps history of already-seen path types *)
+(* typ_has_impl keeps history of already-seen path types
 Inductive typ_has_impl: fset (var * typ_label) -> ctx -> typ -> dec -> Prop :=
 (*| typ_top_has: typ_top has nothing *)
   | typ_bot_has: forall h G l,
@@ -484,7 +490,70 @@ with typ_hasnt_impl: fset (var * typ_label) -> ctx -> typ -> label -> Prop :=
       typ_hasnt_impl h G (typ_or T1 T2) l
   | typ_or_hasnt_2: forall h G T1 T2 l,
       typ_hasnt_impl h G T2 l ->
-      typ_hasnt_impl h G (typ_or T1 T2) l
+      typ_hasnt_impl h G (typ_or T1 T2) l*)
+
+Inductive wf_typ: ctx -> typ -> Prop :=
+  | wf_top: forall G,
+      wf_typ G typ_top
+  | wf_bot: forall G,
+      wf_typ G typ_bot
+  | wf_rcd: forall G D,
+      wf_dec G D ->
+      wf_typ G (typ_rcd D)
+  | wf_sel: forall G x T L,
+      binds x T G ->  (* <- this is the whole point of wf: no dangling var names in types *)
+      (* no check that T really has L, because typ_has is total anyways,
+         and thus no checks on Lo and Hi either [might lead to cycles btw] *)
+      wf_typ G (typ_sel (pth_var (avar_f x)) L)
+  | wf_and: forall G T1 T2,
+      wf_typ G T1 ->
+      wf_typ G T2 ->
+      wf_typ G (typ_and T1 T2)
+  | wf_or: forall G T1 T2,
+      wf_typ G T1 ->
+      wf_typ G T2 ->
+      wf_typ G (typ_or T1 T2)
+with wf_dec: ctx -> dec -> Prop :=
+  | wf_tmem: forall G L Lo Hi,
+      wf_typ G Lo ->
+      wf_typ G Hi ->
+      wf_dec G (dec_typ L Lo Hi)
+  | wf_fld: forall G l T,
+      wf_typ G T ->
+      wf_dec G (dec_fld l T)
+  | wf_mtd: forall G m A R,
+      wf_typ G A ->
+      wf_typ G R ->
+      wf_dec G (dec_mtd m A R).
+
+(* typ_has_impl keeps history of already-seen path types *)
+Inductive typ_has_impl: fset (var * typ_label) -> ctx -> typ -> dec -> Prop :=
+  | typ_top_has: forall h G l,
+      typ_has_impl h G typ_bot (dec_top l) (* instead of just no such rule *)
+  | typ_bot_has: forall h G l,
+      typ_has_impl h G typ_bot (dec_bot l)
+  | typ_rcd_has: forall h G D,
+      typ_has_impl h G (typ_rcd D) D
+  | typ_sel_has_break: forall h G x L,
+      (x, L) \in h ->
+      typ_has_impl h G (typ_sel (pth_var (avar_f x)) L) (dec_typ L typ_top typ_bot)
+  | typ_sel_has: forall h G x T L Lo Hi D,
+      binds x T G ->
+      typ_has_impl (h \u \{(x,L)}) G T (dec_typ L Lo Hi) ->
+      typ_has_impl (h \u \{(x,L)}) G Hi D ->
+      typ_has_impl h G (typ_sel (pth_var (avar_f x)) L) D
+  | typ_and_has: forall h G T1 T2 D1 D2 D3,
+      (* one or both hyps might return dec_top, because it does not really have
+         a member (typ_top_has was applied) *)
+      typ_has_impl h G T1 D1 ->
+      typ_has_impl h G T2 D2 ->
+      D1 && D2 == D3 ->
+      typ_has_impl h G (typ_and T1 T2) D3
+  | typ_or_has: forall h G T1 T2 D1 D2 D3,
+      typ_has_impl h G T1 D1 ->
+      typ_has_impl h G T2 D2 ->
+      D1 || D2 == D3 ->
+      typ_has_impl h G (typ_or T1 T2) D3
 with subtyp: ctx -> typ -> typ -> Prop :=
   | subtyp_refl: forall G T,
       subtyp G T T
@@ -612,7 +681,7 @@ with can_add: ctx -> defs -> def -> Prop :=
       can_add G ds (def_mtd m T1 T2 t).
 
 Notation typ_has G T D := (typ_has_impl \{} G T D).
-Notation typ_hasnt G T l := (typ_hasnt_impl \{} G T l).
+(*Notation typ_hasnt G T l := (typ_hasnt_impl \{} G T l).*)
 
 (** *** Well-formed store *)
 Inductive wf_sto: sto -> ctx -> Prop :=
@@ -662,14 +731,14 @@ with   dec_mut  := Induction for dec  Sort Prop.
 Combined Scheme typ_mutind from typ_mut, dec_mut.
 
 Scheme typ_has_mut   := Induction for typ_has_impl   Sort Prop
-with   typ_hasnt_mut := Induction for typ_hasnt_impl Sort Prop
+(*with   typ_hasnt_mut := Induction for typ_hasnt_impl Sort Prop*)
 with   subtyp_mut    := Induction for subtyp    Sort Prop
 with   subdec_mut    := Induction for subdec    Sort Prop
 with   ty_trm_mut    := Induction for ty_trm    Sort Prop
 with   ty_def_mut    := Induction for ty_def    Sort Prop
 with   ty_defs_mut   := Induction for ty_defs   Sort Prop
 with   can_add_mut   := Induction for can_add   Sort Prop.
-Combined Scheme ty_mutind from typ_has_mut, typ_hasnt_mut,
+Combined Scheme ty_mutind from typ_has_mut, (*typ_hasnt_mut,*)
                                subtyp_mut, subdec_mut,
                                ty_trm_mut, ty_def_mut, ty_defs_mut, can_add_mut.
 
@@ -677,9 +746,11 @@ Scheme subtyp_mut2  := Induction for subtyp  Sort Prop
 with   subdec_mut2  := Induction for subdec  Sort Prop.
 Combined Scheme subtyp_subdec_mut from subtyp_mut2, subdec_mut2.
 
+(*
 Scheme typ_has_mut2 := Induction for typ_has_impl Sort Prop
 with typ_hasnt_mut2 := Induction for typ_hasnt_impl Sort Prop.
 Combined Scheme typ_has_hasnt_mut from typ_has_mut2, typ_hasnt_mut2.
+*)
 
 (* ###################################################################### *)
 (** ** Tactics *)
@@ -703,7 +774,8 @@ Ltac pick_fresh x :=
 Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
   apply_fresh_base T gather_vars x.
 
-Hint Constructors typ_has_impl typ_hasnt_impl subtyp subdec ty_trm ty_def ty_defs can_add.
+Hint Constructors typ_has_impl (*typ_hasnt_impl*)
+  subtyp subdec ty_trm ty_def ty_defs can_add.
 Hint Constructors defs_has defs_hasnt.
 
 Lemma fresh_push_eq_inv: forall A x a (E: env A),
@@ -1122,10 +1194,11 @@ Lemma weakening:
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
       typ_has_impl h (G1 & G2 & G3) T D)
+(*
 /\ (forall h G T l, typ_hasnt_impl h G T l -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
-      typ_hasnt_impl h (G1 & G2 & G3) T l)
+      typ_hasnt_impl h (G1 & G2 & G3) T l) *)
 /\ (forall G T1 T2, subtyp G T1 T2 -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
@@ -1253,7 +1326,7 @@ Lemma weaken_subtyp_middle: forall G1 G2 G3 S U,
   subtyp (G1      & G3) S U ->
   subtyp (G1 & G2 & G3) S U.
 Proof.
-  destruct weakening as [_ [_ [W _]]].
+  destruct weakening as [_ [W _]].
   introv Hok123 Hst.
   specialize (W (G1 & G3) S U Hst).
   specialize (W G1 G2 G3 eq_refl Hok123).
@@ -1291,7 +1364,7 @@ Lemma weaken_subdec_middle: forall G1 G2 G3 S U,
   subdec (G1      & G3) S U ->
   subdec (G1 & G2 & G3) S U.
 Proof.
-  destruct weakening as [_ [_ [_ [W _]]]].
+  destruct weakening as [_ [_ [W _]]].
   introv Hok123 Hst.
   specialize (W (G1 & G3) S U Hst).
   specialize (W G1 G2 G3 eq_refl Hok123).
@@ -1304,7 +1377,7 @@ Lemma weaken_subdec_end: forall G1 G2 D1 D2,
   subdec (G1 & G2) D1 D2.
 Proof.
   introv Ok Sd.
-  destruct weakening as [_ [_ [_ [W _]]]].
+  destruct weakening as [_ [_ [W _]]].
   rewrite <- (concat_empty_r G1) in Sd.
   specialize (W (G1 & empty) D1 D2 Sd G1 G2 empty).
   repeat progress rewrite concat_empty_r in *.
@@ -1315,7 +1388,7 @@ Lemma weaken_ty_trm_end: forall G1 G2 e T,
   ok (G1 & G2) -> ty_trm G1 e T -> ty_trm (G1 & G2) e T.
 Proof.
   intros.
-  destruct weakening as [_ [_ [_ [_ [W _]]]]].
+  destruct weakening as [_ [_ [_ [W _]]]].
   rewrite <- (concat_empty_r (G1 & G2)).
   apply (W (G1 & empty)); rewrite* concat_empty_r.
 Qed.
@@ -1324,7 +1397,7 @@ Lemma weaken_ty_defs_end: forall G1 G2 is Ds,
   ok (G1 & G2) -> ty_defs G1 is Ds -> ty_defs (G1 & G2) is Ds.
 Proof.
   intros.
-  destruct weakening as [_ [_ [_ [_ [_ [_ [W _]]]]]]].
+  destruct weakening as [_ [_ [_ [_ [_ [W _]]]]]].
   rewrite <- (concat_empty_r (G1 & G2)).
   apply (W (G1 & empty)); rewrite* concat_empty_r.
 Qed.
@@ -1642,9 +1715,10 @@ Proof.
   specialize (P G T D1 H1). destruct P as [P _]. apply (P _ H2 Eq).
 Qed.*)
 
+(*
 Lemma not_typ_has_and_hasnt: forall G T D,
   typ_has G T D -> typ_hasnt G T (label_of_dec D) -> False.
-Admitted. (*
+Admitted.
 Proof.
   introv Has Hasnt.
   destruct typ_has_unique_and_not_hasnt as [_ P].
@@ -1698,7 +1772,7 @@ Qed.
 
 
 (* ###################################################################### *)
-(** ** Soundness helper lemmas *)
+(** ** Looks like rules, but follows from the rules *)
 
 (* subdec D0 D1
    subdec D0 D2
@@ -1754,6 +1828,10 @@ Proof.
   introv Sd u. inversions u; inversions Sd; eauto.
 Qed.
 
+
+(* ###################################################################### *)
+(** ** More stuff *)
+
 Lemma intersect_dec_total: forall D1 D2,
   label_of_dec D1 = label_of_dec D2 ->
   exists D12, D1 && D2 == D12.
@@ -1773,6 +1851,187 @@ Proof.
   - eapply union_dec_fld.
   - eapply union_dec_mtd.
 Qed.
+
+
+(* ###################################################################### *)
+(** ** Even more stuff *)
+
+(* [needs_lookup T1 p.L] ==> in order to look up a member in T1, we also
+                            have to lookup the member in p.L 
+   The other direction does not hold.
+   And note that this judgment does not do more recursion than the size of T1. *)
+Inductive needs_lookup: typ -> typ -> Prop :=
+| typ_self_needs_lookup: forall x L,
+    needs_lookup (typ_sel (pth_var (avar_f x)) L) (typ_sel (pth_var (avar_f x)) L)
+| typ_and_needs_lookup_1: forall T1 T2 U,
+    needs_lookup T1 U ->
+    needs_lookup (typ_and T1 T2) U
+| typ_and_needs_lookup_2: forall T1 T2 U,
+    needs_lookup T2 U ->
+    needs_lookup (typ_and T1 T2) U
+| typ_or_needs_lookup_1: forall T1 T2 U,
+    needs_lookup T1 U ->
+    needs_lookup (typ_or T1 T2) U
+| typ_or_needs_lookup_2: forall T1 T2 U,
+    needs_lookup T2 U ->
+    needs_lookup (typ_or T1 T2) U.
+
+Inductive notin_chain: var -> typ_label -> env typ_label -> Prop :=
+| notin_chain_empty: forall x L,
+    notin_chain x L empty
+| notin_chain_push: forall x L x0 L0 c,
+    notin_chain x L c ->
+    (x <> x0 \/ L <> L0) ->
+    notin_chain x L (c & x0 ~ L0).
+
+(* [chain G (x1 ~ L1 & x2 ~ L2 & ... & xn ~ Ln)] means that in order to look up a member
+   in x1.L1, we have to look up a member in x2.L2, for that, need to lookup in x3.L3, etc,
+   until xn.Ln.
+   Moreover, all xi.Li in the chain are guaranteed to be unique, and each xi is bound in G.
+   This implies that chains are never longer than (size of G)*(number_of_typ_labels).
+*)
+Inductive chain: ctx -> env typ_label -> Prop :=
+| chain_base: forall G x L T,
+    binds x T G ->
+    chain G (x ~ L)
+| chain_step_1: forall G h x1 L1 x2 L2 X1,
+    chain G (h & x1 ~ L1) ->
+    binds x1 X1 G ->
+    needs_lookup X1 (typ_sel (pth_var (avar_f x2)) L2) ->
+    notin_chain x2 L2 h ->
+    (x2 <> x1 \/ L2 <> L1) ->
+    chain G (h & x1 ~ L1 & x2 ~ L2)
+| chain_step_2: forall G h x1 L1 x2 L2 X1 Lo Hi,
+    chain G (h & x1 ~ L1) ->
+    binds x1 X1 G ->
+    typ_has G X1 (dec_typ L1 Lo Hi) ->
+    needs_lookup Hi (typ_sel (pth_var (avar_f x2)) L2) ->
+    notin_chain x2 L2 h ->
+    (x2 <> x1 \/ L2 <> L1) ->
+    chain G (h & x1 ~ L1 & x2 ~ L2).
+
+Definition cyclic(G: ctx)(T0: typ) := exists x1 L1 x2 L2 x3 L3 h12 h23,
+  (* first, walk until we reach the cycle: *)
+  needs_lookup T0 (typ_sel (pth_var (avar_f x1)) L1) /\
+  (chain G (x1 ~ L1 & h12 & x2 ~ L2) \/ (x1 = x2 /\ L1 = L2)) /\
+  (* cycle starts at p2.L2: *)
+  (chain G (x2 ~ L2 & h23 & x3 ~ L3) \/ (x2 = x3 /\ L2 = L3)) /\
+  needs_lookup (typ_sel (pth_var (avar_f x3)) L3) (typ_sel (pth_var (avar_f x2)) L2).
+
+Lemma lookup_step: forall G x1 L1 x2 L2 l h,
+  chain G (x1 ~ L1 & h & x2 ~ L2) ->
+  (* done: *)
+  (exists D, typ_has G (typ_sel (pth_var (avar_f x1)) L1) D /\ label_of_dec D = l) \/
+  (* or can do a step: *)
+  (exists x3 L3, chain G (x1 ~ L1 & h & x2 ~ L2 & x3 ~ L3)) \/
+  (* or cycle detected: *)
+  (cyclic G (typ_sel (pth_var (avar_f x1)) L1)).
+Proof.
+  (* If x2's type contains no path types at the surface (i.e. through typ_and/typ_or),
+     we can find l in x2's type and return it (done).
+     Otherwise, we have to lookup in that path type, so we're in case 2 (can do a step).
+     but when do we need chain_step_2???
+     might get a cycle (3rd case) 
+  *)
+Admitted.
+
+Definition is_cartesian(T1: Type)(T2: Type)(A: fset T1)(B: fset T2)(C: fset (T1 * T2)) :=
+  forall a b, mem a A -> mem b B -> mem (a,b) C.
+
+Notation "A \x B == C" := (is_cartesian A B C) (at level 40).
+
+(* B is a list instead of fset so that we can do induction on it *)
+Lemma cartesian: forall (T1: Type)(T2: Type)(A: fset T1)(B: list T2),
+  exists (C: fset (T1 * T2)), 
+    forall (a: T1)(b: T2), mem a A -> LibList.Mem b B -> mem (a,b) C.
+Proof.
+  intros T1 T2 A B. induction B.
+  - exists (@FsetImpl.empty (T1 * T2)). intros a b Ia Ib. inversions Ib.
+  - destruct IHB as [C IH]. rename a into b.
+    destruct (fset_finite A) as [A' Eq].
+    exists (C \u (from_list (LibList.map (fun a => (a, b)) A'))).
+    intros a0 b0 IA IB.
+    rewrite LibList.Mem_cons_eq in IB. destruct IB as [Eq2 | IB].
+    + subst. rewrite in_union. right.
+      admit. (* TODO...*)
+    + rewrite in_union. left. apply (IH _ _ IA IB).
+Qed.
+
+Lemma typ_has_total_or_cyclic: forall G T l,
+  wf_typ G T ->
+  (exists D, typ_has G T D /\ label_of_dec D = l) \/
+  cyclic G T.
+Proof.
+  intros G T l Wf.
+  destruct get_typ_labels_list as [typ_labels typ_labels_spec].
+  assert (exists C, (dom G) \x (from_list typ_labels) == C) by admit.
+  destruct H as [cart cart_spec].
+
+  assert (Inner: forall
+    (unseen: list (var * typ_label))
+    (seen: list (var * typ_label)),
+    (from_list unseen) \u (from_list seen) = cart ->
+    forall x1 L1 h x2 L2,
+      needs_lookup T (typ_sel (pth_var (avar_f x1)) L1) ->
+      (chain G (x1 ~ L1 & h & x2 ~ L2) /\ (x1 ~ L1 & h & x2 ~ L2) = seen
+        \/ (x1 = x2 /\ L1 = L2) /\ (x1 ~ L1) = seen) ->
+      forall l,
+       (exists D, typ_has G (typ_sel (pth_var (avar_f x2)) L2) D /\ label_of_dec D = l) \/
+       (cyclic G (typ_sel (pth_var (avar_f x2)) L2))
+  ). {
+    lets __________separator__________: True.
+    intro u. induction u.
+    + intros seen Eq.
+      rewrite from_list_nil in Eq. rewrite (union_empty_l _) in Eq.
+      admit.
+    + admit.
+  }
+
+  destruct (fset_finite cart) as [cartL Eq].
+  specialize (Inner cartL empty).
+  rewrite <- Eq in Inner.
+  rewrite empty_def in Inner. rewrite from_list_nil in Inner.
+  apply (Inner (union_empty_r _)).
+Qed.
+
+Lemma typ_has_total_or_cyclic: forall G T l,
+  wf_typ G T ->
+  (exists D, typ_has G T D /\ label_of_dec D = l) \/
+  cyclic G T.
+Proof.
+
+Qed.
+
+(* T1 structurally contains T2
+Inductive typ_contains: typ -> typ -> Prop :=
+| typ_self_contains: forall T,
+    typ_contains T T
+| typ_rcd_contains: forall D T,
+    dec_contains D T ->
+    typ_contains (typ_rcd D) T
+| typ_and_contains_1: forall T1 T2 U,
+    typ_contains T1 U ->
+    typ_contains (typ_and T1 T2) U
+| typ_and_contains_2: forall T1 T2 U,
+    typ_contains T2 U ->
+    typ_contains (typ_and T1 T2) U
+| typ_or_contains_1: forall T1 T2 U,
+    typ_contains T1 U ->
+    typ_contains (typ_or T1 T2) U
+| typ_or_contains_2: forall T1 T2 U,
+    typ_contains T2 U ->
+    typ_contains (typ_or T1 T2) U
+with dec_contains: dec -> typ -> Prop :=
+| dec_typ_contains_1: forall L T1 T2 U, (* not needed for lookup of type members *)
+    typ_contains T1 U ->
+    dec_contains (dec_typ L T1 T2) U
+| dec_typ_contains_2: forall L T1 T2 U,
+    typ_contains T2 U ->
+    dec_contains (dec_typ L T1 T2) U
+| dec_fld_contains: forall L T1 T2 U,
+    typ_contains T1 U ->
+    dec_contains (dec_typ L T1 T2) U
+....*)
 
 (* "needs_lookup G T h" means "in order to look up a member in type T, we must
    also lookup members in all x.L in h, but not more" *)
@@ -1797,6 +2056,19 @@ Inductive needs_lookups: ctx -> typ -> fset (var * typ_label) -> Prop :=
       needs_lookups G T1 h1 ->
       needs_lookups G T2 h2 ->
       needs_lookups G (typ_or T1 T2) (h1 \u h2).
+
+Definition cyclic(G: ctx)(T: typ) := exists x L h,
+  T = (typ_sel (pth_var (avar_f x)) L) /\
+  (x, L) \in h /\
+  needs_lookups G (typ_sel (pth_var (avar_f x)) L) h.
+
+Lemma typ_has_total_or_cyclic: forall G T l,
+
+  exists D, typ_has G T D /\ label_of_dec D = l.
+Proof.
+
+Qed. typ_has_impl
+
 
 (* an object to measure the size of an fset *)
 Inductive finite(A: Type): fset A -> Prop := 
@@ -1859,7 +2131,7 @@ Inductive needs_lookups: ctx -> typ -> fset (var * typ_label) -> Prop :=
       needs_lookups G T2 h2 ->
       needs_lookups G (typ_or T1 T2) (h1 \u h2).
 
-Definition cycle(G: ctx)(T: typ) := exists x L h,
+Definition cycle(G: ctx)(T: typ) := exists x L h, T = x.L
   (x, L) \in h /\ needs_lookups G (typ_sel (pth_var (avar_f x)) L) h.
 *)
 
@@ -2430,4 +2702,12 @@ Module labels.
   Definition m: label := label_mtd n0.
   Definition apply: label := label_mtd n1.
 End labels.
+*)
+
+(* Basic check that all variables occuring in the type are bound in G
+   But do we also check that for all usages of x.L, L is a member of x? 
+   If yes, this check can lead to cycles, and is not preserved by narrowing,
+   unless we add history&break functionality... 
+   Or we can say that "hasn't L" means "has L: Bot..Top". 
+   Inductive wf_typ: ctx -> typ -> Prop :=
 *)
