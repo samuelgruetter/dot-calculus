@@ -19,26 +19,17 @@ Require Import LibLN.
 (* ###################################################################### *)
 (** ** Syntax *)
 
-Parameter typ_label: Set.
-Parameter fld_label: Set.
-Parameter mtd_label: Set.
+(* There's only a finite number of typ/field/method labels. *)
+Parameter number_of_typ_labels: nat.
+Parameter number_of_fld_labels: nat.
+Parameter number_of_mtd_labels: nat.
 
-Inductive label: Set :=
-| label_typ: typ_label -> label
-| label_fld: fld_label -> label
-| label_mtd: mtd_label -> label.
-
-(*
-Definition typ_label := label.
-Definition fld_label := label.
-Definition mtd_label := label.
-*)
-(*
-Dont' use different labels because we want l1 <> l2 in defs_has_skip
-Parameter typ_label: Set.
-Parameter fld_label: Set.
-Parameter mtd_label: Set.
-*)
+Inductive typ_label: Set :=
+| mk_typ_label: forall n: nat, n < number_of_typ_labels -> typ_label.
+Inductive fld_label: Set :=
+| mk_fld_label: forall n: nat, n < number_of_fld_labels -> fld_label.
+Inductive mtd_label: Set :=
+| mk_mtd_label: forall n: nat, n < number_of_mtd_labels -> mtd_label.
 
 Module labels.
   Parameter L: typ_label.
@@ -47,23 +38,10 @@ Module labels.
   Parameter apply: mtd_label.
 End labels.
 
-(*
 Inductive label: Set :=
-| label_typ: nat -> label
-| label_fld: nat -> label
-| label_mtd: nat -> label.
-
-(* Some default labels for examples: *)
-Module labels.
-  Parameter n0: nat.
-  Parameter n1: nat.
-  Axiom n0_not_n1: n0 <> n1.
-  Definition L: label := label_typ n0.
-  Definition l: label := label_fld n0.
-  Definition m: label := label_mtd n0.
-  Definition apply: label := label_mtd n1.
-End labels.
-*)
+| label_typ: typ_label -> label
+| label_fld: fld_label -> label
+| label_mtd: mtd_label -> label.
 
 Inductive avar : Set :=
   | avar_b : nat -> avar  (* bound var (de Bruijn index) *)
@@ -1675,6 +1653,51 @@ Qed.*)
 
 
 (* ###################################################################### *)
+(** ** Getting a finite list of all type labels *)
+
+Lemma get_typ_labels_list_impl: forall n (Hle1: n <= number_of_typ_labels),
+  exists (ls: list typ_label), 
+    forall n0 (Hle2: n0 < n), 
+      LibList.Mem (mk_typ_label (Lt.lt_le_trans _ _ _ Hle2 Hle1)) ls.
+Proof.
+  intro n. induction n.
+  - intro. exists (@nil typ_label). intros. inversions Hle2.
+  - intro. assert (Hle1': n <= number_of_typ_labels) by omega.
+    specialize (IHn Hle1'). destruct IHn as [ls IH].
+    assert (Hlt1: n < number_of_typ_labels) by omega.
+    exists (cons (mk_typ_label Hlt1) ls).
+    intros.
+    rewrite LibList.Mem_cons_eq. 
+    destruct (classicT (n0 = n)) as [Eq | Ne].
+    + left. subst. f_equal. apply proof_irrelevance. (* <-- rocks ;-) *)
+    + right. assert (Hlt2: n0 < n) by omega. specialize (IH n0 Hlt2).
+      rewrite (proof_irrelevance (Lt.lt_le_trans n0 (S n) number_of_typ_labels Hle2 Hle1)
+                                 (Lt.lt_le_trans n0 n number_of_typ_labels Hlt2 Hle1')).
+      exact IH.
+Qed.
+
+Lemma invert_typ_label: forall (l: typ_label),
+  exists (n: nat) (Hlt: n < number_of_typ_labels), l = mk_typ_label Hlt.
+Proof.
+  intro l. destruct l as [n H]. exists n H. reflexivity.
+Qed.
+
+Lemma get_typ_labels_list:
+  exists (ls: list typ_label), forall l: typ_label, LibList.Mem l ls.
+Proof.
+  destruct (get_typ_labels_list_impl (le_n number_of_typ_labels)) as [ls F].
+  exists ls. intro l.
+  destruct (invert_typ_label l) as [n [Hlt Eq]].
+  specialize (F n Hlt).
+  rewrite Eq.
+  rewrite <- (proof_irrelevance Hlt
+                 (Lt.lt_le_trans n number_of_typ_labels number_of_typ_labels 
+                                 Hlt (le_n number_of_typ_labels))) in F.
+  exact F.
+Qed.
+
+
+(* ###################################################################### *)
 (** ** Soundness helper lemmas *)
 
 (* subdec D0 D1
@@ -2230,4 +2253,181 @@ Proof.
     intros. apply* can_add_mtd.
 Qed.
 
+Stop Here.
 
+(* ------GARBAGE------------------------------
+
+Parameter max_typ_label: nat.
+
+Inductive typ_label: Set :=
+| mk_typ_label: forall n, n <= max_typ_label -> typ_label.
+
+Fixpoint get_typ_labels_list_up_to(n: nat): n <= max_typ_label -> list typ_label :=
+match n with
+| 0 => fun Hle => cons (mk_typ_label Hle) nil
+| S n' => fun Hle =>
+          cons (mk_typ_label Hle) (get_typ_labels_list_up_to (Le.le_Sn_le _ _ Hle))
+end.
+
+Fixpoint get_0_le(n: nat): 0 <= n := match n with
+| 0 => le_n 0
+| S n' => le_S _ _ (get_0_le n')
+end.
+
+Definition typ_labels: list typ_label := get_typ_labels_list_up_to (get_0_le max_typ_label).
+
+
+
+prop_ext
+
+Fixpoint get_typ_labels_list_up_to(n: nat)(Hle: n <= max_typ_label): list typ_label :=
+(match n return n <= max_typ_label -> list typ_label with
+| 0 => fun Hle => cons (mk_typ_label Hle) nil
+| S n' => fun Hle => 
+   cons (mk_typ_label Hle) (get_typ_labels_list_up_to (Le.le_Sn_le _ _ Hle))
+end) Hle.
+
+
+le_Sn_le : forall n m, S n <= m -> n <= m.
+
+Fixpoint get_typ_labels_list_up_to(n: nat)(Hle: n <= max_typ_label): list typ_label :=
+match n with
+| 0 => cons (mk_typ_label Hle) nil
+| S n' => cons (mk_typ_label Hle) (get_typ_labels_list_up_to (Le.le_Sn_le _ _ Hle))
+end.
+
+S n' <= max_typ_label
+n' <= max_typ_label
+
+le_S
+
+Fixpoint get_0_le(n: nat): 0 <= n := match n with
+| 0 => le_n 0
+| S n' => le_S _ _ (get_0_le n')
+end.
+
+Fixpoint get_typ_labels_list_up_to(n: nat)(Hle: n <= max_typ_label): list typ_label :=
+match n with
+| 0 => cons (mk_typ_label (get_0_le max_typ_label)) nil
+| S n' => cons (mk_typ_label Hle) (get_typ_labels_list_up_to n' _)
+end.
+
+
+Fixpoint get_typ_labels_list(n: nat): list typ_label := match n with
+| 0 => cons (mk_typ_label (le_n max_typ_label)) nil
+| S n' => let (n'', Hle) := 
+end.
+*)
+
+(*
+Lemma get_typ_labels_list: forall n (Hle1: n <= max_typ_label),
+  exists (ls: list typ_label), 
+    forall n0 (Hle2: n0 <= n), 
+      Mem (mk_typ_label (Le.le_trans _ _ _ Hle2 Hle1)) ls.
+Proof.
+  intro n. induction n.
+  - intro. exists (@nil typ_label). intros. assert (n0 = 0) by ome inversions Hle2.
+  - intro. assert (Hle1': n <= number_of_typ_labels) by omega.
+    specialize (IHn Hle1'). destruct IHn as [ls IH].
+    assert (Hlt1: n < number_of_typ_labels) by omega.
+    exists (cons (mk_typ_label Hlt1) ls).
+    intros.
+    rewrite Mem_cons_eq. 
+    destruct (classicT (n0 = n)) as [Eq | Ne].
+    + left. subst. f_equal. unfold lt in *.
+      destruct Hlt1.
+Qed.
+*)
+
+
+Lemma get_typ_labels_list:
+  exists (ls: list typ_label), forall l: typ_label, Mem l ls.
+Proof.
+  destruct (get_typ_labels_list_impl (le_n number_of_typ_labels)) as [ls F].
+  assert (C: number_of_typ_labels = 0 \/ number_of_typ_labels > 0) by omega.
+  destruct C as [Eq | Gt].
+  - subst. exists (@nil typ_label). intro l. inversion l. rewrite Eq in H. omega.
+  - remember (pred number_of_typ_labels) as N.
+    assert (Eq: (S N) = number_of_typ_labels) by omega. 
+    specialize (F N). assert (N < number_of_typ_labels) by omega.
+    specialize (F H).
+ inversion F.
+rewrite <- Eq in F. 
+    (* destruct number_of_typ_labels. as [|N] would be simpler but doesn't work *)
+  specialize (F numb  
+Qed.
+
+Definition typ_labels: list typ_label.
+  destruct (get_typ_labels_list (le_n number_of_typ_labels)) as [ls F].
+
+(*------*)
+Parameter raw_label_type: Set.
+
+Parameter raw_typ_labels: list raw_label_type.
+Parameter raw_fld_labels: list raw_label_type.
+Parameter raw_mtd_labels: list raw_label_type.
+
+Inductive typ_label: Set :=
+| mk_typ_label: forall l, Mem l raw_typ_labels -> typ_label.
+Inductive fld_label: Set :=
+| mk_fld_label: forall l, Mem l raw_fld_labels -> fld_label.
+Inductive mtd_label: Set :=
+| mk_mtd_label: forall l, Mem l raw_mtd_labels -> mtd_label.
+
+Lemma get_typ_labels_list: forall n,
+  exists (ls: list typ_label), 
+    forall r, Mem r raw_typ_labels -> 
+Proof.
+
+
+Lemma get_typ_labels_list: exists (ls: list typ_label), 
+  forall (l: typ_label), Mem l ls.
+Proof.
+  gen_eq L: raw_typ_labels. induction L; introv Eq.
+  - exists (@nil typ_label). intro l. inversion l. rewrite <- Eq in H.
+    inversions H.
+  - exists ( take
+Defined.
+
+
+
+(*
+Definition typ_labels := map (fun r => (mk_typ_label raw_typ_labels
+*)
+
+(*
+Parameter typ_label: Set.
+Parameter fld_label: Set.
+Parameter mtd_label: Set.
+*)
+
+(*
+Definition typ_label := label.
+Definition fld_label := label.
+Definition mtd_label := label.
+*)
+(*
+Dont' use different labels because we want l1 <> l2 in defs_has_skip
+Parameter typ_label: Set.
+Parameter fld_label: Set.
+Parameter mtd_label: Set.
+*)
+
+
+(*
+Inductive label: Set :=
+| label_typ: nat -> label
+| label_fld: nat -> label
+| label_mtd: nat -> label.
+
+(* Some default labels for examples: *)
+Module labels.
+  Parameter n0: nat.
+  Parameter n1: nat.
+  Axiom n0_not_n1: n0 <> n1.
+  Definition L: label := label_typ n0.
+  Definition l: label := label_fld n0.
+  Definition m: label := label_mtd n0.
+  Definition apply: label := label_mtd n1.
+End labels.
+*)
