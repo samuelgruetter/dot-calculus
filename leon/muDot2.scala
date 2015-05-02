@@ -548,10 +548,35 @@ object muDOT {
             st12.ok && st12.ctx == ctx_concat(ctx_cons(g1, z, typ_bind(z, dsB)), g2) &&
             st12.typ1 == t1 && st12.typ2 == t2)
     
-    st12
+    val gA = ctx_concat(ctx_cons(g1, z, typ_bind(z, dsA)), g2)
+    
+    st12 match {
+      case subtyp_refl(g, t1, t2) => subtyp_refl(gA, t1, t2)
+      case subtyp_top(g, t1, t2) => subtyp_top(gA, t1, t2)
+      case subtyp_bot(g, t1, t2) => subtyp_bot(gA, t1, t2)
+      case subtyp_bind(g, t1, t2, z2, sds) => subtyp_bind(gA, t1, t2, z2, 
+        narrow_subdecs(g1, ctx_cons(g2, z2, t1), z2, dsA, dsB, sds.decs1, sds.decs2, sdsAB, sds))
+      case subtyp_sel_l(g, t1, t2, ha, st1, st2) => subtyp_sel_l(gA, t1, t2,
+        ha, // TODO
+        narrow_subtyp(g1, g2, z, dsA, dsB, st1.typ1, st1.typ2, sdsAB, st1),
+        narrow_subtyp(g1, g2, z, dsA, dsB, st2.typ1, st2.typ2, sdsAB, st1))
+      case subtyp_sel_r(g, t1, t2, ha, st1, st2) => st12
+      case subtyp_trans(g, t1, t2, st1, st2) => st12
+    }
   } ensuring {st => st.ok && st.ctx == ctx_concat(ctx_cons(g1, z, typ_bind(z, dsA)), g2) &&
                     st.typ1 == t1 && st.typ2 == t2}  
-    
+
+/*
+    st12 match {
+      case subtyp_refl(g, t1, t2) => st12
+      case subtyp_top(g, t1, t2) => st12
+      case subtyp_bot(g, t1, t2) => st12
+      case subtyp_bind(g, t1, t2, z, sds) => st12
+      case subtyp_sel_l(g, t1, t2typ, ha, st1, st2) => st12
+      case subtyp_sel_r(g, t1, t2, ha, st1, st2) => st12
+      case subtyp_trans(g, t1, t2, st1, st2) => st12
+    }
+*/
 }
 
 
