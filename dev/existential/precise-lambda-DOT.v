@@ -529,14 +529,17 @@ with wf_dec: ctx -> dec -> Prop :=
 (* typ_has_impl keeps history of already-seen path types *)
 Inductive typ_has_impl: fset (var * typ_label) -> ctx -> typ -> dec -> Prop :=
   | typ_top_has: forall h G l,
-      typ_has_impl h G typ_bot (dec_top l) (* instead of just no such rule *)
+      typ_has_impl h G typ_top (dec_top l) (* instead of just no such rule *)
   | typ_bot_has: forall h G l,
       typ_has_impl h G typ_bot (dec_bot l)
   | typ_rcd_has: forall h G D,
       typ_has_impl h G (typ_rcd D) D
-  | typ_sel_has_break: forall h G x L,
+  | typ_rcd_has_dec_top: forall h G l D,  (* instead of just no such rule *)
+      label_of_dec D <> l ->
+      typ_has_impl h G (typ_rcd D) (dec_top l)
+  | typ_sel_has_break: forall h G x L l,
       (x, L) \in h ->
-      typ_has_impl h G (typ_sel (pth_var (avar_f x)) L) (dec_typ L typ_top typ_bot)
+      typ_has_impl h G (typ_sel (pth_var (avar_f x)) L) (dec_bot l)
   | typ_sel_has: forall h G x T L Lo Hi D,
       binds x T G ->
       typ_has_impl (h \u \{(x,L)}) G T (dec_typ L Lo Hi) ->
@@ -1854,7 +1857,133 @@ Qed.
 
 
 (* ###################################################################### *)
-(** ** Even more stuff *)
+(** ** Cartesian Product *)
+
+Definition is_cartesian(T1: Type)(T2: Type)(A: fset T1)(B: fset T2)(C: fset (T1 * T2)) :=
+  forall a b, mem a A -> mem b B -> mem (a,b) C.
+
+Notation "A \x B == C" := (is_cartesian A B C) (at level 40).
+
+(* B is a list instead of fset so that we can do induction on it *)
+Lemma cartesian: forall (T1: Type)(T2: Type)(A: fset T1)(B: list T2),
+  exists (C: fset (T1 * T2)), 
+    forall (a: T1)(b: T2), mem a A -> LibList.Mem b B -> mem (a,b) C.
+Proof.
+  intros T1 T2 A B. induction B.
+  - exists (@FsetImpl.empty (T1 * T2)). intros a b Ia Ib. inversions Ib.
+  - destruct IHB as [C IH]. rename a into b.
+    destruct (fset_finite A) as [A' Eq].
+    exists (C \u (from_list (LibList.map (fun a => (a, b)) A'))).
+    intros a0 b0 IA IB.
+    rewrite LibList.Mem_cons_eq in IB. destruct IB as [Eq2 | IB].
+    + subst. rewrite in_union. right.
+      admit. (* TODO...*)
+    + rewrite in_union. left. apply (IH _ _ IA IB).
+Qed.
+
+Lemma in_from_list: forall (T: Type) (l: list T) (x: T),
+  LibList.Mem x l ->
+  x \in from_list l.
+Proof.
+  intros T l. induction l; introv M.
+  - inversions M.
+  - rewrite from_list_cons. rewrite LibList.Mem_cons_eq in M. destruct M as [Eq | M].
+    * subst. rewrite in_union. left. rewrite in_singleton. reflexivity.
+    * rewrite in_union. right. apply (IHl x M).
+Qed.
+
+
+(* ###################################################################### *)
+(** ** typ_has_impl total *)
+
+Lemma typ_has_impl_total: forall G h T l,
+  wf_typ G T ->
+  (exists D, typ_has_impl h G T D /\ label_of_dec D = l).
+Proof.
+  intro G.
+  destruct get_typ_labels_list as [typ_labels typ_labels_spec].
+  assert (exists C, (dom G) \x (from_list typ_labels) == C) by admit.
+  destruct H as [cart cart_spec].
+
+  assert (Inner: forall
+    (unseen: list (var * typ_label))
+    (seen: list (var * typ_label)),
+    (from_list unseen) \u (from_list seen) = cart ->
+    forall T l,
+      wf_typ G T ->
+      (exists D, typ_has_impl (from_list seen) G T D /\ label_of_dec D = l)
+  ). {
+    lets __________separator__________: True.
+    intro u. induction u.
+    + (* base case: unseen = empty, i.e. all x.L were already seen *)
+      intros seen Eq.
+      rewrite from_list_nil in Eq. rewrite (union_empty_l _) in Eq.
+      introv Wf. induction Wf.
+      - (* case wf_top *)
+        exists (dec_top l). destruct l; auto.
+      - (* case wf_bot *)
+        exists (dec_bot l). destruct l; auto.
+      - (* case wf_rcd *)
+        destruct (classicT (l = label_of_dec D)) as [Eql | Ne].
+        * exists D. auto.
+        * exists (dec_top l). destruct l; auto.
+      - (* case wf_sel *)
+        exists (dec_bot l). split; [idtac | (destruct l; auto)].
+        (* We can end the recursion because all path types were seen: *)
+        apply typ_sel_has_break.
+        rewrite Eq. unfold is_cartesian in cart_spec. apply cart_spec.
+        * apply (get_some_inv H).
+        * apply in_from_list. apply typ_labels_spec.
+      - (* case wf_and *)
+        specialize (IHWf1 cart_spec). destruct IHWf1 as [D1 [IH1 Eq1]].
+        specialize (IHWf2 cart_spec). destruct IHWf2 as [D2 [IH2 Eq2]].
+        rewrite <- Eq2 in Eq1.
+        destruct (intersect_dec_total _ _ Eq1) as [D12 Eq12].
+        exists D12. split.
+        * apply (typ_and_has IH1 IH2 Eq12).
+        * inversions Eq12; reflexivity.
+      - (* case wf_or *)
+        specialize (IHWf1 cart_spec). destruct IHWf1 as [D1 [IH1 Eq1]].
+        specialize (IHWf2 cart_spec). destruct IHWf2 as [D2 [IH2 Eq2]].
+        rewrite <- Eq2 in Eq1.
+        destruct (union_dec_total _ _ Eq1) as [D12 Eq12].
+        exists D12. split.
+        * apply (typ_or_has IH1 IH2 Eq12).
+        * inversions Eq12; reflexivity.
+    + (* step *)
+      intros seen Eq. rename u into unseen_tail. destruct a as [unseen_x unseen_L].
+      introv Wf. induction Wf.
+      - (* case wf_top *)
+        exists (dec_top l). destruct l; auto.
+      - (* case wf_bot *)
+        exists (dec_bot l). destruct l; auto.
+      - (* case wf_rcd *)
+        destruct (classicT (l = label_of_dec D)) as [Eql | Ne].
+        * exists D. auto.
+        * exists (dec_top l). destruct l; auto.
+      - (* case wf_sel *)
+        rewrite from_list_cons in Eq. rewrite <- union_assoc in Eq.
+        rewrite union_comm in Eq. rewrite <- union_assoc in Eq.
+        rewrite (union_comm (from_list seen)) in Eq.
+        rewrite <- from_list_cons in Eq.
+        specialize (IHu _ Eq).
+        (* --> need to do induction on size of unseen, not unseen itself, so
+            that we can choose the element which goes from unseen into seen *)
+  }
+
+  destruct (fset_finite cart) as [cartL Eq].
+  specialize (Inner cartL empty).
+  rewrite <- Eq in Inner.
+  rewrite empty_def in Inner. rewrite from_list_nil in Inner.
+  (* TODO does outer conclusion need h, or can we drop _impl ? *)
+  apply (Inner (union_empty_r _)).
+
+Qed.
+
+
+
+(* ###################################################################### *)
+(** ** Data structures to make cycles explicit (needed??) *)
 
 (* [needs_lookup T1 p.L] ==> in order to look up a member in T1, we also
                             have to lookup the member in p.L 
@@ -1934,28 +2063,6 @@ Proof.
      might get a cycle (3rd case) 
   *)
 Admitted.
-
-Definition is_cartesian(T1: Type)(T2: Type)(A: fset T1)(B: fset T2)(C: fset (T1 * T2)) :=
-  forall a b, mem a A -> mem b B -> mem (a,b) C.
-
-Notation "A \x B == C" := (is_cartesian A B C) (at level 40).
-
-(* B is a list instead of fset so that we can do induction on it *)
-Lemma cartesian: forall (T1: Type)(T2: Type)(A: fset T1)(B: list T2),
-  exists (C: fset (T1 * T2)), 
-    forall (a: T1)(b: T2), mem a A -> LibList.Mem b B -> mem (a,b) C.
-Proof.
-  intros T1 T2 A B. induction B.
-  - exists (@FsetImpl.empty (T1 * T2)). intros a b Ia Ib. inversions Ib.
-  - destruct IHB as [C IH]. rename a into b.
-    destruct (fset_finite A) as [A' Eq].
-    exists (C \u (from_list (LibList.map (fun a => (a, b)) A'))).
-    intros a0 b0 IA IB.
-    rewrite LibList.Mem_cons_eq in IB. destruct IB as [Eq2 | IB].
-    + subst. rewrite in_union. right.
-      admit. (* TODO...*)
-    + rewrite in_union. left. apply (IH _ _ IA IB).
-Qed.
 
 Lemma typ_has_total_or_cyclic: forall G T l,
   wf_typ G T ->
