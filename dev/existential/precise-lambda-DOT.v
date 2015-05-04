@@ -537,8 +537,9 @@ Inductive typ_has_impl: fset (var * typ_label) -> ctx -> typ -> dec -> Prop :=
   | typ_rcd_has_dec_top: forall h G l D,  (* instead of just no such rule *)
       label_of_dec D <> l ->
       typ_has_impl h G (typ_rcd D) (dec_top l)
-  | typ_sel_has_break: forall h G x L l,
+  | typ_sel_has_break: forall h G x T L l,
       (x, L) \in h ->
+      binds x T G ->
       typ_has_impl h G (typ_sel (pth_var (avar_f x)) L) (dec_bot l)
   | typ_sel_has: forall h G x T L Lo Hi D,
       binds x T G ->
@@ -1932,7 +1933,7 @@ Proof.
       - (* case wf_sel *)
         exists (dec_bot l). split; [idtac | (destruct l; auto)].
         (* We can end the recursion because all path types were seen: *)
-        apply typ_sel_has_break.
+        refine (typ_sel_has_break _ _ H).
         rewrite Eq. unfold is_cartesian in cart_spec. apply cart_spec.
         * apply (get_some_inv H).
         * apply in_from_list. apply typ_labels_spec.
@@ -1969,7 +1970,7 @@ Proof.
         destruct (classicT ((x, L) \in (from_list seen))) as [In | Ni].
         (* x.L already seen *) {
           exists (dec_bot l). split.
-          + apply typ_sel_has_break. apply In.
+          + apply (typ_sel_has_break _ In H).
           + destruct l; auto.
         }
         (* x.L not yet seen *) {
@@ -2029,8 +2030,10 @@ Admitted.
    The other direction does not hold.
    And note that this judgment does not do more recursion than the size of T1. *)
 Inductive needs_lookup: typ -> typ -> Prop :=
-| typ_self_needs_lookup: forall x L,
-    needs_lookup (typ_sel (pth_var (avar_f x)) L) (typ_sel (pth_var (avar_f x)) L)
+(*| typ_self_needs_lookup: forall x L,
+    needs_lookup (typ_sel (pth_var (avar_f x)) L) (typ_sel (pth_var (avar_f x)) L)*)
+| typ_self_needs_lookup: forall T,
+    needs_lookup T T
 | typ_and_needs_lookup_1: forall T1 T2 U,
     needs_lookup T1 U ->
     needs_lookup (typ_and T1 T2) U
@@ -2044,6 +2047,44 @@ Inductive needs_lookup: typ -> typ -> Prop :=
     needs_lookup T2 U ->
     needs_lookup (typ_or T1 T2) U.
 
+Inductive valid_history: (* defined in terms o needs_lookup *)
+ctx -> (var * typ_label) -> fset (var * typ_label) -> (var * typ_label) -> Prop :=
+| valid_history_base: forall G x L T,
+    binds x T G ->
+    valid_history G (x, L) \{ (x,L) } (x, L)
+| valid_history_step_1: forall G h x0 L0 x1 L1 x2 L2 X1,
+    valid_history G (x0, L0) h (x1, L1) ->
+    binds x1 X1 G ->
+    needs_lookup X1 (typ_sel (pth_var (avar_f x2)) L2) ->
+    valid_history G (x0, L0) (h \u \{ (x2, L2) }) (x2, L2)
+| valid_history_step_2: forall G h x0 L0 x1 L1 x2 L2 X1 Lo Hi,
+    valid_history G (x0, L0) h (x1, L1) ->
+    binds x1 X1 G ->
+    typ_has G X1 (dec_typ L1 Lo Hi) ->
+    needs_lookup Hi (typ_sel (pth_var (avar_f x2)) L2) ->
+    valid_history G (x0, L0) (h \u \{ (x2, L2) }) (x2, L2).
+
+ cons should append on rhs
+Inductive valid_history:
+ctx -> (var * typ_label) -> list (var * typ_label) -> (var * typ_label) -> Prop :=
+| valid_history_base: forall G x L T,
+    binds x T G ->
+    valid_history G (x, L) (cons (x,L) nil) (x, L)
+| valid_history_step_1: forall G h x0 L0 x1 L1 x2 L2 X1,
+    valid_history G (x0, L0) h (x1, L1) ->
+    binds x1 X1 G ->
+    needs_lookup X1 (typ_sel (pth_var (avar_f x2)) L2) ->
+    valid_history G (x0, L0) (cons (x2, L2) h) (x2, L2)
+| valid_history_step_2: forall G h x0 L0 x1 L1 x2 L2 X1 Lo Hi,
+    valid_history G (x0, L0) h (x1, L1) ->
+    binds x1 X1 G ->
+    typ_has G X1 (dec_typ L1 Lo Hi) ->
+    needs_lookup Hi (typ_sel (pth_var (avar_f x2)) L2) ->
+    valid_history G (x0, L0) (cons (x2, L2) h) (x2, L2).
+*)
+
+
+(*
 Inductive notin_chain: var -> typ_label -> env typ_label -> Prop :=
 | notin_chain_empty: forall x L,
     notin_chain x L empty
@@ -2321,7 +2362,221 @@ Qed.
 (* ###################################################################### *)
 (** ** Getting rid of history *)
 
+(* If you want to learn how to get rid of the history, first learn
+   how to add even more history. Sounds wise, doesn't it ;-) *)
+Lemma add_history: forall h1 h2 G T D,
+  typ_has_impl h1 G T D ->
+  typ_has_impl (h1 \u h2) G T D.
+Proof.
+  introv Has. induction Has.
+  + (* case typ_top_has *) eauto.
+  + (* case typ_bot_has *) eauto.
+  + (* case typ_rcd_has *) eauto.
+  + (* case typ_rcd_has_dec_top *) eauto.
+  + (* case typ_sel_has_break *)
+    refine (typ_sel_has_break _ _ H0). rewrite in_union. left. exact H.
+  + (* case typ_sel_has *)
+    rewrite <- union_assoc in *.
+    rewrite (union_comm \{ (x, L)} h2) in *.
+    rewrite union_assoc in *.
+    apply (typ_sel_has H IHHas1 IHHas2).
+  + (* case typ_and_has *) eauto.
+  + (* case typ_or_has *) eauto.
+Qed.
 
+(* similar to "needs_lookup", but lhs path type is fixed: *)
+Inductive next_in_hist: fset (var * typ_label) -> ctx -> var -> typ_label -> typ -> Prop :=
+| next_in_hist_binds: forall h G x L T,
+    binds x T G ->
+    next_in_hist h G x L T
+| next_in_hist_ub: forall h G x T L Lo Hi,
+    binds x T G ->
+    typ_has_impl h G T (dec_typ L Lo Hi) ->
+    next_in_hist h G x L Hi
+| next_in_hist_and_1: forall h G x L T1 T2,
+    next_in_hist h G x L (typ_and T1 T2) ->
+    next_in_hist h G x L T1
+| next_in_hist_and_2: forall h G x L T1 T2,
+    next_in_hist h G x L (typ_and T1 T2) ->
+    next_in_hist h G x L T2
+| next_in_hist_or_1: forall h G x L T1 T2,
+    next_in_hist h G x L (typ_or T1 T2) ->
+    next_in_hist h G x L T1
+| next_in_hist_or_2: forall h G x L T1 T2,
+    next_in_hist h G x L (typ_or T1 T2) ->
+    next_in_hist h G x L T2.
+
+Inductive valid_history: (* defined in terms of next_in_hist *)
+ctx -> (var * typ_label) -> fset (var * typ_label) -> (var * typ_label) -> Prop :=
+| valid_history_base: forall G x L T,
+    binds x T G ->
+    valid_history G (x, L) \{ (x,L) } (x, L)
+| valid_history_step: forall h G x1 L1 x2 L2 x3 L3,
+    valid_history G (x1, L1) h (x2, L2) ->
+    next_in_hist h G x2 L2 (typ_sel (pth_var (avar_f x3)) L3) ->
+    valid_history G (x1, L1) (h \u \{ (x3, L3) }) (x3, L3).
+
+(* if valid_history is defined in terms of next_in_hist (instead of needs_lookup),
+   this becomes trivial
+Lemma append_to_history: forall h G x1 L1 x2 L2 x3 L3,
+  valid_history G (x1, L1) h (x2, L2) ->
+  next_in_hist h G x2 L2 (typ_sel (pth_var (avar_f x3)) L3) ->
+  valid_history G (x1, L1) (h \u \{(x3, L3)}) (x3, L3).
+Proof.
+  introv Vh N. gen_eq T3: (typ_sel (pth_var (avar_f x3)) L3). gen x3 L3.
+  induction N; introv Eq; subst.
+  + (* case next_in_hist_binds *)
+    apply (valid_history_step_1 Vh H). apply typ_self_needs_lookup.
+  + (* case next_in_hist_ub *)
+    apply valid_history_step_2 with x L T Lo (typ_sel (pth_var (avar_f x3)) L3).
+    - exact Vh.
+    - exact H.
+    - admit. (* get rid of h *)
+    - apply typ_self_needs_lookup.
+  + (* case next_in_hist_and_1 *)
+    (* completely useless IH!! *)
+  + (* case next_in_hist_and_2 *) eauto.
+  + (* case next_in_hist_or_1 *) eauto.
+  + (* case next_in_hist_or_2 *) eauto.
+Qed.*)
+
+Lemma cyclic_typ_has_dec_bot: forall l G x1 L1 h12 x2 L2 h23 x3 L3,
+  valid_history G (x1, L1) h12 (x2, L2) ->
+  valid_history G (x2, L2) h23 (x3, L3) ->
+  next_in_hist (h12 \u h23) G x3 L3 (typ_sel (pth_var (avar_f x1)) L1) ->
+  typ_has_impl h23 G (typ_sel (pth_var (avar_f x1)) L1) (dec_bot l).
+(* Idea: invoke with h12 = whole history, h23 = nil, then shovel stuff from h12 into h23,
+   base case: h23 = whole history, so x3.L3 is in it, so apply typ_sel_has_break.
+   But problem: Shrinking h12 won't work because the next_in_hist's inside 
+     valid_history G (x1, L1) h12 (x2, L2)
+   won't accept a shrinked h12. *)
+Abort.
+
+Lemma drop_history: forall G x1 L1 x2 L2 x3 L3 h13,
+  valid_history G (x1, L1) h13 (x3, L3) ->
+  (x2, L2) \in h13 ->
+  exists h12 h23,
+    h12 \u h23 = h13 /\
+    (*valid_history G (x1, L1) h12 (x2, L2) /\*)
+    valid_history G (x2, L2) h23 (x3, L3).
+Proof.
+  introv Vh. gen x2 L2. gen_eq p1: (x1, L1). gen_eq p3: (x3, L3). gen x1 L1 x3 L3.
+  induction Vh; introv Eq3 Eq1 In; inversions Eq3; inversions Eq1.
+  - rewrite in_singleton in In. inversions In.
+    exists \{ (x1, L1)} \{ (x1, L1)}. rewrite union_same.
+    apply (conj eq_refl). (*split;*) apply (valid_history_base _ H).
+  - specialize (IHVh _ _ _ _ eq_refl eq_refl).
+    rename x0 into x1, L0 into L1.
+    rename x2 into x3, L2 into L3.
+    rename x5 into x2, L5 into L2.
+    specialize (IHVh x2 L2).
+    destruct (classicT ((x4, L4) = (x2, L2))) as [Eq | Ne].
+    + inversions Eq. exists h \{ (x2, L2)}. apply (conj eq_refl).
+      assert (X2: typ) by admit. assert (Bi: binds x2 X2 G) by admit.
+      apply (valid_history_base _ Bi).
+    + rewrite in_union in In. destruct In as [In | Eq].
+      * specialize (IHVh In). destruct IHVh as [h12 [h23 [Eq Vh']]].
+        do 2 eexists.
+        (* H : next_in_hist h G x3 L3 (typ_sel (pth_var (avar_f x4)) L4)
+           is on h, and we cannot just shrink it to h23!!
+        refine (conj _ (valid_history_step Vh' H)). *)
+Abort.
+
+Lemma cyclic_typ_has_dec_bot: forall l h G x1 L1 x2 L2 x3 L3,
+  valid_history G (x1, L1) h (x3, L3) ->
+  (x2, L2) \in h ->
+  next_in_hist h G x3 L3 (typ_sel (pth_var (avar_f x2)) L2) ->
+  typ_has G (typ_sel (pth_var (avar_f x2)) L2) (dec_bot l).
+Admitted. (* Big TODO *)
+
+Lemma remove_history: forall h G T3 D,
+  typ_has_impl h G T3 D ->
+  forall x1 L1 x2 L2,
+  valid_history G (x1, L1) h (x2, L2) ->
+  next_in_hist h G x2 L2 T3 ->
+  (* how to do the connection between end-of-history x2.L2 and T3 ???
+  (binds x2 T3 G
+   \/ exists X2 Lo, binds x2 X2 G /\ typ_has_impl h G X2 (dec_typ L2 Lo T3)) -> *)
+  typ_has_impl \{} G T3 D.
+Proof.
+  introv Has. induction Has; introv Vh N.
+  + (* case typ_top_has *) eauto.
+  + (* case typ_bot_has *) eauto.
+  + (* case typ_rcd_has *) eauto.
+  + (* case typ_rcd_has_dec_top *) eauto.
+  + (* case typ_sel_has_break *)
+    apply (cyclic_typ_has_dec_bot l Vh H N).
+  + (* case typ_sel_has *)
+    apply typ_sel_has with T Lo Hi.
+    - exact H.
+    - apply add_history. specialize (IHHas1 x1 L1 x L). apply IHHas1.
+      * apply (valid_history_step Vh N).
+      * apply (next_in_hist_binds _ _ H).
+    - apply add_history. specialize (IHHas2 x1 L1 x L). apply IHHas2.
+      * apply (valid_history_step Vh N).
+      * apply (next_in_hist_ub H Has1).
+(*
+  + (* case typ_sel_has *)
+    destruct E as [Bix2 | [X2 [Lo0 [Bix2 Has]]]].
+    - apply typ_sel_has with T Lo Hi.
+      * exact H.
+      * apply add_history. specialize (IHHas1 x1 L1 x L).
+        refine (IHHas1 _ (or_introl H)).
+        apply valid_history_step_1 with x2 L2 (typ_sel (pth_var (avar_f x)) L).
+        { exact Vh. }
+        { exact Bix2. }
+        { apply typ_self_needs_lookup. }
+      * apply add_history. specialize (IHHas2 x1 L1 x2 L2).
+        refine (IHHas2 _ (or_intror _)).
+        admit. (* !!! *)
+        exists (typ_sel (pth_var (avar_f x)) L) Lo.
+        apply (conj Bix2).
+
+      * apply add_history. specialize (IHHas2 x1 L1 x L).
+        refine (IHHas2 _ (or_intror _)).
+        apply (valid_history_step_1 Vh Bix2 (typ_self_needs_lookup _)).
+        exists (typ_sel (pth_var (avar_f x)) L) Lo.
+
+
+        apply valid_history_step_1 with x2 L2 (typ_sel (pth_var (avar_f x)) L).
+        { exact Vh. }
+        { exact Bix2. }
+        { apply typ_self_needs_lookup. }
+
+        apply (valid_history_step_1 .
+ apply IHHas1.
+        (* (x2,L2) already in h, so it follows from Vh *)
+        admit.
+      * 
+ apply (valid_history_step_1 Vh H).
+        apply (needs_lookup _sel_1 
+
+      assert (X2: typ) by admit. assert (Bix2: binds x2 X2 G) by admit.
+      specialize (IHHas1 x1 L1 x2 L2). apply IHHas1.
+      * apply (valid_history_step_1 Vh Bix2). 
+eauto.
+    destruct IHHas1 as [IH1 | IH1].
+    - destruct IHHas2 as [IH2 | IH2].
+      * left. intro h2. eauto.
+      * eauto.
+    - inversions IH1. clear H2. rename H4 into Hibot. right.
+      apply (typ_bot_has_dec_bot Has2 Hibot).
+*)
+  + (* case typ_and_has *)
+    specialize (IHHas1 x1 L1 x2 L2 Vh (next_in_hist_and_1 N)).
+    specialize (IHHas2 x1 L1 x2 L2 Vh (next_in_hist_and_2 N)).
+    apply (typ_and_has IHHas1 IHHas2 H).
+  + (* case typ_or_has *)
+    specialize (IHHas1 x1 L1 x2 L2 Vh (next_in_hist_or_1 N)).
+    specialize (IHHas2 x1 L1 x2 L2 Vh (next_in_hist_or_2 N)).
+    apply (typ_or_has IHHas1 IHHas2 H).
+Qed.
+
+Print Assumptions remove_history. (* not yet good! *)
+
+Stop Here.
+
+(*
 (* for every typ_has judgment with some history h,
    either it also holds without the history h,
    or there's a cycle, so the decl it returns is dec_bot *)
@@ -2502,6 +2757,7 @@ Proof.
     - admit. (* TODO serious... *)
     - right. inversions IH1; inversions IH2; inversions H; eauto.
 Qed.
+*)
 
 (* ###################################################################### *)
 (** ** More stuff *)
