@@ -1906,7 +1906,9 @@ Proof.
   destruct H as [cart cart_spec].
 
   assert (Inner: forall
+    (nUnseen: nat)
     (unseen: list (var * typ_label))
+    (Eqlength: LibList.length unseen = nUnseen)
     (seen: list (var * typ_label)),
     (from_list unseen) \u (from_list seen) = cart ->
     forall T l,
@@ -1914,9 +1916,9 @@ Proof.
       (exists D, typ_has_impl (from_list seen) G T D /\ label_of_dec D = l)
   ). {
     lets __________separator__________: True.
-    intro u. induction u.
+    intro n. induction n.
     + (* base case: unseen = empty, i.e. all x.L were already seen *)
-      intros seen Eq.
+      intros unseen Eq1 seen Eq. apply LibList.length_zero_inv in Eq1. subst unseen.
       rewrite from_list_nil in Eq. rewrite (union_empty_l _) in Eq.
       introv Wf. induction Wf.
       - (* case wf_top *)
@@ -1951,7 +1953,8 @@ Proof.
         * apply (typ_or_has IH1 IH2 Eq12).
         * inversions Eq12; reflexivity.
     + (* step *)
-      intros seen Eq. rename u into unseen_tail. destruct a as [unseen_x unseen_L].
+      intros unseen Eq1 seen Eq.
+      rename IHn into IH.
       introv Wf. induction Wf.
       - (* case wf_top *)
         exists (dec_top l). destruct l; auto.
@@ -1962,28 +1965,64 @@ Proof.
         * exists D. auto.
         * exists (dec_top l). destruct l; auto.
       - (* case wf_sel *)
+        (* check if x.L is already seen *)
+        destruct (classicT ((x, L) \in (from_list seen))) as [In | Ni].
+        (* x.L already seen *) {
+          exists (dec_bot l). split.
+          + apply typ_sel_has_break. apply In.
+          + destruct l; auto.
+        }
+        (* x.L not yet seen *) {
+          rename T into X.
+          remember ((from_list seen) \u \{ (x, L) }) as seen' eqn: Eq2.
+          (* unseen' = unseen \ { x.L } *)
+          (* 1. look up L in X *)
+          admit. (* TODO *)
+        } 
+
+ (*
+ destruct unseen as [|[unseen_x unseen_L] unseen_tail];
+      [(rewrite LibList.length_nil in Eq1; exfalso; omega) | idtac].
+      rewrite LibList.length_cons in Eq1.
+      assert (Eq2: LibList.length unseen_tail = n) by omega. clear Eq1.
+
         rewrite from_list_cons in Eq. rewrite <- union_assoc in Eq.
         rewrite union_comm in Eq. rewrite <- union_assoc in Eq.
         rewrite (union_comm (from_list seen)) in Eq.
         rewrite <- from_list_cons in Eq.
-        specialize (IHu _ Eq).
+        specialize (IH _ Eq).
         (* --> need to do induction on size of unseen, not unseen itself, so
             that we can choose the element which goes from unseen into seen *)
+
+      specialize (IH unseen_tail Eq2).*)
+      - (* case wf_and *)
+        specialize (IHWf1 cart_spec).  (*
+        specialize IHWf1 with IH, ...
+destruct IHWf1 as [D1 [IH1 Eq1]].
+        specialize (IHWf2 cart_spec). destruct IHWf2 as [D2 [IH2 Eq2]].
+        rewrite <- Eq2 in Eq1.
+        destruct (intersect_dec_total _ _ Eq1) as [D12 Eq12].
+        exists D12. split.
+        * apply (typ_and_has IH1 IH2 Eq12).
+        * inversions Eq12; reflexivity. *)
+        admit.
+      - (* case wf_or *)
+        admit.
   }
 
   destruct (fset_finite cart) as [cartL Eq].
+  (*
   specialize (Inner cartL empty).
   rewrite <- Eq in Inner.
   rewrite empty_def in Inner. rewrite from_list_nil in Inner.
   (* TODO does outer conclusion need h, or can we drop _impl ? *)
   apply (Inner (union_empty_r _)).
-
-Qed.
-
+  *)
+Admitted.
 
 
 (* ###################################################################### *)
-(** ** Data structures to make cycles explicit (needed??) *)
+(** ** Data structures to make cycles explicit (needed??)
 
 (* [needs_lookup T1 p.L] ==> in order to look up a member in T1, we also
                             have to lookup the member in p.L 
@@ -2277,7 +2316,195 @@ Proof.
   + (* case typ_or_hasnt_1 *) admit.
   + (* case typ_or_hasnt_2 *) admit.
 Qed.
+*)
 
+(* ###################################################################### *)
+(** ** Getting rid of history *)
+
+
+(* for every typ_has judgment with some history h,
+   either it also holds without the history h,
+   or there's a cycle, so the decl it returns is dec_bot *)
+Lemma no_history_or_dec_bot: forall h G T D,
+  typ_has_impl h G T D ->
+  typ_has_impl \{} G T D \/ exists l, D = dec_bot l.
+Proof.
+  introv Has. induction Has.
+  + (* case typ_top_has *) eauto.
+  + (* case typ_bot_has *) eauto.
+  + (* case typ_rcd_has *) eauto.
+  + (* case typ_rcd_has_dec_top *) eauto.
+  + (* case typ_sel_has_break *) eauto.
+  + (* case typ_sel_has *)
+    destruct IHHas1 as [IH1 | IH1].
+    - destruct IHHas2 as [IH2 | IH2].
+      * left. refine (@typ_sel_has _ _ _ _ _ Lo Hi _ H _ _).
+        (* --> need to be able to augment history *)
+Abort. (*
+  + (* case typ_and_has *) eauto.
+  + (* case typ_or_has *) eauto.
+
+Qed.*)
+
+Lemma swap_history_or_dec_bot: forall h1 G T D,
+  typ_has_impl h1 G T D ->
+  (forall h2, typ_has_impl h2 G T D) \/
+  (exists l, D = dec_bot l).
+Proof.
+  introv Has. induction Has.
+  + (* case typ_top_has *) eauto.
+  + (* case typ_bot_has *) eauto.
+  + (* case typ_rcd_has *) eauto.
+  + (* case typ_rcd_has_dec_top *) eauto.
+  + (* case typ_sel_has_break *) eauto.
+  + (* case typ_sel_has *)
+    destruct IHHas1 as [IH1 | IH1].
+    - destruct IHHas2 as [IH2 | IH2].
+      * left. intro h2. eauto.
+      * eauto.
+    - destruct IH1 as [l Eq]. unfold dec_bot in Eq. destruct l; inversions Eq.
+      rename t into L. inversions Has2. right. exists l. reflexivity.
+  + (* case typ_and_has *)
+    destruct IHHas1 as [IH1 | IH1].
+    - destruct IHHas2 as [IH2 | IH2].
+      * left. eauto.
+      * right. destruct IH2 as [l Eq].
+        (* D2 is dec_bot, so D1 && D2 is equivalent to dec_bot, but not dec_bot itself *)
+Abort.
+
+Lemma swap_history_or_dec_bot: forall h1 G T D,
+  typ_has_impl h1 G T D ->
+  (forall h2, typ_has_impl h2 G T D) \/
+  (subdec G D (dec_bot (label_of_dec D))).
+Proof.
+  introv Has. induction Has.
+  + (* case typ_top_has *) eauto.
+  + (* case typ_bot_has *) eauto.
+  + (* case typ_rcd_has *) eauto.
+  + (* case typ_rcd_has_dec_top *) eauto.
+  + (* case typ_sel_has_break *)
+    right. destruct l; eauto.
+  + (* case typ_sel_has *)
+    destruct IHHas1 as [IH1 | IH1].
+    - destruct IHHas2 as [IH2 | IH2].
+      * left. intro h2. eauto.
+      * eauto.
+    - simpl in IH1. inversions IH1. rename H3 into StLo, H7 into StHi.
+      destruct IHHas2 as [IH2 | IH2].
+      * (* subtyp G Hi typ_bot not strong enough *)
+Abort.
+
+Inductive is_typ_bot: typ -> Prop :=
+| is_bot_bot: is_typ_bot typ_bot
+| is_bot_and_l: forall T1 T2, is_typ_bot T1 -> is_typ_bot (typ_and T1 T2)
+| is_bot_and_r: forall T1 T2, is_typ_bot T2 -> is_typ_bot (typ_and T1 T2)
+| is_bot_or: forall T1 T2, is_typ_bot T1 -> is_typ_bot T2 -> is_typ_bot (typ_or T1 T2).
+
+Inductive is_typ_top: typ -> Prop :=
+| is_top_top: is_typ_top typ_top
+| is_top_and: forall T1 T2, is_typ_top T1 -> is_typ_top T2 -> is_typ_top (typ_and T1 T2)
+| is_top_or_l: forall T1 T2, is_typ_top T1 -> is_typ_top (typ_or T1 T2)
+| is_top_or_r: forall T1 T2, is_typ_top T2 -> is_typ_top (typ_or T1 T2).
+
+Inductive is_dec_bot: dec -> Prop :=
+| is_bot_typ: forall L Lo Hi, is_typ_top Lo -> is_typ_bot Hi ->
+  is_dec_bot (dec_typ L Lo Hi)
+| is_bot_fld: forall l T, is_typ_bot T ->
+  is_dec_bot (dec_fld l T)
+| is_bot_mtd: forall m U V, is_typ_top U -> is_typ_bot V ->
+  is_dec_bot (dec_mtd m U V).
+
+Hint Constructors is_typ_bot is_typ_top is_dec_bot.
+
+Lemma typ_bot_has_dec_bot: forall G h T D, 
+  typ_has_impl h G T D ->
+  is_typ_bot T ->
+  is_dec_bot D.
+Proof.
+  introv Has. induction Has; introv Ib.
+  + (* case typ_top_has *) inversions Ib.
+  + (* case typ_bot_has *) unfold dec_bot; destruct l; eauto.
+  + (* case typ_rcd_has *) inversions Ib.
+  + (* case typ_rcd_has_dec_top *) inversions Ib.
+  + (* case typ_sel_has_break *) inversions Ib.
+  + (* case typ_sel_has *) inversions Ib.
+  + (* case typ_and_has *)
+    inversions Ib.
+    - specialize (IHHas1 H1). inversions IHHas1; inversions H; eauto.
+    - specialize (IHHas2 H1). inversions IHHas2; inversions H; eauto.
+  + (* case typ_or_has *)
+    inversions Ib.
+    specialize (IHHas1 H2). specialize (IHHas2 H3).
+    inversions IHHas1; inversions IHHas2; inversions H; eauto.
+Qed.
+
+(*
+Lemma typ_bot_has_dec_bot_with_any_history: forall G h1 h2 T D, 
+  typ_has_impl h1 G T D ->
+  is_typ_bot T ->
+  is_dec_bot D /\ typ_has_impl h2 G T D.
+Proof.
+  introv Has. induction Has; introv Ib.
+  + (* case typ_top_has *) inversions Ib.
+  + (* case typ_bot_has *)
+    split.
+    - unfold dec_bot; destruct l; eauto.
+    - eauto.
+  + (* case typ_rcd_has *) inversions Ib.
+  + (* case typ_rcd_has_dec_top *) inversions Ib.
+  + (* case typ_sel_has_break *) inversions Ib.
+  + (* case typ_sel_has *) inversions Ib.
+  + (* case typ_and_has *)
+    inversions Ib.
+    - specialize (IHHas1 H1). destruct IHHas1 as [IH1a IH1b]. split.
+      * inversions IH1a; inversions H; eauto.
+      * refine (typ_and_has _ _ H). with D1 D2.
+    - specialize (IHHas2 H1). inversions IHHas2; inversions H; eauto.
+  + (* case typ_or_has *)
+    inversions Ib.
+    specialize (IHHas1 H2). specialize (IHHas2 H3).
+    inversions IHHas1; inversions IHHas2; inversions H; eauto.
+Qed.
+*)
+
+Lemma swap_history_or_dec_bot: forall h1 G T D,
+  typ_has_impl h1 G T D ->
+  (forall h2, typ_has_impl h2 G T D) \/
+  (is_dec_bot D).
+Proof.
+  introv Has. induction Has.
+  + (* case typ_top_has *) eauto.
+  + (* case typ_bot_has *) eauto.
+  + (* case typ_rcd_has *) eauto.
+  + (* case typ_rcd_has_dec_top *) eauto.
+  + (* case typ_sel_has_break *)
+    right. unfold dec_bot. destruct l; eauto.
+  + (* case typ_sel_has *)
+    destruct IHHas1 as [IH1 | IH1].
+    - destruct IHHas2 as [IH2 | IH2].
+      * left. intro h2. eauto.
+      * eauto.
+    - inversions IH1. clear H2. rename H4 into Hibot. right.
+      apply (typ_bot_has_dec_bot Has2 Hibot).
+  + (* case typ_and_has *)
+    destruct IHHas1 as [IH1 | IH1]; destruct IHHas2 as [IH2 | IH2].
+    - left. intro h2. eauto.
+    - right. inversions IH2; inversions H; eauto.
+    - right. inversions IH1; inversions H; eauto.
+    - right. inversions IH1; inversions H; eauto.
+  + (* case typ_or_has *)
+    destruct IHHas1 as [IH1 | IH1]; destruct IHHas2 as [IH2 | IH2].
+    - left. intro h2. eauto.
+    - left. intro h2. specialize (IH1 h2).
+      (* union with dec_bot doesn't change anything -->  D1 == D3 (modulo structure) *)
+      refine (typ_or_has IH1 _ H). (* cannot change history of Has2!!! *)
+      admit. (* TODO serious... *)
+    - admit. (* TODO serious... *)
+    - right. inversions IH1; inversions IH2; inversions H; eauto.
+Qed.
+
+(* ###################################################################### *)
+(** ** More stuff *)
 
 (*
 Inductive cycle: ctx -> typ -> Prop :=
@@ -2317,6 +2544,10 @@ Inductive trace: ctx -> var -> typ_label -> var -> typ_label -> Prop :=
       typ_has G X (dec_typ L Lo (typ_sel (pth_var (avar_f y)) M)) ->
       trace G x L y M.
 *)
+
+
+(* ###################################################################### *)
+(** ** subtyp-and-then-typ-has to typ-has-and-then-subdec *)
 
 Lemma swap_sub_and_typ_has: forall G T1 T2 D2,
   subtyp G T1 T2 ->
