@@ -1484,12 +1484,6 @@ Lemma invert_subdecs_push: forall m G Ds1 Ds2 D2 n1,
 Proof.
   intros. inversions H.
   - eauto 10.
-(* subtyp_refl
-  - exists D2. split; [idtac | split].
-    * unfold decs_has, get_dec. case_if. reflexivity.
-    * admit. (* TODO subdec_refl doesn't hold if bad bounds!! *)
-    * admit. (* TODO holds *)
-*)
 Qed.
 
 Lemma ty_def_to_label_eq: forall G d D,
@@ -1606,9 +1600,7 @@ Proof.
 Qed.
 
  TODO does not hold because
-   [(open_dec z D1) = (open_dec z D2)] does not imply [D1 = D2].
-Axiom decs_has_close_admitted: forall Ds l D z,
-  decs_has (open_decs z Ds) l (open_dec z D) -> decs_has Ds l D. *)
+   [(open_dec z D1) = (open_dec z D2)] does not imply [D1 = D2]. *)
 
 
 (* ###################################################################### *)
@@ -1715,17 +1707,6 @@ Print Assumptions exp_total.
 
 (* ###################################################################### *)
 (** ** Weakening *)
-
-(*
-Lemma align_env_eq: forall T (E1 E2 F1 F2: env T), E1 & E2 = F1 & F2 ->
-   (exists G1 G2 G3, E1 = G1 & G2 /\ E2 = G3 /\ F1 = G1 /\ F2 = G2 & G3)
-\/ (exists G1 G2 G3, F1 = G1 & G2 /\ F2 = G3 /\ E1 = G1 /\ E2 = G2 & G3).
-Admitted.
-
-Lemma ctx_size_cons: forall G1 G2,
-  ctx_size (G1 & G2) = (ctx_size G1) + (ctx_size G2).
-Admitted.
-*)
 
 Lemma weakening:
    (forall m1 m2 G T, wf_typ m1 m2 G T -> forall G1 G2 G3,
@@ -2441,16 +2422,6 @@ Qed.
 
 Definition subst_decs_preserves_cbounds(x y: var) := proj2 (proj2 (subst_cbounds x y)).
 
-Axiom okadmit: forall G: ctx, ok G.
-
-(*
-Lemma align_envs_2: forall T (E1 E2 F1 F2: env T) x S,
-   E1 & E2 = F1 & x ~ S & F2 ->
-   (exists G, F1 = E1 & G /\ E2 = G & x ~ S & F2)
-\/ (exists G, F2 = G & E2 /\ E1 = F1 & x ~ S & G).
-Admitted.
-*)
-
 Lemma subst_ctx_push: forall G x y z T,
   subst_ctx x y (G & z ~ T) = (subst_ctx x y G) & (z ~ subst_typ x y T).
 Proof.
@@ -2659,22 +2630,6 @@ Proof.
     specialize (IH G1 G2 x).
     specialize (IH eq_refl Bi).
     apply (IH Ok).
-(*
-  + (* case subtyp_bind *)
-    intros L m G Ds1 Ds2 n Sds IH G1 G2 x EqG Bi Ok. subst.
-    apply_fresh subtyp_bind as z. fold subst_decs.
-    assert (zL: z \notin L) by auto.
-    specialize (IH z zL G1 (G2 & z ~ typ_bind Ds1) x).
-    rewrite concat_assoc in IH.
-    specialize (IH eq_refl Bi).
-    unfold subst_ctx in IH. rewrite map_push in IH. simpl in IH.
-    rewrite concat_assoc in IH.
-    rewrite (subst_open_commute_decs x y z Ds1) in IH.
-    rewrite (subst_open_commute_decs x y z Ds2) in IH.
-    unfold subst_fvar in IH.
-    assert (x <> z) by auto. case_if.
-    unfold subst_ctx. apply IH. apply okadmit.
-*)
   + (* case subtyp_sel_l *)
     intros m G v L Lo Hi n Has IHHas St1 IHSt1 G1 G2 x EqG Tyy Wf. subst.
     specialize (IHSt1 _ _ _ eq_refl Tyy Wf).
@@ -2704,10 +2659,6 @@ Proof.
     specialize (IHSds _ _ _ eq_refl Tyy Ok).
     apply (subst_decs_has x y) in Ds1Has.
     apply subdecs_push with (subst_dec x y D1); fold subst_dec; fold subst_decs; auto.
-(*
-  + (* case subdecs_refl *)
-    intros. apply* subdecs_refl.
-*)
   + (* case ty_var *)
     introv Bi WfT IHWf Eq Tyy WfG. subst. rename x into z, x0 into x.
     lets Ok: (wf_ctx_to_ok WfG).
@@ -3201,19 +3152,7 @@ Lemma decs_has_preserves_sub: forall m G Ds1 Ds2 D2 n,
 Proof.
   introv Has Sds. induction Has.
   + inversions Sds. eauto.
-(*
-    - eauto.
-    - exists D. repeat split.
-      * apply (decs_has_hit _ H).
-      * apply subdec_refl. inversions H0. assumption.
-*)    
   + inversion Sds; subst. eauto.
-(*
-    - eauto.
-    - exists D1. repeat split.
-      * apply (decs_has_skip _ Has H).
-      * apply subdec_refl. admit. (* TODO wf-ness *)
-*)
 Qed.
 
 Print Assumptions decs_has_preserves_sub.
@@ -3526,12 +3465,6 @@ Proof.
   destruct E as [L Sds]. exists L (pred n1).
   exact Sds.
 Qed.
-*)
-
-(*
-Axiom wf_typ_admit: forall m1 m2 G T, wf_typ m1 m2 G T.
-Axiom wf_dec_admit: forall m1 m2 G D, wf_dec m1 m2 G D.
-Axiom wf_decs_admit: forall m1 m2 G Ds, wf_decs m1 m2 G Ds.
 *)
 
 Lemma ip2pr:
