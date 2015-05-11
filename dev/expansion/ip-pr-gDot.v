@@ -2433,67 +2433,67 @@ Qed.
 Lemma subst_principles: forall y S,
    (forall m1 m2 G T, wf_typ m1 m2 G T -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     pth_ty m1 G1 (pth_var (avar_f y)) S ->
+     pth_ty m1 G1 (pth_var (avar_f y)) (subst_typ x y S) ->
      wf_ctx m1 (G1 & x ~ S & G2) ->
      wf_typ m1 m2 (G1 & (subst_ctx x y G2)) (subst_typ x y T))
 /\ (forall m G D, wf_dec m G D -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     pth_ty m G1 (pth_var (avar_f y)) S ->
+     pth_ty m G1 (pth_var (avar_f y)) (subst_typ x y S) ->
      wf_ctx m (G1 & x ~ S & G2) ->
      wf_dec m (G1 & (subst_ctx x y G2)) (subst_dec x y D))
 /\ (forall m G Ds, wf_decs m G Ds -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     pth_ty m G1 (pth_var (avar_f y)) S ->
+     pth_ty m G1 (pth_var (avar_f y)) (subst_typ x y S) ->
      wf_ctx m (G1 & x ~ S & G2) ->
      wf_decs m (G1 & (subst_ctx x y G2)) (subst_decs x y Ds))
 /\ (forall m G T Ds, exp m G T Ds -> forall G1 G2 x,
      G = G1 & x ~ S & G2 ->
-     pth_ty m G1 (pth_var (avar_f y)) S ->
+     pth_ty m G1 (pth_var (avar_f y)) (subst_typ x y S) ->
      wf_ctx m (G1 & x ~ S & G2) ->
      exp m (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_bdecs x y Ds))
 /\ (forall m G t D, pth_has m G t D -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     pth_ty m G1 (pth_var (avar_f y)) S ->
+     pth_ty m G1 (pth_var (avar_f y)) (subst_typ x y S) ->
      wf_ctx m (G1 & x ~ S & G2) ->
      pth_has m (G1 & (subst_ctx x y G2)) (subst_pth x y t) (subst_dec x y D))
 /\ (forall m G p T, pth_ty m G p T -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     pth_ty m G1 (pth_var (avar_f y)) S ->
+     pth_ty m G1 (pth_var (avar_f y)) (subst_typ x y S) ->
      wf_ctx m (G1 & x ~ S & G2) ->
      pth_ty m (G1 & (subst_ctx x y G2)) (subst_pth x y p) (subst_typ x y T))
 /\ (forall G t D, trm_has G t D -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     pth_ty ip G1 (pth_var (avar_f y)) S ->
+     pth_ty ip G1 (pth_var (avar_f y)) (subst_typ x y S) ->
      wf_ctx ip (G1 & x ~ S & G2) ->
      trm_has (G1 & (subst_ctx x y G2)) (subst_trm x y t) (subst_dec x y D))
 /\ (forall m G T U n, subtyp m G T U n -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     pth_ty m G1 (pth_var (avar_f y)) S ->
+     pth_ty m G1 (pth_var (avar_f y)) (subst_typ x y S) ->
      wf_ctx m (G1 & x ~ S & G2) ->
      subtyp m (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_typ x y U) (n+1))
 /\ (forall m G D1 D2 n, subdec m G D1 D2 n -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     pth_ty m G1 (pth_var (avar_f y)) S ->
+     pth_ty m G1 (pth_var (avar_f y)) (subst_typ x y S) ->
      wf_ctx m (G1 & x ~ S & G2) ->
      subdec m (G1 & (subst_ctx x y G2)) (subst_dec x y D1) (subst_dec x y D2) (n+1))
 /\ (forall m G Ds1 Ds2 n, subdecs m G Ds1 Ds2 n -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     pth_ty m G1 (pth_var (avar_f y)) S ->
+     pth_ty m G1 (pth_var (avar_f y)) (subst_typ x y S) ->
      wf_ctx m (G1 & x ~ S & G2) ->
      subdecs m (G1 & (subst_ctx x y G2)) (subst_decs x y Ds1) (subst_decs x y Ds2) (n+1))
 /\ (forall G t T, ty_trm G t T -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     pth_ty ip G1 (pth_var (avar_f y)) S ->
+     pth_ty ip G1 (pth_var (avar_f y)) (subst_typ x y S) ->
      wf_ctx ip (G1 & x ~ S & G2) ->
      ty_trm (G1 & (subst_ctx x y G2)) (subst_trm x y t) (subst_typ x y T))
 /\ (forall G d D, ty_def G d D -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     pth_ty ip G1 (pth_var (avar_f y)) S ->
+     pth_ty ip G1 (pth_var (avar_f y)) (subst_typ x y S) ->
      wf_ctx ip (G1 & x ~ S & G2) ->
      ty_def (G1 & (subst_ctx x y G2)) (subst_def x y d) (subst_dec x y D))
 /\ (forall G ds Ds, ty_defs G ds Ds -> forall G1 G2 x,
      G = (G1 & (x ~ S) & G2) ->
-     pth_ty ip G1 (pth_var (avar_f y)) S ->
+     pth_ty ip G1 (pth_var (avar_f y)) (subst_typ x y S) ->
      wf_ctx ip (G1 & x ~ S & G2) ->
      ty_defs (G1 & (subst_ctx x y G2)) (subst_defs x y ds) (subst_decs x y Ds)).
 Proof.
@@ -2573,8 +2573,6 @@ Proof.
       lets yG2: (ok_concat_binds_left_to_notin_right (ok_remove Ok) Biy').
       apply (@subst_ctx_preserves_notin x y y G2) in yG2.
       destruct (subtyp_regular St) as [_ WfS].
-      lets xS: (notin_G_to_notin_fv_typ WfS xG1).
-      rewrite (@subst_fresh_typ x y S xS).
       apply weaken_pth_ty_end; [unfold subst_ctx; auto | idtac].
       destruct m.
       * (* case precise *)
@@ -2674,8 +2672,6 @@ Proof.
       apply weaken_ty_trm_end.
       * unfold subst_ctx. auto.
       * destruct (subtyp_regular St) as [_ WfS].
-        lets xS: (notin_G_to_notin_fv_typ WfS xG1).
-        rewrite (@subst_fresh_typ x y S xS).
         refine (ty_sbsm _ St). apply (ty_var Biy). apply (invert_wf_ctx WfG1 Biy).
     - (* case z <> x *)
       apply ty_var.
@@ -2774,7 +2770,7 @@ Print Assumptions subst_principles.
 Lemma trm_subst_principle: forall G x y t S T,
   wf_ctx ip (G & x ~ S) ->
   ty_trm (G & x ~ S) t T ->
-  pth_ty ip G (pth_var (avar_f y)) S ->
+  pth_ty ip G (pth_var (avar_f y)) (subst_typ x y S) ->
   ty_trm G (subst_trm x y t) (subst_typ x y T).
 Proof.
   introv Wf tTy yTy.
@@ -2784,51 +2780,6 @@ Proof.
   repeat (progress (rewrite concat_empty_r in P)).
   apply* P.
 Qed.
-
-Lemma pr_subdec_subst_principle: forall G x y S D1 D2 n,
-  wf_ctx pr (G & x ~ S) ->
-  subdec pr (G & x ~ S) D1 D2 n ->
-  binds y S G ->
-  subdec pr G (subst_dec x y D1) (subst_dec x y D2) (n+1).
-Proof.
-  introv Wf Sd yTy.
-  destruct (subst_principles y S) as [_ [_ [_ [_ [_ [_ [_ [_ [P _]]]]]]]]].
-  specialize (P _ _ D1 D2 _ Sd G empty x).
-  unfold subst_ctx in P. rewrite map_empty in P.
-  repeat (progress (rewrite concat_empty_r in P)).
-  apply (@pth_ty_var pr) in yTy.
-  apply* P.
-Qed.
-
-Lemma pr_subdecs_subst_principle: forall G x y S Ds1 Ds2 n,
-  wf_ctx pr (G & x ~ S) ->
-  subdecs pr (G & x ~ S) Ds1 Ds2 n ->
-  binds y S G ->
-  subdecs pr G (subst_decs x y Ds1) (subst_decs x y Ds2) (n+1).
-Proof.
-  introv Hok Sds yTy.
-  destruct (subst_principles y S) as [_ [_ [_ [_ [_ [_ [_ [_ [_ [P _]]]]]]]]]].
-  specialize (P _ _ Ds1 Ds2 _ Sds G empty x).
-  unfold subst_ctx in P. rewrite map_empty in P.
-  repeat (progress (rewrite concat_empty_r in P)).
-  apply (@pth_ty_var pr) in yTy.
-  apply* P.
-Qed.
-
-Lemma subdecs_subst_principle: forall G x y S Ds1 Ds2 n,
-  wf_ctx ip (G & x ~ S) ->
-  subdecs ip (G & x ~ S) Ds1 Ds2 n ->
-  pth_ty ip G (pth_var (avar_f y)) S ->
-  subdecs ip G (subst_decs x y Ds1) (subst_decs x y Ds2) (n+1).
-Proof.
-  introv Hok Sds yTy.
-  destruct (subst_principles y S) as [_ [_ [_ [_ [_ [_ [_ [_ [_ [P _]]]]]]]]]].
-  specialize (P _ _ Ds1 Ds2 _ Sds G empty x).
-  unfold subst_ctx in P. rewrite map_empty in P.
-  repeat (progress (rewrite concat_empty_r in P)).
-  apply* P.
-Qed.
-
 
 (* ###################################################################### *)
 (** ** More inversion lemmas *)
@@ -2976,33 +2927,6 @@ Proof.
   refine (weaken_wf_typ_middle _ Hwf). auto_star.
 Qed.
 
-(*
-Lemma ty_new_change_var: forall x y G S t T,
-  wf_ctx ip (G & x ~ S) -> wf_ctx ip (G & y ~ S) ->
-  x \notin fv_trm t -> x \notin fv_typ S -> x \notin fv_typ T ->
-  ty_trm (G & x ~ S) (open_trm x t) T ->
-  ty_trm (G & y ~ S) (open_trm y t) T.
-Proof.
-  introv Okx Oky Frt FrS FrT Ty.
-  destruct (classicT (x = y)) as [Eq | Ne].
-  + subst. assumption.
-  + assert (Okyx: wf_ctx ip (G & y ~ S & x ~ S)). apply wf_ctx_push2; auto.
-    assert (Okyx': ok (G & y ~ S & x ~ S)) by destruct* (wf_ctx_push_inv Okx).
-    assert (Ty': ty_trm (G & y ~ S & x ~ S) (open_trm x t) T)
-      by apply (weaken_ty_trm_middle Okyx' Ty).
-    rewrite* (@subst_intro_trm x y t).
-    destruct (subst_principles y S) as [_ [_ [_ [_ [_ [_ [_ [_ [_ [_ [P _]]]]]]]]]]].
-    specialize (P _ _ _ Ty' (G & y ~ S) empty x).
-    rewrite concat_empty_r in P.
-    assert (Tyy: pth_ty ip (G & y ~ S) (pth_var (avar_f y)) S) by auto.
-    specialize (P eq_refl Tyy Okyx).
-    unfold subst_ctx in P. rewrite map_empty in P. rewrite concat_empty_r in P.
-    rewrite subst_fresh_typ in P.
-    exact P.
-    auto.
-Qed.
-*)
-
 Lemma ty_open_trm_change_var: forall x y G Ds t T,
   wf_ctx ip (G & x ~ typ_bind (open_decs x Ds)) ->
   wf_ctx ip (G & y ~ typ_bind (open_decs y Ds)) ->
@@ -3022,19 +2946,23 @@ Proof.
       by destruct* (wf_ctx_push_inv Wfx).
     lets Ty': (weaken_ty_trm_middle Okyx' Ty).
     rewrite* (@subst_intro_trm x y t).
-    destruct (subst_principles y (typ_bind (open_decs y Ds)))
+    destruct (subst_principles y (typ_bind (open_decs x Ds)))
          as [_ [_ [_ [_ [_ [_ [_ [_ [_ [_ [P _]]]]]]]]]]].
     specialize (P _ _ _ Ty' (G & y ~ (typ_bind (open_decs y Ds))) empty x).
     rewrite concat_empty_r in P.
     assert (Tyy: pth_ty ip (G & y ~ (typ_bind (open_decs y Ds)))
        (pth_var (avar_f y)) (typ_bind (open_decs y Ds))) by auto.
-Admitted.
-(*
-    specialize (P eq_refl Tyy Okyx). (* TODO doesn't work! *)
+    assert (typ_bind (open_decs y Ds) =
+            subst_typ x y (typ_bind (open_decs x Ds))) as RTyy. {
+      admit.
+    }
     unfold subst_ctx in P. rewrite map_empty in P. rewrite concat_empty_r in P.
-    exact P.
+    rewrite* <- (@subst_fresh_typ x y).
+    apply P.
+    reflexivity.
+    rewrite <- RTyy. apply Tyy.
+    apply Okyx.
 Qed.
-*)
 
 Lemma invert_ty_new: forall G ds t T2,
   ty_trm G (trm_new ds t) T2 ->
@@ -3907,7 +3835,7 @@ Proof.
       lets Hle1: (Max.le_max_l n n1).
       lets Hle2: (Max.le_max_r n n1).
       apply (subtyp_trans (subtyp_max_ctx StU12 Hle2) (subtyp_max_ctx StU23 Hle1)).
-    - refine (pth_ty_sbsm _ StT). refine (pth_ty_sbsm _ StT3). apply (pth_ty_var _ Biy).
+    - rewrite* (@subst_fresh_typ y' y).
   + (* red_sel *)
     intros G T3 Wf TySel. rename H into Bis, H0 into dsHas.
     exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
