@@ -2954,7 +2954,10 @@ Proof.
        (pth_var (avar_f y)) (typ_bind (open_decs y Ds))) by auto.
     assert (typ_bind (open_decs y Ds) =
             subst_typ x y (typ_bind (open_decs x Ds))) as RTyy. {
-      admit.
+      change (typ_bind (open_decs y Ds)) with (open_typ y (typ_bind Ds)).
+      change (typ_bind (open_decs x Ds)) with (open_typ x (typ_bind Ds)).
+      apply subst_intro_typ.
+      auto.
     }
     unfold subst_ctx in P. rewrite map_empty in P. rewrite concat_empty_r in P.
     rewrite* <- (@subst_fresh_typ x y).
