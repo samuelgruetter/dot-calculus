@@ -2967,6 +2967,26 @@ Proof.
     apply Okyx.
 Qed.
 
+(* Beware: These two lemmas are "the wrong way round" compared to what we need.
+   We need to replace a super-fresh x by a not-so-fresh y.
+Lemma change_var_ty_trm: forall G t T x y,
+  y \notin (dom G) ->
+  y \notin fv_ctx_types G ->
+  y \notin fv_trm t ->
+  y \notin fv_typ T ->
+  ty_trm G t T ->
+  ty_trm (subst_ctx x y G) (subst_trm x y t) (subst_typ x y T).
+Admitted.
+
+Lemma change_var_wf_decs: forall m G Ds x y,
+  y \notin (dom G) ->
+  y \notin fv_ctx_types G ->
+  y \notin fv_decs Ds ->
+  wf_decs m G Ds ->
+  wf_decs m (subst_ctx x y G) (subst_decs x y Ds).
+Admitted.
+*)
+
 Lemma invert_ty_new: forall G ds t T2,
   ty_trm G (trm_new ds t) T2 ->
   exists L n T Ds,
@@ -3636,6 +3656,16 @@ Proof.
   destruct ip2pr as [_ [_ [_ [_ [P _]]]]]. lets Sc: (wf_sto_to_simple_ctx Wf). apply* P.
 Qed.
 
+Lemma ip2pr_wf_decs: forall s G Ds,
+  wf_sto s G ->
+  wf_decs ip G Ds ->
+  wf_decs pr G Ds.
+Proof.
+  introv Wf Has.
+  destruct ip2pr as [_ [_ [P _]]].
+  lets Sc: (wf_sto_to_simple_ctx Wf). apply* P.
+Qed.
+
 Lemma pr2ip:
    (forall m1 m2 G T, wf_typ m1 m2 G T -> wf_typ ip m2 G T)
 /\ (forall m G D, wf_dec m G D -> wf_dec ip G D)
@@ -3673,6 +3703,10 @@ Lemma trm_has_to_pth_has: forall G x D,
 Proof.
   introv Has. apply* trm_has_ty_to_pth_has_ty.
 Qed.
+
+Lemma open_preserves_cbounds_decs: forall z Ds,
+  cbounds_decs Ds -> cbounds_decs (open_decs z Ds).
+Admitted.
 
 
 (* ###################################################################### *)
@@ -3863,7 +3897,17 @@ Proof.
     specialize (Tyds x' x'L). specialize (WfDs x' x'L). specialize (Ty1 x' x'L).
     lets WfG: (pr2ip_ctx (wf_sto_to_wf_ctx Wf)).
     split.
-    - admit. (* TODO *)
+    - refine (wf_sto_push Wf H xG _ (open_preserves_cbounds_decs _ Cb) _).
+      * admit.
+      * (* Problem 1: To apply ip2pr in WfDs, we need simple_ctx for the G augmented
+           with x', so we need precise wf-ness of (open_decs x' Ds), but that's what
+           we're about to prove. *)
+        (* Problem 2: We have to replace the super-fresh x' by a not-so-fresh x.
+           But that's just the other way round than what I'd have expected! *)
+        assert (x'G: x' # G) by auto.
+        assert (x'fvG: x' \notin fv_ctx_types G) by auto.
+        assert (x'Ds: x' \notin fv_decs Ds) by auto.
+        admit. (* TODO *)
     - apply ty_open_trm_change_var with (x:=x').
       * apply wf_ctx_push; auto.
       * apply wf_ctx_push; auto. admit.
