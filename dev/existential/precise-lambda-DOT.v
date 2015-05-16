@@ -378,6 +378,114 @@ Definition dec_top(l: label): dec := match l with
   | label_mtd m => dec_mtd m typ_bot typ_top
 end.
 
+(* If we run out of fuel or something goes wrong, we just return (dec_top l).
+   This should be sound because with such a decl, nothing useful can be done.
+   BEWARE: If we define lookup_dec like this, we'll have problems when defining
+   lookup_def accordingly, because we'll have to return a method def for every 
+   label. That's possible (by returning some dummy method def), but this changes
+   the semantics in such a way that we don't prove what we actually wanted to 
+   prove, because all "stuck"/NoSuchMethodError cases will not fail any more,
+   but just silently execute the dummy method. *)
+Fixpoint lookup_dec(fuel1: nat)(G: ctx)(T: typ)(l: label): dec := match fuel1 with
+| 0 => dec_top l
+| S fuel => match T with
+  | typ_top => dec_top l
+  | typ_bot => dec_bot l
+  | typ_rcd D => If label_of_dec D = l then D else dec_top l
+  | typ_sel p L1 => let (a) := p in match a with
+     | avar_f x =>
+         match get x G with
+         | Some X => match lookup_dec fuel G X (label_typ L1) with
+           | dec_typ _ Lo Hi => lookup_dec fuel G Hi l
+           | _ => dec_top l (* won't happen because L1 is a typ_label *)
+           end
+         | None => dec_top l
+         end
+     | avar_b _ => dec_top l (* only happens if T is not closed *)
+     end
+  | typ_and T1 T2 =>
+    match intersect_dec (lookup_dec fuel G T1 l) (lookup_dec fuel G T2 l) with
+    | Some D => D
+    | None => dec_top l (* won't happen *)
+    end
+  | typ_or T1 T2 =>
+    match union_dec (lookup_dec fuel G T1 l) (lookup_dec fuel G T2 l) with
+    | Some D => D
+    | None => dec_top l (* won't happen *)
+    end
+  end
+end.
+
+(* If we run out of fuel or something goes wrong, we just return (typ_bot, typ_top).
+   This should be sound because with such a decl, nothing useful can be done. 
+Fixpoint lookup_dec_typ(fuel1: nat)(G: ctx)(T: typ)(L: typ_label): (typ * typ) :=
+match fuel1 with
+| 0 => (typ_bot, typ_top)
+| S fuel => match T with
+  | typ_top => (typ_bot, typ_top)
+  | typ_bot => (typ_top, typ_bot)
+  | typ_rcd D => match D with
+    | dec_typ L1 S1 U1 => If L1 = L then (S1, U1) else (typ_bot, typ_top)
+    | _ => (typ_bot, typ_top)
+    end
+  | typ_sel p L1 => let (a) := p in match a with
+     | avar_f x =>
+         match get x G with
+         | Some X => let (Lo, Hi) := lookup_dec_typ fuel G X L1 in
+                     lookup_dec_typ fuel G Hi L
+         | None => (typ_bot, typ_top)
+         end
+     | avar_b _ => (typ_bot, typ_top) (* T is not wf! *)
+     end
+  | typ_and T1 T2 =>
+    let (Lo1, Hi1) := (lookup_dec_typ fuel G T1 L) in
+    let (Lo2, Hi2) := (lookup_dec_typ fuel G T2 L) in
+    ((union_typ Lo1 Lo2), (intersect_typ Hi1 Hi2))
+  | typ_or T1 T2 =>
+    let (Lo1, Hi1) := (lookup_dec_typ fuel G T1 L) in
+    let (Lo2, Hi2) := (lookup_dec_typ fuel G T2 L) in
+    ((intersect_typ Lo1 Lo2), (union_typ Hi1 Hi2))
+  end
+end.*)
+
+
+(*
+Fixpoint lookup_dec_typ(n1: nat)(G: ctx)(T: typ)(L: typ_label): option (typ * typ) :=
+match n1 with
+| 0 => None
+| S n => match T with
+  | typ_top => Some (typ_bot, typ_top)
+  | typ_bot => Some (typ_top, typ_bot)
+  | typ_rcd D => Some (match D with
+    | dec_typ L1 S1 U1 => If L1 = L then (S1, U1) else (typ_bot, typ_top)
+    | _ => (typ_bot, typ_top)
+    end)
+  | typ_sel p L1 => let (a) := p in match a with
+     | avar_f x => (* cycle detection?? *)
+         match get x G with
+         | Some X => match (lookup_dec_typ n G X L1) with
+           | Some (Lo, Hi) => lookup_dec_typ n G Hi L
+           | None => None
+           end
+         | None => None 
+         end
+     | avar_b _ => None  (* T is not wf!!! *)
+     end
+  | typ_and T1 T2 => match (lookup_dec_typ n G T1 L), (lookup_dec_typ n G T2 L) with
+    | Some (Lo1, Hi1), Some (Lo2, Hi2) 
+      => Some ((union_typ Lo1 Lo2), (intersect_typ Hi1 Hi2))
+    | _, _
+      => None
+    end
+  | typ_or T1 T2 => match (lookup_dec_typ n G T1 L), (lookup_dec_typ n G T2 L) with
+    | Some (Lo1, Hi1), Some (Lo2, Hi2)
+      => Some ((intersect_typ Lo1 Lo2), (union_typ Hi1 Hi2))
+    | _, _ 
+      => None
+    end
+  end
+end.
+
 Inductive lookup_res: Set :=
   | found: dec -> lookup_res
   | notfound: lookup_res
@@ -385,6 +493,51 @@ Inductive lookup_res: Set :=
   | timeout: lookup_res.
 
 Definition wont_happen := timeout.
+
+Fixpoint lookup(n1: nat)(G: ctx)(T: typ)(l: label): option dec :=
+match n1 with
+| 0 => None
+| S n => Some (match T with
+  | typ_top => dec_top l
+  | typ_bot => dec_bot l
+  | typ_rcd D => If label_of_dec D = l then D else dec_top l
+  | typ_sel p L => let (a) := p in match a with
+     | avar_f x => (* cycle detection?? *)
+         match get x G with
+         | Some X => match (lookup n G X L) with
+           | Some D
+
+If (x, L) \in h then
+         found (dec_typ L typ_top typ_bot) (* TODO make switch to return "cyclic" error *)
+       else (* TODO let X = type of x in G...
+         match (lookup n (h \u \{ (x, L) }) G X L) *)
+       notwf
+     | avar_b _ => dec_top l (* T is not wf!!! *)
+     end
+  | typ_and T1 T2 => match (lookup n h G T1 l), (lookup n h G T2 l) with
+    | (found D1), (found D2) => match D1, D2 with
+      | (dec_typ L S1 U1), (dec_typ _ S2 U2)
+        => found (dec_typ L (typ_or S1 S2) (typ_and U1 U2))
+      | (dec_fld f U1), (dec_fld _ U2)
+        => found (dec_fld f (typ_and U1 U2))
+      | (dec_mtd m S1 U1), (dec_mtd _ S2 U2)
+        => found (dec_mtd m (typ_or S1 S2) (typ_and U1 U2))
+      | _, _ => wont_happen
+      end
+    | (found D1), notfound => found D1
+    | notfound, (found D2) => found D2
+    | notfound, notfound => notfound
+    | notwf, _ => notwf
+    | _, notwf => notwf
+    | timeout, _ => timeout
+    | _, timeout => timeout
+    end
+  | typ_or T1 T2 => notwf
+  end)
+end.
+
+
+binds
 
 Fixpoint lookup(n1: nat)(h: fset (var * typ_label))(G: ctx)(T: typ)(l: label): lookup_res :=
 match n1 with
@@ -423,7 +576,7 @@ match n1 with
   end
 end.
 
-(* "typ_has" + "typ_hasnt" 
+ "typ_has" + "typ_hasnt" 
 G |- T has D   (with history h)   <==>   lookup_impl h G T (label_of_dec D) (Some D)
 G |- T hasnt l (with history h)   <==>   lookup_impl h G T l None
 
