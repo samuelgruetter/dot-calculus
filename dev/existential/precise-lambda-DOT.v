@@ -287,6 +287,61 @@ Definition pth2trm(p: pth): trm := match p with
   | pth_var a => trm_var a
 end.
 
+(* "optimization" of typ_and (makes some proofs simpler).
+   If intersect_dec and thus typ_has uses intersect_typ instead of typ_and, 
+   we know that if a decl returned by typ_has is "equivalent" to a bottom-decl,
+   it's actually also structurally equal.
+   Or in other words: Instead of returning (dec_fld l (typ_and typ_bot T)),
+   typ_has will return just (dec_fld l typ_bot). *)
+Definition intersect_typ(T1 T2: typ): typ := match T1, T2 with
+| typ_top, _ => T2
+| _, typ_top => T1
+| typ_bot, _ => typ_bot
+| _, typ_bot => typ_bot
+| _, _       => typ_and T1 T2
+end.
+
+Definition union_typ(T1 T2: typ): typ := match T1, T2 with
+| typ_top, _ => typ_top
+| _, typ_top => typ_top
+| typ_bot, _ => T2
+| _, typ_bot => T1
+| _, _       => typ_or T1 T2
+end.
+
+(* returns (option dec) because it's not total. *)
+Definition intersect_dec(D1 D2: dec): option dec :=
+  If label_of_dec D1 = label_of_dec D2 then
+    match D1, D2 with
+    | (dec_typ L S1 U1), (dec_typ _ S2 U2)
+      => Some (dec_typ L (union_typ S1 S2) (intersect_typ U1 U2))
+    | (dec_fld l U1), (dec_fld _ U2)
+      => Some (dec_fld l (intersect_typ U1 U2))
+    | (dec_mtd m S1 U1), (dec_mtd _ S2 U2)
+      => Some (dec_mtd m (union_typ S1 S2) (intersect_typ U1 U2))
+    | _, _ => None
+    end
+  else
+    None.
+
+Definition union_dec(D1 D2: dec): option dec :=
+  If label_of_dec D1 = label_of_dec D2 then
+    match D1, D2 with
+    | (dec_typ L S1 U1), (dec_typ _ S2 U2)
+      => Some (dec_typ L (intersect_typ S1 S2) (union_typ U1 U2))
+    | (dec_fld l U1), (dec_fld _ U2)
+      => Some (dec_fld l (union_typ U1 U2))
+    | (dec_mtd m S1 U1), (dec_mtd _ S2 U2)
+      => Some (dec_mtd m (intersect_typ S1 S2) (union_typ U1 U2))
+    | _, _ => None
+    end
+  else
+    None.
+
+Notation "D1 && D2 == D3" := (intersect_dec D1 D2 = Some D3) (at level 40).
+Notation "D1 || D2 == D3" := (union_dec D1 D2 = Some D3) (at level 40).
+
+(*
 Reserved Notation "D1 && D2 == D3" (at level 40).
 Reserved Notation "D1 || D2 == D3" (at level 40).
 
@@ -309,6 +364,7 @@ Inductive union_dec: dec -> dec -> dec -> Prop :=
 | union_dec_mtd: forall m T1 U1 T2 U2,
     (dec_mtd m T1 U1) || (dec_mtd m T2 U2) == (dec_mtd m (typ_and T1 T2) (typ_or U1 U2))
 where "D1 || D2 == D3" := (union_dec D1 D2 D3).
+*)
 
 Definition dec_bot(l: label): dec := match l with
   | label_typ L => dec_typ L typ_top typ_bot
@@ -1546,7 +1602,7 @@ Lemma intersect_dec_unique: forall D1 D2 D3 D4,
   D1 && D2 == D4 ->
   D3 = D4.
 Proof.
-  introv Eq3 Eq4. inversions Eq3; inversions Eq4; reflexivity.
+  introv Eq3 Eq4. rewrite Eq3 in Eq4. inversions Eq4. reflexivity.
 Qed.
 
 Lemma union_dec_unique: forall D1 D2 D3 D4,
@@ -1554,7 +1610,7 @@ Lemma union_dec_unique: forall D1 D2 D3 D4,
   D1 || D2 == D4 ->
   D3 = D4.
 Proof.
-  introv Eq3 Eq4. inversions Eq3; inversions Eq4; reflexivity.
+  introv Eq3 Eq4. rewrite Eq3 in Eq4. inversions Eq4. reflexivity.
 Qed.
 
 (* need to prove the same things several times to make sure we always have an IH 
@@ -1778,6 +1834,56 @@ Qed.
 (* ###################################################################### *)
 (** ** Looks like rules, but follows from the rules *)
 
+(* take subtyp_and/or rules and replace "and" by "intersect", "or" by "union": *)
+
+Lemma subtyp_intersect : forall (G : ctx) (S T1 T2 : typ),
+  subtyp G S T1 -> subtyp G S T2 -> subtyp G S (intersect_typ T1 T2).
+Proof.
+  intros. destruct T1; destruct T2; simpl; auto.
+Qed.
+
+Lemma subtyp_intersect_l : forall (G : ctx) (T1 T2 S : typ),
+  subtyp G T1 S -> subtyp G (intersect_typ T1 T2) S.
+Proof.
+  intros.
+  destruct T1; destruct T2; destruct S; simpl; auto;
+  apply (subtyp_trans (subtyp_top _ _) H).
+Qed.
+
+Lemma subtyp_intersect_r : forall (G : ctx) (T1 T2 S : typ),
+  subtyp G T2 S -> subtyp G (intersect_typ T1 T2) S.
+Proof.
+  intros.
+  destruct T1; destruct T2; destruct S; simpl; auto;
+  apply (subtyp_trans (subtyp_top _ _) H).
+Qed.
+
+Lemma subtyp_union : forall (G : ctx) (T1 T2 S : typ),
+  subtyp G T1 S -> subtyp G T2 S -> subtyp G (union_typ T1 T2) S.
+Proof.
+  intros.
+  destruct T1; destruct T2; destruct S; simpl; auto.
+Qed.
+
+Lemma subtyp_union_l : forall (G : ctx) (S T1 T2 : typ),
+  subtyp G S T1 -> subtyp G S (union_typ T1 T2).
+Proof.
+  intros.
+  destruct T1; destruct T2; destruct S; simpl; auto;
+  apply (subtyp_trans H (subtyp_bot _ _)).
+Qed.
+
+Lemma subtyp_union_r: forall (G : ctx) (S T1 T2 : typ),
+  subtyp G S T2 -> subtyp G S (union_typ T1 T2).
+Proof.
+  intros.
+  destruct T1; destruct T2; destruct S; simpl; auto;
+  apply (subtyp_trans H (subtyp_bot _ _)).
+Qed.
+
+Hint Resolve subtyp_intersect subtyp_intersect_l subtyp_intersect_r
+             subtyp_union     subtyp_union_l     subtyp_union_r.
+
 (* subdec D0 D1
    subdec D0 D2
    --------------------
@@ -1789,7 +1895,8 @@ Lemma subdec_and: forall G D0 D1 D2 D12,
   D1 && D2 == D12 ->
   subdec G D0 D12.
 Proof.
-  introv Sd01 Sd02 I. inversions I; inversions Sd01; inversions Sd02; eauto.
+  introv Sd01 Sd02 I. inversions Sd01; inversions Sd02;
+  unfold intersect_dec in I; case_if; inversions I; auto.
 Qed.
 
 (* subdec D1 D
@@ -1803,7 +1910,8 @@ Lemma subdec_or: forall G D D1 D2 D12,
   D1 || D2 == D12 ->
   subdec G D12 D.
 Proof.
-  introv Sd01 Sd02 I. inversions I; inversions Sd01; inversions Sd02; eauto.
+  introv Sd01 Sd02 I. inversions Sd01; inversions Sd02;
+  unfold union_dec in I; case_if; inversions I; auto.
 Qed.
 
 (* 
@@ -1816,7 +1924,8 @@ Lemma subdec_or_l: forall G D0 D1 D2 D12,
   D1 || D2 == D12 ->
   subdec G D0 D12.
 Proof.
-  introv Sd u. inversions u; inversions Sd; eauto.
+  introv Sd I. inversions Sd; destruct D2;
+  unfold union_dec in I; case_if; inversions I; auto.
 Qed.
 
 (* 
@@ -1829,7 +1938,15 @@ Lemma subdec_or_r: forall G D0 D1 D2 D12,
   D1 || D2 == D12 ->
   subdec G D0 D12.
 Proof.
-  introv Sd u. inversions u; inversions Sd; eauto.
+  (* more complicated because (union_typ T1 T2) matches first over T1 *)
+  introv Sd I. inversions Sd; unfold union_dec in I; case_if; inversions I; destruct D1;
+  match goal with
+  | H: label_of_dec _ = label_of_dec _ |- _ => inversions H
+  end;
+  match goal with
+  | H: Some _ = Some _ |- _ => inversions H
+  end;
+  auto.
 Qed.
 
 
@@ -1840,20 +1957,36 @@ Lemma intersect_dec_total: forall D1 D2,
   label_of_dec D1 = label_of_dec D2 ->
   exists D12, D1 && D2 == D12.
 Proof.
-  introv Eq. destruct D1; destruct D2; inversions Eq; eexists.
-  - eapply intersect_dec_typ.
-  - eapply intersect_dec_fld.
-  - eapply intersect_dec_mtd.
+  introv Eq.
+  destruct D1; destruct D2; inversions Eq; unfold intersect_dec; simpl; case_if; eauto.
 Qed.
 
 Lemma union_dec_total: forall D1 D2,
   label_of_dec D1 = label_of_dec D2 ->
   exists D12, D1 || D2 == D12.
 Proof.
-  introv Eq. destruct D1; destruct D2; inversions Eq; eexists.
-  - eapply union_dec_typ.
-  - eapply union_dec_fld.
-  - eapply union_dec_mtd.
+  introv Eq.
+  destruct D1; destruct D2; inversions Eq; unfold union_dec; simpl; case_if; eauto.
+Qed.
+
+Lemma intersect_dec_label_eq: forall D1 D2 D12,
+  D1 && D2 == D12 ->
+  label_of_dec D1 = label_of_dec D2 /\
+  label_of_dec D1 = label_of_dec D12 /\
+  label_of_dec D2 = label_of_dec D12.
+Proof.
+  intros. destruct D1; destruct D2; unfold intersect_dec in H; simpl; case_if; 
+  inversions H; auto.
+Qed.
+
+Lemma union_dec_label_eq: forall D1 D2 D12,
+  D1 || D2 == D12 ->
+  label_of_dec D1 = label_of_dec D2 /\
+  label_of_dec D1 = label_of_dec D12 /\
+  label_of_dec D2 = label_of_dec D12.
+Proof.
+  intros. destruct D1; destruct D2; unfold union_dec in H; simpl; case_if; 
+  inversions H; auto.
 Qed.
 
 
@@ -1944,7 +2077,7 @@ Proof.
         destruct (intersect_dec_total _ _ Eq1) as [D12 Eq12].
         exists D12. split.
         * apply (typ_and_has IH1 IH2 Eq12).
-        * inversions Eq12; reflexivity.
+        * rewrite <- (proj33 (intersect_dec_label_eq _ _ Eq12)). exact Eq2.
       - (* case wf_or *)
         specialize (IHWf1 cart_spec). destruct IHWf1 as [D1 [IH1 Eq1]].
         specialize (IHWf2 cart_spec). destruct IHWf2 as [D2 [IH2 Eq2]].
@@ -1952,7 +2085,7 @@ Proof.
         destruct (union_dec_total _ _ Eq1) as [D12 Eq12].
         exists D12. split.
         * apply (typ_or_has IH1 IH2 Eq12).
-        * inversions Eq12; reflexivity.
+        * rewrite <- (proj33 (union_dec_label_eq _ _ Eq12)). exact Eq2.
     + (* step *)
       intros unseen Eq1 seen Eq.
       rename IHn into IH.
@@ -2573,8 +2706,6 @@ eauto.
 Qed.
 
 Print Assumptions remove_history. (* not yet good! *)
-
-Stop Here.
 
 (*
 (* for every typ_has judgment with some history h,
