@@ -750,6 +750,16 @@ Hint Resolve typ_and_has_tdec typ_or_has_tdec.
 
 
 (* ###################################################################### *)
+(** ** Weakening *)
+
+Lemma weaken_subtyp_end: forall G1 G2 S U,
+  ok (G1 & G2) -> 
+  subtyp G1        S U ->
+  subtyp (G1 & G2) S U.
+Admitted.
+
+
+(* ###################################################################### *)
 (** ** typ_has_tdec total and unique *)
 
 (* The problem of "total typ_has" now becomes "lookup_tdec converges": *)
@@ -1012,4 +1022,91 @@ Qed.
 
 Print Assumptions swap_sub_and_typ_has_tdec. (* typ_has_tdec_total!! *)
 
+
+(* ###################################################################### *)
+(** ** Narrowing *)
+
+Lemma narrow_binds: forall G1 x0 S1 S2 G2 x T2,
+  binds x T2 (G1 & x0 ~ S2 & G2) ->
+  subtyp (G1 & x0 ~ S1) S1 S2 ->
+  exists T1,
+    binds x T1 (G1 & x0 ~ S1 & G2) /\
+    subtyp (G1 & x0 ~ S1 & G2) T1 T2.
+Proof.
+  introv Bi StS.
+  apply binds_middle_inv in Bi.
+  destruct Bi as [Bi | [[xG2 [Eq1 Eq2]]|[xG2 [Ne Bi]]]].
+  - (* case x in G2 *)
+    apply (binds_concat_right (G1 & x0 ~ S1)) in Bi.
+    exists T2. auto.
+  - (* case x = x0 *)
+    subst x0 T2. exists S1.
+    assert (Ok1: ok (G1 & x ~ S1 & G2)) by admit.
+    apply (conj (binds_middle_eq _ _ xG2)).
+    apply (weaken_subtyp_end Ok1 StS).
+  - (* case x in G1 *)
+    exists T2. refine (conj _ (subtyp_refl _ _)).
+    assert (xx0: x # (x0 ~ S1)) by auto.
+    apply (binds_concat_left (binds_concat_left Bi xx0) xG2).
+Qed.
+
+Lemma narrow_typ_has_tdec: forall G1 x S1 S2 G2 T L Lo2 Hi2,
+  typ_has_tdec (G1 & x ~ S2 & G2) T L Lo2 Hi2 ->
+  subtyp (G1 & x ~ S1) S1 S2 ->
+  exists Lo1 Hi1,
+    typ_has_tdec (G1 & x ~ S1 & G2) T L Lo1 Hi1 /\
+    subtyp (G1 & x ~ S1 & G2) Lo2 Lo1 /\
+    subtyp (G1 & x ~ S1 & G2) Hi1 Hi2.
+Proof.
+Admitted.
+
+Lemma narrow_subtyp: forall G T1 T2, subtyp G T1 T2 ->
+  forall G1 x S1 S2 G2,
+    G = G1 & x ~ S2 & G2 ->
+    subtyp (G1 & x ~ S1) S1 S2 ->
+    subtyp (G1 & x ~ S1 & G2) T1 T2.
+Proof.
+  introv St. induction St; introv Eq StS; subst.
+  + (* case subtyp_refl *) eauto.
+  + (* case subtyp_top *) eauto.
+  + (* case subtyp_bot *) eauto.
+  + (* case subtyp_tdec *) eauto.
+  + (* case subtyp_mdec *) eauto.
+  + (* case subtyp_sel_l *)
+    rename H into Bi2, H0 into X2Has2, X into X2.
+    specialize (IHSt _ _ _ _ _ eq_refl StS).
+    assert (Ok2: ok (G1 & x0 ~ S2 & G2)) by admit.
+    assert (Ok1: ok (G1 & x0 ~ S1 & G2)) by admit.
+    lets P: (narrow_binds Bi2 StS). destruct P as [X1 [Bi1 StX]].
+    destruct (narrow_typ_has_tdec X2Has2 StS) as [T' [U' [X2Has1 [StT StU]]]].
+    lets P: (swap_sub_and_typ_has_tdec StX X2Has1).
+    destruct P as [T'' [U'' [X1Has [StT' StU']]]].
+    assert (St': subtyp (G1 & x0 ~ S1 & G2) T'' U'') by admit. (* <--- !!! Will have
+        to add good-bounds hyp to env, but do we always have this?? *)
+    refine (subtyp_trans _ StU).
+    refine (subtyp_trans _ StU').
+    apply (subtyp_sel_l Bi1 X1Has St').
+  + (* case subtyp_sel_r *)
+    rename H into Bi2, H0 into X2Has2, X into X2.
+    specialize (IHSt _ _ _ _ _ eq_refl StS).
+    assert (Ok2: ok (G1 & x0 ~ S2 & G2)) by admit.
+    assert (Ok1: ok (G1 & x0 ~ S1 & G2)) by admit.
+    lets P: (narrow_binds Bi2 StS). destruct P as [X1 [Bi1 StX]].
+    destruct (narrow_typ_has_tdec X2Has2 StS) as [T' [U' [X2Has1 [StT StU]]]].
+    lets P: (swap_sub_and_typ_has_tdec StX X2Has1).
+    destruct P as [T'' [U'' [X1Has [StT' StU']]]].
+    assert (St': subtyp (G1 & x0 ~ S1 & G2) T'' U'') by admit. (* <--- !!! Will have
+        to add good-bounds hyp to env, but do we always have this?? *)
+    refine (subtyp_trans StT _).
+    refine (subtyp_trans StT' _).
+    apply (subtyp_sel_r Bi1 X1Has St').
+  + (* case subtyp_and *) eauto.
+  + (* case subtyp_and_l *) eauto.
+  + (* case subtyp_and_r *) eauto.
+  + (* case subtyp_or *) eauto.
+  + (* case subtyp_or_l *) eauto.
+  + (* case subtyp_or_r *) eauto.
+  + (* case subtyp_trans *)
+    apply subtyp_trans with T2; eauto.
+Qed.
 
