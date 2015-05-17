@@ -269,6 +269,12 @@ match fuel1 with
   end
 end.
 
+Definition typ_has_tdec(G: ctx)(T: typ)(L: typ_label)(Lo Hi: typ) :=
+  exists minFuel, forall fuel, minFuel <= fuel -> lookup_tdec fuel G T L = (Lo, Hi).
+
+Definition typ_has_mdec(G: ctx)(T: typ)(m: mtd_label)(A R: typ) :=
+  exists minFuel, forall fuel, minFuel <= fuel -> lookup_mdec fuel G T m = Some (A, R).
+
 Inductive subtyp: ctx -> typ -> typ -> Prop :=
   | subtyp_refl: forall G T,
       subtyp G T T
@@ -284,28 +290,30 @@ Inductive subtyp: ctx -> typ -> typ -> Prop :=
       subtyp G T2 T1 ->
       subtyp G U1 U2 ->
       subtyp G (typ_mdec m T1 U1) (typ_mdec m T2 U2)
-  | subtyp_sel_l: forall G x X L T U fuel,
+  | subtyp_sel_l: forall G x X L T U,
       binds x X G ->
-      lookup_tdec fuel G X L = (T, U) ->
+      (*lookup_tdec fuel G X L = (T, U) ->*)
+      typ_has_tdec G X L T U ->
       subtyp G T U -> (* <-- probably not needed, but keep for symmetry with subtyp_sel_r *)
       subtyp G (typ_sel (avar_f x) L) U
-  | subtyp_sel_r: forall G x X L T U fuel,
+  | subtyp_sel_r: forall G x X L T U,
       binds x X G ->
-      lookup_tdec fuel G X L = (T, U) ->
+      (* lookup_tdec fuel G X L = (T, U) -> *)
+      typ_has_tdec G X L T U ->
       subtyp G T U -> (* <-- makes proofs a lot easier!! *)
       subtyp G T (typ_sel (avar_f x) L)
-  | subtyp_and: forall G S T1 T2,
-      subtyp G S T1 ->
-      subtyp G S T2 ->
-      subtyp G S (typ_and T1 T2)
+  | subtyp_and: forall G T U1 U2,
+      subtyp G T U1 ->
+      subtyp G T U2 ->
+      subtyp G T (typ_and U1 U2)
   | subtyp_and_l: forall G T1 T2,
       subtyp G (typ_and T1 T2) T1
   | subtyp_and_r: forall G T1 T2,
       subtyp G (typ_and T1 T2) T2
-  | subtyp_or: forall G T1 T2 S,
-      subtyp G T1 S ->
-      subtyp G T2 S ->
-      subtyp G (typ_or T1 T2) S
+  | subtyp_or: forall G T1 T2 U,
+      subtyp G T1 U ->
+      subtyp G T2 U ->
+      subtyp G (typ_or T1 T2) U
   | subtyp_or_l: forall G T1 T2,
       subtyp G T1 (typ_or T1 T2)
   | subtyp_or_r: forall G T1 T2,
@@ -319,9 +327,10 @@ Inductive ty_trm: ctx -> trm -> typ -> Prop :=
   | ty_var: forall G x T,
       binds x T G ->
       ty_trm G (trm_var (avar_f x)) T
-  | ty_call: forall G t T m U1 U2 V u fuel,
+  | ty_call: forall G t T m U1 U2 V u,
       ty_trm G t T ->
-      lookup_mdec fuel G T m = Some (U2, V) ->
+      (*lookup_mdec fuel G T m = Some (U2, V) ->*)
+      typ_has_mdec G T m U2 V ->
       ty_trm G u U1 ->
       subtyp G U1 U2 -> (* <-- explicit subsumption *)
       ty_trm G (trm_call t m u) V
@@ -635,87 +644,372 @@ Qed.
 
 
 (* ###################################################################### *)
-(** ** subtyp-and-then-lookup_tdec to lookup_tdec-and-then-subdec *)
+(** ** Looks like rules, but follows from the rules *)
 
+(* take subtyp_and/or rules and replace "and" by "intersect", "or" by "union": *)
+
+Lemma subtyp_intersect : forall (G : ctx) (S T1 T2 : typ),
+  subtyp G S T1 -> subtyp G S T2 -> subtyp G S (intersect_typ T1 T2).
+Proof.
+  intros. destruct T1; destruct T2; simpl; auto.
+Qed.
+
+Lemma subtyp_intersect_l : forall (G : ctx) (T1 T2 : typ),
+  subtyp G (intersect_typ T1 T2) T1.
+Proof.
+  intros.
+  destruct T1; destruct T2; simpl; auto.
+Qed.
+
+Lemma subtyp_intersect_r : forall (G : ctx) (T1 T2 : typ),
+  subtyp G (intersect_typ T1 T2) T2.
+Proof.
+  intros.
+  destruct T1; destruct T2; simpl; auto.
+Qed.
+
+Lemma subtyp_union : forall (G : ctx) (T1 T2 S : typ),
+  subtyp G T1 S -> subtyp G T2 S -> subtyp G (union_typ T1 T2) S.
+Proof.
+  intros.
+  destruct T1; destruct T2; destruct S; simpl; auto.
+Qed.
+
+Lemma subtyp_union_l : forall (G : ctx) (T1 T2 : typ),
+  subtyp G T1 (union_typ T1 T2).
+Proof.
+  intros.
+  destruct T1; destruct T2; simpl; auto.
+Qed.
+
+Lemma subtyp_union_r: forall (G : ctx) (T1 T2 : typ),
+  subtyp G T2 (union_typ T1 T2).
+Proof.
+  intros.
+  destruct T1; destruct T2; simpl; auto.
+Qed.
+
+Hint Resolve subtyp_intersect subtyp_intersect_l subtyp_intersect_r
+             subtyp_union     subtyp_union_l     subtyp_union_r.
+
+Lemma typ_and_has_tdec: forall G T1 T2 L Lo1 Hi1 Lo2 Hi2,
+  typ_has_tdec G T1 L Lo1 Hi1 ->
+  typ_has_tdec G T2 L Lo2 Hi2 ->
+  typ_has_tdec G (typ_and T1 T2) L (union_typ Lo1 Lo2) (intersect_typ Hi1 Hi2).
+Proof.
+  introv T1Has T2Has. unfold typ_has_tdec in *.
+  destruct T1Has as [min1 T1Has].
+  destruct T2Has as [min2 T2Has].
+  exists (S (max min1 min2)). intros. destruct fuel as [|fuel]; [omega | idtac].
+  specialize (T1Has fuel).
+  specialize (T2Has fuel).
+  
+    repeat match goal with
+    | Impl: ?Cond -> _ |- _ =>
+        let HC := fresh in
+        assert (HC: Cond) by (
+          let M1 := fresh in let M2 := fresh in
+          destruct (Max.max_spec min1 min2) as [[M1 M2] | [M1 M2]];
+          omega
+        );
+        specialize (Impl HC);
+        clear HC
+    end.
+
+  unfold lookup_tdec. fold lookup_tdec. rewrite T1Has, T2Has. reflexivity.
+Qed.
+
+Lemma typ_or_has_tdec: forall G L T1 Lo1 Hi1 T2 Lo2 Hi2,
+  typ_has_tdec G T1 L Lo1 Hi1 ->
+  typ_has_tdec G T2 L Lo2 Hi2 ->
+  typ_has_tdec G (typ_or T1 T2) L (intersect_typ Lo1 Lo2) (union_typ Hi1 Hi2).
+Proof.
+  introv T1Has T2Has. unfold typ_has_tdec in *.
+  destruct T1Has as [min1 T1Has].
+  destruct T2Has as [min2 T2Has].
+  exists (S (max min1 min2)). intros. destruct fuel as [|fuel]; [omega | idtac].
+  specialize (T1Has fuel).
+  specialize (T2Has fuel).
+  
+    repeat match goal with
+    | Impl: ?Cond -> _ |- _ =>
+        let HC := fresh in
+        assert (HC: Cond) by (
+          let M1 := fresh in let M2 := fresh in
+          destruct (Max.max_spec min1 min2) as [[M1 M2] | [M1 M2]];
+          omega
+        );
+        specialize (Impl HC);
+        clear HC
+    end.
+
+  unfold lookup_tdec. fold lookup_tdec. rewrite T1Has, T2Has. reflexivity.
+Qed.
+
+Hint Resolve typ_and_has_tdec typ_or_has_tdec.
+
+
+(* ###################################################################### *)
+(** ** typ_has_tdec total and unique *)
+
+(* The problem of "total typ_has" now becomes "lookup_tdec converges": *)
+Lemma typ_has_tdec_total: forall G T L,
+  exists Lo Hi, typ_has_tdec G T L Lo Hi.
+Admitted. (* BIG TODO *)
+
+Lemma typ_has_tdec_unique: forall G T L Lo1 Hi1 Lo2 Hi2,
+  typ_has_tdec G T L Lo1 Hi1 ->
+  typ_has_tdec G T L Lo2 Hi2 ->
+  Lo1 = Lo2 /\ Hi1 = Hi2.
+Proof.
+  introv Has1 Has2. unfold typ_has_tdec in *.
+  destruct Has1 as [min1 Has1].
+  destruct Has2 as [min2 Has2].
+  specialize (Has1 (S (max min1 min2))).
+  specialize (Has2 (S (max min1 min2))). 
+
+    repeat match goal with
+    | Impl: ?Cond -> _ |- _ =>
+        let HC := fresh in
+        assert (HC: Cond) by (
+          let M1 := fresh in let M2 := fresh in
+          destruct (Max.max_spec min1 min2) as [[M1 M2] | [M1 M2]];
+          omega
+        );
+        specialize (Impl HC);
+        clear HC
+    end.
+
+  rewrite Has1 in Has2. inversions Has2. auto.
+Qed.
+
+(*
 Lemma more_fuel_increases_precision: forall G T L fuel2 Lo2 Hi2 fuel1 Lo1 Hi1,
   fuel2 <= fuel1 ->
   lookup_tdec fuel2 G T L = (Lo2, Hi2) ->
   lookup_tdec fuel1 G T L = (Lo1, Hi1) ->
   subtyp G Lo2 Lo1 /\ subtyp G Hi1 Hi2.
 Admitted.
+*)
 
-Lemma swap_sub_and_lookup_tdec: forall G T1 T2 fuel2 L Lo2 Hi2,
+
+(* ###################################################################### *)
+(** ** Inversion lemmas for typ_has_tdec *)
+
+Lemma invert_typ_or_has_tdec: forall G T1 T2 L Lo Hi,
+  typ_has_tdec G (typ_or T1 T2) L Lo Hi ->
+  exists Lo1 Hi1 Lo2 Hi2,
+    typ_has_tdec G T1 L Lo1 Hi1 /\
+    typ_has_tdec G T2 L Lo2 Hi2 /\
+    Lo = intersect_typ Lo1 Lo2 /\
+    Hi = union_typ Hi1 Hi2.
+Proof.
+  introv T12Has.
+  destruct (typ_has_tdec_total G T1 L) as [Lo1 [Hi1 T1Has]].
+  destruct (typ_has_tdec_total G T2 L) as [Lo2 [Hi2 T2Has]].
+  exists Lo1 Hi1 Lo2 Hi2.
+  apply (conj T1Has). apply (conj T2Has).
+
+  unfold typ_has_tdec, lookup_tdec in T12Has, T1Has, T2Has.
+  destruct T12Has as [min12 T12Has].
+  destruct T1Has as [min1 T1Has].
+  destruct T2Has as [min2 T2Has].
+  specialize (T12Has (S (max min12 (max min1 min2)))).
+  specialize (T1Has     (max min12 (max min1 min2)) ).
+  specialize (T2Has     (max min12 (max min1 min2)) ).
+    
+    repeat match goal with
+    | Impl: ?Cond -> _ |- _ =>
+        let HC := fresh in
+        assert (HC: Cond) by (
+          let M1 := fresh in let M2 := fresh in
+          destruct (Max.max_spec min1 min2) as [[M1 M2] | [M1 M2]];
+          let M3 := fresh in let M4 := fresh in
+          destruct (Max.max_spec min12 (max min1 min2)) as [[M3 M4] | [M3 M4]];
+          omega
+        );
+        specialize (Impl HC);
+        clear HC
+    end.
+
+  simpl in T12Has. fold lookup_tdec in *.
+  rewrite T1Has, T2Has in T12Has. inversions T12Has.
+  auto.
+Qed.
+
+
+(* ###################################################################### *)
+(** ** subtyp-and-then-lookup_tdec to lookup_tdec-and-then-subdec *)
+
+Lemma swap_sub_and_typ_has_tdec: forall G T1 T2 L Lo2 Hi2,
   subtyp G T1 T2 ->
-  lookup_tdec fuel2 G T2 L = (Lo2, Hi2) ->
-  exists fuel1 Lo1 Hi1,
-    lookup_tdec fuel1 G T1 L = (Lo1, Hi1) /\
+  typ_has_tdec G T2 L Lo2 Hi2 ->
+  exists Lo1 Hi1,
+    typ_has_tdec G T1 L Lo1 Hi1 /\
     subtyp G Lo2 Lo1 /\
     subtyp G Hi1 Hi2.
 Proof.
-  introv St. gen fuel2 L Lo2 Hi2. induction St; introv Eq2.
+  introv St. gen L Lo2 Hi2. induction St; introv T2Has.
   + (* case subtyp_refl *)
-    do 3 eexists. apply (conj Eq2). auto.
+    do 2 eexists. apply (conj T2Has). auto.
   + (* case subtyp_top *)
-    exists 0 typ_bot typ_top.
-    repeat split; destruct fuel2; unfold lookup_tdec in Eq2; inversions Eq2; auto.
+    rename T into T1. (* T2 = typ_top *)
+    lets T1Has: (typ_has_tdec_total G T1 L). destruct T1Has as [Lo1 [Hi1 T1Has]].
+                (******************)
+    exists Lo1 Hi1.
+    unfold typ_has_tdec in T2Has; unfold lookup_tdec in T2Has.
+    destruct T2Has as [min2 T2Has]. specialize (T2Has (S min2) (Le.le_n_Sn min2)).
+    simpl in T2Has. inversions T2Has. auto.
   + (* case subtyp_bot *)
-    exists 1 typ_top typ_bot. auto.
+    exists typ_top typ_bot. repeat split; auto.
+    unfold typ_has_tdec. exists 1. intros. destruct fuel as [|fuel]; [omega | idtac].
+    reflexivity.
   + (* case subtyp_tdec *)
-    destruct fuel2 as [|fuel2].
-    - exists 0 typ_bot typ_top.
-      repeat split; unfold lookup_tdec in Eq2; inversions Eq2; auto.
-    - unfold lookup_tdec in Eq2. case_if.
-      * inversions Eq2. exists 1 T1 U1.
-        repeat split; auto. unfold lookup_tdec. case_if. reflexivity.
-      * inversions Eq2. exists 0 typ_bot typ_top. auto.
+    unfold typ_has_tdec in T2Has; unfold lookup_tdec in T2Has.
+    destruct T2Has as [min2 T2Has]. specialize (T2Has (S min2) (Le.le_n_Sn min2)).
+    simpl in T2Has.
+    case_if.
+    - inversions T2Has. exists T1 U1.
+      repeat split; auto. unfold typ_has_tdec; unfold lookup_tdec. 
+      exists 1. intros. destruct fuel as [|fuel]; [omega | idtac].
+      case_if. reflexivity.
+    - inversions T2Has. exists typ_bot typ_top.
+      repeat split; auto. unfold typ_has_tdec; unfold lookup_tdec. 
+      exists 1. intros. destruct fuel as [|fuel]; [omega | idtac].
+      case_if. reflexivity.
   + (* case subtyp_mdec *)
-    destruct fuel2 as [|fuel2]; unfold lookup_tdec in Eq2; inversions Eq2;
-    exists 0 typ_bot typ_top; auto.
-(*+ (* case subtyp_sel_l *)
-    exists (S fuel) Lo2 Hi2.
-    unfold lookup_tdec. fold lookup_tdec. rewrite H. rewrite H0.
-    repeat split; auto.
-    apply Eq2. (* doesn't work because maybe fuel <> fuel2 *) *)
+    unfold typ_has_tdec in T2Has; unfold lookup_tdec in T2Has.
+    destruct T2Has as [min2 T2Has]. specialize (T2Has (S min2) (Le.le_n_Sn min2)).
+    simpl in T2Has. inversions T2Has.
+    exists typ_bot typ_top. repeat split; auto.
+    unfold typ_has_tdec; unfold lookup_tdec. 
+    exists 1. intros. destruct fuel as [|fuel]; [omega | idtac].
+    reflexivity.
   + (* case subtyp_sel_l *)
-    (* Note: We have two different amounts of fuel:
-       'fuel' comes from the lookup_tdec in the subtyp_sel_l, and
-       'fuel2' comes from the lookup_tdec given as a hypothesis. *)
-    exists (S (max fuel fuel2)).
-    lets Le1: (Max.le_max_l fuel fuel2).
-    lets Le2: (Max.le_max_r fuel fuel2).
-    remember (lookup_tdec (max fuel fuel2) G X L) as p eqn: Eq1. destruct p as [T' U'].
-    symmetry in Eq1.
-    lets E1: (more_fuel_increases_precision _ _ _ Le1 H0 Eq1). destruct E1 as [StT StU].
-    remember (lookup_tdec (max fuel fuel2) G U' L0) as p eqn: Eq3. destruct p as [Lo1 Hi1].
-    symmetry in Eq3.
-    exists Lo1 Hi1. repeat split.
-    - unfold lookup_tdec. fold lookup_tdec. rewrite H. rewrite Eq1. exact Eq3.
-    - admit. (* TODO kind of follows from StU, Eq2, Eq3, but harder than the whole
-       lemma we're about to prove... *)
-    - admit. (* ditto *)
+    rename H into Bi, H0 into XHas.
+    exists Lo2 Hi2. repeat split; auto.
+    unfold typ_has_tdec, lookup_tdec in XHas. destruct XHas as [minX XHas].
+    unfold typ_has_tdec, lookup_tdec in T2Has. destruct T2Has as [min2 T2Has].
+
+    unfold typ_has_tdec, lookup_tdec.
+    exists (S (S (max minX min2))). intros. destruct fuel as [|fuel]; [omega | idtac].
+    rewrite Bi.
+    destruct fuel as [|fuel]; [omega | idtac]. fold lookup_tdec.
+
+    specialize (XHas (S fuel)).
+    specialize (T2Has (S fuel)).
+
+    repeat match goal with
+    | Impl: ?Cond -> _ |- _ =>
+        let HC := fresh in
+        assert (HC: Cond) by (
+          let M1 := fresh in let M2 := fresh in
+          destruct (Max.max_spec minX min2) as [[M1 M2] | [M1 M2]];
+          omega
+        );
+        specialize (Impl HC);
+        clear HC
+    end.
+
+    simpl in *. fold lookup_tdec in *.
+    rewrite XHas. exact T2Has.
   + (* case subtyp_sel_r *)
-    admit.
+    rename H into Bi, H0 into XHas.
+    apply IHSt. clear IHSt.
+
+    unfold typ_has_tdec in XHas. destruct XHas as [minX XHas].
+    unfold typ_has_tdec in T2Has; unfold lookup_tdec in T2Has.
+    destruct T2Has as [min2 T2Has].
+
+    unfold typ_has_tdec. exists (S (max minX min2)).
+    intros.
+    specialize (T2Has (S fuel)).
+    specialize (XHas fuel).
+
+    repeat match goal with
+    | Impl: ?Cond -> _ |- _ =>
+        let HC := fresh in
+        assert (HC: Cond) by (
+          let M1 := fresh in let M2 := fresh in
+          destruct (Max.max_spec minX min2) as [[M1 M2] | [M1 M2]];
+          omega
+        );
+        specialize (Impl HC);
+        clear HC
+    end.
+
+    simpl in T2Has. rewrite Bi in T2Has. simpl in T2Has. fold lookup_tdec in T2Has.
+    rewrite XHas in T2Has. exact T2Has.
   + (* case subtyp_and *)
-    admit.
+    destruct (typ_has_tdec_total G U1 L) as [LoU1 [HiU1 U1Has]].
+    destruct (typ_has_tdec_total G U2 L) as [LoU2 [HiU2 U2Has]].
+    specialize (IHSt1 _ _ _ U1Has). destruct IHSt1 as [Lo1 [Hi1 [THas [StLoU1 StHiU1]]]].
+    specialize (IHSt2 _ _ _ U2Has). destruct IHSt2 as [Lo1' [Hi1' [THas' [StLoU2 StHiU2]]]].
+    destruct (typ_has_tdec_unique THas THas') as [Eq1 Eq2]. subst Lo1' Hi1'. clear THas'.
+    unfold typ_has_tdec in U1Has, U2Has.
+    destruct U1Has as [minU1 U1Has].
+    destruct U2Has as [minU2 U2Has].
+
+    unfold typ_has_tdec, lookup_tdec in T2Has. destruct T2Has as [min2 T2Has].
+    specialize (T2Has (S (max min2 (max minU1 minU2)))).
+    specialize (U1Has    (max min2 (max minU1 minU2)) ).
+    specialize (U2Has    (max min2 (max minU1 minU2)) ).
+    
+    repeat match goal with
+    | Impl: ?Cond -> _ |- _ =>
+        let HC := fresh in
+        assert (HC: Cond) by (
+          let M1 := fresh in let M2 := fresh in
+          destruct (Max.max_spec minU1 minU2) as [[M1 M2] | [M1 M2]];
+          let M3 := fresh in let M4 := fresh in
+          destruct (Max.max_spec min2 (max minU1 minU2)) as [[M3 M4] | [M3 M4]];
+          omega
+        );
+        specialize (Impl HC);
+        clear HC
+    end.
+
+    simpl in T2Has. fold lookup_tdec in T2Has.
+    rewrite U1Has in T2Has. rewrite U2Has in T2Has.
+    inversions T2Has.
+    exists Lo1 Hi1. apply (conj THas).
+    auto.
   + (* case subtyp_and_l *)
-    admit.
+    rename Lo2 into Lo1, Hi2 into Hi1, T2Has into T1Has.
+    destruct (typ_has_tdec_total G T2 L) as [Lo2 [Hi2 T2Has]].
+    exists (union_typ Lo1 Lo2) (intersect_typ Hi1 Hi2).
+    auto.
   + (* case subtyp_and_r *)
-    admit.
+    destruct (typ_has_tdec_total G T1 L) as [Lo1 [Hi1 T1Has]].
+    exists (union_typ Lo1 Lo2) (intersect_typ Hi1 Hi2).
+    auto.
   + (* case subtyp_or *)
-    admit.
+    rename T2Has into UHas.
+    specialize (IHSt1 _ _ _ UHas). destruct IHSt1 as [LoT1 [HiT1 [T1Has [StLoT1 StHiT1]]]].
+    specialize (IHSt2 _ _ _ UHas). destruct IHSt2 as [LoT2 [HiT2 [T2Has [StLoT2 StHiT2]]]].
+    exists (intersect_typ LoT1 LoT2) (union_typ HiT1 HiT2).
+    auto.
   + (* case subtyp_or_l *)
-    admit.
+    rename T2Has into T12Has, Lo2 into Lo, Hi2 into Hi.
+    apply invert_typ_or_has_tdec in T12Has.
+    destruct T12Has as [Lo1 [Hi1 [Lo2 [Hi2 [T1Has [T2Has [Eq1 Eq2]]]]]]]. subst.
+    exists Lo1 Hi1. auto.
   + (* case subtyp_or_r *)
-    admit.
+    rename T2Has into T12Has, Lo2 into Lo, Hi2 into Hi.
+    apply invert_typ_or_has_tdec in T12Has.
+    destruct T12Has as [Lo1 [Hi1 [Lo2 [Hi2 [T1Has [T2Has [Eq1 Eq2]]]]]]]. subst.
+    exists Lo2 Hi2. auto.
   + (* case subtyp_trans *)
-    rename Lo2 into Lo3, Hi2 into Hi3, Eq2 into Eq3, fuel2 into fuel3.
-    specialize (IHSt2 _ _ _ _ Eq3).
-    destruct IHSt2 as [fuel2 [Lo2 [Hi2 [Eq2 [StLo23 StHi23]]]]].
-    specialize (IHSt1 _ _ _ _ Eq2).
-    destruct IHSt1 as [fuel1 [Lo1 [Hi1 [Eq1 [StLo12 StHi12]]]]].
-    exists fuel1 Lo1 Hi1. apply (conj Eq1). split.
+    rename Lo2 into Lo3, Hi2 into Hi3, T2Has into T3Has.
+    specialize (IHSt2 _ _ _ T3Has).
+    destruct IHSt2 as [Lo2 [Hi2 [T2Has [StLo23 StHi23]]]].
+    specialize (IHSt1 _ _ _ T2Has).
+    destruct IHSt1 as [Lo1 [Hi1 [T1Has [StLo12 StHi12]]]].
+    exists Lo1 Hi1. apply (conj T1Has). split.
     - apply (subtyp_trans StLo23 StLo12).
     - apply (subtyp_trans StHi12 StHi23).
 Qed.
+
+Print Assumptions swap_sub_and_typ_has_tdec. (* typ_has_tdec_total!! *)
 
 
