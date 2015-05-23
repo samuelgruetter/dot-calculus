@@ -1024,6 +1024,52 @@ Print Assumptions swap_sub_and_typ_has_tdec. (* typ_has_tdec_total!! *)
 
 
 (* ###################################################################### *)
+(** ** Helpers *)
+
+Lemma inc_fuel: forall fuel G T L Lo2 Hi2,
+  lookup_tdec fuel G T L = (Lo2, Hi2) ->
+  exists Lo1 Hi1,
+    lookup_tdec (S fuel) G T L = (Lo1, Hi1) /\
+    subtyp G Lo2 Lo1 /\
+    subtyp G Hi1 Hi2.
+Proof.
+  intro fuel. induction fuel; introv Eq2.
+  + unfold lookup_tdec in Eq2. inversions Eq2.
+    remember (lookup_tdec 1 G T L) as p eqn: Eq1. destruct p as [Lo1 Hi1].
+    exists Lo1 Hi1. auto.
+  + unfold lookup_tdec in Eq2. fold lookup_tdec in Eq2. destruct T.
+    - (* case typ_top   *) eauto.
+    - (* case typ_bot   *) eauto.
+    - (* case typ_tdec  *) eauto.
+    - (* case typ_mdec  *) eauto.
+    - (* case typ_sel   *)
+      rename t into L0.
+      destruct a; eauto. destruct (get v G) as [X|].
+      * remember (lookup_tdec fuel G X L0) as p eqn: Eq1. destruct p as [Lo1 Hi1].
+        symmetry in Eq1.
+        destruct (IHfuel _ _ _ _ _ Eq1) as [Lo1' [Hi1' [Eq1' [StLo1 StHi1]]]].
+        (* Now we want to say that if we replace Hi1 by Hi1' in Eq2, we get more
+           precise Lo2'/Hi2'. But if StHi1 is a subtyping judgment with many path types,
+           we waste fuel, so [lookup_tdec fuel G Hi1' L = (Lo2', Hi2') and Lo2 <: Lo2',
+           Hi2' <: Hi2 does not hold as such.
+           Problem: The subtyping in the conclusion of inc_fuel is too complicated, the
+           precision gain that we get by increasing the fuel is never a subtyping over
+           path types, but only over typ_and/typ_or or typ_bot/typ_top. *)
+        admit.
+      * inversions Eq2. 
+        remember (lookup_tdec (S (S fuel)) G (typ_sel (avar_f v) L0) L) as p eqn: Eq1. 
+        destruct p as [Lo1 Hi1]. eauto.
+    - (* case typ_and   *) eauto.
+    - (* case typ_or    *) eauto.
+
+
+  remember (lookup_tdec (S fuel) G T L) as p eqn: Eq1. destruct p as [Lo1 Hi1].
+  exists Lo1 Hi1. apply (conj eq_refl).
+  symmetry in Eq1.
+  unfold lookup_tdec in Eq1. fold lookup_tdec in Eq1.
+Qed.
+
+(* ###################################################################### *)
 (** ** Narrowing *)
 
 Lemma narrow_binds: forall G1 x0 S1 S2 G2 x T2,
@@ -1050,6 +1096,18 @@ Proof.
     apply (binds_concat_left (binds_concat_left Bi xx0) xG2).
 Qed.
 
+(* Says "for all fuel amounts, exists Lo Hi", but we need
+   "exists Lo Hi st. for all fuel amounts"!
+Lemma narrow_lookup_tdec: forall fuel2 G1 x S1 S2 G2 T L Lo2 Hi2,
+  lookup_tdec fuel2 (G1 & x ~ S2 & G2) T L = (Lo2, Hi2) ->
+  subtyp (G1 & x ~ S1) S1 S2 ->
+  exists fuel1 Lo1 Hi1,
+    lookup_tdec fuel1 (G1 & x ~ S1 & G2) T L = (Lo1, Hi1) /\
+    subtyp (G1 & x ~ S1 & G2) Lo2 Lo1 /\
+    subtyp (G1 & x ~ S1 & G2) Hi1 Hi2.
+Proof.
+Admitted.*)
+
 Lemma narrow_typ_has_tdec: forall G1 x S1 S2 G2 T L Lo2 Hi2,
   typ_has_tdec (G1 & x ~ S2 & G2) T L Lo2 Hi2 ->
   subtyp (G1 & x ~ S1) S1 S2 ->
@@ -1057,8 +1115,29 @@ Lemma narrow_typ_has_tdec: forall G1 x S1 S2 G2 T L Lo2 Hi2,
     typ_has_tdec (G1 & x ~ S1 & G2) T L Lo1 Hi1 /\
     subtyp (G1 & x ~ S1 & G2) Lo2 Lo1 /\
     subtyp (G1 & x ~ S1 & G2) Hi1 Hi2.
+(*
 Proof.
-Admitted.
+  introv THas2 StS. unfold typ_has_tdec in THas2. destruct THas2 as [minF THas2].
+  gen StS. gen THas2. gen G1 x S1 S2 G2 T L Lo2 Hi2. induction minF; introv THas2 StS.
+  - specialize (THas2 0 (Le.le_refl _)). unfold lookup_tdec in THas2. inversions THas2.
+    lets THas1: (typ_has_tdec_total (G1 & x ~ S1 & G2) T L).
+                (******************)
+    destruct THas1 as [Lo1 [Hi1 THas1]].
+    exists Lo1 Hi1. apply (conj THas1). auto. 
+  - 
+*)
+Proof.
+  introv THas2 StS. unfold typ_has_tdec in THas2. destruct THas2 as [minF THas2].
+  induction minF.
+  - specialize (THas2 0 (Le.le_refl _)). unfold lookup_tdec in THas2. inversions THas2.
+    lets THas1: (typ_has_tdec_total (G1 & x ~ S1 & G2) T L).
+                (******************)
+    destruct THas1 as [Lo1 [Hi1 THas1]].
+    exists Lo1 Hi1. apply (conj THas1). auto.
+  - apply IHminF. intros. destruct (classicT (minF = fuel)) as [Eq | Ne].
+    * admit. (*???*)
+    * assert (C: S minF <= fuel) by omega. apply (THas2 _ C).   
+Qed.
 
 Lemma narrow_subtyp: forall G T1 T2, subtyp G T1 T2 ->
   forall G1 x S1 S2 G2,
