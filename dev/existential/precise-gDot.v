@@ -214,7 +214,7 @@ Inductive red : trm -> sto -> trm -> sto -> Prop :=
    we know that if a decl returned by typ_has is "equivalent" to a bottom-decl,
    it's actually also structurally equal.
    Or in other words: Instead of returning (dec_fld l (typ_and typ_bot T)),
-   typ_has will return just (dec_fld l typ_bot). *)
+   typ_has will return just (dec_fld l typ_bot).
 Definition intersect_typ(T1 T2: typ): typ := If T1 = T2 then T1 else
 match T1, T2 with
 | typ_top, _ => T2
@@ -232,8 +232,8 @@ match T1, T2 with
 | _, typ_bot => T1
 | _, _       => typ_or T1 T2
 end.
+*)
 
-(*
 (* returns (option dec) because it's not total. *)
 Definition intersect_dec(D1 D2: dec): option dec :=
   If label_of_dec D1 = label_of_dec D2 then
@@ -258,8 +258,8 @@ Definition union_dec(D1 D2: dec): option dec :=
     end
   else
     None.
-*)
 
+(*
 Definition intersect_dec(D1 D2: dec): option dec :=
   If label_of_dec D1 = label_of_dec D2 then
     match D1, D2 with
@@ -283,6 +283,7 @@ Definition union_dec(D1 D2: dec): option dec :=
     end
   else
     None.
+*)
 
 Notation "D1 && D2 == D3" := (intersect_dec D1 D2 = Some D3) (at level 40).
 Notation "D1 || D2 == D3" := (union_dec D1 D2 = Some D3) (at level 40).
@@ -351,58 +352,48 @@ with typ_hasnt: ctx -> typ -> label -> Prop :=
       typ_hasnt G T2 l ->
       typ_hasnt G (typ_or T1 T2) l.
 
-(* deep enters also computational types (typ_rcd),
-   shallow only enters non-expansive types (bounds of path types, and/or-types) *)
-Inductive dmode: Set := deep | shallow.
-
-Inductive wf_typ: dmode -> ctx -> typ -> Prop :=
-  | wf_top: forall m G,
-      wf_typ m G typ_top
-  | wf_bot: forall m G,
-      wf_typ m G typ_bot
-  | wf_rcd_deep: forall G D,
+(* wf means "well-formed", not "well-founded" ;-) *)
+CoInductive wf_typ: ctx -> typ -> Prop :=
+  | wf_top: forall G,
+      wf_typ G typ_top
+  | wf_bot: forall G,
+      wf_typ G typ_bot
+  | wf_rcd: forall G D,
       wf_dec G D ->
-      wf_typ deep G (typ_rcd D)
-  | wf_rcd_shallow: forall G D,
-      wf_typ shallow G (typ_rcd D)
-  | wf_sel: forall m G x X L T U,
+      wf_typ G (typ_rcd D)
+  | wf_sel: forall G x X L T U,
       binds x X G ->
       typ_has G X (dec_typ L T U) ->
-      (* Note: deep wf-ness of T and U was already checked at the definition site of x.L 
-      (wf_tmem), so it's sufficient to do a shallow check
-       --> allows x.L to appear recursively in T and U, but only behind a computational type
-       --> following upper bound terminates *)
-      wf_typ shallow G T ->
-      wf_typ shallow G U ->
-      wf_typ m G (typ_sel (avar_f x) L)
-  | wf_and: forall m G T1 T2,
-      wf_typ m G T1 ->
-      wf_typ m G T2 ->
-      wf_typ m G (typ_and T1 T2)
-  | wf_or: forall m G T1 T2,
-      wf_typ m G T1 ->
-      wf_typ m G T2 ->
-      wf_typ m G (typ_or T1 T2)
-(* wf_dec and wf_decs need no mode, because it's always deep *)
+      wf_typ G T ->
+      wf_typ G U ->
+      wf_typ G (typ_sel (avar_f x) L)
+  | wf_and: forall G T1 T2,
+      wf_typ G T1 ->
+      wf_typ G T2 ->
+      wf_typ G (typ_and T1 T2)
+  | wf_or: forall G T1 T2,
+      wf_typ G T1 ->
+      wf_typ G T2 ->
+      wf_typ G (typ_or T1 T2)
 with wf_dec: ctx -> dec -> Prop :=
   | wf_tmem: forall G L Lo Hi,
-      wf_typ deep G Lo ->
-      wf_typ deep G Hi ->
+      wf_typ G Lo ->
+      wf_typ G Hi ->
       wf_dec G (dec_typ L Lo Hi)
   | wf_mtd: forall G m A R,
-      wf_typ deep G A ->
-      wf_typ deep G R ->
+      wf_typ G A ->
+      wf_typ G R ->
       wf_dec G (dec_mtd m A R).
 
 Inductive subtyp: ctx -> typ -> typ -> Prop :=
   | subtyp_refl: forall G T,
-      wf_typ deep G T ->
+      wf_typ G T ->
       subtyp G T T
   | subtyp_top: forall G T,
-      wf_typ deep G T ->
+      wf_typ G T ->
       subtyp G T typ_top
   | subtyp_bot: forall G T,
-      wf_typ deep G T ->
+      wf_typ G T ->
       subtyp G typ_bot T
   | subtyp_rcd: forall G D1 D2,
       subdec G D1 D2 ->
@@ -422,24 +413,24 @@ Inductive subtyp: ctx -> typ -> typ -> Prop :=
       subtyp G T U2 ->
       subtyp G T (typ_and U1 U2)
   | subtyp_and_l: forall G T1 T2,
-      wf_typ deep G T1 ->
-      wf_typ deep G T2 ->
+      wf_typ G T1 ->
+      wf_typ G T2 ->
       subtyp G (typ_and T1 T2) T1
   | subtyp_and_r: forall G T1 T2,
-      wf_typ deep G T1 ->
-      wf_typ deep G T2 ->
+      wf_typ G T1 ->
+      wf_typ G T2 ->
       subtyp G (typ_and T1 T2) T2
   | subtyp_or: forall G T1 T2 U,
       subtyp G T1 U ->
       subtyp G T2 U ->
       subtyp G (typ_or T1 T2) U
   | subtyp_or_l: forall G T1 T2,
-      wf_typ deep G T1 ->
-      wf_typ deep G T2 ->
+      wf_typ G T1 ->
+      wf_typ G T2 ->
       subtyp G T1 (typ_or T1 T2)
   | subtyp_or_r: forall G T1 T2,
-      wf_typ deep G T1 ->
-      wf_typ deep G T2 ->
+      wf_typ G T1 ->
+      wf_typ G T2 ->
       subtyp G T2 (typ_or T1 T2)
   | subtyp_trans: forall G T1 T2 T3,
       subtyp G T1 T2 ->
@@ -458,28 +449,28 @@ with subdec: ctx -> dec -> dec -> Prop :=
 Inductive ty_trm: ctx -> trm -> typ -> Prop :=
   | ty_var: forall G x T,
       binds x T G ->
-      wf_typ deep G T ->
+      wf_typ G T ->
       ty_trm G (trm_var (avar_f x)) T
   | ty_call: forall G t T m U1 U2 V u,
       ty_trm G t T ->
       typ_has G T (dec_mtd m U2 V) ->
       ty_trm G u U1 ->
       subtyp G U1 U2 -> (* <-- explicit subsumption *)
-      wf_typ deep G V ->
+      wf_typ G V ->
       ty_trm G (trm_call t m u) V
   | ty_new: forall L G ds T u U,
       (forall x, x \notin L ->
-         ty_defs (G & x ~ T) (open_defs x ds) T) ->
+         ty_defs (G & x ~ (open_typ x T)) (open_defs x ds) (open_typ x T)) ->
       (forall x, x \notin L ->
-         ty_trm (G & x ~ T) (open_trm x u) U) ->
-      wf_typ deep G U -> (* <-- even stronger than x \notin fv_typ U *)
+         ty_trm (G & x ~ (open_typ x T)) (open_trm x u) U) ->
+      wf_typ G U -> (* <-- even stronger than x \notin fv_typ U *)
       ty_trm G (trm_new ds u) U
 with ty_def: ctx -> def -> dec -> Prop :=
   | ty_tdef: forall G L T U,
       subtyp G T U -> (* <-- only allow realizable bounds *)
       ty_def G (def_typ L T U) (dec_typ L T U)
   | ty_mdef: forall L m G T U1 U2 u,
-      wf_typ deep G T ->
+      wf_typ G T ->
       (forall x, x \notin L -> ty_trm (G & x ~ T) (open_trm x u) U1) ->
       subtyp G U1 U2 ->  (* <-- explicit subsumption *)
       ty_def G (def_mtd m T U2 u) (dec_mtd m T U2)
@@ -491,7 +482,6 @@ with ty_defs: ctx -> defs -> typ -> Prop :=
       ty_def G d D ->
       defs_hasnt ds (label_of_def d) -> (* <-- no duplicates *)
       ty_defs G (defs_cons ds d) (typ_and T (typ_rcd D)).
-
 
 (** *** Well-formed store *)
 Inductive wf_sto: sto -> ctx -> Prop :=
@@ -543,10 +533,6 @@ Scheme typ_has_mut := Induction for typ_has Sort Prop
 with typ_hasnt_mut := Induction for typ_hasnt Sort Prop.
 Combined Scheme typ_has_mutind from typ_has_mut, typ_hasnt_mut.
 
-Scheme wf_typ_mut := Induction for wf_typ Sort Prop
-with   wf_dec_mut := Induction for wf_dec Sort Prop.
-Combined Scheme wf_mutind from wf_typ_mut, wf_dec_mut.
-
 Scheme subtyp_mut := Induction for subtyp Sort Prop
 with   subdec_mut := Induction for subdec Sort Prop.
 Combined Scheme subtyp_mutind from subtyp_mut, subdec_mut.
@@ -575,6 +561,15 @@ Ltac gather_vars :=
 Ltac pick_fresh x :=
   let L := gather_vars in (pick_fresh_gen L x).
 
+Ltac destruct_wf :=
+  repeat match goal with
+  | W: wf_dec _ (dec_typ _ _ _) |- _ => inversions W
+  | W: wf_dec _ (dec_mtd _ _ _) |- _ => inversions W
+  | W: wf_typ _ (typ_rcd _)     |- _ => inversions W
+  | W: wf_typ _ (typ_and _ _)   |- _ => inversions W
+  | W: wf_typ _ (typ_or _ _)    |- _ => inversions W
+  end.
+
 Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
   apply_fresh_base T gather_vars x.
 
@@ -591,6 +586,195 @@ Proof.
   intros. rewrite dom_push in H. false H. rewrite in_union.
   left. rewrite in_singleton. reflexivity.
 Qed.
+
+(* Coinduction: See http://adam.chlipala.net/cpdt/html/Coinductive.html *)
+
+Section wf_coind.
+  Variable RT : ctx -> typ -> Prop.
+  Variable RD : ctx -> dec -> Prop.
+
+  Hypothesis CaseRcd: forall G D,
+    RT G (typ_rcd D) -> RD G D.
+
+  Hypothesis CaseSel: forall G a L,
+    RT G (typ_sel a L) -> 
+    exists x X T U, 
+      a = avar_f x /\
+      binds x X G /\
+      typ_has G X (dec_typ L T U) /\
+      RT G T /\
+      RT G U.
+
+  Hypothesis CaseAnd: forall G T1 T2,
+    RT G (typ_and T1 T2) ->
+    RT G T1 /\ RT G T2.
+
+  Hypothesis CaseOr: forall G T1 T2,
+    RT G (typ_or T1 T2) ->
+    RT G T1 /\ RT G T2.
+
+  Hypothesis CaseTmem: forall G L T U,
+    RD G (dec_typ L T U) ->
+    RT G T /\ RT G U.
+
+  Hypothesis CaseMtd: forall G m T U,
+    RD G (dec_mtd m T U) ->
+    RT G T /\ RT G U.
+
+  Theorem wf_typ_coind: forall G T,
+    RT G T -> wf_typ G T
+  with wf_dec_coind: forall G D,
+    RD G D -> wf_dec G D.
+  Proof.
+  - intros. destruct T.
+    + (* case wf_top *)
+      apply wf_top.
+    + (* case wf_bot *)
+      apply wf_bot.
+    + (* case wf_rcd *)
+      lets P: (CaseRcd H). apply wf_rcd. apply (wf_dec_coind _ _ P).
+    + (* case wf_sel *)
+      lets P: (CaseSel H). destruct P as [x [X [T [U [Eq [Bi [Has [R1 R2]]]]]]]].
+      subst a.
+      apply (wf_sel Bi Has).
+      * apply (wf_typ_coind _ _ R1).
+      * apply (wf_typ_coind _ _ R2).
+    + (* case wf_and *)
+      lets P: (CaseAnd H). destruct P as [R1 R2].
+      apply (wf_and (wf_typ_coind _ _ R1) (wf_typ_coind _ _ R2)).
+    + (* case wf_or *)
+      lets P: (CaseOr H). destruct P as [R1 R2].
+      apply (wf_or (wf_typ_coind _ _ R1) (wf_typ_coind _ _ R2)).
+  - intros. destruct D.
+    + (* case wf_tmem *)
+      lets P: (CaseTmem H). destruct P as [R1 R2].
+      apply (wf_tmem _ (wf_typ_coind _ _ R1) (wf_typ_coind _ _ R2)).
+    + (* case wf_mtd *)
+      lets P: (CaseMtd H). destruct P as [R1 R2].
+      apply (wf_mtd _ (wf_typ_coind _ _ R1) (wf_typ_coind _ _ R2)).
+  Qed.
+
+  Theorem wf_mut_coind:
+    (forall G T, RT G T -> wf_typ G T) /\
+    (forall G D, RD G D -> wf_dec G D).
+  Proof.
+    split; introv H.
+    - apply (wf_typ_coind H).
+    - apply (wf_dec_coind H).
+  Qed.
+End wf_coind.
+
+
+(* ###################################################################### *)
+(** ** Examples *)
+
+Ltac do_open :=
+  repeat match goal with
+  | _: _ |- context[open_avar _ _] => unfold open_avar; simpl
+  | _: _ |- context[open_typ  _ _] => unfold open_typ ; simpl
+  | _: _ |- context[open_dec  _ _] => unfold open_dec ; simpl
+  | _: _ |- context[open_trm  _ _] => unfold open_trm ; simpl
+  | _: _ |- context[open_def  _ _] => unfold open_def ; simpl
+  | _: _ |- context[open_defs _ _] => unfold open_defs; simpl
+  | _: _ |- context[(If _ = _ then _ else _)] => case_if; simpl
+  end.
+
+Ltac prove_defs_hasnt := solve [
+  repeat match goal with
+  | _: _ |- defs_hasnt _ _ => unfold defs_hasnt; simpl; auto
+  | _: _ |- context[(If _ = _ then _ else _)] => case_if; simpl; auto
+  end].
+
+Ltac split_ty_defs :=
+  repeat (prove_defs_hasnt || apply ty_defs_cons || apply ty_defs_nil).
+
+Ltac prove_binds := solve [
+  unfold binds; rewrite EnvOps.get_def; unfold get_impl;
+  repeat (rewrite <- cons_to_push || case_if); auto].
+
+(*
+val glob = new {
+  E: Top..Top,
+  Stream: Bot..{head: Top -> glob.E} /\ {tail: Top -> glob.Stream}
+};
+val unit = new {};
+val stream = new { head(x: Top): glob.E = unit, tail(x: Top): glob.Stream = stream };
+stream.tail(unit).tail(unit).head(unit)
+*)
+
+Module Examples1.
+
+Parameter E: typ_label.
+Parameter Stream: typ_label.
+Axiom E_ne_Stream: E <> Stream.
+Parameter head: mtd_label.
+Parameter tail: mtd_label.
+Axiom head_ne_tail: head <> tail.
+
+Definition ex1: trm :=
+trm_new (defs_cons (defs_cons defs_nil
+  (def_typ E typ_top typ_top))
+  (def_typ Stream typ_bot (typ_and
+       (typ_rcd (dec_mtd head typ_top (typ_sel (avar_b 0) E)))
+       (typ_rcd (dec_mtd tail typ_top (typ_sel (avar_b 0) Stream)))))
+)
+(trm_new defs_nil
+(trm_var (avar_b 0))).
+
+Fact tc1: ty_trm empty ex1 typ_top.
+Proof.
+  assert (ne1: label_typ E <> label_typ Stream). {
+    intro. inversions H. apply E_ne_Stream. assumption.
+  }
+  assert (ne2: label_mtd head <> label_mtd tail). {
+    intro. inversions H. apply head_ne_tail. assumption.
+  }
+  unfold ex1.
+  apply ty_new with \{} (typ_and (typ_and typ_top
+    (typ_rcd (dec_typ E typ_top typ_top)))
+    (typ_rcd (dec_typ Stream typ_bot (typ_and
+       (typ_rcd (dec_mtd head typ_top (typ_sel (avar_b 0) E)))
+       (typ_rcd (dec_mtd tail typ_top (typ_sel (avar_b 0) Stream))))))).
+  + intros glob _. do_open.
+    split_ty_defs.
+    - auto.
+    - apply ty_tdef. apply subtyp_bot.
+      rewrite concat_empty_l in *.
+      (* TStream = (typ_and
+              (typ_rcd (dec_mtd head typ_top (typ_sel (avar_f glob) E)))
+              (typ_rcd (dec_mtd tail typ_top (typ_sel (avar_f glob) Stream)))) *)
+      cofix. (* <--- coinduction *)
+      (* apply tc1. Guarded. <-- rejected, as expected *)
+      apply wf_and.
+      { apply wf_rcd. apply (wf_mtd _ (wf_top _)). eapply (wf_sel ((binds_single_eq _ _))).
+        + eauto.
+        + apply wf_top.
+        + apply wf_top. }
+      { apply wf_rcd. apply (wf_mtd _ (wf_top _)). eapply (wf_sel ((binds_single_eq _ _))).
+        + eauto.
+        + apply wf_bot.
+        + (* now we have to prove wf-ness of TStream again, but we're "guarded" now: *)
+          apply tc1. Guarded.
+          (* Note: If you want to make this proof nicer using
+              remember ...bla..long..type... as TName eqn: E
+             it won't work any more because of Coq's restrictions on where co-recursive
+             calls may occur (citing Chlipala):
+             "a co-recursive call must be a direct argument to a constructor, nested only
+              inside of other constructor calls or fun or match expressions"
+             So tc1 must not be passed to a normal function, but that's what the
+             "remember" tactic does.
+            *)
+      }
+ + intros glob _. do_open. apply ty_new with \{ glob } typ_top.
+   - intros unit N. split_ty_defs.
+   - intros unit N. do_open. apply ty_var.
+     * prove_binds.
+     * apply wf_top.
+   - apply wf_top.
+ + apply wf_top.
+Qed.
+
+End Examples1.
 
 
 (* ###################################################################### *)
@@ -837,6 +1021,7 @@ Qed.
 (* ###################################################################### *)
 (** ** Regularity of Typing *)
 
+(*
 Lemma wf_deep_to_any: forall m G T,
   wf_typ deep G T ->
   wf_typ m G T.
@@ -846,11 +1031,12 @@ Proof.
 Qed.
 
 Hint Resolve wf_deep_to_any.
+*)
 
 (* If a type is involved in a subtyping judgment, it is (deeply) well-formed. *)
 Lemma subtyping_regular:
-   (forall G T1 T2, subtyp G T1 T2 -> wf_typ deep G T1 /\ wf_typ deep G T2)
-/\ (forall G D1 D2, subdec G D1 D2 -> wf_dec      G D1 /\ wf_dec      G D2).
+   (forall G T1 T2, subtyp G T1 T2 -> wf_typ G T1 /\ wf_typ G T2)
+/\ (forall G D1 D2, subdec G D1 D2 -> wf_dec G D1 /\ wf_dec G D2).
 Proof.
   apply subtyp_mutind; intros; split; subst;
   repeat match goal with
@@ -864,6 +1050,7 @@ Qed.
 Definition subtyp_regular := proj1 subtyping_regular.
 Definition subdec_regular := proj2 subtyping_regular.
 
+(*
 Lemma strengthen_wf:
    (forall m G T, wf_typ m G T -> forall G1 x U G2,
     G = G1 & x ~ U & G2 ->
@@ -885,14 +1072,15 @@ Proof.
     specialize (IHU _ _ _ _ eq_refl).
     (* Does not hold because x0 \notin x.L does not imply x0 \notin T, U *)
 Abort.
+*)
 
 Lemma typing_regular:
    (forall G t T, ty_trm G t T ->
-      wf_typ deep G T)
+      wf_typ G T)
 /\ (forall G d D, ty_def G d D ->
       wf_dec G D)
 /\ (forall G ds T, ty_defs G ds T ->
-      wf_typ deep G T).
+      wf_typ G T).
 Proof.
   apply ty_mutind; intros; subst;
   repeat match goal with
@@ -911,6 +1099,102 @@ Definition ty_defs_regular := proj2 (proj2 typing_regular).
 
 (* ###################################################################### *)
 (** ** Weakening *)
+
+Lemma weaken_has:
+   (forall G T D, typ_has G T D -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    typ_has (G1 & G2 & G3) T D)
+/\ (forall G T l, typ_hasnt G T l -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    typ_hasnt (G1 & G2 & G3) T l).
+Proof.
+  apply typ_has_mutind.
+  + (* case typ_bot_has *) eauto.
+  + (* case typ_rcd_has *) eauto.
+  + (* case typ_sel_has *)
+    introv Bi THas IH1 HiHas IH2 Eq Ok. subst. lets Bi': (binds_weaken Bi Ok). eauto.
+  + (* case typ_and_has_1 *) eauto.
+  + (* case typ_and_has_2 *) eauto.
+  + (* case typ_and_has_12 *) eauto.
+  + (* case typ_or_has *) eauto.
+  + (* case typ_top_hasnt *) eauto.
+  + (* case typ_rcd_hasnt *) eauto.
+  + (* case typ_sel_hasnt *)
+    introv Bi THas IH1 HiHasnt IH2 Eq Ok. subst. lets Bi': (binds_weaken Bi Ok). eauto.
+  + (* case typ_and_hasnt *) eauto.
+  + (* case typ_or_hasnt_1 *) eauto.
+  + (* case typ_or_hasnt_2 *) eauto.
+Qed.
+
+Lemma test_wf_mut_coind:
+   (forall G T, False -> wf_typ G T)
+/\ (forall G D, False -> wf_dec G D).
+Proof.
+  apply wf_mut_coind.
+  (* case wf_rcd *)
+  - auto.
+  (* case wf_sel *)
+  - intros. exfalso. auto.
+  (* case wf_and *)
+  - intros. auto.
+  (* case wf_or *)
+  - intros. auto.
+  (* case wf_tmem *)
+  - intros. auto.
+  (* case wf_mtd *)
+  - intros. auto.
+Qed.
+
+Lemma weaken_wf:
+   (forall G T, (exists G1 G2 G3,
+      G = G1 & G2 & G3 /\
+      ok (G1 & G2 & G3) /\
+      wf_typ (G1 & G3) T) ->
+    wf_typ G T)
+/\ (forall G D, (exists G1 G2 G3,
+      G = G1 & G2 & G3 /\
+      ok (G1 & G2 & G3) /\
+      wf_dec (G1 & G3) D) ->
+    wf_dec G D).
+Proof.
+  apply wf_mut_coind;
+    introv H; destruct H as [G1 [G2 [G3 [Eq [Ok Wf]]]]]; subst; inversions Wf.
+  (* case wf_rcd *)
+  - do 3 eexists. eauto.
+  (* case wf_sel *)
+  - do 4 eexists.
+    lets Bi': (binds_weaken H1 Ok).
+    lets XHas': ((proj1 weaken_has) _ _ _ H2 _ _ _ eq_refl Ok).
+    repeat split; repeat eexists; eauto.
+  (* case wf_and *)
+  - split; repeat eexists; eauto.
+  (* case wf_or *)
+  - split; repeat eexists; eauto.
+  (* case wf_tmem *)
+  - split; repeat eexists; eauto.
+  (* case wf_mtd *)
+  - split; repeat eexists; eauto.
+Qed.
+
+Lemma weaken_wf_typ: forall G1 G2 G3 T,
+  wf_typ (G1 & G3) T ->
+  ok (G1 & G2 & G3) ->
+  wf_typ (G1 & G2 & G3) T.
+Proof.
+  introv Wf Ok. apply (proj1 weaken_wf). do 3 eexists; eauto.
+Qed.
+
+Print Assumptions weaken_wf_typ.
+
+Lemma weaken_wf_dec: forall G1 G2 G3 D,
+  wf_dec (G1 & G3) D ->
+  ok (G1 & G2 & G3) ->
+  wf_dec (G1 & G2 & G3) D.
+Proof.
+  introv Wf Ok. apply (proj2 weaken_wf). repeat eexists; eauto.
+Qed.
 
 Lemma weaken_subtyp_end: forall G1 G2 S U,
   ok (G1 & G2) -> 
@@ -986,10 +1270,17 @@ Qed.
 (* ###################################################################### *)
 (** ** typ_has/hasnt total *)
 
-Lemma typ_has_total: forall m G T, wf_typ m G T ->
+Lemma typ_has_total: forall G T, wf_typ G T ->
   forall l, typ_hasnt G T l \/ exists D, l = label_of_dec D /\ typ_has G T D.
 Proof.
-  introv Wf. induction Wf; intro l.
+  introv Wf.
+(* Oh no! We cannot do induction on wf_typ, because it's defined coinductively.
+   And we cannot do coinduction on the typ_has/hasnt in the conclusion, because
+   it's defined inductively.
+   --> ??? *)
+Admitted.
+(*
+  induction Wf; intro l.
   + (* case wf_top *)
     left. apply typ_top_hasnt.
   + (* case wf_bot *)
@@ -1045,7 +1336,7 @@ Proof.
 Qed.
 
 Print Assumptions typ_has_total.
-
+*)
 
 (* ###################################################################### *)
 (** ** Uniqueness *)
@@ -1223,7 +1514,7 @@ Qed.
 (* ###################################################################### *)
 (** ** Looks like rules, but follows from the rules *)
 
-(* take subtyp_and/or rules and replace "and" by "intersect", "or" by "union": *)
+(* take subtyp_and/or rules and replace "and" by "intersect", "or" by "union":
 
 Lemma subtyp_intersect : forall (G : ctx) (S T1 T2 : typ),
   subtyp G S T1 -> subtyp G S T2 -> subtyp G S (intersect_typ T1 T2).
@@ -1279,6 +1570,21 @@ Hint Resolve subtyp_intersect subtyp_intersect_l subtyp_intersect_r
 *)
 
 Hint Resolve subtyp_intersect subtyp_union.
+*)
+
+Lemma subdec_refl: forall G D,
+  wf_dec G D ->
+  subdec G D D.
+Proof.
+  introv Wf. inversions Wf; eauto.
+Qed.
+
+Lemma subdec_bot: forall G D,
+  wf_dec G D ->
+  subdec G (dec_bot (label_of_dec D)) D.
+Proof.
+  introv Wf. inversions Wf; simpl; eauto.
+Qed.
 
 Lemma subdec_intersect: forall G D0 D1 D2 D12,
   subdec G D0 D1 ->
@@ -1305,59 +1611,95 @@ Lemma subdec_intersect_l: forall G D1 D2 D12,
   wf_dec G D1 ->
   wf_dec G D12 ->
   subdec G D12 D1.
-Admitted.
-
-Lemma subdec_union_l: forall G D0 D1 D2 D12,
-  subdec G D0 D1 ->
-  D1 || D2 == D12 ->
-  wf_dec G D2 ->
-  subdec G D0 D12.
-Admitted. (*
 Proof.
-  introv Sd I Wf2. inversions Sd; destruct D2;
-  unfold union_dec in I; case_if; inversions I; simpl in *; inversions H1;
-  inversions Wf2.
-  - destruct (subtyp_regular H) as [WfLo2 WfLo1].
-    destruct (subtyp_regular H0) as [WfHi1 WfHi2].
-    apply subdec_typ.
-    * apply (subtyp_trans (subtyp_and_l WfLo2 H4) H).
-    * refine (subtyp_trans H0 (subtyp_or_l WfHi2 H6)).
- - destruct (subtyp_regular H) as [WfLo2 WfLo1].
-   destruct (subtyp_regular H0) as [WfHi1 WfHi2].
-    apply subdec_mtd.
-    * apply (subtyp_trans (subtyp_and_l WfLo2 H4) H).
-    * refine (subtyp_trans H0 (subtyp_or_l WfHi2 H6)).
+  introv Eq WfD1 WfD12. unfold intersect_dec in Eq. case_if.
+  destruct D1 as [L1 S1 U1 | m1 S1 U1];
+  destruct D2 as [L2 S2 U2 | m2 S2 U2];
+  inversions Eq;
+  destruct_wf;
+  eauto.
 Qed.
 
-Lemma subdec_union_r: forall G D0 D1 D2 D12,
-  subdec G D0 D2 ->
+Lemma subdec_intersect_r: forall G D1 D2 D12,
+  D1 && D2 == D12 ->
+  wf_dec G D2 ->
+  wf_dec G D12 ->
+  subdec G D12 D2.
+Proof.
+  introv Eq WfD2 WfD12. unfold intersect_dec in Eq. case_if.
+  destruct D1 as [L1 S1 U1 | m1 S1 U1];
+  destruct D2 as [L2 S2 U2 | m2 S2 U2];
+  inversions Eq;
+  inversions H;
+  destruct_wf;
+  eauto.
+Qed.
+
+Lemma subdec_union_l: forall G D1 D2 D12,
   D1 || D2 == D12 ->
   wf_dec G D1 ->
-  subdec G D0 D12.
+  wf_dec G D2 ->
+  subdec G D1 D12.
 Proof.
-  introv Sd I Wf2. inversions Sd; destruct D1;
-  unfold union_dec in I; case_if; inversions I; simpl in *; inversions H1;
-  inversions Wf2.
-  - destruct (subtyp_regular H) as [WfLo2 WfLo1].
-    destruct (subtyp_regular H0) as [WfHi1 WfHi2].
-    apply subdec_typ.
-    * refine (subtyp_trans (subtyp_and_r H4 WfLo2) H).
-    * refine (subtyp_trans H0 (subtyp_or_r H6 WfHi2)).
- - destruct (subtyp_regular H) as [WfLo2 WfLo1].
-   destruct (subtyp_regular H0) as [WfHi1 WfHi2].
-    apply subdec_mtd.
-    * refine (subtyp_trans (subtyp_and_r H4 WfLo2) H).
-    * refine (subtyp_trans H0 (subtyp_or_r H6 WfHi2)).
+  introv Eq Wf1 Wf2. unfold union_dec in Eq. case_if.
+  destruct D1 as [L1 S1 U1 | m1 S1 U1];
+  destruct D2 as [L2 S2 U2 | m2 S2 U2];
+  inversions Eq;
+  inversions H;
+  destruct_wf;
+  eauto.
 Qed.
-*)
+
+Lemma subdec_union_r: forall G D1 D2 D12,
+  D1 || D2 == D12 ->
+  wf_dec G D1 ->
+  wf_dec G D2 ->
+  subdec G D2 D12.
+Proof.
+  introv Eq Wf1 Wf2. unfold union_dec in Eq. case_if.
+  destruct D1 as [L1 S1 U1 | m1 S1 U1];
+  destruct D2 as [L2 S2 U2 | m2 S2 U2];
+  inversions Eq;
+  inversions H;
+  destruct_wf;
+  eauto.
+Qed.
 
 
 (* ###################################################################### *)
 (** ** subtyp-and-then-lookup_tdec to lookup_tdec-and-then-subdec *)
 
+Lemma intersect_dec_preserves_wf: forall G D1 D2 D3,
+  D1 && D2 == D3 ->
+  wf_dec G D1 ->
+  wf_dec G D2 ->
+  wf_dec G D3.
+Proof.
+  introv Eq Wf1 Wf2. unfold intersect_dec in Eq. case_if.
+  destruct D1 as [L1 S1 U1 | m1 S1 U1];
+  destruct D2 as [L2 S2 U2 | m2 S2 U2];
+  inversions Eq;
+  inversions Wf1; inversions Wf2;
+  eauto.
+Qed.
+
+Lemma union_dec_preserves_wf: forall G D1 D2 D3,
+  D1 || D2 == D3 ->
+  wf_dec G D1 ->
+  wf_dec G D2 ->
+  wf_dec G D3.
+Proof.
+  introv Eq Wf1 Wf2. unfold union_dec in Eq. case_if.
+  destruct D1 as [L1 S1 U1 | m1 S1 U1];
+  destruct D2 as [L2 S2 U2 | m2 S2 U2];
+  inversions Eq;
+  inversions Wf1; inversions Wf2;
+  eauto.
+Qed.
+
 Lemma typ_has_preserves_wf: forall G T D,
   typ_has G T D ->
-  wf_typ deep G T ->
+  wf_typ G T ->
   wf_dec G D.
 Proof.
   introv Has. induction Has; introv Wf.
@@ -1366,29 +1708,22 @@ Proof.
   + (* case typ_rcd_has *)
     inversions Wf. eauto.
   + (* case typ_sel_has *)
-    inversions Wf. lets Eq: (binds_func H H2). subst T.
-    assert (WfX: wf_typ deep G X) by admit. (* <-- doesn't hold !!! *)
-    apply IHHas2.
-    specialize (IHHas1 WfX). inversions IHHas1. assumption.
+    inversions Wf. (* <-- gives us full wf-ness of bounds, wouldn't be possible with
+      induction, so that's why we need to define wf_typ/wf_dec coinductively. *)
+    lets Eq: (binds_func H H2). subst T.
+    lets Eq: (typ_has_unique H3 Has1 eq_refl). inversions Eq.
+    apply IHHas2. assumption.
   + (* case typ_and_has_1 *)
     inversions Wf. eauto.
   + (* case typ_and_has_2 *)
     inversions Wf. eauto.
   + (* case typ_and_has_12 *)
-    inversions Wf. admit. (* TODO *)
+    inversions Wf. apply (intersect_dec_preserves_wf H); auto.
   + (* case typ_or_has *)
-    admit. (* TODO *)
-Abort.
-
-Lemma subdec2_to_label_of_dec_eq: forall G D1 D2,
-  subdec G D1 D2 \/ D1 = D2 \/ D1 = dec_bot (label_of_dec D2) ->
-  label_of_dec D1 = label_of_dec D2.
-Proof.
-  introv H. destruct H as [Sd | [Eq | Eq]].
-  - apply (subdec_to_label_of_dec_eq Sd).
-  - subst. reflexivity.
-  - rewrite Eq. destruct D2; reflexivity.
+    inversions Wf. apply (union_dec_preserves_wf H); auto.
 Qed.
+
+Print Assumptions typ_has_preserves_wf.
 
 Lemma subdec_trans: forall G D1 D2 D3,
   subdec G D1 D2 -> subdec G D2 D3 -> subdec G D1 D3.
@@ -1397,100 +1732,32 @@ Proof.
   solve [ assumption | (eapply subtyp_trans; eassumption)].
 Qed.
 
-Lemma subdec2_trans: forall G D1 D2 D3,
-  subdec G D1 D2 \/ D1 = D2 \/ D1 = dec_bot (label_of_dec D2) ->
-  subdec G D2 D3 \/ D2 = D3 \/ D2 = dec_bot (label_of_dec D3) ->
-  subdec G D1 D3 \/ D1 = D3 \/ D1 = dec_bot (label_of_dec D3).
-Proof.
-  introv H12 H23.
-  destruct H12 as [H12 | [H12 | H12]]; destruct H23 as [H23 | [H23 | H23]];
-  try solve [subst; auto].
-  - left. apply (subdec_trans H12 H23).
-  - (* oooops... doesn't hold ! *)
-Abort.
-
-Lemma intersect_dec_refl: forall D D2, D && D == D2 -> D = D2.
-Proof.
-  intros. unfold intersect_dec in H. case_if in H.
-  destruct D as [L S1 U1 | m S1 U1]; inversions H; unfold union_typ; unfold intersect_typ;
-  case_if; case_if; reflexivity.
-Qed.
-
-Lemma union_dec_refl: forall D D2, D || D == D2 -> D = D2.
-Proof.
-  intros. unfold union_dec in H. case_if in H.
-  destruct D as [L S1 U1 | m S1 U1]; inversions H; unfold union_typ; unfold intersect_typ;
-  case_if; case_if; reflexivity.
-Qed.
-
-Lemma subdec2_intersect: forall G D0 D1 D2 D12,
-  subdec G D0 D1 \/ D0 = D1 \/ D0 = dec_bot (label_of_dec D1) ->
-  subdec G D0 D2 \/ D0 = D2 \/ D0 = dec_bot (label_of_dec D2) ->
-  D1 && D2 == D12 ->
-  subdec G D0 D12 \/ D0 = D12 \/ D0 = dec_bot (label_of_dec D12).
-Proof.
-  introv Sd1 Sd2 Eq.
-  destruct (intersect_dec_label_eq _ _ Eq) as [Eq12 [Eq112 Eq212]].
-  destruct Sd1 as [Sd1 | [Sd1 | Sd1]]; destruct Sd2 as [Sd2 | [Sd2 | Sd2]].
-  - left. apply (subdec_intersect Sd1 Sd2 Eq).
-  - subst D2. left. inversions Sd1.
-    * destruct D12 as [L' Lo12 Hi12 | ]; unfold intersect_dec in Eq; case_if; inversions Eq.
-      apply subdec_typ.
-      + apply (subtyp_union H).
-        destruct (subtyp_regular H) as [_ Wf]. apply (subtyp_refl Wf).
-      + apply (subtyp_intersect H0).
-        destruct (subtyp_regular H0) as [Wf _]. apply (subtyp_refl Wf).
-    * destruct D12 as [| m' A R]; unfold intersect_dec in Eq; case_if; inversions Eq.
-      apply subdec_mtd.
-      + apply (subtyp_union H).
-        destruct (subtyp_regular H) as [_ Wf]. apply (subtyp_refl Wf).
-      + apply (subtyp_intersect H0).
-        destruct (subtyp_regular H0) as [Wf _]. apply (subtyp_refl Wf).
-  - rewrite Eq212 in Sd2. right. right. exact Sd2.
-  - subst D0. left. inversions Sd2.
-    * destruct D12 as [L' Lo12 Hi12 | ]; unfold intersect_dec in Eq; case_if; inversions Eq.
-      apply subdec_typ.
-      + refine (subtyp_union _ H).
-        destruct (subtyp_regular H) as [_ Wf]. apply (subtyp_refl Wf).
-      + refine (subtyp_intersect _ H0).
-        destruct (subtyp_regular H0) as [Wf _]. apply (subtyp_refl Wf).
-    * destruct D12 as [| m' A R]; unfold intersect_dec in Eq; case_if; inversions Eq.
-      apply subdec_mtd.
-      + refine (subtyp_union _ H).
-        destruct (subtyp_regular H) as [_ Wf]. apply (subtyp_refl Wf).
-      + refine (subtyp_intersect _ H0).
-        destruct (subtyp_regular H0) as [Wf _]. apply (subtyp_refl Wf).
-  - subst D0. subst D1. apply intersect_dec_refl in Eq. auto.
-  - subst D0. rewrite Eq212 in Sd2. auto.
-  - subst D0. rewrite Eq112. auto.
-  - subst D0. rewrite Eq112. auto.
-  - subst D0. rewrite Eq112. auto.
-Qed.
-
-Print Assumptions subdec2_intersect.
-
 Lemma swap_sub_and_typ_has: forall G T1 T2 D2,
   subtyp G T1 T2 ->
   typ_has G T2 D2 ->
   exists D1,
     typ_has G T1 D1 /\
-    (subdec G D1 D2 \/ D1 = D2 \/ D1 = dec_bot (label_of_dec D2)).
+    subdec G D1 D2.
 Proof.
   introv St. gen D2. induction St; introv T2Has.
   + (* case subtyp_refl *)
-    eexists. apply (conj T2Has). auto.
+    eexists. apply (conj T2Has). apply subdec_refl.
+    apply (typ_has_preserves_wf T2Has H).
   + (* case subtyp_top *)
     inversions T2Has.
   + (* case subtyp_bot *)
     rename T into T2.
     exists (dec_bot (label_of_dec D2)). split.
     - auto.
-    - right. right. reflexivity.
+    - apply subdec_bot. apply (typ_has_preserves_wf T2Has H).
   + (* case subtyp_rcd *)
     inversions T2Has. rename D0 into D2. exists D1. auto.
   + (* case subtyp_sel_l *)
     rename H into Bi, H0 into XHas.
-    exists D2. eauto.
+    exists D2. split.
+    - eauto.
+    - apply subdec_refl. apply (typ_has_preserves_wf T2Has).
+      apply (proj2 (subtyp_regular St)).
   + (* case subtyp_sel_r *)
     rename H into Bi, H0 into XHas.
     inversions T2Has.
@@ -1506,48 +1773,70 @@ Proof.
       specialize (IHSt1 _ U1Has). destruct IHSt1 as [D1 [THas Sd1]].
       specialize (IHSt2 _ U2Has). destruct IHSt2 as [D1' [THas' Sd2]].
       destruct (intersect_dec_label_eq _ _ Eq) as [Eq1 _].
-      lets Eql1: (subdec2_to_label_of_dec_eq Sd1).
-      lets Eql2: (subdec2_to_label_of_dec_eq Sd2).
+      lets Eql1: (subdec_to_label_of_dec_eq Sd1).
+      lets Eql2: (subdec_to_label_of_dec_eq Sd2).
       rewrite <- Eq1 in Eql2. rewrite <- Eql1 in Eql2.
       lets Eq': (typ_has_unique THas' THas Eql2). subst D1'. clear THas'.
       exists D1. apply (conj THas).
-      apply (subdec2_intersect Sd1 Sd2 Eq).
+      apply (subdec_intersect Sd1 Sd2 Eq).
   + (* case subtyp_and_l *)
     rename T2Has into T1Has, D2 into D1, H into WfT1, H0 into WfT2.
     lets T2Has: (typ_has_total WfT2). specialize (T2Has (label_of_dec D1)).
     destruct T2Has as [T2Hasnt | [D2 [Eq T2Has]]].
-    - exists D1. auto.
+    - exists D1. split.
+      * auto.
+      * apply subdec_refl. apply (typ_has_preserves_wf T1Has WfT1).
     - destruct (intersect_dec_total _ _ Eq) as [D12 Eq12]. exists D12. split.
       * eauto.
-      * left. apply (subdec_intersect_l _ Eq12).
-        admit. admit. (* !!! wf-less subtyp/subdec??? *)
+      * lets WfD1: (typ_has_preserves_wf T1Has WfT1).
+        lets WfD2: (typ_has_preserves_wf T2Has WfT2).
+        lets WfD12: (intersect_dec_preserves_wf Eq12 WfD1 WfD2).
+        apply (subdec_intersect_l _ Eq12 WfD1 WfD12).
   + (* case subtyp_and_r *)
-    admit.
+    rename H into WfT1, H0 into WfT2.
+    lets T1Has: (typ_has_total WfT1). specialize (T1Has (label_of_dec D2)).
+    destruct T1Has as [T1Hasnt | [D1 [Eq T1Has]]].
+    - exists D2. split.
+      * auto.
+      * apply subdec_refl. apply (typ_has_preserves_wf T2Has WfT2).
+    - symmetry in Eq.
+      destruct (intersect_dec_total _ _ Eq) as [D12 Eq12]. exists D12. split.
+      * eauto.
+      * lets WfD1: (typ_has_preserves_wf T1Has WfT1).
+        lets WfD2: (typ_has_preserves_wf T2Has WfT2).
+        lets WfD12: (intersect_dec_preserves_wf Eq12 WfD1 WfD2).
+        apply (subdec_intersect_r _ Eq12 WfD2 WfD12).
   + (* case subtyp_or *)
     rename T2Has into UHas.
     specialize (IHSt1 _ UHas). destruct IHSt1 as [D01 [T1Has Sd1]].
     specialize (IHSt2 _ UHas). destruct IHSt2 as [D02 [T2Has Sd2]].
-    lets Eql1: (subdec2_to_label_of_dec_eq Sd1).
-    lets Eql2: (subdec2_to_label_of_dec_eq Sd2).
+    lets Eql1: (subdec_to_label_of_dec_eq Sd1).
+    lets Eql2: (subdec_to_label_of_dec_eq Sd2).
     rewrite <- Eql2 in Eql1.
     destruct (union_dec_total _ _ Eql1) as [D12 Eq12]. exists D12. split.
     - apply (typ_or_has T1Has T2Has Eq12).
-    - admit.  (*!!! *)
+    - apply (subdec_union Sd1 Sd2 Eq12).
   + (* case subtyp_or_l *)
-    admit.
+    inversions T2Has. rename H3 into T1Has, H5 into T2Has, D2 into D12, D0 into D2.
+    exists D1. apply (conj T1Has). apply (subdec_union_l H7).
+    - apply (typ_has_preserves_wf T1Has H).
+    - apply (typ_has_preserves_wf T2Has H0).
   + (* case subtyp_or_r *)
-    admit.
+    inversions T2Has. rename H3 into T1Has, H5 into T2Has, D2 into D12, D0 into D2.
+    exists D2. apply (conj T2Has). apply (subdec_union_r H7).
+    - apply (typ_has_preserves_wf T1Has H).
+    - apply (typ_has_preserves_wf T2Has H0).
   + (* case subtyp_trans *)
     rename D2 into D3, T2Has into T3Has.
     specialize (IHSt2 _ T3Has).
     destruct IHSt2 as [D2 [T2Has Sd23]].
     specialize (IHSt1 _ T2Has).
     destruct IHSt1 as [D1 [T1Has Sd12]].
-    exists D1. apply (conj T1Has). apply (subdec2_trans Sd12 Sd23).
+    exists D1. apply (conj T1Has). apply (subdec_trans Sd12 Sd23).
 Qed.
 
-Print Assumptions swap_sub_and_typ_has. (* !! *)
-*)
+Print Assumptions swap_sub_and_typ_has. (* typ_has_total!! *)
+
 
 (* ###################################################################### *)
 (** ** Narrowing *)
@@ -1614,216 +1903,6 @@ Proof.
   + (* case typ_and_has_12 *) eauto.
   + (* case typ_or_has *) eauto.
 
-Qed.
-
-
-
-(* ###################################################################### *)
-(** ** subtyp-and-then-lookup_tdec to lookup_tdec-and-then-subdec *)
-
-(*
-Lemma swap_sub_and_typ_has_tdec: forall G T1 T2 L Lo2 Hi2,
-  subtyp G T1 T2 ->
-  typ_has_tdec G T2 L Lo2 Hi2 ->
-  exists Lo1 Hi1,
-    typ_has_tdec G T1 L Lo1 Hi1 /\
-    subtyp G Lo2 Lo1 /\
-    subtyp G Hi1 Hi2.
-Proof.
-  introv St. gen L Lo2 Hi2. induction St; introv T2Has.
-  + (* case subtyp_refl *)
-    do 2 eexists. apply (conj T2Has). auto.
-  + (* case subtyp_top *)
-    rename T into T1. (* T2 = typ_top *)
-    lets T1Has: (typ_has_tdec_total G T1 L). destruct T1Has as [Lo1 [Hi1 T1Has]].
-                (******************)
-    exists Lo1 Hi1.
-    unfold typ_has_tdec in T2Has; unfold lookup_tdec in T2Has.
-    destruct T2Has as [min2 T2Has]. specialize (T2Has (S min2) (Le.le_n_Sn min2)).
-    simpl in T2Has. inversions T2Has. auto.
-  + (* case subtyp_bot *)
-    exists typ_top typ_bot. repeat split; auto.
-    unfold typ_has_tdec. exists 1. intros. destruct fuel as [|fuel]; [omega | idtac].
-    reflexivity.
-  + (* case subtyp_tdec *)
-    unfold typ_has_tdec in T2Has; unfold lookup_tdec in T2Has.
-    destruct T2Has as [min2 T2Has]. specialize (T2Has (S min2) (Le.le_n_Sn min2)).
-    simpl in T2Has.
-    case_if.
-    - inversions T2Has. exists T1 U1.
-      repeat split; auto. unfold typ_has_tdec; unfold lookup_tdec. 
-      exists 1. intros. destruct fuel as [|fuel]; [omega | idtac].
-      case_if. reflexivity.
-    - inversions T2Has. exists typ_bot typ_top.
-      repeat split; auto. unfold typ_has_tdec; unfold lookup_tdec. 
-      exists 1. intros. destruct fuel as [|fuel]; [omega | idtac].
-      case_if. reflexivity.
-  + (* case subtyp_mdec *)
-    unfold typ_has_tdec in T2Has; unfold lookup_tdec in T2Has.
-    destruct T2Has as [min2 T2Has]. specialize (T2Has (S min2) (Le.le_n_Sn min2)).
-    simpl in T2Has. inversions T2Has.
-    exists typ_bot typ_top. repeat split; auto.
-    unfold typ_has_tdec; unfold lookup_tdec. 
-    exists 1. intros. destruct fuel as [|fuel]; [omega | idtac].
-    reflexivity.
-  + (* case subtyp_sel_l *)
-    rename H into Bi, H0 into XHas.
-    exists Lo2 Hi2. repeat split; auto.
-    unfold typ_has_tdec, lookup_tdec in XHas. destruct XHas as [minX XHas].
-    unfold typ_has_tdec, lookup_tdec in T2Has. destruct T2Has as [min2 T2Has].
-
-    unfold typ_has_tdec, lookup_tdec.
-    exists (S (S (max minX min2))). intros. destruct fuel as [|fuel]; [omega | idtac].
-    rewrite Bi.
-    destruct fuel as [|fuel]; [omega | idtac]. fold lookup_tdec.
-
-    specialize (XHas (S fuel)).
-    specialize (T2Has (S fuel)).
-
-    repeat match goal with
-    | Impl: ?Cond -> _ |- _ =>
-        let HC := fresh in
-        assert (HC: Cond) by (
-          let M1 := fresh in let M2 := fresh in
-          destruct (Max.max_spec minX min2) as [[M1 M2] | [M1 M2]];
-          omega
-        );
-        specialize (Impl HC);
-        clear HC
-    end.
-
-    simpl in *. fold lookup_tdec in *.
-    rewrite XHas. exact T2Has.
-  + (* case subtyp_sel_r *)
-    rename H into Bi, H0 into XHas.
-    apply IHSt. clear IHSt.
-
-    unfold typ_has_tdec in XHas. destruct XHas as [minX XHas].
-    unfold typ_has_tdec in T2Has; unfold lookup_tdec in T2Has.
-    destruct T2Has as [min2 T2Has].
-
-    unfold typ_has_tdec. exists (S (max minX min2)).
-    intros.
-    specialize (T2Has (S fuel)).
-    specialize (XHas fuel).
-
-    repeat match goal with
-    | Impl: ?Cond -> _ |- _ =>
-        let HC := fresh in
-        assert (HC: Cond) by (
-          let M1 := fresh in let M2 := fresh in
-          destruct (Max.max_spec minX min2) as [[M1 M2] | [M1 M2]];
-          omega
-        );
-        specialize (Impl HC);
-        clear HC
-    end.
-
-    simpl in T2Has. rewrite Bi in T2Has. simpl in T2Has. fold lookup_tdec in T2Has.
-    rewrite XHas in T2Has. exact T2Has.
-  + (* case subtyp_and *)
-    destruct (typ_has_tdec_total G U1 L) as [LoU1 [HiU1 U1Has]].
-    destruct (typ_has_tdec_total G U2 L) as [LoU2 [HiU2 U2Has]].
-    specialize (IHSt1 _ _ _ U1Has). destruct IHSt1 as [Lo1 [Hi1 [THas [StLoU1 StHiU1]]]].
-    specialize (IHSt2 _ _ _ U2Has). destruct IHSt2 as [Lo1' [Hi1' [THas' [StLoU2 StHiU2]]]].
-    destruct (typ_has_tdec_unique THas THas') as [Eq1 Eq2]. subst Lo1' Hi1'. clear THas'.
-    unfold typ_has_tdec in U1Has, U2Has.
-    destruct U1Has as [minU1 U1Has].
-    destruct U2Has as [minU2 U2Has].
-
-    unfold typ_has_tdec, lookup_tdec in T2Has. destruct T2Has as [min2 T2Has].
-    specialize (T2Has (S (max min2 (max minU1 minU2)))).
-    specialize (U1Has    (max min2 (max minU1 minU2)) ).
-    specialize (U2Has    (max min2 (max minU1 minU2)) ).
-    
-    repeat match goal with
-    | Impl: ?Cond -> _ |- _ =>
-        let HC := fresh in
-        assert (HC: Cond) by (
-          let M1 := fresh in let M2 := fresh in
-          destruct (Max.max_spec minU1 minU2) as [[M1 M2] | [M1 M2]];
-          let M3 := fresh in let M4 := fresh in
-          destruct (Max.max_spec min2 (max minU1 minU2)) as [[M3 M4] | [M3 M4]];
-          omega
-        );
-        specialize (Impl HC);
-        clear HC
-    end.
-
-    simpl in T2Has. fold lookup_tdec in T2Has.
-    rewrite U1Has in T2Has. rewrite U2Has in T2Has.
-    inversions T2Has.
-    exists Lo1 Hi1. apply (conj THas).
-    auto.
-  + (* case subtyp_and_l *)
-    rename Lo2 into Lo1, Hi2 into Hi1, T2Has into T1Has.
-    destruct (typ_has_tdec_total G T2 L) as [Lo2 [Hi2 T2Has]].
-    exists (union_typ Lo1 Lo2) (intersect_typ Hi1 Hi2).
-    auto.
-  + (* case subtyp_and_r *)
-    destruct (typ_has_tdec_total G T1 L) as [Lo1 [Hi1 T1Has]].
-    exists (union_typ Lo1 Lo2) (intersect_typ Hi1 Hi2).
-    auto.
-  + (* case subtyp_or *)
-    rename T2Has into UHas.
-    specialize (IHSt1 _ _ _ UHas). destruct IHSt1 as [LoT1 [HiT1 [T1Has [StLoT1 StHiT1]]]].
-    specialize (IHSt2 _ _ _ UHas). destruct IHSt2 as [LoT2 [HiT2 [T2Has [StLoT2 StHiT2]]]].
-    exists (intersect_typ LoT1 LoT2) (union_typ HiT1 HiT2).
-    auto.
-  + (* case subtyp_or_l *)
-    rename T2Has into T12Has, Lo2 into Lo, Hi2 into Hi.
-    apply invert_typ_or_has_tdec in T12Has.
-    destruct T12Has as [Lo1 [Hi1 [Lo2 [Hi2 [T1Has [T2Has [Eq1 Eq2]]]]]]]. subst.
-    exists Lo1 Hi1. auto.
-  + (* case subtyp_or_r *)
-    rename T2Has into T12Has, Lo2 into Lo, Hi2 into Hi.
-    apply invert_typ_or_has_tdec in T12Has.
-    destruct T12Has as [Lo1 [Hi1 [Lo2 [Hi2 [T1Has [T2Has [Eq1 Eq2]]]]]]]. subst.
-    exists Lo2 Hi2. auto.
-  + (* case subtyp_trans *)
-    rename Lo2 into Lo3, Hi2 into Hi3, T2Has into T3Has.
-    specialize (IHSt2 _ _ _ T3Has).
-    destruct IHSt2 as [Lo2 [Hi2 [T2Has [StLo23 StHi23]]]].
-    specialize (IHSt1 _ _ _ T2Has).
-    destruct IHSt1 as [Lo1 [Hi1 [T1Has [StLo12 StHi12]]]].
-    exists Lo1 Hi1. apply (conj T1Has). split.
-    - apply (subtyp_trans StLo23 StLo12).
-    - apply (subtyp_trans StHi12 StHi23).
-Qed.
-
-Print Assumptions swap_sub_and_typ_has_tdec. (* typ_has_tdec_total!! *)
-*)
-
-
-(* ###################################################################### *)
-(** ** Helpers *)
-
-
-(* ###################################################################### *)
-(** ** Narrowing *)
-
-Lemma narrow_binds: forall G1 x0 S1 S2 G2 x T2,
-  binds x T2 (G1 & x0 ~ S2 & G2) ->
-  subtyp (G1 & x0 ~ S1) S1 S2 ->
-  exists T1,
-    binds x T1 (G1 & x0 ~ S1 & G2) /\
-    subtyp (G1 & x0 ~ S1 & G2) T1 T2.
-Proof.
-  introv Bi StS.
-  apply binds_middle_inv in Bi.
-  destruct Bi as [Bi | [[xG2 [Eq1 Eq2]]|[xG2 [Ne Bi]]]].
-  - (* case x in G2 *)
-    apply (binds_concat_right (G1 & x0 ~ S1)) in Bi.
-    exists T2. auto.
-  - (* case x = x0 *)
-    subst x0 T2. exists S1.
-    assert (Ok1: ok (G1 & x ~ S1 & G2)) by admit.
-    apply (conj (binds_middle_eq _ _ xG2)).
-    apply (weaken_subtyp_end Ok1 StS).
-  - (* case x in G1 *)
-    exists T2. refine (conj _ (subtyp_refl _ _)).
-    assert (xx0: x # (x0 ~ S1)) by auto.
-    apply (binds_concat_left (binds_concat_left Bi xx0) xG2).
 Qed.
 
 
