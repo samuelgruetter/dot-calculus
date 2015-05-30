@@ -353,7 +353,7 @@ with typ_hasnt: ctx -> typ -> label -> Prop :=
       typ_hasnt G (typ_or T1 T2) l.
 
 (* wf means "well-formed", not "well-founded" ;-) *)
-CoInductive wf_typ: ctx -> typ -> Prop :=
+Inductive wf_typ: ctx -> typ -> Prop :=
   | wf_top: forall G,
       wf_typ G typ_top
   | wf_bot: forall G,
@@ -533,6 +533,10 @@ Scheme typ_has_mut := Induction for typ_has Sort Prop
 with typ_hasnt_mut := Induction for typ_hasnt Sort Prop.
 Combined Scheme typ_has_mutind from typ_has_mut, typ_hasnt_mut.
 
+Scheme wf_typ_mut := Induction for wf_typ Sort Prop
+with   wf_dec_mut := Induction for wf_dec Sort Prop.
+Combined Scheme wf_mutind from wf_typ_mut, wf_dec_mut.
+
 Scheme subtyp_mut := Induction for subtyp Sort Prop
 with   subdec_mut := Induction for subdec Sort Prop.
 Combined Scheme subtyp_mutind from subtyp_mut, subdec_mut.
@@ -586,83 +590,6 @@ Proof.
   intros. rewrite dom_push in H. false H. rewrite in_union.
   left. rewrite in_singleton. reflexivity.
 Qed.
-
-(* Coinduction: See http://adam.chlipala.net/cpdt/html/Coinductive.html *)
-
-Section wf_coind.
-  Variable RT : ctx -> typ -> Prop.
-  Variable RD : ctx -> dec -> Prop.
-
-  Hypothesis CaseRcd: forall G D,
-    RT G (typ_rcd D) -> RD G D.
-
-  Hypothesis CaseSel: forall G a L,
-    RT G (typ_sel a L) -> 
-    exists x X T U, 
-      a = avar_f x /\
-      binds x X G /\
-      typ_has G X (dec_typ L T U) /\
-      RT G T /\
-      RT G U.
-
-  Hypothesis CaseAnd: forall G T1 T2,
-    RT G (typ_and T1 T2) ->
-    RT G T1 /\ RT G T2.
-
-  Hypothesis CaseOr: forall G T1 T2,
-    RT G (typ_or T1 T2) ->
-    RT G T1 /\ RT G T2.
-
-  Hypothesis CaseTmem: forall G L T U,
-    RD G (dec_typ L T U) ->
-    RT G T /\ RT G U.
-
-  Hypothesis CaseMtd: forall G m T U,
-    RD G (dec_mtd m T U) ->
-    RT G T /\ RT G U.
-
-  Theorem wf_typ_coind: forall G T,
-    RT G T -> wf_typ G T
-  with wf_dec_coind: forall G D,
-    RD G D -> wf_dec G D.
-  Proof.
-  - intros. destruct T.
-    + (* case wf_top *)
-      apply wf_top.
-    + (* case wf_bot *)
-      apply wf_bot.
-    + (* case wf_rcd *)
-      lets P: (CaseRcd H). apply wf_rcd. apply (wf_dec_coind _ _ P).
-    + (* case wf_sel *)
-      lets P: (CaseSel H). destruct P as [x [X [T [U [Eq [Bi [Has [R1 R2]]]]]]]].
-      subst a.
-      apply (wf_sel Bi Has).
-      * apply (wf_typ_coind _ _ R1).
-      * apply (wf_typ_coind _ _ R2).
-    + (* case wf_and *)
-      lets P: (CaseAnd H). destruct P as [R1 R2].
-      apply (wf_and (wf_typ_coind _ _ R1) (wf_typ_coind _ _ R2)).
-    + (* case wf_or *)
-      lets P: (CaseOr H). destruct P as [R1 R2].
-      apply (wf_or (wf_typ_coind _ _ R1) (wf_typ_coind _ _ R2)).
-  - intros. destruct D.
-    + (* case wf_tmem *)
-      lets P: (CaseTmem H). destruct P as [R1 R2].
-      apply (wf_tmem _ (wf_typ_coind _ _ R1) (wf_typ_coind _ _ R2)).
-    + (* case wf_mtd *)
-      lets P: (CaseMtd H). destruct P as [R1 R2].
-      apply (wf_mtd _ (wf_typ_coind _ _ R1) (wf_typ_coind _ _ R2)).
-  Qed.
-
-  Theorem wf_mut_coind:
-    (forall G T, RT G T -> wf_typ G T) /\
-    (forall G D, RD G D -> wf_dec G D).
-  Proof.
-    split; introv H.
-    - apply (wf_typ_coind H).
-    - apply (wf_dec_coind H).
-  Qed.
-End wf_coind.
 
 
 (* ###################################################################### *)
@@ -736,15 +663,15 @@ Proof.
        (typ_rcd (dec_mtd head typ_top (typ_sel (avar_b 0) E)))
        (typ_rcd (dec_mtd tail typ_top (typ_sel (avar_b 0) Stream))))))).
   + intros glob _. do_open.
+    remember (typ_and
+               (typ_rcd (dec_mtd head typ_top (typ_sel (avar_f glob) E)))
+               (typ_rcd (dec_mtd tail typ_top (typ_sel (avar_f glob) Stream))))
+    as TStream eqn: EqTStream.
     split_ty_defs.
     - auto.
     - apply ty_tdef. apply subtyp_bot.
       rewrite concat_empty_l in *.
-      (* TStream = (typ_and
-              (typ_rcd (dec_mtd head typ_top (typ_sel (avar_f glob) E)))
-              (typ_rcd (dec_mtd tail typ_top (typ_sel (avar_f glob) Stream)))) *)
-      cofix. (* <--- coinduction *)
-      (* apply tc1. Guarded. <-- rejected, as expected *)
+      rewrite EqTStream at 2.
       apply wf_and.
       { apply wf_rcd. apply (wf_mtd _ (wf_top _)). eapply (wf_sel ((binds_single_eq _ _))).
         + eauto.
@@ -753,17 +680,8 @@ Proof.
       { apply wf_rcd. apply (wf_mtd _ (wf_top _)). eapply (wf_sel ((binds_single_eq _ _))).
         + eauto.
         + apply wf_bot.
-        + (* now we have to prove wf-ness of TStream again, but we're "guarded" now: *)
-          apply tc1. Guarded.
-          (* Note: If you want to make this proof nicer using
-              remember ...bla..long..type... as TName eqn: E
-             it won't work any more because of Coq's restrictions on where co-recursive
-             calls may occur (citing Chlipala):
-             "a co-recursive call must be a direct argument to a constructor, nested only
-              inside of other constructor calls or fun or match expressions"
-             So tc1 must not be passed to a normal function, but that's what the
-             "remember" tactic does.
-            *)
+        + (* Oh no! We have to prove wf-ness of TStream again! -> Cycle! *)
+          admit. (*!!!*)
       }
  + intros glob _. do_open. apply ty_new with \{ glob } typ_top.
    - intros unit N. split_ty_defs.
@@ -1128,54 +1046,22 @@ Proof.
   + (* case typ_or_hasnt_2 *) eauto.
 Qed.
 
-Lemma test_wf_mut_coind:
-   (forall G T, False -> wf_typ G T)
-/\ (forall G D, False -> wf_dec G D).
-Proof.
-  apply wf_mut_coind.
-  (* case wf_rcd *)
-  - auto.
-  (* case wf_sel *)
-  - intros. exfalso. auto.
-  (* case wf_and *)
-  - intros. auto.
-  (* case wf_or *)
-  - intros. auto.
-  (* case wf_tmem *)
-  - intros. auto.
-  (* case wf_mtd *)
-  - intros. auto.
-Qed.
-
 Lemma weaken_wf:
-   (forall G T, (exists G1 G2 G3,
-      G = G1 & G2 & G3 /\
-      ok (G1 & G2 & G3) /\
-      wf_typ (G1 & G3) T) ->
-    wf_typ G T)
-/\ (forall G D, (exists G1 G2 G3,
-      G = G1 & G2 & G3 /\
-      ok (G1 & G2 & G3) /\
-      wf_dec (G1 & G3) D) ->
-    wf_dec G D).
+   (forall G T, wf_typ G T -> forall G1 G2 G3,
+      G = G1 & G3 ->
+      ok (G1 & G2 & G3) ->
+      wf_typ (G1 & G2 & G3) T)
+/\ (forall G D, wf_dec G D -> forall G1 G2 G3,
+      G = G1 & G3 ->
+      ok (G1 & G2 & G3) ->
+      wf_dec (G1 & G2 & G3) D).
 Proof.
-  apply wf_mut_coind;
-    introv H; destruct H as [G1 [G2 [G3 [Eq [Ok Wf]]]]]; subst; inversions Wf.
-  (* case wf_rcd *)
-  - do 3 eexists. eauto.
+  apply wf_mutind; eauto.
   (* case wf_sel *)
-  - do 4 eexists.
-    lets Bi': (binds_weaken H1 Ok).
-    lets XHas': ((proj1 weaken_has) _ _ _ H2 _ _ _ eq_refl Ok).
-    repeat split; repeat eexists; eauto.
-  (* case wf_and *)
-  - split; repeat eexists; eauto.
-  (* case wf_or *)
-  - split; repeat eexists; eauto.
-  (* case wf_tmem *)
-  - split; repeat eexists; eauto.
-  (* case wf_mtd *)
-  - split; repeat eexists; eauto.
+  introv Bi XHas WfT IHT WFU IHU Eq Ok. subst G.
+  lets Bi': (binds_weaken Bi Ok).
+  lets XHas': ((proj1 weaken_has) _ _ _ XHas _ _ _ eq_refl Ok).
+  repeat split; repeat eexists; eauto.
 Qed.
 
 Lemma weaken_wf_typ: forall G1 G2 G3 T,
@@ -1183,7 +1069,7 @@ Lemma weaken_wf_typ: forall G1 G2 G3 T,
   ok (G1 & G2 & G3) ->
   wf_typ (G1 & G2 & G3) T.
 Proof.
-  introv Wf Ok. apply (proj1 weaken_wf). do 3 eexists; eauto.
+  introv Wf Ok. eapply (proj1 weaken_wf); eauto.
 Qed.
 
 Print Assumptions weaken_wf_typ.
@@ -1193,7 +1079,7 @@ Lemma weaken_wf_dec: forall G1 G2 G3 D,
   ok (G1 & G2 & G3) ->
   wf_dec (G1 & G2 & G3) D.
 Proof.
-  introv Wf Ok. apply (proj2 weaken_wf). repeat eexists; eauto.
+  introv Wf Ok. eapply (proj2 weaken_wf); eauto.
 Qed.
 
 Lemma weaken_subtyp_end: forall G1 G2 S U,
