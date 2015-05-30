@@ -2033,37 +2033,6 @@ Proof.
 Qed.
 
 
-Lemma narrow_typ_has_tdec: forall G1 x S1 S2 G2 T L Lo2 Hi2,
-  typ_has_tdec (G1 & x ~ S2 & G2) T L Lo2 Hi2 ->
-  subtyp (G1 & x ~ S1) S1 S2 ->
-  exists Lo1 Hi1,
-    typ_has_tdec (G1 & x ~ S1 & G2) T L Lo1 Hi1 /\
-    subtyp (G1 & x ~ S1 & G2) Lo2 Lo1 /\
-    subtyp (G1 & x ~ S1 & G2) Hi1 Hi2.
-(*
-Proof.
-  introv THas2 StS. unfold typ_has_tdec in THas2. destruct THas2 as [minF THas2].
-  gen StS. gen THas2. gen G1 x S1 S2 G2 T L Lo2 Hi2. induction minF; introv THas2 StS.
-  - specialize (THas2 0 (Le.le_refl _)). unfold lookup_tdec in THas2. inversions THas2.
-    lets THas1: (typ_has_tdec_total (G1 & x ~ S1 & G2) T L).
-                (******************)
-    destruct THas1 as [Lo1 [Hi1 THas1]].
-    exists Lo1 Hi1. apply (conj THas1). auto. 
-  - 
-*)
-Proof.
-  introv THas2 StS. unfold typ_has_tdec in THas2. destruct THas2 as [minF THas2].
-  induction minF.
-  - specialize (THas2 0 (Le.le_refl _)). unfold lookup_tdec in THas2. inversions THas2.
-    lets THas1: (typ_has_tdec_total (G1 & x ~ S1 & G2) T L).
-                (******************)
-    destruct THas1 as [Lo1 [Hi1 THas1]].
-    exists Lo1 Hi1. apply (conj THas1). auto.
-  - apply IHminF. intros. destruct (classicT (minF = fuel)) as [Eq | Ne].
-    * admit. (*???*)
-    * assert (C: S minF <= fuel) by omega. apply (THas2 _ C).   
-Qed.
-
 Lemma narrow_subtyp: forall G T1 T2, subtyp G T1 T2 ->
   forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
