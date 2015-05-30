@@ -352,38 +352,56 @@ with typ_hasnt: ctx -> typ -> label -> Prop :=
       typ_hasnt G T2 l ->
       typ_hasnt G (typ_or T1 T2) l.
 
-(* wf means "well-formed", not "well-founded" ;-) *)
-Inductive wf_typ: ctx -> typ -> Prop :=
-  | wf_top: forall G,
-      wf_typ G typ_top
-  | wf_bot: forall G,
-      wf_typ G typ_bot
-  | wf_rcd: forall G D,
-      wf_dec G D ->
-      wf_typ G (typ_rcd D)
-  | wf_sel: forall G x X L T U,
+(* wf means "well-formed", not "well-founded" ;-)
+   G; A |- T wf       G: context
+                      A: assumptions (set of types assumed to be wf)
+                      T: type to check
+
+Let's distinguish between "computational types" and "non-expansive types" the same
+way as Julien Cretin does in his thesis:
+Computational types are those which have a corresponding constructor on term level,
+i.e. only typ_rcd.
+Non-expansive types are those which are just "aliases" [in a broad sense ;-)],
+i.e. bounds of path types and/or-types.
+Since we only want to allow guarded recursion, only the rules for compuational types
+add the type being checked to the assumptions (i.e. only wf_rcd). *)
+Inductive wf_typ_impl: ctx -> fset typ -> typ -> Prop :=
+  | wf_top: forall G A,
+      wf_typ_impl G A typ_top
+  | wf_bot: forall G A,
+      wf_typ_impl G A typ_bot
+  | wf_hyp: forall G A T,
+      T \in A ->
+      wf_typ_impl G A T
+  | wf_rcd: forall G A D,
+      wf_dec_impl G (A \u \{(typ_rcd D)}) D ->
+      wf_typ_impl G A (typ_rcd D)
+  | wf_sel: forall G A x X L T U,
       binds x X G ->
       typ_has G X (dec_typ L T U) ->
-      wf_typ G T ->
-      wf_typ G U ->
-      wf_typ G (typ_sel (avar_f x) L)
-  | wf_and: forall G T1 T2,
-      wf_typ G T1 ->
-      wf_typ G T2 ->
-      wf_typ G (typ_and T1 T2)
-  | wf_or: forall G T1 T2,
-      wf_typ G T1 ->
-      wf_typ G T2 ->
-      wf_typ G (typ_or T1 T2)
-with wf_dec: ctx -> dec -> Prop :=
-  | wf_tmem: forall G L Lo Hi,
-      wf_typ G Lo ->
-      wf_typ G Hi ->
-      wf_dec G (dec_typ L Lo Hi)
-  | wf_mtd: forall G m A R,
-      wf_typ G A ->
-      wf_typ G R ->
-      wf_dec G (dec_mtd m A R).
+      wf_typ_impl G A T ->
+      wf_typ_impl G A U ->
+      wf_typ_impl G A (typ_sel (avar_f x) L)
+  | wf_and: forall G A T1 T2,
+      wf_typ_impl G A T1 ->
+      wf_typ_impl G A T2 ->
+      wf_typ_impl G A (typ_and T1 T2)
+  | wf_or: forall G A T1 T2,
+      wf_typ_impl G A T1 ->
+      wf_typ_impl G A T2 ->
+      wf_typ_impl G A (typ_or T1 T2)
+with wf_dec_impl: ctx -> fset typ -> dec -> Prop :=
+  | wf_tmem: forall G A L Lo Hi,
+      wf_typ_impl G A Lo ->
+      wf_typ_impl G A Hi ->
+      wf_dec_impl G A (dec_typ L Lo Hi)
+  | wf_mtd: forall G A m U V,
+      wf_typ_impl G A U ->
+      wf_typ_impl G A V ->
+      wf_dec_impl G A (dec_mtd m U V).
+
+Notation wf_typ G T := (wf_typ_impl G \{} T).
+Notation wf_dec G D := (wf_dec_impl G \{} D).
 
 Inductive subtyp: ctx -> typ -> typ -> Prop :=
   | subtyp_refl: forall G T,
@@ -533,8 +551,8 @@ Scheme typ_has_mut := Induction for typ_has Sort Prop
 with typ_hasnt_mut := Induction for typ_hasnt Sort Prop.
 Combined Scheme typ_has_mutind from typ_has_mut, typ_hasnt_mut.
 
-Scheme wf_typ_mut := Induction for wf_typ Sort Prop
-with   wf_dec_mut := Induction for wf_dec Sort Prop.
+Scheme wf_typ_mut := Induction for wf_typ_impl Sort Prop
+with   wf_dec_mut := Induction for wf_dec_impl Sort Prop.
 Combined Scheme wf_mutind from wf_typ_mut, wf_dec_mut.
 
 Scheme subtyp_mut := Induction for subtyp Sort Prop
@@ -574,12 +592,17 @@ Ltac destruct_wf :=
   | W: wf_typ _ (typ_or _ _)    |- _ => inversions W
   end.
 
+Ltac in_empty_contradiction :=
+  solve [match goal with
+  | H: _ \in \{} |- _ => rewrite in_empty in H; exfalso; exact H
+  end].
+
 Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
   apply_fresh_base T gather_vars x.
 
 Hint Constructors
   typ_has typ_hasnt
-  wf_typ wf_dec
+  wf_typ_impl wf_dec_impl
   subtyp subdec
   ty_trm ty_def ty_defs.
 Hint Constructors wf_sto.
@@ -591,9 +614,7 @@ Proof.
   left. rewrite in_singleton. reflexivity.
 Qed.
 
-
-(* ###################################################################### *)
-(** ** Examples *)
+(** *** Tactics for the examples *)
 
 Ltac do_open :=
   repeat match goal with
@@ -618,6 +639,10 @@ Ltac split_ty_defs :=
 Ltac prove_binds := solve [
   unfold binds; rewrite EnvOps.get_def; unfold get_impl;
   repeat (rewrite <- cons_to_push || case_if); auto].
+
+
+(* ###################################################################### *)
+(** ** Examples *)
 
 (*
 val glob = new {
@@ -673,15 +698,25 @@ Proof.
       rewrite concat_empty_l in *.
       rewrite EqTStream at 2.
       apply wf_and.
-      { apply wf_rcd. apply (wf_mtd _ (wf_top _)). eapply (wf_sel ((binds_single_eq _ _))).
+      { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+        eapply (wf_sel ((binds_single_eq _ _))).
         + eauto.
         + apply wf_top.
         + apply wf_top. }
-      { apply wf_rcd. apply (wf_mtd _ (wf_top _)). eapply (wf_sel ((binds_single_eq _ _))).
+      { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+        eapply (wf_sel ((binds_single_eq _ _))).
         + eauto.
         + apply wf_bot.
-        + (* Oh no! We have to prove wf-ness of TStream again! -> Cycle! *)
-          admit. (*!!!*)
+        + rewrite EqTStream at 2.
+          apply wf_and.
+          { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+            eapply (wf_sel ((binds_single_eq _ _))).
+            + eauto.
+            + apply wf_top.
+            + apply wf_top. }
+          { (* Can just use the assumption (corresponds to using the assumption obtained
+               by applying the cofix tactic) *)
+            apply wf_hyp. rewrite union_empty_l. rewrite in_singleton. reflexivity. } 
       }
  + intros glob _. do_open. apply ty_new with \{ glob } typ_top.
    - intros unit N. split_ty_defs.
@@ -691,6 +726,8 @@ Proof.
    - apply wf_top.
  + apply wf_top.
 Qed.
+
+Print Assumptions tc1.
 
 End Examples1.
 
@@ -937,60 +974,104 @@ Qed.
 
 
 (* ###################################################################### *)
-(** ** Regularity of Typing *)
+(** ** Growing and shrinking the assumptions of wf *)
 
-(*
-Lemma wf_deep_to_any: forall m G T,
-  wf_typ deep G T ->
-  wf_typ m G T.
+Lemma add_hyps_to_wf: forall A2,
+   (forall G A1 T, wf_typ_impl G A1 T -> wf_typ_impl G (A1 \u A2) T) 
+/\ (forall G A1 D, wf_dec_impl G A1 D -> wf_dec_impl G (A1 \u A2) D).
 Proof.
-  introv WfT. gen_eq m20: deep. induction WfT; intro Eq; subst; destruct m; eauto.
-  discriminate.
+  intro A2. apply wf_mutind; eauto.
+  + (* case wf_hyp *)
+    intros. apply wf_hyp. rewrite in_union. auto.
+  + (* case wf_rcd *)
+    intros G A1 D WfD IH.
+    rewrite <- union_assoc in *.
+    rewrite (union_comm \{ typ_rcd D } A2) in *.
+    rewrite union_assoc in *.
+    eauto.
 Qed.
 
-Hint Resolve wf_deep_to_any.
-*)
+Definition add_hyps_to_wf_typ(G: ctx)(A1 A2: fset typ) := (proj1 (add_hyps_to_wf A2)) G A1.
+Definition add_hyps_to_wf_dec(G: ctx)(A1 A2: fset typ) := (proj2 (add_hyps_to_wf A2)) G A1.
+
+Lemma remove_hyp_from_wf: forall G U, wf_typ G U ->
+   (forall G' A T, wf_typ_impl G' A T -> G' = G -> wf_typ_impl G (A \- \{ U }) T) 
+/\ (forall G' A D, wf_dec_impl G' A D -> G' = G -> wf_dec_impl G (A \- \{ U }) D).
+Proof.
+  introv WfU. apply wf_mutind; eauto.
+  + (* case wf_hyp *)
+    introv In Eq. subst G0.
+    destruct (classicT (T = U)) as [Eq | Ne].
+    - subst T. rewrite <- (union_empty_l (A \- \{ U })). apply add_hyps_to_wf. exact WfU.
+    - apply wf_hyp. rewrite in_remove. apply (conj In). rewrite notin_singleton. exact Ne.
+  + (* case wf_rcd *)
+    introv WfD IH Eq. subst G0. specialize (IH eq_refl).
+    destruct (classicT (typ_rcd D = U)) as [Eq | Ne].
+    - rewrite <- (union_empty_l (A \- \{ U })). subst U. apply add_hyps_to_wf. exact WfU.
+    - assert (Eq: (A \u \{ typ_rcd D }) \- \{ U} = (A \- \{ U } \u \{ typ_rcd D})). {
+        apply fset_extens; unfold subset; intros X H;
+        repeat (rewrite in_remove in * || rewrite in_union in *).
+        + auto_star.
+        + destruct H as [[H1 H2] | H].
+          - auto.
+          - rewrite in_singleton in H. subst X. split.
+            * right. rewrite in_singleton. reflexivity.
+            * rewrite notin_singleton. exact Ne.
+      }
+      rewrite Eq in IH.
+      apply (wf_rcd IH).
+  + (* case wf_sel *)
+    intros G0 A x X L Lo Hi Bi XHas WfLo IHLo WfHi IHHi Eq. subst G0. eauto.
+Qed.
+
+Print Assumptions remove_hyp_from_wf.
+
+Lemma singleton_remove: forall (T: Type) (v: T),
+  \{ v } \- \{ v } = \{}.
+Proof.
+  intros. apply fset_extens; unfold subset; intros.
+  - rewrite in_remove in H. destruct H as [H1 H2]. rewrite in_singleton in H1. subst.
+    exfalso. rewrite notin_singleton in H2. apply H2. reflexivity.
+  - exfalso. apply (notin_empty H).
+Qed.
+
+Lemma remove_hyp_from_wf_dec: forall G D,
+  wf_dec_impl G (\{} \u \{ typ_rcd D}) D ->
+  wf_typ G (typ_rcd D) ->
+  wf_dec G D.
+Proof.
+  introv Wf1 Wf2.
+  lets P: (proj2 (remove_hyp_from_wf Wf2)).
+  specialize (P _ _ _ Wf1 eq_refl).
+  rewrite union_empty_l in P. rewrite singleton_remove in P. exact P.
+Qed.
+
+
+(* ###################################################################### *)
+(** ** Regularity of Typing *)
 
 (* If a type is involved in a subtyping judgment, it is (deeply) well-formed. *)
 Lemma subtyping_regular:
    (forall G T1 T2, subtyp G T1 T2 -> wf_typ G T1 /\ wf_typ G T2)
 /\ (forall G D1 D2, subdec G D1 D2 -> wf_dec G D1 /\ wf_dec G D2).
 Proof.
-  apply subtyp_mutind; intros; split; subst;
-  repeat match goal with
-  | H: _ /\ _ |- _ => destruct H
-  | H: wf_dec _ (dec_typ _ _ _) |- _ => inversions H
-  | H: wf_dec _ (dec_mtd _ _ _) |- _ => inversions H
-  end;
-  eauto.
+  apply subtyp_mutind;
+  try solve [
+    intros; split; subst;
+    repeat match goal with
+    | H: _ /\ _ |- _ => destruct H
+    | H: wf_dec _ (dec_typ _ _ _) |- _ => inversions H
+    | H: wf_dec _ (dec_mtd _ _ _) |- _ => inversions H
+    end;
+    eauto
+  ].
+  (* case wf_rcd *)
+  introv Sd Wf. destruct Wf as [Wf1 Wf2].
+  split; apply wf_rcd; apply add_hyps_to_wf_dec; assumption.
 Qed.
 
 Definition subtyp_regular := proj1 subtyping_regular.
 Definition subdec_regular := proj2 subtyping_regular.
-
-(*
-Lemma strengthen_wf:
-   (forall m G T, wf_typ m G T -> forall G1 x U G2,
-    G = G1 & x ~ U & G2 ->
-    x \notin fv_typ T ->
-    wf_typ m (G1 & G2) T)
-/\ (forall G D, wf_dec G D -> forall G1 x U G2,
-    G = G1 & x ~ U & G2 ->
-    x \notin fv_dec D ->
-    wf_dec (G1 & G2) D).
-Proof.
-  apply wf_mutind.
-  + (* case wf_top *) eauto.
-  + (* case wf_bot *) eauto.
-  + (* case wf_rcd_deep *) eauto.
-  + (* case wf_rcd_shallow *) eauto.
-  + (* case wf_sel *)
-    introv Bi Has WfT IHT WfU IHU Eq N. subst.
-    specialize (IHT _ _ _ _ eq_refl).
-    specialize (IHU _ _ _ _ eq_refl).
-    (* Does not hold because x0 \notin x.L does not imply x0 \notin T, U *)
-Abort.
-*)
 
 Lemma typing_regular:
    (forall G t T, ty_trm G t T ->
@@ -1000,14 +1081,20 @@ Lemma typing_regular:
 /\ (forall G ds T, ty_defs G ds T ->
       wf_typ G T).
 Proof.
-  apply ty_mutind; intros; subst;
-  repeat match goal with
-  | H: _ /\ _ |- _ => destruct H
-  | H: wf_dec _ (dec_typ _ _ _) |- _ => inversions H
-  | H: wf_dec _ (dec_mtd _ _ _) |- _ => inversions H
-  | H: subtyp _ _ _ |- _ => apply subtyp_regular in H
-  end;
-  eauto.
+  apply ty_mutind;
+  try solve [
+    intros; subst;
+    repeat match goal with
+    | H: _ /\ _ |- _ => destruct H
+    | H: wf_dec _ (dec_typ _ _ _) |- _ => inversions H
+    | H: wf_dec _ (dec_mtd _ _ _) |- _ => inversions H
+    | H: subtyp _ _ _ |- _ => apply subtyp_regular in H
+    end;
+    eauto
+  ].
+  (* case ty_defs_cons *)
+  introv Tyds WfT TyD WfD Hasnt.
+  apply (wf_and WfT). apply wf_rcd. apply add_hyps_to_wf_dec; assumption.
 Qed.
 
 Definition ty_trm_regular  := proj1        typing_regular.
@@ -1047,14 +1134,14 @@ Proof.
 Qed.
 
 Lemma weaken_wf:
-   (forall G T, wf_typ G T -> forall G1 G2 G3,
+   (forall G A T, wf_typ_impl G A T -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
-      wf_typ (G1 & G2 & G3) T)
-/\ (forall G D, wf_dec G D -> forall G1 G2 G3,
+      wf_typ_impl (G1 & G2 & G3) A T)
+/\ (forall G A D, wf_dec_impl G A D -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
-      wf_dec (G1 & G2 & G3) D).
+      wf_dec_impl (G1 & G2 & G3) A D).
 Proof.
   apply wf_mutind; eauto.
   (* case wf_sel *)
@@ -1503,6 +1590,7 @@ Proof.
   destruct D2 as [L2 S2 U2 | m2 S2 U2];
   inversions Eq;
   destruct_wf;
+  try in_empty_contradiction;
   eauto.
 Qed.
 
@@ -1518,6 +1606,7 @@ Proof.
   inversions Eq;
   inversions H;
   destruct_wf;
+  try in_empty_contradiction;
   eauto.
 Qed.
 
@@ -1592,21 +1681,34 @@ Proof.
   + (* case typ_bot_has *)
     destruct l; simpl; eauto.
   + (* case typ_rcd_has *)
-    inversions Wf. eauto.
+    inversion Wf; subst.
+    - in_empty_contradiction.
+    - apply (remove_hyp_from_wf_dec H2 Wf).
+            (**********************)
   + (* case typ_sel_has *)
-    inversions Wf. (* <-- gives us full wf-ness of bounds, wouldn't be possible with
-      induction, so that's why we need to define wf_typ/wf_dec coinductively. *)
-    lets Eq: (binds_func H H2). subst T.
-    lets Eq: (typ_has_unique H3 Has1 eq_refl). inversions Eq.
-    apply IHHas2. assumption.
+    inversions Wf. (* <-- gives us full wf-ness of bounds, wouldn't be possible
+      without the assumption-set-based wf-judgment because it would require infinite
+      proof trees for recursive types. *)
+    - in_empty_contradiction.
+    - lets Eq: (binds_func H H2). subst T.
+      lets Eq: (typ_has_unique H3 Has1 eq_refl). inversions Eq.
+      apply IHHas2. assumption.
   + (* case typ_and_has_1 *)
-    inversions Wf. eauto.
+    inversions Wf.
+    - in_empty_contradiction.
+    - eauto.
   + (* case typ_and_has_2 *)
-    inversions Wf. eauto.
+    inversions Wf.
+    - in_empty_contradiction.
+    - eauto.
   + (* case typ_and_has_12 *)
-    inversions Wf. apply (intersect_dec_preserves_wf H); auto.
+    inversions Wf.
+    - in_empty_contradiction.
+    - apply (intersect_dec_preserves_wf H); auto.
   + (* case typ_or_has *)
-    inversions Wf. apply (union_dec_preserves_wf H); auto.
+    inversions Wf.
+    - in_empty_contradiction.
+    - apply (union_dec_preserves_wf H); auto.
 Qed.
 
 Print Assumptions typ_has_preserves_wf.
