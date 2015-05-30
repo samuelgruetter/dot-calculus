@@ -1243,43 +1243,32 @@ Qed.
 (* ###################################################################### *)
 (** ** typ_has/hasnt total *)
 
-Lemma typ_has_total: forall G T, wf_typ G T ->
+Lemma typ_has_total_impl: forall G A T, wf_typ_impl G A T -> A = \{} ->
   forall l, typ_hasnt G T l \/ exists D, l = label_of_dec D /\ typ_has G T D.
 Proof.
-  introv Wf.
-(* Oh no! We cannot do induction on wf_typ, because it's defined coinductively.
-   And we cannot do coinduction on the typ_has/hasnt in the conclusion, because
-   it's defined inductively.
-   --> ??? *)
-Admitted.
-(*
-  induction Wf; intro l.
+  introv Wf. induction Wf; intros Eq l; subst.
   + (* case wf_top *)
     left. apply typ_top_hasnt.
   + (* case wf_bot *)
     right. exists (dec_bot l). split.
     - destruct l; reflexivity.
     - apply typ_bot_has.
-  + (* case wf_rcd_deep *)
-    destruct (classicT (l = label_of_dec D)) as [Eq | Ne].
-    - right. exists D. split.
-      * apply Eq.
-      * apply typ_rcd_has.
-    - left. apply (typ_rcd_hasnt _ _ Ne).
-  + (* case wf_rcd_shallow  *)
+  + (* case wf_hyp *)
+    in_empty_contradiction.
+  + (* case wf_rcd *)
     destruct (classicT (l = label_of_dec D)) as [Eq | Ne].
     - right. exists D. split.
       * apply Eq.
       * apply typ_rcd_has.
     - left. apply (typ_rcd_hasnt _ _ Ne).
   + (* case wf_sel *)
-    specialize (IHWf2 l). destruct IHWf2 as [UHasnt | [D [Eq UHas]]].
+    specialize (IHWf2 eq_refl l). destruct IHWf2 as [UHasnt | [D [Eq UHas]]].
     - left. apply (typ_sel_hasnt H H0 UHasnt).
     - right. exists D. split.
       * apply Eq.
       * apply (typ_sel_has H H0 UHas).
   + (* case wf_and *)
-    specialize (IHWf1 l). specialize (IHWf2 l).
+    specialize (IHWf1 eq_refl l). specialize (IHWf2 eq_refl l).
     destruct IHWf1 as [T1Hasnt | [D1 [Eq1 T1Has]]];
     destruct IHWf2 as [T2Hasnt | [D2 [Eq2 T2Has]]].
     - left. apply (typ_and_hasnt T1Hasnt T2Hasnt).
@@ -1294,7 +1283,7 @@ Admitted.
       apply (conj (proj32 (intersect_dec_label_eq _ _ Eq))).
       apply (typ_and_has_12 T1Has T2Has Eq).
   + (* case wf_or *)
-    specialize (IHWf1 l). specialize (IHWf2 l).
+    specialize (IHWf1 eq_refl l). specialize (IHWf2 eq_refl l).
     destruct IHWf1 as [T1Hasnt | [D1 [Eq1 T1Has]]];
     destruct IHWf2 as [T2Hasnt | [D2 [Eq2 T2Has]]].
     - left. apply (typ_or_hasnt_1 _ T1Hasnt).
@@ -1308,8 +1297,14 @@ Admitted.
       apply (typ_or_has T1Has T2Has Eq).
 Qed.
 
+Lemma typ_has_total: forall G T, wf_typ G T ->
+  forall l, typ_hasnt G T l \/ exists D, l = label_of_dec D /\ typ_has G T D.
+Proof.
+  intros. apply* typ_has_total_impl.
+Qed.
+
 Print Assumptions typ_has_total.
-*)
+
 
 (* ###################################################################### *)
 (** ** Uniqueness *)
@@ -1825,7 +1820,7 @@ Proof.
     exists D1. apply (conj T1Has). apply (subdec_trans Sd12 Sd23).
 Qed.
 
-Print Assumptions swap_sub_and_typ_has. (* typ_has_total!! *)
+Print Assumptions swap_sub_and_typ_has.
 
 
 (* ###################################################################### *)
