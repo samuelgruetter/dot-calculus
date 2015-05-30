@@ -1782,6 +1782,7 @@ Proof.
   + (* case subtyp_and_l *)
     rename T2Has into T1Has, D2 into D1, H into WfT1, H0 into WfT2.
     lets T2Has: (typ_has_total WfT2). specialize (T2Has (label_of_dec D1)).
+                (*************)
     destruct T2Has as [T2Hasnt | [D2 [Eq T2Has]]].
     - exists D1. split.
       * auto.
@@ -1795,6 +1796,7 @@ Proof.
   + (* case subtyp_and_r *)
     rename H into WfT1, H0 into WfT2.
     lets T1Has: (typ_has_total WfT1). specialize (T1Has (label_of_dec D2)).
+                (*************)
     destruct T1Has as [T1Hasnt | [D1 [Eq T1Has]]].
     - exists D2. split.
       * auto.
