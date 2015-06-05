@@ -1874,6 +1874,8 @@ Proof.
   - subst. reflexivity.
 Qed.
 
+(* Nothing changed --> conclusion doesn't give wf-ness
+   Something changed --> conclusion gives wf-ness *)
 Lemma narrow_has:
    (forall G T D2, typ_has G T D2 -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
@@ -1885,7 +1887,8 @@ Lemma narrow_has:
     G = G1 & x ~ S2 & G2 ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     typ_hasnt (G1 & x ~ S1 & G2) T l 
-    \/ exists D, label_of_dec D = l /\ typ_has (G1 & x ~ S1 & G2) T D).
+    \/ exists D, label_of_dec D = l /\
+                 typ_has (G1 & x ~ S1 & G2) T D /\ wf_dec (G1 & x ~ S1 & G2) D).
 Proof.
   apply typ_has_mutind.
   + (* case typ_bot_has *)
@@ -1951,7 +1954,7 @@ Proof.
     specialize (IH2 _ _ _ _ _ eq_refl St).
     destruct IH1 as [D1' [T1Has Sd1]].
     lets Eql1: (subdec2_to_label_of_dec_eq Sd1).
-    destruct IH2 as [T2Hasnt | [D2 [Eql2 T2Has]]].
+    destruct IH2 as [T2Hasnt | [D2 [Eql2 [T2Has WfD2]]]].
     - exists D1'.
       rewrite <- Eql1 in T2Hasnt.
       split.
@@ -1961,10 +1964,16 @@ Proof.
       exists D12. split.
       * apply (typ_and_has_12 T1Has T2Has Eq).
       * destruct Sd1 as [Sd1 | Eq1].
-        { left. refine (subdec_trans _ Sd1). apply (subdec_intersect_l _ Eq).
-          + apply (proj1 (subdec_regular Sd1)).
-          + admit. (* <-------- ????????? *) }
-        { subst D1'. left. apply (subdec_intersect_l _ Eq).
+        { left. refine (subdec_trans _ Sd1).
+          lets WfD1': (proj1 (subdec_regular Sd1)).
+          lets WfD12: (intersect_dec_preserves_wf Eq WfD1' WfD2).
+           apply (subdec_intersect_l _ Eq WfD1' WfD12). }
+        { subst D1'.
+          (* No change in D1 --> no wf-ness for D2,
+             change in D2 --> WfD2.
+             So overall we have a change, so we need to prove subdec, so
+             we need wf-ness for both! *)
+          left. apply (subdec_intersect_l _ Eq).
           + admit. (* <-------- ????????? *)
           + admit. (* <-------- ????????? *) }
   + (* case typ_and_has_2 *)
@@ -1997,13 +2006,17 @@ Proof.
                  (**************)
         lets P: (typ_has_total WfHi0 l). destruct P as [Hasnt | Has].
         { left. apply (typ_sel_hasnt Bi1 X1Has Hasnt). }
-        { right. destruct Has as [D [Eq Has]]. exists D. eauto. }
+        { right. destruct Has as [D [Eq Has]].
+          lets WfD: (typ_has_preserves_wf Has WfHi0).
+          exists D. eauto. }
       * subst X1. rename X2 into X, X2Has into XHas.
         destruct (subtyp_regular StHi12) as [WfHi1 _].
                  (**************)
         lets P: (typ_has_total WfHi1 l). destruct P as [Hasnt | Has].
         { left. apply (typ_sel_hasnt Bi1 XHas Hasnt). }
-        { right. destruct Has as [D [Eq Has]]. exists D. eauto. }
+        { right. destruct Has as [D [Eq Has]].
+          lets WfD: (typ_has_preserves_wf Has WfHi1).
+          exists D. eauto. }
     - subst D0.
       lets N: (narrow_binds H St). destruct N as [X1 [Bi1 StX]].
       destruct StX as [StX | Eq].
@@ -2016,32 +2029,35 @@ Proof.
                  (**************)
         lets P: (typ_has_total WfHi0 l). destruct P as [Hasnt | Has].
         { left. apply (typ_sel_hasnt Bi1 X1Has Hasnt). }
-        { right. destruct Has as [D [Eq Has]]. exists D. eauto. }
+        { right. destruct Has as [D [Eq Has]].
+          lets WfD: (typ_has_preserves_wf Has WfHi0).
+          exists D. eauto. }
       * subst X1. rename X2 into X, X2Has into XHas.
-        destruct IH2 as [Hi2Hasnt | [D [Eq Hi2Has]]].
+        destruct IH2 as [Hi2Hasnt | [D [Eq [Hi2Has WfD2]]]].
         { left. apply (typ_sel_hasnt Bi1 XHas Hi2Hasnt). }
         { right. exists D. eauto. }
   + (* case typ_and_hasnt *)
     introv _ IH1 _ IH2 Eq St. subst G.
     specialize (IH1 _ _ _ _ _ eq_refl St).
     specialize (IH2 _ _ _ _ _ eq_refl St).
-    destruct IH1 as [T1Hasnt | [D1 [Eq1 T1Has]]];
-    destruct IH2 as [T2Hasnt | [D2 [Eq2 T2Has]]]; subst.
+    destruct IH1 as [T1Hasnt | [D1 [Eq1 [T1Has WfD1]]]];
+    destruct IH2 as [T2Hasnt | [D2 [Eq2 [T2Has WfD2]]]]; subst.
     - left. eauto.
-    - right. exists D2. apply (conj eq_refl). apply (typ_and_has_2 T1Hasnt T2Has).
-    - right. exists D1. apply (conj eq_refl). apply (typ_and_has_1 T1Has T2Hasnt).
+    - right. exists D2. apply (conj eq_refl). eauto.
+    - right. exists D1. apply (conj eq_refl). eauto.
     - right. symmetry in Eq2. destruct (intersect_dec_total _ _ Eq2) as [D12 Eq].
       exists D12. split.
       * destruct (intersect_dec_label_eq _ _ Eq) as [Eq12 [Eq112 Eq212]].
         symmetry. assumption.
-      * apply (typ_and_has_12 T1Has T2Has Eq). 
+      * apply (conj (typ_and_has_12 T1Has T2Has Eq)).
+        apply (intersect_dec_preserves_wf Eq WfD1 WfD2).
   + (* case typ_or_hasnt_1 *)
     introv Hasnt1 IH1 Has2 IH2 Eq St. subst.
     specialize (IH1 _ _ _ _ _ eq_refl St).
     specialize (IH2 _ _ _ _ _ eq_refl St).
     destruct IH2 as [D2 [T2Has Sd]].
     lets Eq: (subdec2_to_label_of_dec_eq Sd).
-    destruct IH1 as [T1Hasnt | [D1 [Eq1 T1Has]]].
+    destruct IH1 as [T1Hasnt | [D1 [Eq1 [T1Has WfD1]]]].
     - left.
       rewrite <- Eq. refine (typ_or_hasnt_1 _ T2Has).
       rewrite Eq. apply T1Hasnt.
@@ -2049,7 +2065,15 @@ Proof.
       exists D12. destruct (union_dec_label_eq _ _ EqD) as [Eql1 [Eql2 Eql3]].
       split.
       * rewrite <- Eql3. apply Eq.
-      * apply (typ_or_has T1Has T2Has EqD).
+      * apply (conj (typ_or_has T1Has T2Has EqD)).
+        destruct Sd as [Sd | EqD2].
+        { lets WfD2: (proj1 (subdec_regular Sd)).
+          apply (union_dec_preserves_wf EqD WfD1 WfD2). }
+        { subst D.
+          apply (union_dec_preserves_wf EqD WfD1).
+          (* D1 changed from Hasnt to Has --> we have WfD1
+             D2 remained unchanged --> no wf-ness for D2!! *)
+          admit. (* <------- ????? *) }
   + (* case typ_or_hasnt_2 *)
     introv Has1 IH1 Hasnt2 IH2 Eq St. subst.
     specialize (IH1 _ _ _ _ _ eq_refl St).
