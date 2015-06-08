@@ -345,12 +345,21 @@ with typ_hasnt: ctx -> typ -> label -> Prop :=
       typ_hasnt G T1 l ->
       typ_hasnt G T2 l ->
       typ_hasnt G (typ_and T1 T2) l
-  | typ_or_hasnt_1: forall G T1 T2 l,
+(* could also just have two typ_or_hasnt rules, which only explore 1 type, but for
+   the proofs, it's better to always explore both types *)
+  | typ_or_hasnt_1: forall G T1 T2 D,
+      typ_hasnt G T1 (label_of_dec D) ->
+      typ_has G T2 D ->
+      typ_hasnt G (typ_or T1 T2) (label_of_dec D)
+  | typ_or_hasnt_2: forall G T1 T2 D,
+      typ_has G T1 D ->
+      typ_hasnt G T2 (label_of_dec D) ->
+      typ_hasnt G (typ_or T1 T2) (label_of_dec D)
+  | typ_or_hasnt_12: forall G T1 T2 l,
       typ_hasnt G T1 l ->
-      typ_hasnt G (typ_or T1 T2) l
-  | typ_or_hasnt_2: forall G T1 T2 l,
       typ_hasnt G T2 l ->
       typ_hasnt G (typ_or T1 T2) l.
+
 
 (* wf means "well-formed", not "well-founded" ;-)
    G; A |- T wf       G: context
@@ -1173,6 +1182,7 @@ Proof.
   + (* case typ_and_hasnt *) eauto.
   + (* case typ_or_hasnt_1 *) eauto.
   + (* case typ_or_hasnt_2 *) eauto.
+  + (* case typ_or_hasnt_12 *) eauto.
 Qed.
 
 Lemma weaken_has_middle: forall G1 G2 G3 T D,
@@ -1596,9 +1606,13 @@ Proof.
   + (* case typ_and_hasnt *)
     intros. subst. apply typ_and_hasnt; eauto.
   + (* case typ_or_hasnt_1 *)
-    intros. subst. apply typ_or_hasnt_1; eauto.
+    intros. subst. rewrite (subst_label_of_dec x y D) in *.
+    apply typ_or_hasnt_1; eauto.
   + (* case typ_or_hasnt_2 *)
-    intros. subst. apply typ_or_hasnt_2; eauto.
+    intros. subst. rewrite (subst_label_of_dec x y D) in *.
+    apply typ_or_hasnt_2; eauto.
+  + (* case typ_or_hasnt_12 *)
+    intros. subst. apply typ_or_hasnt_12; eauto.
 Qed.
 
 Print Assumptions subst_has_hasnt.
@@ -2024,9 +2038,9 @@ Proof.
     specialize (IHWf1 eq_refl l). specialize (IHWf2 eq_refl l).
     destruct IHWf1 as [T1Hasnt | [D1 [Eq1 T1Has]]];
     destruct IHWf2 as [T2Hasnt | [D2 [Eq2 T2Has]]].
-    - left. apply (typ_or_hasnt_1 _ T1Hasnt).
-    - left. apply (typ_or_hasnt_1 _ T1Hasnt).
-    - left. apply (typ_or_hasnt_2 _ T2Hasnt).
+    - left. apply (typ_or_hasnt_12 T1Hasnt T2Hasnt).
+    - left. subst. apply (typ_or_hasnt_1 T1Hasnt T2Has).
+    - left. subst. apply (typ_or_hasnt_2 T1Has T2Hasnt).
     - right.
       lets Eq12: Eq2. rewrite Eq1 in Eq12.
       destruct (union_dec_total D1 D2 Eq12) as [D12 Eq].
@@ -2165,9 +2179,11 @@ Proof.
     destruct (union_dec_label_eq _ _ e) as [Eq12 [Eq13 Eq23]].
     introv T12Hasnt. inversions T12Hasnt.
     - destruct IH1 as [_ IH1].
-      rewrite Eq13 in IH1. apply (IH1 H3).
+      rewrite Eq13 in IH1. rewrite H2 in H3. apply (IH1 H3).
     - destruct IH2 as [_ IH2].
-      rewrite Eq23 in IH2. apply (IH2 H3).
+      rewrite Eq23 in IH2. rewrite H2 in H4. apply (IH2 H4).
+    - destruct IH1 as [_ IH1].
+      rewrite Eq13 in IH1. apply (IH1 H2).
   + (* case typ_top_hasnt *)
     introv Eq Has. inversions Has.
   + (* case typ_rcd_hasnt *)
@@ -2186,13 +2202,17 @@ Proof.
     - destruct (intersect_dec_label_eq _ _ H5) as [Eq12 [Eq1 Eq2]].
       rewrite <- Eq1 in *. apply (IH1 _ eq_refl H1).
   + (* case typ_or_hasnt_1 *)
-    introv T1Hasnt IH Eq Has'. inversions Has'.
+    introv T1Hasnt IH1 T2Has IH2 Eq Has'. inversions Has'.
     destruct (union_dec_label_eq _ _ H5) as [Eq12 [Eq1 Eq2]].
-    rewrite <- Eq1 in *. apply (IH _ eq_refl H1).
+    rewrite <- Eq1 in *. apply (IH1 _ Eq H1).
   + (* case typ_or_hasnt_2 *)
-    introv T2Hasnt IH Eq Has'. inversions Has'.
+    introv T1Has IH1 T2Hasnt IH2 Eq Has'. inversions Has'.
     destruct (union_dec_label_eq _ _ H5) as [Eq12 [Eq1 Eq2]].
-    rewrite <- Eq2 in *. apply (IH _ eq_refl H3).
+    rewrite <- Eq1 in *. refine (IH2 _ _ H3). rewrite Eq. exact Eq12.
+  + (* case typ_or_hasnt_12 *)
+    introv T1Hasnt IH1 T2Hasnt IH2 Eq Has'. inversions Has'.
+    destruct (union_dec_label_eq _ _ H5) as [Eq12 [Eq1 Eq2]].
+    rewrite <- Eq2 in *. refine (IH2 _ eq_refl H3).
 Qed.
 
 Print Assumptions typ_has_unique_and_not_hasnt.
@@ -2737,16 +2757,51 @@ Proof.
       exists D12. split.
       * destruct (intersect_dec_label_eq _ _ Eq) as [Eq12 [Eq112 Eq212]].
         symmetry. assumption.
-      * apply (typ_and_has_12 T1Has T2Has Eq). 
+      * apply (typ_and_has_12 T1Has T2Has Eq).
   + (* case typ_or_hasnt_1 *)
-    introv _ IH1 Eq Wf St. subst.
+    introv Hasnt1 IH1 Has2 IH2 Eq Wf St. subst.
     specialize (IH1 _ _ _ _ _ eq_refl Wf St).
+    specialize (IH2 _ _ _ _ _ eq_refl Wf St).
+    destruct IH2 as [D2 [T2Has Sd]].
+    lets Eq: (subdec2_to_label_of_dec_eq Sd).
     destruct IH1 as [T1Hasnt | [D1 [Eq1 T1Has]]].
-    - eauto.
-    - (* TODO need to know what's in T2 !!!!! *)
-      admit.
+    - left.
+      rewrite <- Eq. refine (typ_or_hasnt_1 _ T2Has).
+      rewrite Eq. apply T1Hasnt.
+    - right. rewrite <- Eq in Eq1. destruct (union_dec_total _ _ Eq1) as [D12 EqD].
+      exists D12. destruct (union_dec_label_eq _ _ EqD) as [Eql1 [Eql2 Eql3]].
+      split.
+      * rewrite <- Eql3. apply Eq.
+      * apply (typ_or_has T1Has T2Has EqD).
   + (* case typ_or_hasnt_2 *)
-    admit.
+    introv Has1 IH1 Hasnt2 IH2 Eq Wf St. subst.
+    specialize (IH1 _ _ _ _ _ eq_refl Wf St).
+    specialize (IH2 _ _ _ _ _ eq_refl Wf St).
+    destruct IH1 as [D1 [T1Has Sd]].
+    lets Eq: (subdec2_to_label_of_dec_eq Sd).
+    destruct IH2 as [T2Hasnt | [D2 [Eq2 T2Has]]].
+    - left.
+      rewrite <- Eq. refine (typ_or_hasnt_2 T1Has _).
+      rewrite Eq. apply T2Hasnt.
+    - right. rewrite <- Eq2 in Eq. destruct (union_dec_total _ _ Eq) as [D12 EqD].
+      exists D12. destruct (union_dec_label_eq _ _ EqD) as [Eql1 [Eql2 Eql3]].
+      split.
+      * rewrite <- Eql2. rewrite Eq. apply Eq2.
+      * apply (typ_or_has T1Has T2Has EqD).
+  + (* case typ_or_hasnt_12 *)
+    introv _ IH1 _ IH2 Eq Wf St. subst.
+    specialize (IH1 _ _ _ _ _ eq_refl Wf St).
+    specialize (IH2 _ _ _ _ _ eq_refl Wf St).
+    destruct IH1 as [T1Hasnt | [D1 [Eq1 T1Has]]];
+    destruct IH2 as [T2Hasnt | [D2 [Eq2 T2Has]]].
+    - eauto.
+    - rewrite <- Eq2 in *. eauto.
+    - rewrite <- Eq1 in *. eauto.
+    - right. rewrite <- Eq2 in Eq1. destruct (union_dec_total _ _ Eq1) as [D12 EqD].
+      exists D12. destruct (union_dec_label_eq _ _ EqD) as [Eql1 [Eql2 Eql3]].
+      split.
+      * rewrite <- Eql2. rewrite Eq1. apply Eq2.
+      * apply (typ_or_has T1Has T2Has EqD).
 Qed.
 
 (*
