@@ -1369,6 +1369,22 @@ Proof.
   intros. destruct D; simpl; reflexivity.
 Qed.
 
+Lemma subst_label_of_def: forall x y d,
+  label_of_def d = label_of_def (subst_def x y d).
+Proof.
+  intros. destruct d; simpl; reflexivity.
+Qed.
+
+Lemma subst_defs_hasnt: forall x y l ds,
+  defs_hasnt ds l ->
+  defs_hasnt (subst_defs x y ds) l.
+Proof.
+  intros x y l ds. unfold defs_hasnt. induction ds; introv Eq.
+  - simpl. reflexivity.
+  - unfold get_def. simpl. rewrite <- subst_label_of_def.
+    simpl in Eq. case_if. apply (IHds Eq).
+Qed.
+
 Lemma subst_binds: forall x y v T G,
   binds v T G ->
   binds v (subst_typ x y T) (subst_ctx x y G).
@@ -1654,6 +1670,15 @@ Proof.
     intros. subst. apply subdec_mtd; eauto.
 Qed.
 
+Lemma subst_subtyp: forall G1 x y S G2 T1 T2,
+  subtyp (G1 & x ~ S & G2) T1 T2 ->
+  ok (G1 & x ~ S & G2) ->
+  binds y (subst_typ x y S) (G1 & G2) ->
+  subtyp (subst_ctx x y (G1 & G2)) (subst_typ x y T1) (subst_typ x y T2).
+Proof.
+  intros. apply* subst_subtyp_subdec.
+Qed.
+
 Lemma subtyp_subst_principle: forall G x y S T1 T2,
   subtyp (G & x ~ S) T1 T2 ->
   ok (G & x ~ S) ->
@@ -1666,19 +1691,117 @@ Proof.
   apply (P eq_refl Ok Biy).
 Qed.
 
+Lemma subst_ty: forall y S,
+   (forall G t T, ty_trm G t T -> forall G1 G2 x,
+    G = G1 & x ~ S & G2  ->
+    ok (G1 & x ~ S & G2) ->
+    binds y (subst_typ x y S) (G1 & G2) ->
+    ty_trm (subst_ctx x y (G1 & G2)) (subst_trm x y t) (subst_typ x y T))
+/\ (forall G d D, ty_def G d D -> forall G1 G2 x,
+    G = G1 & x ~ S & G2  ->
+    ok (G1 & x ~ S & G2) ->
+    binds y (subst_typ x y S) (G1 & G2) ->
+    ty_def (subst_ctx x y (G1 & G2)) (subst_def x y d) (subst_dec x y D))
+/\ (forall G ds T, ty_defs G ds T -> forall G1 G2 x,
+    G = G1 & x ~ S & G2  ->
+    ok (G1 & x ~ S & G2) ->
+    binds y (subst_typ x y S) (G1 & G2) ->
+    ty_defs (subst_ctx x y (G1 & G2)) (subst_defs x y ds) (subst_typ x y T)).
+Proof.
+  intros y S. apply ty_mutind.
+  + (* case ty_var *)
+    introv Bix WfT Eq Ok Biy. subst. simpl. case_if.
+    - lets Eq: (binds_middle_eq_inv Bix Ok). subst.
+      apply ty_var.
+      * lets P: (subst_binds x0 y Biy). rewrite subst_typ_idempotent in P. exact P.
+      * eauto.
+    - apply ty_var.
+      * lets Bix': (binds_subst Bix H). apply (subst_binds _ _ Bix').
+      * eauto.
+  + (* case ty_call *)
+    introv Tyt IH1 THas Tyu IH2 St WfV Eq Ok Biy. subst.
+    lets THas': (subst_has THas Ok Biy).
+    lets St': (subst_subtyp St Ok Biy).
+    apply ty_call with (subst_typ x y T) (subst_typ x y U1) (subst_typ x y U2); eauto.
+  + (* case ty_new *)
+    introv Tyds IH1 Tyu IH2 WfU Eq Ok Biy. subst.
+    apply_fresh ty_new as x'; fold subst_defs subst_trm.
+    - assert (x'L: x' \notin L) by auto. clear IH2.
+      specialize (IH1 _ x'L G1 (G2 & x' ~ open_typ x' T) x).
+      repeat rewrite concat_assoc in IH1.
+      assert (Ok': ok (G1 & x ~ S & G2 & x' ~ open_typ x' T)) by auto.
+      specialize (IH1 eq_refl Ok').
+      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var*).
+      unfold subst_ctx in IH1. rewrite map_push in IH1.
+      lets P: (@subst_open_commute_typ x y x' T). rewrite Eqz in P.
+      rewrite P in IH1. clear P.
+      lets P: (@subst_open_commute_defs x y x' ds). rewrite Eqz in P.
+      rewrite P in IH1. clear P.
+      apply IH1. apply (binds_push_neq _ Biy). auto.
+    - assert (x'L: x' \notin L) by auto. clear IH1.
+      specialize (IH2 _ x'L G1 (G2 & x' ~ open_typ x' T) x).
+      repeat rewrite concat_assoc in IH2.
+      assert (Ok': ok (G1 & x ~ S & G2 & x' ~ open_typ x' T)) by auto.
+      specialize (IH2 eq_refl Ok').
+      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var*).
+      unfold subst_ctx in IH2. rewrite map_push in IH2.
+      lets P: (@subst_open_commute_typ x y x' T). rewrite Eqz in P.
+      rewrite P in IH2. clear P.
+      lets P: (@subst_open_commute_trm x y x' u). rewrite Eqz in P.
+      rewrite P in IH2. clear P.
+      apply IH2. apply (binds_push_neq _ Biy). auto.
+    - apply (subst_wf_typ WfU Ok Biy).
+  + (* case ty_tdef *)
+    introv St Eq Ok Biy. subst.
+    lets St': (subst_subtyp St Ok Biy).
+    apply ty_tdef; eauto.
+  + (* case ty_mdef *)
+    introv WfT Tyu IH St Eq Ok Biy. subst.
+    lets St': (subst_subtyp St Ok Biy).
+    apply_fresh ty_mdef as x'; eauto.
+    fold subst_trm.
+    assert (x'L: x' \notin L) by auto.
+    specialize (IH x' x'L G1 (G2 & x' ~ T) x).
+    repeat rewrite concat_assoc in IH.
+    assert (Ok': ok (G1 & x ~ S & G2 & x' ~ T)) by auto.
+    specialize (IH eq_refl Ok').
+    assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var*).
+    unfold subst_ctx in IH. rewrite map_push in IH.
+    lets P: (@subst_open_commute_trm x y x' u). rewrite Eqz in P.
+    rewrite P in IH. clear P.
+    apply IH. apply (binds_push_neq _ Biy). auto.
+  + (* case ty_defs_nil *)
+    eauto.
+  + (* case ty_defs_cons *)
+    intros. subst.
+    lets Hasnt: (subst_defs_hasnt x y d0).
+    rewrite (subst_label_of_def x y d) in Hasnt.
+    apply ty_defs_cons; fold subst_defs subst_def; eauto.
+Qed.
+
 Lemma trm_subst_principle: forall G x y t S T,
-  wf_ctx (G & x ~ S) ->
   ty_trm (G & x ~ S) t T ->
+  ok (G & x ~ S) ->
   binds y (subst_typ x y S) G ->
-  ty_trm G (subst_trm x y t) (subst_typ x y T).
-Admitted.
+  ty_trm (subst_ctx x y G) (subst_trm x y t) (subst_typ x y T).
+Proof.
+  introv Ty Ok Biy.
+  destruct (subst_ty y S) as [P _].
+  specialize (P _ _ _ Ty G empty x). repeat rewrite concat_empty_r in P.
+  apply (P eq_refl Ok Biy).
+Qed.
 
 Lemma defs_subst_principle: forall G x y ds S T,
-  wf_ctx (G & x ~ S) ->
   ty_defs (G & x ~ S) ds T ->
+  ok (G & x ~ S) ->
   binds y (subst_typ x y S) G ->
-  ty_defs G (subst_defs x y ds) (subst_typ x y T).
-Admitted.
+  ty_defs (subst_ctx x y G) (subst_defs x y ds) (subst_typ x y T).
+Proof.
+  introv Ty Ok Biy.
+  destruct (subst_ty y S) as [_ [_ P]].
+  specialize (P _ _ _ Ty G empty x). repeat rewrite concat_empty_r in P.
+  apply (P eq_refl Ok Biy).
+Qed.
 
 
 (* ###################################################################### *)
@@ -2782,25 +2905,41 @@ Proof.
     (* Q: how much wf-ness do we need for substitution?? *)
 Abort.
 
+Lemma fv_ctx_types_push: forall G x T,
+  fv_ctx_types (G & x ~ T) = (fv_ctx_types G) \u (fv_typ T).
+Proof.
+  intros.
+  unfold fv_ctx_types. unfold fv_in_values.
+  rewrite values_def. rewrite <- cons_to_push.
+  rewrite LibList.map_cons. rewrite LibList.fold_right_cons.
+  simpl. rewrite union_comm. reflexivity.
+Qed.
+
 Lemma ty_open_defs_change_var: forall x y G S ds T,
   wf_ctx (G & x ~ open_typ x S) ->
-  wf_ctx (G & y ~ open_typ y S) ->
-  x \notin fv_defs ds -> x \notin fv_typ S -> x \notin fv_typ T ->
+  y # G ->
+  x \notin fv_defs ds ->
+  x \notin fv_typ S ->
+  x \notin fv_typ T ->
+  x \notin fv_ctx_types G ->
   ty_defs (G & x ~ open_typ x S) (open_defs x ds) (open_typ x T) ->
   ty_defs (G & y ~ open_typ y S) (open_defs y ds) (open_typ y T).
 Proof.
-  introv Wfx Wfy Frds FrS FrT Ty.
+  introv Wfx yG Frds FrS FrT Frx Ty.
   destruct (classicT (x = y)) as [Eq | Ne].
   + subst. assumption.
-  + assert (Wfyx: wf_ctx (G & y ~ open_typ y S & x ~ open_typ x S)). {
-      apply wf_ctx_push2; auto.
-    }
-    lets Okyx': (proj1 Wfyx).
-    lets Ty': (weaken_ty_defs_middle Okyx' Ty).
+  + lets Okx: (proj1 Wfx). apply ok_push_inv in Okx. destruct Okx as [OkG xG].
+    assert (Okyx: ok (G & y ~ open_typ y S & x ~ open_typ x S)) by auto.
+    lets Ty': (weaken_ty_defs_middle Okyx Ty).
     rewrite* (@subst_intro_defs x y ds).
-    lets P: (@defs_subst_principle _ _ y _ _ _ Wfyx Ty').
+    lets P: (@defs_subst_principle _ _ y _ _ _ Ty' Okyx).
     rewrite <- (@subst_intro_typ x y S FrS) in P.
     rewrite <- (@subst_intro_typ x y T FrT) in P.
+    assert (Fr': (x \notin (fv_ctx_types (G & y ~ open_typ y S)))). {
+      rewrite fv_ctx_types_push. rewrite notin_union. apply (conj Frx).
+      admit. (* from FrS *)
+    }
+    rewrite (@subst_fresh_ctx x y _ Fr') in P.
     apply P. apply binds_push_eq.
 Qed.
 
@@ -2836,12 +2975,14 @@ Proof.
     assert (y'G: y' # G) by auto.
     lets WfGy': (wf_ctx_push WfG y'G (proj1 (subtyp_regular StU))).
     exists (subst_typ y' y V0). refine (conj Wf (conj _ (subtyp_trans _ StV))).
-    - lets P: (@trm_subst_principle G y' y _ U1 V0 WfGy' Tybody').
+    - lets P: (@trm_subst_principle G y' y _ U1 V0 Tybody' Oky').
                (*******************)
       assert (y'U1: y' \notin (fv_typ U1)) by auto.
       rewrite (@subst_fresh_typ y' y U1 y'U1) in P.
       assert (y'body: y' \notin (fv_trm body)) by auto.
       rewrite <- (@subst_intro_trm y' y body y'body) in P.
+      assert (EqG: (subst_ctx y' y G) = G). { refine (@subst_fresh_ctx y' y _ _). auto. }
+      rewrite EqG in P.
       apply (P BiGy).
     - lets P: (@subtyp_subst_principle G y' y _ _ _ StV' Oky').
       assert (y'U1: y' \notin (fv_typ U1)) by auto.
@@ -2862,8 +3003,7 @@ Proof.
     specialize (Tyds x' x'L). specialize (Tyt x' x'L).
     exists T. repeat split.
     - refine (wf_sto_push Wf H xG _).
-      refine (ty_open_defs_change_var _ _ _ _ _ _ _ _ Tyds); auto.
-      * admit.
+      refine (ty_open_defs_change_var _ _ _ _ _ _ _ _ _ Tyds); auto.
       * admit.
       (* TODO change_var stuff
       apply ty_open_trm_change_var with (x:=x').
