@@ -2899,6 +2899,34 @@ Proof.
     apply P. apply binds_push_eq.
 Qed.
 
+(* replaces super-fresh x by a not-so-fresh y *)
+Lemma ty_open_trm_change_var: forall y G S t T,
+  ok G ->
+  y # G ->
+  exists L, forall x, x \notin L ->
+  ty_trm (G & x ~ open_typ x S) (open_trm x t) T ->
+  ty_trm (G & y ~ open_typ y S) (open_trm y t) T.
+Proof.
+  introv Ok yG. let L := gather_vars in exists (L \u fv_typ (open_typ y S)).
+  intros x Fr Ty.
+  destruct (classicT (x = y)) as [Eq | Ne].
+  + subst. assumption.
+  + assert (xG: x # G) by auto.
+    assert (Okyx: ok (G & y ~ open_typ y S & x ~ open_typ x S)) by auto.
+    lets Ty': (weaken_ty_trm_middle Okyx Ty).
+    rewrite* (@subst_intro_trm x y t).
+    lets P: (@trm_subst_principle _ _ y _ _ _ Ty' Okyx).
+    assert (FrS: x \notin (fv_typ S)) by auto.
+    rewrite <- (@subst_intro_typ x y S FrS) in P.
+    assert (FrT: x \notin (fv_typ T)) by auto.
+    rewrite (@subst_fresh_typ x y T FrT) in P.
+    assert (Fr': (x \notin (fv_ctx_types (G & y ~ open_typ y S)))). {
+      rewrite fv_ctx_types_push. rewrite notin_union. auto.
+    }
+    rewrite (@subst_fresh_ctx x y _ Fr') in P.
+    apply P. apply binds_push_eq.
+Qed.
+
 
 (* ###################################################################### *)
 (** ** Preservation *)
@@ -2955,13 +2983,15 @@ Proof.
     lets Ok: (wf_sto_to_ok_G Wf).
     assert (Okx: forall X, ok (G & x ~ X)) by auto.
     lets C1: (@ty_open_defs_change_var x G Tds ds Tds Ok xG). destruct C1 as [L1 C1].
+    lets C2: (@ty_open_trm_change_var  x G Tds t  T   Ok xG). destruct C2 as [L2 C2].
     pick_fresh x'.
     assert (x'L: x' \notin L) by auto.
     assert (x'L1: x' \notin L1) by auto.
+    assert (x'L2: x' \notin L2) by auto.
     specialize (Tyds x' x'L). specialize (Tyt x' x'L).
     exists T. repeat split.
     - refine (wf_sto_push Wf H xG _). apply* C1.
-    - (* TODO change_var stuff *) admit.
+    - apply* C2.
     - apply subtyp_refl. apply (weaken_wf_typ_end WfT (Okx _)).
   + (* red_call1 *)
     intros G Tr2 Wf TyCall.
@@ -2993,4 +3023,6 @@ Proof.
     refine (ty_call Tyo' Has' Tya' _ WfTr2).
     apply (subtyp_trans Sta (weaken_subtyp_end Ok' St)).
 Qed.
+
+Print Assumptions preservation_proof.
 
