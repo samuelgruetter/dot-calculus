@@ -2564,6 +2564,8 @@ Print Assumptions swap_sub_and_typ_has.
 (* ###################################################################### *)
 (** ** Narrowing *)
 
+(* Notice that all narrowing lemmas take a wf_ctx hypothesis, which is quite strong. *)
+
 Lemma narrow_binds: forall G1 x0 S1 S2 G2 x T2,
   wf_ctx (G1 & x0 ~ S1 & G2) ->
   binds x T2 (G1 & x0 ~ S2 & G2) ->
@@ -2603,79 +2605,65 @@ Qed.
 Lemma narrow_has:
    (forall G T D2, typ_has G T D2 -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
+    wf_ctx (G1 & x ~ S1 & G2) ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     exists D1,
       typ_has (G1 & x ~ S1 & G2) T D1 /\
       (subdec (G1 & x ~ S1 & G2) D1 D2 \/ D1 = D2))
 /\ (forall G T l, typ_hasnt G T l -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
+    wf_ctx (G1 & x ~ S1 & G2) ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     typ_hasnt (G1 & x ~ S1 & G2) T l 
     \/ exists D, label_of_dec D = l /\ typ_has (G1 & x ~ S1 & G2) T D).
 Proof.
-Admitted. (*
   apply typ_has_mutind.
   + (* case typ_bot_has *)
     intros. exists (dec_bot l). split; [eauto | destruct l; simpl; eauto].
   + (* case typ_rcd_has *)
     intros. exists D. eauto.
   + (* case typ_sel_has *)
-    intros G x X2 L Lo2 Hi2 D2 H _ IH1 _ IH2 G1 x0 S1 S2 G2 Eq St. subst.
-    specialize (IH1 _ _ _ _ _ eq_refl St). destruct IH1 as [D0 [X2Has Sd0]].
-    specialize (IH2 _ _ _ _ _ eq_refl St). destruct IH2 as [D1 [Hi2Has Sd12]].
+    intros G x X2 L Lo2 Hi2 D2 H _ IH1 _ IH2 G1 x0 S1 S2 G2 Eq Wf St. subst.
+    specialize (IH1 _ _ _ _ _ eq_refl Wf St). destruct IH1 as [D0 [X2Has Sd0]].
+    specialize (IH2 _ _ _ _ _ eq_refl Wf St). destruct IH2 as [D1 [Hi2Has Sd12]].
     destruct Sd0 as [Sd0 | Eq].
     - apply invert_subdec_typ_sync_left in Sd0.
       destruct Sd0 as [Lo1 [Hi1 [Eq [StLo12 StHi12]]]]. subst D0.
-      lets N: (narrow_binds H St). destruct N as [X1 [Bi1 StX]].
-      destruct StX as [StX | Eq].
-      * lets P: (swap_sub_and_typ_has StX X2Has).
-                (********************)
-        destruct P as [D0 [X1Has Sd0]].
-        apply invert_subdec_typ_sync_left in Sd0.
-        destruct Sd0 as [Lo0 [Hi0 [Eq [StLo01 StHi01]]]]. subst D0.
-        lets StLo: (subtyp_trans StLo12 StLo01).
-        lets StHi: (subtyp_trans StHi01 StHi12).
-        lets P: (swap_sub_and_typ_has StHi Hi2Has).
-                (********************)
-        destruct P as [D0 [Hi0Has Sd01]].
-        exists D0. split.
-        { apply (typ_sel_has Bi1 X1Has Hi0Has). }
-        { left. destruct Sd12 as [Sd12 | Eq].
-          + apply (subdec_trans Sd01 Sd12).
-          + subst D1. exact Sd01. }
-      * subst X1. rename X2 into X, X2Has into XHas.
-        lets P: (swap_sub_and_typ_has StHi12 Hi2Has).
-                (********************)
-        destruct P as [D0 [Hi1Has Sd01]].
-        exists D0. split.
-        { apply (typ_sel_has Bi1 XHas Hi1Has). }
-        { left. destruct Sd12 as [Sd12 | Eq].
-          + apply (subdec_trans Sd01 Sd12).
-          + subst D1. exact Sd01. }
+      lets N: (narrow_binds Wf H St). destruct N as [X1 [Bi1 StX]].
+      lets P: (swap_sub_and_typ_has StX X2Has).
+              (********************)
+      destruct P as [D0 [X1Has Sd0]].
+      apply invert_subdec_typ_sync_left in Sd0.
+      destruct Sd0 as [Lo0 [Hi0 [Eq [StLo01 StHi01]]]]. subst D0.
+      lets StLo: (subtyp_trans StLo12 StLo01).
+      lets StHi: (subtyp_trans StHi01 StHi12).
+      lets P: (swap_sub_and_typ_has StHi Hi2Has).
+              (********************)
+      destruct P as [D0 [Hi0Has Sd01]].
+      exists D0. split.
+      { apply (typ_sel_has Bi1 X1Has Hi0Has). }
+      { left. destruct Sd12 as [Sd12 | Eq].
+        + apply (subdec_trans Sd01 Sd12).
+        + subst D1. exact Sd01. }
     - subst D0.
-      lets N: (narrow_binds H St). destruct N as [X1 [Bi1 StX]].
-      destruct StX as [StX | Eq].
-      * lets P: (swap_sub_and_typ_has StX X2Has).
-                (********************)
-        destruct P as [D0 [X1Has Sd0]].
-        apply invert_subdec_typ_sync_left in Sd0.
-        destruct Sd0 as [Lo0 [Hi0 [Eq [StLo StHi]]]]. subst D0.
-        lets P: (swap_sub_and_typ_has StHi Hi2Has).
-                (********************)
-        destruct P as [D0 [Hi0Has Sd01]].
-        exists D0. split.
-        { apply (typ_sel_has Bi1 X1Has Hi0Has). }
-        { left. destruct Sd12 as [Sd12 | Eq].
-          + apply (subdec_trans Sd01 Sd12).
-          + subst D1. exact Sd01. }
-      * subst X1. rename X2 into X, X2Has into XHas.
-        exists D1. split.
-        { apply (typ_sel_has Bi1 XHas Hi2Has). }
-        { exact Sd12. }
+      lets N: (narrow_binds Wf H St). destruct N as [X1 [Bi1 StX]].
+      lets P: (swap_sub_and_typ_has StX X2Has).
+              (********************)
+      destruct P as [D0 [X1Has Sd0]].
+      apply invert_subdec_typ_sync_left in Sd0.
+      destruct Sd0 as [Lo0 [Hi0 [Eq [StLo StHi]]]]. subst D0.
+      lets P: (swap_sub_and_typ_has StHi Hi2Has).
+              (********************)
+      destruct P as [D0 [Hi0Has Sd01]].
+      exists D0. split.
+      { apply (typ_sel_has Bi1 X1Has Hi0Has). }
+      { left. destruct Sd12 as [Sd12 | Eq].
+        + apply (subdec_trans Sd01 Sd12).
+        + subst D1. exact Sd01. }
   + (* case typ_and_has_1 *)
-    introv _ IH1 _ IH2 Eq St. subst. rename D into D1.
-    specialize (IH1 _ _ _ _ _ eq_refl St).
-    specialize (IH2 _ _ _ _ _ eq_refl St).
+    introv _ IH1 _ IH2 Eq Wf St. subst. rename D into D1.
+    specialize (IH1 _ _ _ _ _ eq_refl Wf St).
+    specialize (IH2 _ _ _ _ _ eq_refl Wf St).
     destruct IH1 as [D1' [T1Has Sd1]].
     lets Eql1: (subdec2_to_label_of_dec_eq Sd1).
     destruct IH2 as [T2Hasnt | [D2 [Eql2 T2Has]]].
@@ -2705,57 +2693,44 @@ Admitted. (*
   + (* case typ_rcd_hasnt *)
     eauto.
   + (* case typ_sel_hasnt *)
-    intros G x X2 L Lo2 Hi2 l H X2Has' IH1 Hi2Hasnt' IH2 G1 x0 S1 S2 G2 Eq St. subst.
-    specialize (IH1 _ _ _ _ _ eq_refl St). destruct IH1 as [D0 [X2Has Sd0]].
-    specialize (IH2 _ _ _ _ _ eq_refl St). clear IH2.
+    intros G x X2 L Lo2 Hi2 l H X2Has' IH1 Hi2Hasnt' IH2 G1 x0 S1 S2 G2 Eq Wf St. subst.
+    specialize (IH1 _ _ _ _ _ eq_refl Wf St). destruct IH1 as [D0 [X2Has Sd0]].
+    specialize (IH2 _ _ _ _ _ eq_refl Wf St).
     destruct Sd0 as [Sd0 | Eq].
     - apply invert_subdec_typ_sync_left in Sd0.
       destruct Sd0 as [Lo1 [Hi1 [Eq [StLo12 StHi12]]]]. subst D0.
-      lets N: (narrow_binds H St). destruct N as [X1 [Bi1 StX]].
-      destruct StX as [StX | Eq].
-      * lets P: (swap_sub_and_typ_has StX X2Has).
-                (********************)
-        destruct P as [D0 [X1Has Sd0]].
-        apply invert_subdec_typ_sync_left in Sd0.
-        destruct Sd0 as [Lo0 [Hi0 [Eq [StLo01 StHi01]]]]. subst D0.
-        lets StLo: (subtyp_trans StLo12 StLo01).
-        lets StHi: (subtyp_trans StHi01 StHi12).
-        destruct (subtyp_regular StHi) as [WfHi0 _].
-                 (**************)
-        lets P: (typ_has_total WfHi0 l). destruct P as [Hasnt | Has].
-        { left. apply (typ_sel_hasnt Bi1 X1Has Hasnt). }
-        { right. destruct Has as [D [Eq Has]]. exists D. eauto. }
-      * subst X1. rename X2 into X, X2Has into XHas.
-        destruct (subtyp_regular StHi12) as [WfHi1 _].
-                 (**************)
-        lets P: (typ_has_total WfHi1 l). destruct P as [Hasnt | Has].
-        { left. apply (typ_sel_hasnt Bi1 XHas Hasnt). }
-        { right. destruct Has as [D [Eq Has]]. exists D. eauto. }
+      lets N: (narrow_binds Wf H St). destruct N as [X1 [Bi1 StX]].
+      lets P: (swap_sub_and_typ_has StX X2Has).
+              (********************)
+      destruct P as [D0 [X1Has Sd0]].
+      apply invert_subdec_typ_sync_left in Sd0.
+      destruct Sd0 as [Lo0 [Hi0 [Eq [StLo01 StHi01]]]]. subst D0.
+      lets StLo: (subtyp_trans StLo12 StLo01).
+      lets StHi: (subtyp_trans StHi01 StHi12).
+      destruct (subtyp_regular StHi) as [WfHi0 _].
+               (**************)
+      lets P: (typ_has_total WfHi0 l). destruct P as [Hasnt | Has].
+      { left. apply (typ_sel_hasnt Bi1 X1Has Hasnt). }
+      { right. destruct Has as [D [Eq Has]]. exists D. eauto. }
     - subst D0.
-      lets N: (narrow_binds H St). destruct N as [X1 [Bi1 StX]].
-      destruct StX as [StX | Eq].
-      * lets P: (swap_sub_and_typ_has StX X2Has).
-                (********************)
-        destruct P as [D0 [X1Has Sd0]].
-        apply invert_subdec_typ_sync_left in Sd0.
-        destruct Sd0 as [Lo0 [Hi0 [Eq [StLo StHi]]]]. subst D0.
-        destruct (subtyp_regular StHi) as [WfHi0 _].
-                 (**************)
-        lets P: (typ_has_total WfHi0 l). destruct P as [Hasnt | Has].
-        { left. apply (typ_sel_hasnt Bi1 X1Has Hasnt). }
-        { right. destruct Has as [D [Eq Has]]. exists D. eauto. }
-      * subst X1. rename X2 into X, X2Has into XHas.
-        assert (WfHi2: wf_typ (G1 & x0 ~ S1 & G2) Hi2) by admit. (* <------ !!!!! *)
-        lets P: (typ_has_total WfHi2 l). destruct P as [Hasnt | Has].
-        { left. apply (typ_sel_hasnt Bi1 XHas Hasnt). }
-        { right. destruct Has as [D [Eq Has]]. exists D. eauto. }
+      lets N: (narrow_binds Wf H St). destruct N as [X1 [Bi1 StX]].
+      lets P: (swap_sub_and_typ_has StX X2Has).
+              (********************)
+      destruct P as [D0 [X1Has Sd0]].
+      apply invert_subdec_typ_sync_left in Sd0.
+      destruct Sd0 as [Lo0 [Hi0 [Eq [StLo StHi]]]]. subst D0.
+      destruct (subtyp_regular StHi) as [WfHi0 _].
+               (**************)
+      lets P: (typ_has_total WfHi0 l). destruct P as [Hasnt | Has].
+      { left. apply (typ_sel_hasnt Bi1 X1Has Hasnt). }
+      { right. destruct Has as [D [Eq Has]]. exists D. eauto. }
   + (* case typ_and_hasnt *)
-    introv _ IH1 _ IH2 Eq St. subst G.
-    specialize (IH1 _ _ _ _ _ eq_refl St).
-    specialize (IH2 _ _ _ _ _ eq_refl St).
+    introv _ IH1 _ IH2 Eq Wf St. subst G.
+    specialize (IH1 _ _ _ _ _ eq_refl Wf St).
+    specialize (IH2 _ _ _ _ _ eq_refl Wf St).
     destruct IH1 as [T1Hasnt | [D1 [Eq1 T1Has]]];
     destruct IH2 as [T2Hasnt | [D2 [Eq2 T2Has]]]; subst.
-    - left. eauto.
+    - eauto.
     - right. exists D2. apply (conj eq_refl). apply (typ_and_has_2 T1Hasnt T2Has).
     - right. exists D1. apply (conj eq_refl). apply (typ_and_has_1 T1Has T2Hasnt).
     - right. symmetry in Eq2. destruct (intersect_dec_total _ _ Eq2) as [D12 Eq].
@@ -2764,8 +2739,8 @@ Admitted. (*
         symmetry. assumption.
       * apply (typ_and_has_12 T1Has T2Has Eq). 
   + (* case typ_or_hasnt_1 *)
-    introv _ IH1 Eq St. subst.
-    specialize (IH1 _ _ _ _ _ eq_refl St).
+    introv _ IH1 Eq Wf St. subst.
+    specialize (IH1 _ _ _ _ _ eq_refl Wf St).
     destruct IH1 as [T1Hasnt | [D1 [Eq1 T1Has]]].
     - eauto.
     - (* TODO need to know what's in T2 !!!!! *)
@@ -2774,7 +2749,7 @@ Admitted. (*
     admit.
 Qed.
 
-
+(*
 Lemma narrow_subtyp: forall G T1 T2, subtyp G T1 T2 ->
   forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
@@ -2828,6 +2803,7 @@ Qed.
 
 Lemma narrow_ty_trm_end: forall G x S1 S2 t T2,
   ty_trm (G & x ~ S2) t T2 ->
+  wf_ctx (G & x ~ S1) ->
   subtyp (G & x ~ S1) S1 S2 ->
   exists T1, ty_trm (G & x ~ S1) t T1 /\ subtyp (G & x ~ S1) T1 T2.
 Admitted.
@@ -2888,7 +2864,6 @@ Proof.
       rewrite Eql4 in Hasnt. rewrite <- Eq12 in Hasnt. rewrite <- Eql3 in Hasnt.
       exfalso. apply (not_defs_has_and_hasnt dsHas Hasnt).
 Qed.
-
 
 Lemma typ_has_to_defs_has: forall G T D x ds s,
   wf_sto s G ->
@@ -3064,10 +3039,13 @@ Proof.
     lets Ok: (wf_sto_to_ok_G Wf).
     assert (Oky': ok (G & y' ~ U1)) by auto.
     apply (weaken_subtyp_end Oky') in StU.
-    lets P: (narrow_ty_trm_end Tybody StU). destruct P as [V0 [Tybody' StV']].
     lets WfG: (wf_sto_to_wf_ctx Wf).
     assert (y'G: y' # G) by auto.
+    (* Note: U1 cannot have a self reference, that's why we can get WfGy', which
+       is a crucial hypothesis for narrowing. *)
     lets WfGy': (wf_ctx_push WfG y'G (proj1 (subtyp_regular StU))).
+    lets P: (narrow_ty_trm_end Tybody WfGy' StU). destruct P as [V0 [Tybody' StV']].
+            (*****************)      (****)
     exists (subst_typ y' y V0). refine (conj Wf (conj _ (subtyp_trans _ StV))).
     - lets P: (@trm_subst_principle G y' y _ U1 V0 Tybody' Oky').
                (*******************)
