@@ -798,6 +798,9 @@ Proof.
   intros x y. apply typ_mutind; intros; simpls; f_equal*. apply* subst_fresh_avar.
 Qed.
 
+Definition subst_fresh_typ(x y: var) := proj1 (subst_fresh_typ_dec x y).
+Definition subst_fresh_dec(x y: var) := proj2 (subst_fresh_typ_dec x y).
+
 Lemma subst_fresh_trm_def_defs: forall x y,
   (forall t : trm , x \notin fv_trm  t  -> subst_trm  x y t  = t ) /\
   (forall d : def , x \notin fv_def  d  -> subst_def  x y d  = d ) /\
@@ -1151,7 +1154,7 @@ Proof.
   repeat split; repeat eexists; eauto.
 Qed.
 
-Lemma weaken_wf_typ: forall G1 G2 G3 T,
+Lemma weaken_wf_typ_middle: forall G1 G2 G3 T,
   wf_typ (G1 & G3) T ->
   ok (G1 & G2 & G3) ->
   wf_typ (G1 & G2 & G3) T.
@@ -1159,7 +1162,7 @@ Proof.
   introv Wf Ok. eapply (proj1 weaken_wf); eauto.
 Qed.
 
-Print Assumptions weaken_wf_typ.
+Print Assumptions weaken_wf_typ_middle.
 
 Lemma weaken_wf_typ_end: forall G1 G2 T,
   wf_typ G1 T ->
@@ -1170,7 +1173,7 @@ Proof.
   assert (Eq1: G1 & G2 = G1 & G2 & empty) by (rewrite concat_empty_r; reflexivity).
   assert (Eq2: G1 = G1 & empty) by (rewrite concat_empty_r; reflexivity).
   rewrite Eq1 in *. rewrite Eq2 in H.
-  apply* weaken_wf_typ.
+  apply* weaken_wf_typ_middle.
 Qed.
 
 Lemma weaken_wf_dec: forall G1 G2 G3 D,
@@ -1187,10 +1190,18 @@ Lemma weaken_subtyp_end: forall G1 G2 S U,
   subtyp (G1 & G2) S U.
 Admitted.
 
+Lemma weaken_ty_trm_middle: forall G1 G2 G3 t T,
+  ok (G1 & G2 & G3) -> ty_trm (G1 & G3) t T -> ty_trm (G1 & G2 & G3) t T.
+Admitted.
+
 Lemma weaken_ty_trm_end: forall G1 G2 t T,
   ok (G1 & G2) -> 
   ty_trm G1        t T ->
   ty_trm (G1 & G2) t T.
+Admitted.
+
+Lemma weaken_ty_defs_middle: forall G1 G2 G3 ds T,
+  ok (G1 & G2 & G3) -> ty_defs (G1 & G3) ds T -> ty_defs (G1 & G2 & G3) ds T.
 Admitted.
 
 Lemma weaken_ty_defs_end: forall G1 G2 ds T,
@@ -1199,6 +1210,139 @@ Admitted.
 
 Lemma weaken_typ_has_end: forall G1 G2 T D,
   ok (G1 & G2) -> typ_has G1 T D -> typ_has (G1 & G2) T D.
+Admitted.
+
+
+(* ###################################################################### *)
+(** ** Well-formed context *)
+
+(* Note that T may contain variables defined anywhere in G, not just those
+   defined before. *)
+Definition wf_ctx(G: ctx) := ok G /\ forall x T, binds x T G -> wf_typ G T.
+
+Lemma wf_sto_to_ok_s: forall s G,
+  wf_sto s G -> ok s.
+Proof. intros. induction H; jauto. Qed.
+
+Lemma wf_sto_to_ok_G: forall s G,
+  wf_sto s G -> ok G.
+Proof. intros. induction H; jauto. Qed.
+
+Hint Resolve wf_sto_to_ok_s wf_sto_to_ok_G.
+
+Lemma wf_ctx_push: forall G x T,
+  wf_ctx G ->
+  x # G ->
+  wf_typ (G & x ~ T) T ->
+  wf_ctx (G & x ~ T).
+Proof.
+  introv WfG WfT. unfold wf_ctx in *. destruct WfG as [Ok WfG]. split.
+  - auto.
+  - introv Bi. apply binds_push_inv in Bi. destruct Bi as [[Eq1 Eq2] | [Ne Bi]].
+    * subst. assumption.
+    * apply weaken_wf_typ_end; eauto.
+Qed.
+
+Lemma ctx_binds_to_sto_binds: forall s G x T,
+  wf_sto s G ->
+  binds x T G ->
+  exists o, binds x o s.
+Proof.
+  introv Wf Bi. gen x T Bi. induction Wf; intros.
+  + false* binds_empty_inv.
+  + unfolds binds. rewrite get_push in *. case_if.
+    - eauto.
+    - eauto.
+Qed.
+
+Lemma sto_binds_to_ctx_binds: forall s G x ds,
+  wf_sto s G ->
+  binds x ds s ->
+  exists T, binds x T G.
+Proof.
+  introv Wf Bi. gen x Bi. induction Wf; intros.
+  + false* binds_empty_inv.
+  + unfolds binds. rewrite get_push in *. case_if.
+    - inversions Bi. exists T. reflexivity.
+    - auto.
+Qed.
+
+Lemma invert_wf_sto_binds: forall s G x ds,
+  wf_sto s G ->
+  binds x ds s ->
+  exists T, binds x T G /\ ty_defs G ds T.
+Proof.
+  introv Wf Bi. gen x Bi. induction Wf; intros.
+  + false* binds_empty_inv.
+  + unfolds binds. rewrite get_push in *. case_if.
+    - inversions Bi. exists T. auto.
+    - specialize (IHWf _ Bi). destruct IHWf as [T0 [Bi0 Tyds]].
+      exists T0. apply (conj Bi0). refine (weaken_ty_defs_end _ Tyds).
+      lets Ok: (wf_sto_to_ok_G Wf). auto.
+Qed.
+
+Lemma sto_unbound_to_ctx_unbound: forall s G x,
+  wf_sto s G ->
+  x # s ->
+  x # G.
+Proof.
+  introv Wf Ub_s.
+  induction Wf.
+  + auto.
+  + destruct (classicT (x0 = x)) as [Eq | Ne].
+    - subst. false (fresh_push_eq_inv Ub_s). 
+    - auto.
+Qed.
+
+Lemma ctx_unbound_to_sto_unbound: forall s G x,
+  wf_sto s G ->
+  x # G ->
+  x # s.
+Proof.
+  introv Wf Ub.
+  induction Wf.
+  + auto.
+  + destruct (classicT (x0 = x)) as [Eq | Ne].
+    - subst. false (fresh_push_eq_inv Ub). 
+    - auto.
+Qed.
+
+Lemma wf_sto_to_wf_ctx: forall s G,
+  wf_sto s G -> wf_ctx G.
+Proof.
+  introv Wf. induction Wf; unfold wf_ctx in *.
+  - split; auto. intros. exfalso. apply (binds_empty_inv H).
+  - destruct IHWf as [Ok IH]. split; auto.
+    intros. apply binds_push_inv in H2. destruct H2 as [[Eq1 Eq2] | [Ne Bi]].
+    + subst. apply (ty_defs_regular H1).
+    + apply weaken_wf_typ_end.
+      * apply (IH _ _ Bi).
+      * refine (ok_push _ Ok H0).
+Qed.
+
+
+(* ###################################################################### *)
+(** ** The substitution principle *)
+
+Lemma subtyp_subst_principle: forall G x y S T1 T2,
+  wf_ctx (G & x ~ S) ->
+  subtyp (G & x ~ S) T1 T2 ->
+  binds y (subst_typ x y S) G ->
+  subtyp G (subst_typ x y T1) (subst_typ x y T2).
+Admitted.
+
+Lemma trm_subst_principle: forall G x y t S T,
+  wf_ctx (G & x ~ S) ->
+  ty_trm (G & x ~ S) t T ->
+  binds y (subst_typ x y S) G ->
+  ty_trm G (subst_trm x y t) (subst_typ x y T).
+Admitted.
+
+Lemma defs_subst_principle: forall G x y ds S T,
+  wf_ctx (G & x ~ S) ->
+  ty_defs (G & x ~ S) ds T ->
+  binds y (subst_typ x y S) G ->
+  ty_defs G (subst_defs x y ds) (subst_typ x y T).
 Admitted.
 
 
@@ -1850,101 +1994,6 @@ Print Assumptions swap_sub_and_typ_has.
 
 
 (* ###################################################################### *)
-(** ** Well-formed context *)
-
-(* Note that T may contain variables defined anywhere in G, not just those
-   defined before. *)
-Definition wf_ctx(G: ctx) := ok G /\ forall x T, binds x T G -> wf_typ G T.
-
-Lemma wf_sto_to_ok_s: forall s G,
-  wf_sto s G -> ok s.
-Proof. intros. induction H; jauto. Qed.
-
-Lemma wf_sto_to_ok_G: forall s G,
-  wf_sto s G -> ok G.
-Proof. intros. induction H; jauto. Qed.
-
-Hint Resolve wf_sto_to_ok_s wf_sto_to_ok_G.
-
-Lemma ctx_binds_to_sto_binds: forall s G x T,
-  wf_sto s G ->
-  binds x T G ->
-  exists o, binds x o s.
-Proof.
-  introv Wf Bi. gen x T Bi. induction Wf; intros.
-  + false* binds_empty_inv.
-  + unfolds binds. rewrite get_push in *. case_if.
-    - eauto.
-    - eauto.
-Qed.
-
-Lemma sto_binds_to_ctx_binds: forall s G x ds,
-  wf_sto s G ->
-  binds x ds s ->
-  exists T, binds x T G.
-Proof.
-  introv Wf Bi. gen x Bi. induction Wf; intros.
-  + false* binds_empty_inv.
-  + unfolds binds. rewrite get_push in *. case_if.
-    - inversions Bi. exists T. reflexivity.
-    - auto.
-Qed.
-
-Lemma invert_wf_sto_binds: forall s G x ds,
-  wf_sto s G ->
-  binds x ds s ->
-  exists T, binds x T G /\ ty_defs G ds T.
-Proof.
-  introv Wf Bi. gen x Bi. induction Wf; intros.
-  + false* binds_empty_inv.
-  + unfolds binds. rewrite get_push in *. case_if.
-    - inversions Bi. exists T. auto.
-    - specialize (IHWf _ Bi). destruct IHWf as [T0 [Bi0 Tyds]].
-      exists T0. apply (conj Bi0). refine (weaken_ty_defs_end _ Tyds).
-      lets Ok: (wf_sto_to_ok_G Wf). auto.
-Qed.
-
-Lemma sto_unbound_to_ctx_unbound: forall s G x,
-  wf_sto s G ->
-  x # s ->
-  x # G.
-Proof.
-  introv Wf Ub_s.
-  induction Wf.
-  + auto.
-  + destruct (classicT (x0 = x)) as [Eq | Ne].
-    - subst. false (fresh_push_eq_inv Ub_s). 
-    - auto.
-Qed.
-
-Lemma ctx_unbound_to_sto_unbound: forall s G x,
-  wf_sto s G ->
-  x # G ->
-  x # s.
-Proof.
-  introv Wf Ub.
-  induction Wf.
-  + auto.
-  + destruct (classicT (x0 = x)) as [Eq | Ne].
-    - subst. false (fresh_push_eq_inv Ub). 
-    - auto.
-Qed.
-
-Lemma wf_sto_to_wf_ctx: forall s G,
-  wf_sto s G -> wf_ctx G.
-Proof.
-  introv Wf. induction Wf; unfold wf_ctx in *.
-  - split; auto. intros. exfalso. apply (binds_empty_inv H).
-  - destruct IHWf as [Ok IH]. split; auto.
-    intros. apply binds_push_inv in H2. destruct H2 as [[Eq1 Eq2] | [Ne Bi]].
-    + subst. apply (ty_defs_regular H1).
-    + apply weaken_wf_typ_end.
-      * apply (IH _ _ Bi).
-      * refine (ok_push _ Ok H0).
-Qed.
-
-
-(* ###################################################################### *)
 (** ** Narrowing *)
 
 Lemma narrow_binds: forall G1 x0 S1 S2 G2 x T2,
@@ -2352,14 +2401,77 @@ Print Assumptions progress_result.
 
 
 (* ###################################################################### *)
-(** ** Preservation *)
+(** ** Helper lemmas for preservation *)
 
-Lemma trm_subst_principle: forall G x y t S T,
-  wf_ctx (G & x ~ S) ->
-  ty_trm (G & x ~ S) t T ->
-  binds y (subst_typ x y S) G ->
-  ty_trm G (subst_trm x y t) (subst_typ x y T).
-Admitted.
+(* replaces super-fresh x by a not-so-fresh y 
+Lemma ty_open_trm_change_var: forall x y G S t T,
+  wf_ctx (G & x ~ open_typ x S) ->
+  wf_ctx (G & y ~ open_typ y S) ->
+  x \notin fv_trm t -> x \notin fv_typ S -> x \notin fv_typ T ->
+  ty_trm (G & x ~ open_typ x S) (open_trm x t) T ->
+  ty_trm (G & y ~ open_typ y S) (open_trm y t) T.
+Admitted.*)
+
+Lemma wf_ctx_push2 : forall G x y S1 S2,
+  wf_ctx (G & x ~ S1) ->
+  wf_ctx (G & y ~ S2) ->
+  x <> y ->
+  wf_ctx (G & y ~ S2 & x ~ S1).
+Proof.
+  introv Wfx Wfy Neq. unfold wf_ctx in *.
+  destruct Wfx as [Okx Wfx]. destruct Wfy as [Oky Wfy].
+  assert (Okyx: ok (G & y ~ S2 & x ~ S1)). {
+    apply ok_push_inv in Okx. destruct Okx as [OkG xG]. auto.
+  }
+  apply (conj Okyx).
+  introv Bi.
+  apply binds_push_inv in Bi. destruct Bi as [[Eq1 Eq2] | [Ne1 Bi]];
+  [idtac | (apply binds_push_inv in Bi; destruct Bi as [[Eq3 Eq4] | [Ne2 Bi]])].
+  - subst. refine (weaken_wf_typ_middle _ Okyx).
+    apply (Wfx x). apply binds_push_eq.
+  - subst. refine (weaken_wf_typ_end _ Okyx).
+    apply (Wfy y). apply binds_push_eq.
+  - refine (weaken_wf_typ_middle _ Okyx).
+    apply (Wfx x0). auto.
+Qed.
+
+Lemma wf_ctx_change_var: forall x y G S,
+  wf_ctx (G & x ~ open_typ x S) ->
+  x \notin (fv_ctx_types G) ->
+  y # G ->
+  wf_ctx (G & y ~ open_typ y S).
+Proof.
+  introv Wfx xfvG yG. unfold wf_ctx in *. destruct Wfx as [Okx Wfx]. split.
+  + apply ok_push_inv in Okx. destruct Okx as [OkG xG]. auto.
+  + introv Bi.
+    (* Q: how much wf-ness do we need for substitution?? *)
+Abort.
+
+Lemma ty_open_defs_change_var: forall x y G S ds T,
+  wf_ctx (G & x ~ open_typ x S) ->
+  wf_ctx (G & y ~ open_typ y S) ->
+  x \notin fv_defs ds -> x \notin fv_typ S -> x \notin fv_typ T ->
+  ty_defs (G & x ~ open_typ x S) (open_defs x ds) (open_typ x T) ->
+  ty_defs (G & y ~ open_typ y S) (open_defs y ds) (open_typ y T).
+Proof.
+  introv Wfx Wfy Frds FrS FrT Ty.
+  destruct (classicT (x = y)) as [Eq | Ne].
+  + subst. assumption.
+  + assert (Wfyx: wf_ctx (G & y ~ open_typ y S & x ~ open_typ x S)). {
+      apply wf_ctx_push2; auto.
+    }
+    lets Okyx': (proj1 Wfyx).
+    lets Ty': (weaken_ty_defs_middle Okyx' Ty).
+    rewrite* (@subst_intro_defs x y ds).
+    lets P: (@defs_subst_principle _ _ y _ _ _ Wfyx Ty').
+    rewrite <- (@subst_intro_typ x y S FrS) in P.
+    rewrite <- (@subst_intro_typ x y T FrT) in P.
+    apply P. apply binds_push_eq.
+Qed.
+
+
+(* ###################################################################### *)
+(** ** Preservation *)
 
 Theorem preservation_proof: preservation.
 Proof.
@@ -2385,9 +2497,23 @@ Proof.
     assert (Oky': ok (G & y' ~ U1)) by auto.
     apply (weaken_subtyp_end Oky') in StU.
     lets P: (narrow_ty_trm_end Tybody StU). destruct P as [V0 [Tybody' StV']].
-    exists V0. refine (conj Wf (conj _ (subtyp_trans _ StV))).
-    - (* TODO substitution Tybody' and BiGy *) admit.
-    - (* TODO substitution StV' and BiGy *) admit.
+    lets WfG: (wf_sto_to_wf_ctx Wf).
+    assert (y'G: y' # G) by auto.
+    lets WfGy': (wf_ctx_push WfG y'G (proj1 (subtyp_regular StU))).
+    exists (subst_typ y' y V0). refine (conj Wf (conj _ (subtyp_trans _ StV))).
+    - lets P: (@trm_subst_principle G y' y _ U1 V0 WfGy' Tybody').
+               (*******************)
+      assert (y'U1: y' \notin (fv_typ U1)) by auto.
+      rewrite (@subst_fresh_typ y' y U1 y'U1) in P.
+      assert (y'body: y' \notin (fv_trm body)) by auto.
+      rewrite <- (@subst_intro_trm y' y body y'body) in P.
+      apply (P BiGy).
+    - lets P: (@subtyp_subst_principle G y' y _ _ _ WfGy' StV').
+      assert (y'U1: y' \notin (fv_typ U1)) by auto.
+      rewrite (@subst_fresh_typ y' y U1 y'U1) in P.
+      assert (y'V1: y' \notin (fv_typ V1)) by auto.
+      rewrite (@subst_fresh_typ y' y V1 y'V1) in P.
+      apply (P BiGy).
   + (* red_new *)
     introv Wf Ty. inversions Ty. rename T0 into Tds, H2 into Tyds, H4 into Tyt, H6 into WfT.
     exists (x ~ (open_typ x Tds)).
@@ -2399,6 +2525,9 @@ Proof.
     specialize (Tyds x' x'L). specialize (Tyt x' x'L).
     exists T. repeat split.
     - refine (wf_sto_push Wf H xG _).
+      refine (ty_open_defs_change_var _ _ _ _ _ _ _ _ Tyds); auto.
+      * admit.
+      * admit.
       (* TODO change_var stuff
       apply ty_open_trm_change_var with (x:=x').
       * apply wf_ctx_push; auto.
@@ -2409,7 +2538,6 @@ Proof.
       * refine (ty_sbsm Ty1 (weaken_subtyp_end _ StT12)).
         lets OkG: (wf_sto_to_ok_G Wf). auto.
       *)
-      admit.
     - (* TODO change_var stuff *) admit.
     - apply subtyp_refl. apply (weaken_wf_typ_end WfT (Okx _)).
   + (* red_call1 *)
