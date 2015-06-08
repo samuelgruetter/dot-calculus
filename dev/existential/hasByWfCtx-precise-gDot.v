@@ -1324,6 +1324,204 @@ Qed.
 (* ###################################################################### *)
 (** ** The substitution principle *)
 
+Lemma subst_label_of_dec: forall x y D,
+  label_of_dec D = label_of_dec (subst_dec x y D).
+Proof.
+  intros. destruct D; simpl; reflexivity.
+Qed.
+
+Lemma subst_binds: forall x y v T G,
+  binds v T G ->
+  binds v (subst_typ x y T) (subst_ctx x y G).
+Proof.
+  introv Bi. unfold subst_ctx. apply binds_map. exact Bi.
+Qed.
+
+Lemma subst_intersect_dec: forall x y D1 D2 D3,
+  D1 && D2 == D3 ->
+  subst_dec x y D1 && subst_dec x y D2 == subst_dec x y D3.
+Proof.
+  introv Eq. unfold intersect_dec in *. case_if.
+  + do 2 rewrite <- subst_label_of_dec in H. case_if.
+    destruct D1; destruct D2; destruct D3; try discriminate;
+    simpl; inversions Eq; reflexivity.
+  + do 2 rewrite <- subst_label_of_dec in H. case_if.
+Qed.
+
+Lemma subst_union_dec: forall x y D1 D2 D3,
+  D1 || D2 == D3 ->
+  subst_dec x y D1 || subst_dec x y D2 == subst_dec x y D3.
+Proof.
+  introv Eq. unfold union_dec in *. case_if.
+  + do 2 rewrite <- subst_label_of_dec in H. case_if.
+    destruct D1; destruct D2; destruct D3; try discriminate;
+    simpl; inversions Eq; reflexivity.
+  + do 2 rewrite <- subst_label_of_dec in H. case_if.
+Qed.
+
+Lemma subst_has_hasnt: forall y S,
+   (forall G T D, typ_has G T D -> forall G1 G2 x,
+    G = G1 & x ~ S & G2  ->
+    ok (G1 & x ~ S & G2) ->
+    binds y S  (G1 & G2) ->
+    typ_has (subst_ctx x y (G1 & G2)) (subst_typ x y T) (subst_dec x y D))
+/\ (forall G T l, typ_hasnt G T l -> forall G1 G2 x,
+    G = G1 & x ~ S & G2  ->
+    ok (G1 & x ~ S & G2) ->
+    binds y S (G1 & G2)  ->
+    typ_hasnt (subst_ctx x y (G1 & G2)) (subst_typ x y T) l).
+Proof.
+  intros y S. apply typ_has_mutind.
+  + (* case typ_bot_has *)
+    intros. subst.
+    lets P: (typ_bot_has (subst_ctx x y (G1 & G2)) l). destruct l; eauto.
+  + (* case typ_rcd_has *)
+    intros. subst. apply typ_rcd_has.
+  + (* case typ_sel_has *)
+    introv Bix THas IH1 HiHas IH2 Eq Ok Biy. subst.
+    specialize (IH1 _ _ _ eq_refl Ok Biy).
+    specialize (IH2 _ _ _ eq_refl Ok Biy).
+    simpl. case_if.
+    - (* case x = x0 *)
+      lets Eq: (binds_middle_eq_inv Bix Ok). subst.
+      apply typ_sel_has with (subst_typ x0 y S) (subst_typ x0 y Lo) (subst_typ x0 y Hi).
+      * apply (subst_binds _ _ Biy).
+      * apply IH1.
+      * apply IH2.
+    - (* case x <> x0 *)
+      apply typ_sel_has with (subst_typ x0 y T) (subst_typ x0 y Lo) (subst_typ x0 y Hi).
+      * lets Bix': (binds_subst Bix H). apply (subst_binds _ _ Bix').
+      * apply IH1.
+      * apply IH2.
+  + (* case typ_and_has_1 *)
+    intros. subst. apply typ_and_has_1.
+    - eauto.
+    - rewrite <- subst_label_of_dec. eauto.
+  + (* case typ_and_has_2 *)
+    intros. subst. apply typ_and_has_2.
+    - rewrite <- subst_label_of_dec. eauto.
+    - eauto.
+  + (* case typ_and_has_12 *)
+    intros. subst. eapply typ_and_has_12; eauto.
+    apply subst_intersect_dec. assumption.
+  + (* case typ_or_has *)
+    intros. subst. eapply typ_or_has; eauto.
+    apply subst_union_dec. assumption.
+  + (* case typ_top_hasnt *)
+    eauto.
+  + (* case typ_rcd_hasnt *)
+    intros. subst. apply typ_rcd_hasnt.
+    rewrite <- subst_label_of_dec. assumption.
+  + (* case typ_sel_hasnt *)
+    introv Bix THas IH1 HiHasnt IH2 Eq Ok Biy. subst.
+    specialize (IH1 _ _ _ eq_refl Ok Biy).
+    specialize (IH2 _ _ _ eq_refl Ok Biy).
+    simpl. case_if.
+    - (* case x = x0 *)
+      lets Eq: (binds_middle_eq_inv Bix Ok). subst.
+      apply typ_sel_hasnt with (subst_typ x0 y S) (subst_typ x0 y Lo) (subst_typ x0 y Hi).
+      * apply (subst_binds _ _ Biy).
+      * apply IH1.
+      * apply IH2.
+    - (* case x <> x0 *)
+      apply typ_sel_hasnt with (subst_typ x0 y T) (subst_typ x0 y Lo) (subst_typ x0 y Hi).
+      * lets Bix': (binds_subst Bix H). apply (subst_binds _ _ Bix').
+      * apply IH1.
+      * apply IH2.
+  + (* case typ_and_hasnt *)
+    intros. subst. apply typ_and_hasnt; eauto.
+  + (* case typ_or_hasnt_1 *)
+    intros. subst. apply typ_or_hasnt_1; eauto.
+  + (* case typ_or_hasnt_2 *)
+    intros. subst. apply typ_or_hasnt_2; eauto.
+Qed.
+
+Print Assumptions subst_has_hasnt.
+
+Definition subst_assumptions(x y: var)(A1 A2: fset typ) :=
+   (forall T1, T1 \in A1 -> (subst_typ x y T1) \in A2)
+/\ (forall T2, T2 \in A2 -> exists T1, T1 \in A1 /\ (subst_typ x y T1) = T2).
+
+Lemma subst_wf: forall y S,
+   (forall G A1 T, wf_typ_impl G A1 T -> forall G1 G2 x A2,
+    G = G1 & x ~ S & G2  ->
+    ok (G1 & x ~ S & G2) ->
+    binds y S  (G1 & G2) ->
+    subst_assumptions x y A1 A2 ->
+    wf_typ_impl (subst_ctx x y (G1 & G2)) A2 (subst_typ x y T))
+/\ (forall G A1 D, wf_dec_impl G A1 D -> forall G1 G2 x A2,
+    G = G1 & x ~ S & G2  ->
+    ok (G1 & x ~ S & G2) ->
+    binds y S  (G1 & G2) ->
+    subst_assumptions x y A1 A2 ->
+    wf_dec_impl (subst_ctx x y (G1 & G2)) A2 (subst_dec x y D)).
+Proof.
+  intros y S.
+  apply wf_mutind.
+  + (* case wf_top *) eauto.
+  + (* case wf_bot *) eauto.
+  + (* case wf_hyp *)
+    intros. subst. apply wf_hyp.
+    destruct H2 as [Incl _]. apply* Incl.
+  + (* case wf_rcd *)
+    intros. subst. apply wf_rcd. fold subst_dec.
+    refine (H _ _ _ _ eq_refl H1 H2 _).
+    unfold subst_assumptions in *.
+    destruct H3 as [Incl1 Incl2].
+    split; introv In.
+    - rewrite in_union in *. destruct In as [In | In].
+      * left. apply (Incl1 _ In).
+      * right. rewrite in_singleton in *. subst T1. reflexivity.
+    - rewrite in_union in *. destruct In as [In | In].
+      * specialize (Incl2 T2 In). destruct Incl2 as [T1 [T1A Eq]].
+        eexists. rewrite in_union. eauto.
+      * rewrite in_singleton in In. subst T2. exists (typ_rcd D).
+        rewrite in_union. rewrite in_singleton. auto.
+  + (* case wf_sel *)
+    intros G A1 x X L Lo Hi Bix XHas WfLo IHLo WfHi IHHi G1 G2 x0 A2 Eq Ok Biy Su. subst.
+    specialize (IHLo _ _ _ _ eq_refl Ok Biy Su).
+    specialize (IHHi _ _ _ _ eq_refl Ok Biy Su).
+    destruct (subst_has_hasnt y S) as [SubstHas SubstHasnt].
+    simpl. case_if.
+    - lets Eq: (binds_middle_eq_inv Bix Ok). subst.
+      refine (wf_sel _ _ IHLo IHHi).
+      * apply (subst_binds _ _ Biy).
+      * apply (SubstHas _ _ _ XHas _ _ _ eq_refl Ok Biy).
+    - refine (wf_sel _ _ IHLo IHHi).
+      * lets Bix': (binds_subst Bix H). apply (subst_binds _ _ Bix').
+      * apply (SubstHas _ _ _ XHas _ _ _ eq_refl Ok Biy).
+  + (* case wf_and *)
+    intros. subst. apply wf_and; eauto.
+  + (* case wf_or *)
+    intros. subst. apply wf_or; eauto.
+  + (* case wf_tmem *)
+    intros. subst. apply wf_tmem; eauto.
+  + (* case wf_mtd *) eauto.
+    intros. subst. apply wf_mtd; eauto.
+Qed.
+
+Lemma subst_wf_typ: forall G1 x y S G2 T,
+  wf_typ (G1 & x ~ S & G2) T ->
+  ok (G1 & x ~ S & G2) ->
+  binds y S (G1 & G2) ->
+  wf_typ (subst_ctx x y (G1 & G2)) (subst_typ x y T).
+Proof.
+  introv Wf Ok Biy. destruct (subst_wf y S) as [P _].
+  apply (P _ \{} _ Wf _ _ _ \{} eq_refl Ok Biy).
+  split; introv Ie; rewrite in_empty in Ie; exfalso; exact Ie.
+Qed.
+
+Lemma subst_wf_dec: forall G1 x y S G2 D,
+  wf_dec (G1 & x ~ S & G2) D ->
+  ok (G1 & x ~ S & G2) ->
+  binds y S (G1 & G2) ->
+  wf_dec (subst_ctx x y (G1 & G2)) (subst_dec x y D).
+Proof.
+  introv Wf Ok Biy. destruct (subst_wf y S) as [_ P].
+  apply (P _ \{} _ Wf _ _ _ \{} eq_refl Ok Biy).
+  split; introv Ie; rewrite in_empty in Ie; exfalso; exact Ie.
+Qed.
+
 Lemma subtyp_subst_principle: forall G x y S T1 T2,
   wf_ctx (G & x ~ S) ->
   subtyp (G & x ~ S) T1 T2 ->
