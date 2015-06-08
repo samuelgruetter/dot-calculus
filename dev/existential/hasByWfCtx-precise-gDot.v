@@ -2861,50 +2861,6 @@ Print Assumptions progress_result.
 (* ###################################################################### *)
 (** ** Helper lemmas for preservation *)
 
-(* replaces super-fresh x by a not-so-fresh y 
-Lemma ty_open_trm_change_var: forall x y G S t T,
-  wf_ctx (G & x ~ open_typ x S) ->
-  wf_ctx (G & y ~ open_typ y S) ->
-  x \notin fv_trm t -> x \notin fv_typ S -> x \notin fv_typ T ->
-  ty_trm (G & x ~ open_typ x S) (open_trm x t) T ->
-  ty_trm (G & y ~ open_typ y S) (open_trm y t) T.
-Admitted.*)
-
-Lemma wf_ctx_push2 : forall G x y S1 S2,
-  wf_ctx (G & x ~ S1) ->
-  wf_ctx (G & y ~ S2) ->
-  x <> y ->
-  wf_ctx (G & y ~ S2 & x ~ S1).
-Proof.
-  introv Wfx Wfy Neq. unfold wf_ctx in *.
-  destruct Wfx as [Okx Wfx]. destruct Wfy as [Oky Wfy].
-  assert (Okyx: ok (G & y ~ S2 & x ~ S1)). {
-    apply ok_push_inv in Okx. destruct Okx as [OkG xG]. auto.
-  }
-  apply (conj Okyx).
-  introv Bi.
-  apply binds_push_inv in Bi. destruct Bi as [[Eq1 Eq2] | [Ne1 Bi]];
-  [idtac | (apply binds_push_inv in Bi; destruct Bi as [[Eq3 Eq4] | [Ne2 Bi]])].
-  - subst. refine (weaken_wf_typ_middle _ Okyx).
-    apply (Wfx x). apply binds_push_eq.
-  - subst. refine (weaken_wf_typ_end _ Okyx).
-    apply (Wfy y). apply binds_push_eq.
-  - refine (weaken_wf_typ_middle _ Okyx).
-    apply (Wfx x0). auto.
-Qed.
-
-Lemma wf_ctx_change_var: forall x y G S,
-  wf_ctx (G & x ~ open_typ x S) ->
-  x \notin (fv_ctx_types G) ->
-  y # G ->
-  wf_ctx (G & y ~ open_typ y S).
-Proof.
-  introv Wfx xfvG yG. unfold wf_ctx in *. destruct Wfx as [Okx Wfx]. split.
-  + apply ok_push_inv in Okx. destruct Okx as [OkG xG]. auto.
-  + introv Bi.
-    (* Q: how much wf-ness do we need for substitution?? *)
-Abort.
-
 Lemma fv_ctx_types_push: forall G x T,
   fv_ctx_types (G & x ~ T) = (fv_ctx_types G) \u (fv_typ T).
 Proof.
@@ -2915,29 +2871,29 @@ Proof.
   simpl. rewrite union_comm. reflexivity.
 Qed.
 
-Lemma ty_open_defs_change_var: forall x y G S ds T,
-  wf_ctx (G & x ~ open_typ x S) ->
+(* replaces super-fresh x by a not-so-fresh y *)
+Lemma ty_open_defs_change_var: forall y G S ds T,
+  ok G ->
   y # G ->
-  x \notin fv_defs ds ->
-  x \notin fv_typ S ->
-  x \notin fv_typ T ->
-  x \notin fv_ctx_types G ->
+  exists L, forall x, x \notin L ->
   ty_defs (G & x ~ open_typ x S) (open_defs x ds) (open_typ x T) ->
   ty_defs (G & y ~ open_typ y S) (open_defs y ds) (open_typ y T).
 Proof.
-  introv Wfx yG Frds FrS FrT Frx Ty.
+  introv Ok yG. let L := gather_vars in exists (L \u fv_typ (open_typ y S)).
+  intros x Fr Ty.
   destruct (classicT (x = y)) as [Eq | Ne].
   + subst. assumption.
-  + lets Okx: (proj1 Wfx). apply ok_push_inv in Okx. destruct Okx as [OkG xG].
+  + assert (xG: x # G) by auto.
     assert (Okyx: ok (G & y ~ open_typ y S & x ~ open_typ x S)) by auto.
     lets Ty': (weaken_ty_defs_middle Okyx Ty).
     rewrite* (@subst_intro_defs x y ds).
     lets P: (@defs_subst_principle _ _ y _ _ _ Ty' Okyx).
+    assert (FrS: x \notin (fv_typ S)) by auto.
     rewrite <- (@subst_intro_typ x y S FrS) in P.
+    assert (FrT: x \notin (fv_typ T)) by auto.
     rewrite <- (@subst_intro_typ x y T FrT) in P.
     assert (Fr': (x \notin (fv_ctx_types (G & y ~ open_typ y S)))). {
-      rewrite fv_ctx_types_push. rewrite notin_union. apply (conj Frx).
-      admit. (* from FrS *)
+      rewrite fv_ctx_types_push. rewrite notin_union. auto.
     }
     rewrite (@subst_fresh_ctx x y _ Fr') in P.
     apply P. apply binds_push_eq.
@@ -2998,23 +2954,13 @@ Proof.
     assert (xG: x # G) by apply* sto_unbound_to_ctx_unbound.
     lets Ok: (wf_sto_to_ok_G Wf).
     assert (Okx: forall X, ok (G & x ~ X)) by auto.
+    lets C1: (@ty_open_defs_change_var x G Tds ds Tds Ok xG). destruct C1 as [L1 C1].
     pick_fresh x'.
     assert (x'L: x' \notin L) by auto.
+    assert (x'L1: x' \notin L1) by auto.
     specialize (Tyds x' x'L). specialize (Tyt x' x'L).
     exists T. repeat split.
-    - refine (wf_sto_push Wf H xG _).
-      refine (ty_open_defs_change_var _ _ _ _ _ _ _ _ _ Tyds); auto.
-      * admit.
-      (* TODO change_var stuff
-      apply ty_open_trm_change_var with (x:=x').
-      * apply wf_ctx_push; auto.
-      * apply wf_ctx_push; auto. admit.
-      * auto.
-      * unfold fv_typ. simpl. fold fv_decs. auto.
-      * auto.
-      * refine (ty_sbsm Ty1 (weaken_subtyp_end _ StT12)).
-        lets OkG: (wf_sto_to_ok_G Wf). auto.
-      *)
+    - refine (wf_sto_push Wf H xG _). apply* C1.
     - (* TODO change_var stuff *) admit.
     - apply subtyp_refl. apply (weaken_wf_typ_end WfT (Okx _)).
   + (* red_call1 *)
