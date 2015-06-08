@@ -2804,19 +2804,68 @@ Proof.
       * apply (typ_or_has T1Has T2Has EqD).
 Qed.
 
-(*
-Lemma narrow_subtyp: forall G T1 T2, subtyp G T1 T2 ->
-  forall G1 x S1 S2 G2,
+Inductive wf_placeholder := wf_dummy.
+Hint Constructors wf_placeholder.
+
+Lemma narrow_wf:
+   (forall G A T, wf_typ_impl G A T -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
-    subtyp (G1 & x ~ S1) S1 S2 ->
-    subtyp (G1 & x ~ S1 & G2) T1 T2.
+    wf_placeholder ->
+    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+    wf_typ_impl (G1 & x ~ S1 & G2) A T)
+/\ (forall G A D, wf_dec_impl G A D -> forall G1 x S1 S2 G2,
+    G = G1 & x ~ S2 & G2 ->
+    wf_placeholder ->
+    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+    wf_dec_impl (G1 & x ~ S1 & G2) A D).
 Proof.
-  introv St. induction St; introv Eq StS; subst.
-  + (* case subtyp_refl *) eauto.
-  + (* case subtyp_top *) eauto.
-  + (* case subtyp_bot *) eauto.
-  + (* case subtyp_tdec *) eauto.
-  + (* case subtyp_mdec *) eauto.
+  apply wf_mutind.
+  + (* case wf_top *) eauto.
+  + (* case wf_bot *) eauto.
+  + (* case wf_hyp *) eauto.
+  + (* case wf_rcd *) eauto.
+  + (* case wf_sel *)
+    introv Bix XHas WfT IHT WfU IHU Eq Wf St. subst.
+    assert (WfG: wf_ctx (G1 & x0 ~ S1 & G2)) by admit.
+    destruct (narrow_binds WfG Bix St) as [X' [Bix' StX]].
+    assert (XHas': exists T' U',
+      typ_has (G1 & x0 ~ S1 & G2) X' (dec_typ L T' U') /\
+      subtyp (G1 & x0 ~ S1 & G2) T T' /\
+      subtyp (G1 & x0 ~ S1 & G2) U' U) by admit. (* <------ TODO narrow_has *)
+    destruct XHas' as [T' [U' [XHas' [StT StU]]]].
+    apply (wf_sel Bix' XHas'); rewrite <- (union_empty_l A); apply add_hyps_to_wf_typ.
+    - apply (proj2 (subtyp_regular StT)).
+    - apply (proj1 (subtyp_regular StU)).
+  + (* case wf_and  *) eauto.
+  + (* case wf_or   *) eauto.
+  + (* case wf_tmem *) eauto.
+  + (* case wf_mtd  *) eauto.
+Qed.
+
+Lemma narrow_subtyp_subdec:
+   (forall G T1 T2, subtyp G T1 T2 -> forall G1 x S1 S2 G2,
+    G = G1 & x ~ S2 & G2 ->
+    wf_placeholder ->
+    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+    subtyp (G1 & x ~ S1 & G2) T1 T2)
+/\ (forall G D1 D2, subdec G D1 D2 -> forall G1 x S1 S2 G2,
+    G = G1 & x ~ S2 & G2 ->
+    wf_placeholder ->
+    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+    subdec (G1 & x ~ S1 & G2) D1 D2).
+Proof.
+  apply subtyp_mutind.
+  + (* case subtyp_refl *)
+    intros. subst. apply subtyp_refl. apply* narrow_wf.
+  + (* case subtyp_top *)
+    intros. subst. apply subtyp_top. apply* narrow_wf.
+  + (* case subtyp_bot *)
+    intros. subst. apply subtyp_bot. apply* narrow_wf.
+  + (* case subtyp_tdec *)
+    eauto.
+Abort. (*
+  + (* case subtyp_mdec *)
+    eauto.
   + (* case subtyp_sel_l *)
     rename H into Bi2, H0 into X2Has2, X into X2.
     specialize (IHSt _ _ _ _ _ eq_refl StS).
