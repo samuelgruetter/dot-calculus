@@ -497,9 +497,12 @@ with ty_def: ctx -> def -> dec -> Prop :=
       subtyp G T U -> (* <-- only allow realizable bounds *)
       ty_def G (def_typ L T U) (dec_typ L T U)
   | ty_mdef: forall L m G T U1 U2 u,
+      (* These wf checks ensure that x does not appear in T and U2.
+         But note that it is allowed to occur in U1. *)
       wf_typ G T ->
+      wf_typ G U2 ->
       (forall x, x \notin L -> ty_trm (G & x ~ T) (open_trm x u) U1) ->
-      subtyp G U1 U2 ->  (* <-- explicit subsumption *)
+      (forall x, x \notin L -> subtyp (G & x ~ T) U1 U2) ->  (* <-- explicit subsumption *)
       ty_def G (def_mtd m T U2 u) (dec_mtd m T U2)
 with ty_defs: ctx -> defs -> typ -> Prop :=
   | ty_defs_nil: forall G,
@@ -1360,12 +1363,13 @@ Proof.
     - eauto.
   + (* case ty_tdef *) eauto.
   + (* case ty_mdef *)
-    introv WfT Tyu IH St Eq Ok. subst.
+    introv WfT WfU2 Tyu IH St Eq Ok. subst.
     apply_fresh ty_mdef as x'; try assert (x'L: x' \notin L) by auto.
+    - eauto.
     - eauto.
     - specialize (IH x' x'L G1 G2 (G3 & x' ~ T)).
       repeat rewrite concat_assoc in IH. apply* IH.
-    - eauto.
+    - rewrite <- concat_assoc. apply* weaken_subtyp_subdec; rewrite concat_assoc; eauto.
   + (* case ty_defs_nil *) eauto.
   + (* case ty_defs_cons *) eauto.
 Qed.
@@ -1907,20 +1911,27 @@ Proof.
     lets St': (subst_subtyp St Ok Biy).
     apply ty_tdef; eauto.
   + (* case ty_mdef *)
-    introv WfT Tyu IH St Eq Ok Biy. subst.
-    lets St': (subst_subtyp St Ok Biy).
-    apply_fresh ty_mdef as x'; eauto.
-    fold subst_trm.
-    assert (x'L: x' \notin L) by auto.
-    specialize (IH x' x'L G1 (G2 & x' ~ T) x).
-    repeat rewrite concat_assoc in IH.
-    assert (Ok': ok (G1 & x ~ S & G2 & x' ~ T)) by auto.
-    specialize (IH eq_refl Ok').
-    assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var*).
-    unfold subst_ctx in IH. rewrite map_push in IH.
-    lets P: (@subst_open_commute_trm x y x' u). rewrite Eqz in P.
-    rewrite P in IH. clear P.
-    apply IH. apply (binds_push_neq _ Biy). auto.
+    introv WfT WfU2 Tyu IH St Eq Ok Biy. subst.
+    apply_fresh ty_mdef as x'.
+    - eauto.
+    - eauto.
+    - fold subst_trm.
+      assert (x'L: x' \notin L) by auto.
+      specialize (IH x' x'L G1 (G2 & x' ~ T) x).
+      repeat rewrite concat_assoc in IH.
+      assert (Ok': ok (G1 & x ~ S & G2 & x' ~ T)) by auto.
+      specialize (IH eq_refl Ok').
+      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var*).
+      unfold subst_ctx in IH. rewrite map_push in IH.
+      lets P: (@subst_open_commute_trm x y x' u). rewrite Eqz in P.
+      rewrite P in IH. clear P.
+      apply IH. apply (binds_push_neq _ Biy). auto.
+    - assert (x'L: x' \notin L) by auto. specialize (St x' x'L).
+      assert (Ok': ok (G1 & x ~ S & G2 & x' ~ T)) by auto.
+      assert (Ne: y <> x') by auto. lets Biy': (binds_push_neq T Biy Ne).
+      rewrite <- concat_assoc in St, Ok', Biy'.
+      lets P: (subst_subtyp St Ok' Biy'). rewrite concat_assoc in P.
+      unfold subst_ctx in *. rewrite <- map_push. apply P.
   + (* case ty_defs_nil *)
     eauto.
   + (* case ty_defs_cons *)
@@ -2949,22 +2960,32 @@ Proof.
   introv St WfG StS. apply* narrow_subtyp_subdec.
 Qed.
 
+Lemma narrow_subtyp_end: forall G x S1 S2 T1 T2,
+  subtyp (G & x ~ S2) T1 T2 ->
+  wf_ctx (G & x ~ S1) ->
+  subtyp (G & x ~ S1) S1 S2 ->
+  subtyp (G & x ~ S1) T1 T2.
+Proof.
+  introv St WfG StS. destruct narrow_subtyp_subdec as [P _].
+  specialize (P _ _ _ St G x S1 S2 empty). repeat rewrite concat_empty_r in P. eauto.
+Qed.
+
 Lemma narrow_ty:
    (forall G t T2, ty_trm G t T2 -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
     wf_ctx (G1 & x ~ S1 & G2) ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     exists T1, ty_trm (G1 & x ~ S1 & G2) t T1 /\ subtyp (G1 & x ~ S1 & G2) T1 T2)
-/\ (forall G d D2, ty_def G d D2 -> forall G1 x S1 S2 G2,
+/\ (forall G d D, ty_def G d D -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
     wf_ctx (G1 & x ~ S1 & G2) ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
-    exists D1, ty_def (G1 & x ~ S1 & G2) d D1 /\ subdec (G1 & x ~ S1 & G2) D1 D2)
-/\ (forall G ds T2, ty_defs G ds T2 -> forall G1 x S1 S2 G2,
+    ty_def (G1 & x ~ S1 & G2) d D)
+/\ (forall G ds T, ty_defs G ds T -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
     wf_ctx (G1 & x ~ S1 & G2) ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
-    exists T1, ty_defs (G1 & x ~ S1 & G2) ds T1 /\ subtyp (G1 & x ~ S1 & G2) T1 T2).
+    ty_defs (G1 & x ~ S1 & G2) ds T).
 Proof.
   apply ty_mutind.
   + (* case ty_var *)
@@ -3000,14 +3021,37 @@ Proof.
     (* 
     Problem 1: To get the wf_ctx, we already need to pass it to narrow_wf_typ_middle! 
     lets WfT': (narrow_wf_typ_middle WfT Wf ...     
-
-    Problem 2: We will somehow have to make sure that the type assigned to ds
-    remains stable under narrowing, because otherwise ds might not have enough members. *)
+    *)
     admit.
-  + (* case ty_tdef *) admit.
-  + (* case ty_mdef *) admit.
+  + (* case ty_tdef *)
+    introv St Eq WfG StS. subst.
+    lets St': (narrow_subtyp_middle St WfG StS). eauto.
+  + (* case ty_mdef *)
+    introv WfT WfU2 Tyu IH StU Eq WfG StS. subst.
+    lets WfT': (narrow_wf_typ_middle WfT WfG StS).
+    lets WfU2': (narrow_wf_typ_middle WfU2 WfG StS).
+    (* apply_fresh ty_mdef as y.
+    - exact WfT'.
+    - exact WfU2'.
+    - assert (yL: y \notin L) by auto.
+      specialize (IH y yL G1 x S1 S2 (G2 & y ~ T)). repeat rewrite concat_assoc in IH.
+      assert (Ok: ok (G1 & x ~ S1 & G2 & y ~ T)) by (destruct WfG; auto).
+      assert (yG: y # (G1 & x ~ S1 & G2)) by auto.
+      lets WfG': (wf_ctx_push WfG yG (weaken_wf_typ_end WfT' Ok)).
+      specialize (IH eq_refl WfG' (weaken_subtyp_end Ok StS)).
+      destruct IH as [U0 [Tyu' StU'']].
+       eapply Tyu'. 
+        Problem: Need the same x' for both ty_trm u U1 and subtyp U1 U2,
+        but if we use /\ in the definition of ty_mdef, we don't get it an IH in the
+        induction scheme.
+        Adding an imprecise typing mode (imprecision just as the very last step) might
+        help here, but what in the ty_new case? There we also have two different x'.
+       *)
+      admit.
   + (* case ty_defs_nil *) eauto.
-  + (* case ty_defs_cons *) admit.
+  + (* case ty_defs_cons *)
+    introv Tyds IH1 Tyd IH2 Hasnt Eq Wf StS. subst.
+    apply* ty_defs_cons.
 Qed.
 
 Lemma narrow_ty_trm_end: forall G x S1 S2 t T2,
@@ -3143,7 +3187,7 @@ Proof.
         inversions Ty1. rename H0 into BiG, H2 into WfT.
         lets P: (typ_has_to_defs_has Wfs THas Bis BiG).
         destruct P as [d [dsHas Tyd]].
-        inversions Tyd. rename H4 into WfU2, H5 into Tybody, H6 into St.
+        inversions Tyd. rename H5 into WfU2, H6 into Tybody, H7 into St.
         exists (open_trm y u) s.
         apply (red_call y Bis dsHas).
   + (* case ty_new *)
@@ -3242,13 +3286,14 @@ Proof.
     inversions Tyy. rename H0 into BiGy, H2 into WfU1.
     lets P: (typ_has_to_defs_has Wf THas Bis BiGx). destruct P as [d [dsHas' Tyd]].
     inversions Tyd.
-    rename H4 into WfU2, H5 into Tybody, H6 into StV, U0 into V1, u into body'.
+    rename H5 into WfU2, H6 into Tybody, H7 into StV, U0 into V1, u into body'.
     assert (Eq: def_mtd m U2' V2' body' = def_mtd m U2 V2 body). {
       refine (defs_has_unique _ dsHas' dsHas). reflexivity.
     }
     inversions Eq. clear dsHas'.
     pick_fresh y'.
-    assert (y'L: y' \notin L) by auto. specialize (Tybody y' y'L).
+    assert (y'L: y' \notin L) by auto.
+    specialize (Tybody y' y'L). specialize (StV y' y'L).
     lets Ok: (wf_sto_to_ok_G Wf).
     assert (Oky': ok (G & y' ~ U1)) by auto.
     apply (weaken_subtyp_end Oky') in StU.
@@ -3259,7 +3304,7 @@ Proof.
     lets WfGy': (wf_ctx_push WfG y'G (proj1 (subtyp_regular StU))).
     lets P: (narrow_ty_trm_end Tybody WfGy' StU). destruct P as [V0 [Tybody' StV']].
             (*****************)      (****)
-    exists (subst_typ y' y V0). refine (conj Wf (conj _ (subtyp_trans _ StV))).
+    exists (subst_typ y' y V0). refine (conj Wf (conj _ _)).
     - lets P: (@trm_subst_principle G y' y _ U1 V0 Tybody' Oky').
                (*******************)
       assert (y'U1: y' \notin (fv_typ U1)) by auto.
@@ -3269,11 +3314,12 @@ Proof.
       assert (EqG: (subst_ctx y' y G) = G). { refine (@subst_fresh_ctx y' y _ _). auto. }
       rewrite EqG in P.
       apply (P BiGy).
-    - lets P: (@subtyp_subst_principle G y' y _ _ _ StV' Oky').
+    - lets StV1: (narrow_subtyp_end StV WfGy' StU).
+      lets P: (@subtyp_subst_principle G y' y _ _ _ (subtyp_trans StV' StV1) Oky').
       assert (y'U1: y' \notin (fv_typ U1)) by auto.
       rewrite (@subst_fresh_typ y' y U1 y'U1) in P.
-      assert (y'V1: y' \notin (fv_typ V1)) by auto.
-      rewrite (@subst_fresh_typ y' y V1 y'V1) in P.
+      assert (y'V2: y' \notin (fv_typ V2)) by auto.
+      rewrite (@subst_fresh_typ y' y V2 y'V2) in P.
       rewrite (@subst_fresh_ctx y' y G) in P.
       * apply (P BiGy).
       * auto.
