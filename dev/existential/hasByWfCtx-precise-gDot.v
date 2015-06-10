@@ -428,11 +428,13 @@ Inductive subtyp: ctx -> typ -> typ -> Prop :=
       subtyp G (typ_rcd D1) (typ_rcd D2)
   | subtyp_sel_l: forall G x X L T U,
       binds x X G ->
+      wf_typ G X ->
       typ_has G X (dec_typ L T U) ->
       subtyp G T U -> (* <-- probably not needed, but keep for symmetry with subtyp_sel_r *)
       subtyp G (typ_sel (avar_f x) L) U
   | subtyp_sel_r: forall G x X L T U,
       binds x X G ->
+      wf_typ G X ->
       typ_has G X (dec_typ L T U) ->
       subtyp G T U -> (* <-- makes proofs a lot easier!! *)
       subtyp G T (typ_sel (avar_f x) L)
@@ -1281,6 +1283,20 @@ Proof.
   - eauto.
 Qed.
 
+Lemma invert_wf_sel: forall G x L,
+  wf_typ G (typ_sel (avar_f x) L) ->
+  exists X T U,
+    binds x X G /\
+    typ_has G X (dec_typ L T U) /\
+    wf_typ G X /\
+    wf_typ G T /\
+    wf_typ G U.
+Proof.
+  intros. inversions H.
+  - in_empty_contradiction.
+  - exists X T U. eauto.
+Qed.
+
 
 (* ###################################################################### *)
 (** ** Regularity of Typing *)
@@ -1300,7 +1316,7 @@ Proof.
     end;
     eauto
   ].
-  (* case wf_rcd *)
+  (* case subtyp_rcd *)
   introv Sd Wf. destruct Wf as [Wf1 Wf2].
   split; apply wf_rcd; apply add_hyps_to_wf_dec; assumption.
 Qed.
@@ -1407,7 +1423,7 @@ Lemma weaken_wf:
 Proof.
   apply wf_mutind; eauto.
   (* case wf_sel *)
-  introv Bi XHas WfT IHT WFU IHU Eq Ok. subst G.
+  introv Bi XHas WfX IHX WfT IHT WFU IHU Eq Ok. subst G.
   lets Bi': (binds_weaken Bi Ok).
   lets XHas': ((proj1 weaken_has) _ _ _ XHas _ _ _ eq_refl Ok).
   repeat split; repeat eexists; eauto.
@@ -1461,10 +1477,10 @@ Proof.
   + (* case subtyp_bot   *) eauto.
   + (* case subtyp_rcd   *) eauto.
   + (* case subtyp_sel_l *)
-    introv Bix XHas St IH Eq Ok. subst. apply subtyp_sel_l with X T; eauto.
+    introv Bix WfX XHas St IH Eq Ok. subst. apply subtyp_sel_l with X T; eauto.
     apply (binds_weaken Bix Ok).
   + (* case subtyp_sel_r *)
-    introv Bix XHas St IH Eq Ok. subst. apply subtyp_sel_r with X U; eauto.
+    introv Bix WfX XHas St IH Eq Ok. subst. apply subtyp_sel_r with X U; eauto.
     apply (binds_weaken Bix Ok).
   + (* case subtyp_and   *) eauto.
   + (* case subtyp_and_l *) eauto.
@@ -1876,16 +1892,18 @@ Proof.
       * rewrite in_singleton in In. subst T2. exists (typ_rcd D).
         rewrite in_union. rewrite in_singleton. auto.
   + (* case wf_sel *)
-    intros G A1 x X L Lo Hi Bix XHas WfLo IHLo WfHi IHHi G1 G2 x0 A2 Eq Ok Biy Su. subst.
+    intros G A1 x X L Lo Hi Bix XHas WfX IHX WfLo IHLo WfHi IHHi G1 G2 x0 A2 Eq Ok Biy Su.
+    subst.
+    specialize (IHX  _ _ _ _ eq_refl Ok Biy Su).
     specialize (IHLo _ _ _ _ eq_refl Ok Biy Su).
     specialize (IHHi _ _ _ _ eq_refl Ok Biy Su).
     destruct (subst_has_hasnt y S) as [SubstHas SubstHasnt].
     simpl. case_if.
     - lets Eq: (binds_middle_eq_inv Bix Ok). subst.
-      refine (wf_sel _ _ IHLo IHHi).
-      * apply (subst_binds _ _ Biy).
-      * rewrite subst_typ_idempotent. apply (SubstHas _ _ _ XHas _ _ _ eq_refl Ok Biy).
-    - refine (wf_sel _ _ IHLo IHHi).
+      refine (wf_sel _ _ IHX IHLo IHHi).
+      * rewrite <- subst_typ_idempotent. apply (subst_binds _ _ Biy).
+      * apply (SubstHas _ _ _ XHas _ _ _ eq_refl Ok Biy).
+    - refine (wf_sel _ _ IHX IHLo IHHi).
       * lets Bix': (binds_subst Bix H). apply (subst_binds _ _ Bix').
       * apply (SubstHas _ _ _ XHas _ _ _ eq_refl Ok Biy).
   + (* case wf_and *)
@@ -1944,29 +1962,33 @@ Proof.
   + (* case subtyp_rcd *)
     introv Sd IH Eq Ok Biy. subst. apply subtyp_rcd. eauto.
   + (* case subtyp_sel_l *)
-    introv Bix XHas St IH Eq Ok Biy. subst.
+    introv Bix WfX XHas St IH Eq Ok Biy. subst.
     specialize (IH _ _ _ eq_refl Ok Biy).
     simpl. case_if.
     - lets Eq: (binds_middle_eq_inv Bix Ok). subst.
       apply subtyp_sel_l with (subst_typ x0 y S) (subst_typ x0 y T).
       * lets P: (subst_binds x0 y Biy). rewrite subst_typ_idempotent in P. exact P.
+      * eauto.
       * apply (subst_has XHas Ok Biy).
       * apply IH.
     - apply subtyp_sel_l with (subst_typ x0 y X) (subst_typ x0 y T).
       * lets Bix': (binds_subst Bix H). apply (subst_binds _ _ Bix').
+      * eauto.
       * apply (subst_has XHas Ok Biy).
       * apply IH.
   + (* case subtyp_sel_r *)
-    introv Bix XHas St IH Eq Ok Biy. subst.
+    introv Bix WfX XHas St IH Eq Ok Biy. subst.
     specialize (IH _ _ _ eq_refl Ok Biy).
     simpl. case_if.
     - lets Eq: (binds_middle_eq_inv Bix Ok). subst.
       apply subtyp_sel_r with (subst_typ x0 y S) (subst_typ x0 y U).
       * lets P: (subst_binds x0 y Biy). rewrite subst_typ_idempotent in P. exact P.
+      * eauto.
       * apply (subst_has XHas Ok Biy).
       * apply IH.
     - apply subtyp_sel_r with (subst_typ x0 y X) (subst_typ x0 y U).
       * lets Bix': (binds_subst Bix H). apply (subst_binds _ _ Bix').
+      * eauto.
       * apply (subst_has XHas Ok Biy).
       * apply IH.
   + (* case subtyp_and *)
@@ -2235,7 +2257,7 @@ Proof.
       * apply typ_rcd_has.
     - left. apply (typ_rcd_hasnt _ _ Ne).
   + (* case wf_sel *)
-    specialize (IHWf2 eq_refl l). destruct IHWf2 as [UHasnt | [D [Eq UHas]]].
+    specialize (IHWf3 eq_refl l). destruct IHWf3 as [UHasnt | [D [Eq UHas]]].
     - left. apply (typ_sel_hasnt H H0 UHasnt).
     - right. exists D. split.
       * apply Eq.
@@ -2735,7 +2757,7 @@ Proof.
     - apply subdec_refl. apply (typ_has_preserves_wf T2Has).
       apply (proj2 (subtyp_regular St)).
   + (* case subtyp_sel_r *)
-    rename H into Bi, H0 into XHas.
+    rename H into Bi, H0 into WfX, H1 into XHas.
     inversions T2Has.
     lets Eq: (binds_func H1 Bi). subst T0.
     apply IHSt. clear IHSt.
