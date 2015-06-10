@@ -3337,17 +3337,20 @@ Proof.
       * apply (proj1 (subtyp_regular StV2')).
     - apply (subtyp_trans StV2' StV2).
   + (* case ty_new *)
-    introv Tyds IH1 Tyu IH2 WfU Eq St. subst.
-    pick_fresh x'. assert (x'L: x' \notin L) by auto.
-    specialize (IH1 x' x'L G1 x S1 S2 (G2 & x' ~ open_typ x' T)).
-    repeat rewrite concat_assoc in IH1. specialize (IH1 eq_refl).
-    (* How can we get that wf_ctx? First get wf_typ T: *)
-    specialize (Tyds x' x'L). lets WfT: (ty_defs_regular Tyds).
-    rewrite <- concat_assoc in WfT.
-    (* 
-    Problem 1: To get the wf_ctx, we already need to pass it to narrow_wf_typ_middle! 
-    lets WfT': (narrow_wf_typ_middle WfT Wf ...     
-    *)
+    introv _ IH1 _ IH2 WfU Eq St. subst.
+    pick_fresh y. assert (yL: y \notin L) by auto.
+    assert (Ok: ok (G1 & x ~ S1 & G2)) by admit.
+    assert (Ok': ok (G1 & x ~ S1 & G2 & y ~ open_typ y T)) by auto.
+    apply (weaken_subtyp_end Ok') in St.
+    specialize (IH1 y yL G1 x S1 S2 (G2 & y ~ open_typ y T)).
+    specialize (IH2 y yL G1 x S1 S2 (G2 & y ~ open_typ y T)).
+    repeat rewrite concat_assoc in IH1, IH2.
+    specialize (IH1 eq_refl St).
+    specialize (IH2 eq_refl St).
+    inversions IH2. rename T1 into U', H into Tyu, H0 into StU.
+    (* Problem: y cannot appear in U (by WfU), but what if it suddenly occurs in U'?
+       Or in other words: How to ensure that narrowing preserves the "fv-restriction"?
+    refine (ty_sbsm _ StU). *)
     admit.
   + (* case ty_sbsm *)
     introv Ty IH St Eq StS. subst.
