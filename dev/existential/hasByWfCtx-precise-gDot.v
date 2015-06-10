@@ -388,6 +388,7 @@ Inductive wf_typ_impl: ctx -> fset typ -> typ -> Prop :=
   | wf_sel: forall G A x X L T U,
       binds x X G ->
       typ_has G X (dec_typ L T U) ->
+      wf_typ_impl G A X ->
       wf_typ_impl G A T ->
       wf_typ_impl G A U ->
       wf_typ_impl G A (typ_sel (avar_f x) L)
@@ -662,6 +663,11 @@ Ltac prove_binds := solve [
   unfold binds; rewrite EnvOps.get_def; unfold get_impl;
   repeat (rewrite <- cons_to_push || case_if); auto].
 
+Ltac prove_in_fset := solve [
+  repeat rewrite in_union;
+  repeat rewrite in_singleton;
+  auto 10].
+
 
 (* ###################################################################### *)
 (** ** Examples *)
@@ -709,44 +715,182 @@ Proof.
     (typ_rcd (dec_typ Stream typ_bot (typ_and
        (typ_rcd (dec_mtd head typ_top (typ_sel (avar_b 0) E)))
        (typ_rcd (dec_mtd tail typ_top (typ_sel (avar_b 0) Stream))))))).
-  + intros glob _. do_open.
+  { intros glob _. do_open.
     remember (typ_and
                (typ_rcd (dec_mtd head typ_top (typ_sel (avar_f glob) E)))
                (typ_rcd (dec_mtd tail typ_top (typ_sel (avar_f glob) Stream))))
     as TStream eqn: EqTStream.
     split_ty_defs.
-    - auto.
-    - apply ty_tdef. apply subtyp_bot.
+    { auto. }
+    { apply ty_tdef. apply subtyp_bot.
       rewrite concat_empty_l in *.
       rewrite EqTStream at 2.
       apply wf_and.
       { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
         eapply (wf_sel ((binds_single_eq _ _))).
-        + eauto.
-        + apply wf_top.
-        + apply wf_top. }
+        { eauto. }
+        { repeat apply wf_and.
+          { apply wf_top. }
+          { auto. }
+          { apply wf_rcd. apply wf_tmem.
+            { apply wf_bot. }
+            { rewrite EqTStream at 3.
+              apply wf_and.
+              { apply wf_hyp. prove_in_fset. }
+              { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                eapply (wf_sel ((binds_single_eq _ _))).
+                { eauto. }
+                { repeat apply wf_and.
+                  { apply wf_top. }
+                  { auto. }
+                  { apply wf_rcd. apply wf_tmem.
+                    { apply wf_bot. }
+                    { rewrite EqTStream at 4.
+                      apply wf_and.
+                      { apply wf_hyp. prove_in_fset. }
+                      { apply wf_hyp. prove_in_fset. }
+                    }
+                  }
+                }
+                { apply wf_bot. }
+                { rewrite EqTStream at 3.
+                  apply wf_and.
+                  { apply wf_hyp. prove_in_fset. }
+                  { apply wf_hyp. prove_in_fset. }
+                }
+              }
+            }
+          }
+        }
+        { eauto. }
+        { apply wf_top. }
+      }
       { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
         eapply (wf_sel ((binds_single_eq _ _))).
-        + eauto.
-        + apply wf_bot.
-        + rewrite EqTStream at 2.
+        { eauto. }
+        { repeat apply wf_and.
+          { apply wf_top. }
+          { auto. }
+          { apply wf_rcd. apply wf_tmem.
+            { apply wf_bot. }
+            { rewrite EqTStream at 3.
+              apply wf_and.
+              { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                eapply (wf_sel ((binds_single_eq _ _))).
+                { eauto. }
+                { repeat apply wf_and.
+                  { apply wf_top. }
+                  { auto. }
+                  { apply wf_rcd. apply wf_tmem.
+                    { apply wf_bot. }
+                    { rewrite EqTStream at 4.
+                      apply wf_and.
+                      { apply wf_hyp. prove_in_fset. }
+                      { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                        eapply (wf_sel ((binds_single_eq _ _))).
+                        { eauto. }
+                        { repeat apply wf_and.
+                          { apply wf_top. }
+                          { auto. }
+                          { apply wf_rcd. apply wf_tmem.
+                            { apply wf_bot. }
+                            { rewrite EqTStream at 5.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                          }
+                        }
+                        { apply wf_bot. }
+                        { rewrite EqTStream at 4.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_hyp. prove_in_fset. }
+                        }
+                      }
+                    }
+                  }
+                }
+                { apply wf_top. }
+                { apply wf_top. }
+              }
+              { apply wf_hyp. prove_in_fset. }
+            }
+          }
+        }
+        { apply wf_bot. }
+        { rewrite EqTStream at 2.
           apply wf_and.
           { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
             eapply (wf_sel ((binds_single_eq _ _))).
-            + eauto.
-            + apply wf_top.
-            + apply wf_top. }
-          { (* Can just use the assumption (corresponds to using the assumption obtained
-               by applying the cofix tactic) *)
-            apply wf_hyp. rewrite union_empty_l. rewrite in_singleton. reflexivity. } 
+            { eauto. }
+            { repeat apply wf_and.
+              { apply wf_top. }
+              { auto. }
+              { apply wf_rcd. apply wf_tmem.
+                { apply wf_bot. }
+                { rewrite EqTStream at 3.
+                  apply wf_and.
+                  { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                    eapply (wf_sel ((binds_single_eq _ _))).
+                    { eauto. }
+                    { repeat apply wf_and.
+                      { apply wf_top. }
+                      { auto. }
+                      { apply wf_rcd. apply wf_tmem.
+                        { apply wf_bot. }
+                        { rewrite EqTStream at 4.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                            eapply (wf_sel ((binds_single_eq _ _))).
+                            { eauto. }
+                            { repeat apply wf_and.
+                              { apply wf_top. }
+                              { auto. }
+                              { apply wf_rcd. apply wf_tmem.
+                                { apply wf_bot. }
+                                { rewrite EqTStream at 5.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                              }
+                            }
+                            { apply wf_bot. }
+                            { rewrite EqTStream at 4.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    { apply wf_top. }
+                    { apply wf_top. }
+                  }
+                  { apply wf_hyp. prove_in_fset. }
+                }
+              }
+            }
+            { apply wf_top. }
+            { apply wf_top. }
+          }
+          { apply wf_hyp. prove_in_fset. }
+        }
       }
- + intros glob _. do_open. apply ty_new with \{ glob } typ_top.
-   - intros unit N. split_ty_defs.
-   - intros unit N. do_open. apply ty_var.
-     * prove_binds.
-     * apply wf_top.
-   - apply wf_top.
- + apply wf_top.
+    }
+  }
+  { intros glob _. do_open. apply ty_new with \{ glob } typ_top.
+    { intros unit N. split_ty_defs. }
+    { intros unit N. do_open. apply ty_var.
+      { prove_binds. }
+      { apply wf_top. }
+    }
+    { apply wf_top. }
+   }
+  { apply wf_top. }
 Qed.
 
 Print Assumptions tc1.
