@@ -1231,7 +1231,7 @@ Proof.
       rewrite Eq in IH.
       apply (wf_rcd IH).
   + (* case wf_sel *)
-    intros G0 A x X L Lo Hi Bi XHas WfLo IHLo WfHi IHHi Eq. subst G0. eauto.
+    intros G0 A x X L Lo Hi Bi XHas WfX IHX WfLo IHLo WfHi IHHi Eq. subst G0. eauto.
 Qed.
 
 Print Assumptions remove_hyp_from_wf.
@@ -1247,13 +1247,12 @@ Qed.
 
 Lemma remove_hyp_from_wf_dec: forall G D,
   wf_dec_impl G (\{} \u \{ typ_rcd D}) D ->
-  wf_typ G (typ_rcd D) ->
   wf_dec G D.
 Proof.
-  introv Wf1 Wf2.
+  introv Wf1. lets Wf2: (wf_rcd Wf1).
   lets P: (proj2 (remove_hyp_from_wf Wf2)).
   specialize (P _ _ _ Wf1 eq_refl).
-  rewrite union_empty_l in P. rewrite singleton_remove in P. exact P.
+  repeat rewrite union_empty_l in P. rewrite singleton_remove in P. exact P.
 Qed.
 
 Lemma invert_wf_rcd: forall G D,
@@ -1262,7 +1261,7 @@ Lemma invert_wf_rcd: forall G D,
 Proof.
   introv Wf. inversion Wf; subst.
   - in_empty_contradiction.
-  - apply (remove_hyp_from_wf_dec H2 Wf).
+  - apply (remove_hyp_from_wf_dec H2).
 Qed.
 
 Lemma invert_wf_and: forall G T1 T2,
@@ -3117,6 +3116,8 @@ Proof.
   + (* case wf_tmem *) eauto.
   + (* case wf_mtd  *) eauto.
 Qed.
+
+Print Assumptions narrow_wf.
 
 Lemma narrow_wf_typ_middle: forall G1 x S1 S2 G2 T,
   wf_typ (G1 & x ~ S2 & G2) T ->
