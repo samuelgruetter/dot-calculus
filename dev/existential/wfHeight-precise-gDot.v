@@ -374,44 +374,44 @@ Non-expansive types are those which are just "aliases" [in a broad sense ;-)],
 i.e. bounds of path types and/or-types.
 Since we only want to allow guarded recursion, only the rules for compuational types
 add the type being checked to the assumptions (i.e. only wf_rcd). *)
-Inductive wf_typ_impl: ctx -> fset typ -> typ -> Prop :=
-  | wf_top: forall G A,
-      wf_typ_impl G A typ_top
-  | wf_bot: forall G A,
-      wf_typ_impl G A typ_bot
-  | wf_hyp: forall G A T,
+Inductive wf_typ_impl: ctx -> fset typ -> typ -> nat -> Prop :=
+  | wf_top: forall G A n,
+      wf_typ_impl G A typ_top n
+  | wf_bot: forall G A n,
+      wf_typ_impl G A typ_bot n
+  | wf_hyp: forall G A T n,
       T \in A ->
-      wf_typ_impl G A T
-  | wf_rcd: forall G A D,
-      wf_dec_impl G (A \u \{(typ_rcd D)}) D ->
-      wf_typ_impl G A (typ_rcd D)
-  | wf_sel: forall G A x X L T U,
+      wf_typ_impl G A T n
+  | wf_rcd: forall G A D n,
+      wf_dec_impl G (A \u \{(typ_rcd D)}) D n ->
+      wf_typ_impl G A (typ_rcd D) (S n)
+  | wf_sel: forall G A x X L T U n,
       binds x X G ->
       typ_has G X (dec_typ L T U) ->
-      wf_typ_impl G A X ->
-      wf_typ_impl G A T ->
-      wf_typ_impl G A U ->
-      wf_typ_impl G A (typ_sel (avar_f x) L)
-  | wf_and: forall G A T1 T2,
-      wf_typ_impl G A T1 ->
-      wf_typ_impl G A T2 ->
-      wf_typ_impl G A (typ_and T1 T2)
-  | wf_or: forall G A T1 T2,
-      wf_typ_impl G A T1 ->
-      wf_typ_impl G A T2 ->
-      wf_typ_impl G A (typ_or T1 T2)
-with wf_dec_impl: ctx -> fset typ -> dec -> Prop :=
-  | wf_tmem: forall G A L Lo Hi,
-      wf_typ_impl G A Lo ->
-      wf_typ_impl G A Hi ->
-      wf_dec_impl G A (dec_typ L Lo Hi)
-  | wf_mtd: forall G A m U V,
-      wf_typ_impl G A U ->
-      wf_typ_impl G A V ->
-      wf_dec_impl G A (dec_mtd m U V).
+      wf_typ_impl G A X n ->
+      wf_typ_impl G A T n ->
+      wf_typ_impl G A U n ->
+      wf_typ_impl G A (typ_sel (avar_f x) L) (S n)
+  | wf_and: forall G A T1 T2 n,
+      wf_typ_impl G A T1 n ->
+      wf_typ_impl G A T2 n ->
+      wf_typ_impl G A (typ_and T1 T2) (S n)
+  | wf_or: forall G A T1 T2 n,
+      wf_typ_impl G A T1 n ->
+      wf_typ_impl G A T2 n ->
+      wf_typ_impl G A (typ_or T1 T2) (S n)
+with wf_dec_impl: ctx -> fset typ -> dec -> nat -> Prop :=
+  | wf_tmem: forall G A L Lo Hi n,
+      wf_typ_impl G A Lo n ->
+      wf_typ_impl G A Hi n ->
+      wf_dec_impl G A (dec_typ L Lo Hi) (S n)
+  | wf_mtd: forall G A m U V n,
+      wf_typ_impl G A U n ->
+      wf_typ_impl G A V n ->
+      wf_dec_impl G A (dec_mtd m U V) (S n).
 
-Notation wf_typ G T := (wf_typ_impl G \{} T).
-Notation wf_dec G D := (wf_dec_impl G \{} D).
+Notation wf_typ G T := (exists n, (wf_typ_impl G \{} T n)).
+Notation wf_dec G D := (exists n, (wf_dec_impl G \{} D n)).
 
 Inductive subtyp: ctx -> typ -> typ -> Prop :=
   | subtyp_refl: forall G T,
@@ -703,6 +703,7 @@ trm_new (defs_cons (defs_cons defs_nil
 (trm_new defs_nil
 (trm_var (avar_b 0))).
 
+(*
 Fact tc1: ty_trm empty ex1 typ_top.
 Proof.
   assert (ne1: label_typ E <> label_typ Stream). {
@@ -896,7 +897,7 @@ Proof.
 Qed.
 
 Print Assumptions tc1.
-
+*)
 End Examples1.
 
 
@@ -1187,8 +1188,8 @@ Qed.
 (** ** Growing and shrinking the assumptions of wf *)
 
 Lemma add_hyps_to_wf: forall A2,
-   (forall G A1 T, wf_typ_impl G A1 T -> wf_typ_impl G (A1 \u A2) T) 
-/\ (forall G A1 D, wf_dec_impl G A1 D -> wf_dec_impl G (A1 \u A2) D).
+   (forall G A1 T n, wf_typ_impl G A1 T n -> wf_typ_impl G (A1 \u A2) T n) 
+/\ (forall G A1 D n, wf_dec_impl G A1 D n -> wf_dec_impl G (A1 \u A2) D n).
 Proof.
   intro A2. apply wf_mutind; eauto.
   + (* case wf_hyp *)
@@ -1201,26 +1202,40 @@ Proof.
     eauto.
 Qed.
 
-Definition add_hyps_to_wf_typ(G: ctx)(A1 A2: fset typ) := (proj1 (add_hyps_to_wf A2)) G A1.
+Lemma add_hyps_to_wf_typ: forall G A1 A2 T,
+  (exists n, wf_typ_impl G A1 T n) -> (exists n, wf_typ_impl G (A1 \u A2) T n).
+Proof.
+  introv H. destruct H as [n Wf]. exists n. apply* add_hyps_to_wf.
+Qed.
+
+(*
+Definition add_hyps_to_wf_typ(G: ctx)(A1 A2: fset typ) :=
+  (proj1 (add_hyps_to_wf A2)) G A1 T 0.
 Definition add_hyps_to_wf_dec(G: ctx)(A1 A2: fset typ) := (proj2 (add_hyps_to_wf A2)) G A1.
+*)
 
 Lemma remove_hyp_from_wf: forall G U, wf_typ G U ->
-   (forall G' A T, wf_typ_impl G' A T -> G' = G -> wf_typ_impl G (A \- \{ U }) T) 
-/\ (forall G' A D, wf_dec_impl G' A D -> G' = G -> wf_dec_impl G (A \- \{ U }) D).
+   (forall G' A T n, wf_typ_impl G' A T n ->
+    G' = G ->
+    exists n', wf_typ_impl G (A \- \{ U }) T n')
+/\ (forall G' A D n, wf_dec_impl G' A D n ->
+    G' = G ->
+    exists n', wf_dec_impl G (A \- \{ U }) D n').
 Proof.
   introv WfU. apply wf_mutind; eauto.
   + (* case wf_hyp *)
-    introv In Eq. subst G0.
+    introv n In Eq. subst G0.
     destruct (classicT (T = U)) as [Eq | Ne].
-    - subst T. rewrite <- (union_empty_l (A \- \{ U })). apply add_hyps_to_wf. exact WfU.
-    - apply wf_hyp. rewrite in_remove. apply (conj In). rewrite notin_singleton. exact Ne.
+    - subst T. rewrite <- (union_empty_l (A \- \{ U })). apply (add_hyps_to_wf_typ _ WfU).
+    - exists 0.
+      apply wf_hyp. rewrite in_remove. apply (conj In). rewrite notin_singleton. exact Ne.
   + (* case wf_rcd *)
     introv WfD IH Eq. subst G0. specialize (IH eq_refl).
     destruct (classicT (typ_rcd D = U)) as [Eq | Ne].
-    - rewrite <- (union_empty_l (A \- \{ U })). subst U. apply add_hyps_to_wf. exact WfU.
+    - rewrite <- (union_empty_l (A \- \{ U })). subst U. apply (add_hyps_to_wf_typ _ WfU).
     - assert (Eq: (A \u \{ typ_rcd D }) \- \{ U} = (A \- \{ U } \u \{ typ_rcd D})). {
         apply fset_extens; unfold subset; intros X H;
-        repeat (rewrite in_remove in * || rewrite in_union in *).
+        repeat (rewrite in_remove in * || rewrite in_union in * ).
         + auto_star.
         + destruct H as [[H1 H2] | H].
           - auto.
@@ -1229,12 +1244,59 @@ Proof.
             * rewrite notin_singleton. exact Ne.
       }
       rewrite Eq in IH.
+      destruct IH as [n' IH]. exists (S n').
       apply (wf_rcd IH).
   + (* case wf_sel *)
-    intros G0 A x X L Lo Hi Bi XHas WfLo IHLo WfHi IHHi Eq. subst G0. eauto.
+    intros G0 A x X L Lo Hi n Bi XHas WfX IHX WfLo IHLo WfHi IHHi Eq. subst G0.
+    admit. (* should work *)
+  + (* case wf_and *)
+    admit. (* should work *)
+  + (* case wf_or *)
+    admit. (* should work *)
+  + (* case wf_tmem *)
+    admit. (* should work *)
+  + (* case wf_mtd *)
+    admit. (* should work *)
+Grab Existential Variables. apply 0. apply 0.
 Qed.
 
 Print Assumptions remove_hyp_from_wf.
+
+(*
+Lemma remove_hyp_from_wf2: forall G A0 U, wf_typ_impl G A0 U ->
+   (forall G' A T, wf_typ_impl G' A T -> G' = G -> wf_typ_impl G (A0 \u (A \- \{ U })) T) 
+/\ (forall G' A D, wf_dec_impl G' A D -> G' = G -> wf_dec_impl G (A0 \u (A \- \{ U })) D).
+Proof.
+  introv WfU. apply wf_mutind; eauto.
+  + (* case wf_hyp *)
+    introv In Eq. subst G0.
+    destruct (classicT (T = U)) as [Eq | Ne].
+    - subst T. rewrite <- (union_empty_l (A \- \{ U })). apply add_hyps_to_wf. exact WfU.
+    - apply wf_hyp. rewrite in_union. right. rewrite in_remove.
+      apply (conj In). rewrite notin_singleton. exact Ne.
+  + (* case wf_rcd *)
+    introv WfD IH Eq. subst G0. specialize (IH eq_refl).
+    destruct (classicT (typ_rcd D = U)) as [Eq | Ne].
+    - rewrite <- (union_empty_l (A \- \{ U })). subst U. apply add_hyps_to_wf. exact WfU.
+    - assert (Eq: (A \u \{ typ_rcd D }) \- \{ U} = (A \- \{ U } \u \{ typ_rcd D})). {
+        apply fset_extens; unfold subset; intros X H;
+        repeat (rewrite in_remove in * || rewrite in_union in * ).
+        + auto_star.
+        + destruct H as [[H1 H2] | H].
+          - auto.
+          - rewrite in_singleton in H. subst X. split.
+            * right. rewrite in_singleton. reflexivity.
+            * rewrite notin_singleton. exact Ne.
+      }
+      rewrite Eq in IH.
+      rewrite union_assoc in IH.
+      apply (wf_rcd IH).
+  + (* case wf_sel *)
+    intros G0 A x X L Lo Hi Bi XHas WfX IHX WfLo IHLo WfHi IHHi Eq. subst G0. eauto.
+Qed.
+
+Print Assumptions remove_hyp_from_wf2.
+*)
 
 Lemma singleton_remove: forall (T: Type) (v: T),
   \{ v } \- \{ v } = \{}.
@@ -1245,26 +1307,29 @@ Proof.
   - exfalso. apply (notin_empty H).
 Qed.
 
-Lemma remove_hyp_from_wf_dec: forall G D,
-  wf_dec_impl G (\{} \u \{ typ_rcd D}) D ->
-  wf_typ G (typ_rcd D) ->
+Lemma remove_hyp_from_wf_dec: forall G D n,
+  wf_dec_impl G (\{} \u \{ typ_rcd D}) D n ->
   wf_dec G D.
 Proof.
-  introv Wf1 Wf2.
+  introv Wf1.
+  assert (Wf2: wf_typ G (typ_rcd D)). {
+    exists (S n). apply (wf_rcd Wf1).
+  }
   lets P: (proj2 (remove_hyp_from_wf Wf2)).
-  specialize (P _ _ _ Wf1 eq_refl).
-  rewrite union_empty_l in P. rewrite singleton_remove in P. exact P.
+  specialize (P _ _ _ _ Wf1 eq_refl).
+  repeat rewrite union_empty_l in P. rewrite singleton_remove in P. exact P.
 Qed.
 
 Lemma invert_wf_rcd: forall G D,
   wf_typ G (typ_rcd D) ->
   wf_dec G D.
 Proof.
-  introv Wf. inversion Wf; subst.
+  introv Wf. destruct Wf as [n Wf]. inversion Wf; subst.
   - in_empty_contradiction.
-  - apply (remove_hyp_from_wf_dec H2 Wf).
+  - apply (remove_hyp_from_wf_dec H2).
 Qed.
 
+(*
 Lemma invert_wf_and: forall G T1 T2,
   wf_typ G (typ_and T1 T2) ->
   wf_typ G T1 /\ wf_typ G T2.
@@ -1296,11 +1361,12 @@ Proof.
   - in_empty_contradiction.
   - exists X T U. eauto.
 Qed.
-
+*)
 
 (* ###################################################################### *)
 (** ** Regularity of Typing *)
 
+(*
 (* If a type is involved in a subtyping judgment, it is (deeply) well-formed. *)
 Lemma subtyping_regular:
    (forall G T1 T2, subtyp G T1 T2 -> wf_typ G T1 /\ wf_typ G T2)
@@ -1354,7 +1420,7 @@ Definition ty_trm_regular  := proj41 typing_regular.
 Definition ty_imp_regular  := proj42 typing_regular.
 Definition ty_def_regular  := proj43 typing_regular.
 Definition ty_defs_regular := proj44 typing_regular.
-
+*)
 
 (* ###################################################################### *)
 (** ** Weakening *)
@@ -1412,14 +1478,14 @@ Proof.
 Qed.
 
 Lemma weaken_wf:
-   (forall G A T, wf_typ_impl G A T -> forall G1 G2 G3,
+   (forall G A T n, wf_typ_impl G A T n -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
-      wf_typ_impl (G1 & G2 & G3) A T)
-/\ (forall G A D, wf_dec_impl G A D -> forall G1 G2 G3,
+      wf_typ_impl (G1 & G2 & G3) A T n)
+/\ (forall G A D n, wf_dec_impl G A D n -> forall G1 G2 G3,
       G = G1 & G3 ->
       ok (G1 & G2 & G3) ->
-      wf_dec_impl (G1 & G2 & G3) A D).
+      wf_dec_impl (G1 & G2 & G3) A D n).
 Proof.
   apply wf_mutind; eauto.
   (* case wf_sel *)
@@ -1434,11 +1500,13 @@ Lemma weaken_wf_typ_middle: forall G1 G2 G3 T,
   ok (G1 & G2 & G3) ->
   wf_typ (G1 & G2 & G3) T.
 Proof.
-  introv Wf Ok. eapply (proj1 weaken_wf); eauto.
+  introv Wf Ok.
+Admitted. (*
+ eapply (proj1 weaken_wf); eauto.
 Qed.
 
 Print Assumptions weaken_wf_typ_middle.
-
+*)
 Lemma weaken_wf_typ_end: forall G1 G2 T,
   wf_typ G1 T ->
   ok (G1 & G2) ->
@@ -1456,7 +1524,8 @@ Lemma weaken_wf_dec_middle: forall G1 G2 G3 D,
   ok (G1 & G2 & G3) ->
   wf_dec (G1 & G2 & G3) D.
 Proof.
-  introv Wf Ok. eapply (proj2 weaken_wf); eauto.
+  introv Wf Ok.
+Admitted. (* eapply (proj2 weaken_wf); eauto.
 Qed.
 
 Lemma weaken_subtyp_subdec:
@@ -2082,7 +2151,7 @@ Proof.
       repeat rewrite concat_assoc in IH1.
       assert (Ok': ok (G1 & x ~ S & G2 & x' ~ open_typ x' T)) by auto.
       specialize (IH1 eq_refl Ok').
-      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var*).
+      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var* ).
       unfold subst_ctx in IH1. rewrite map_push in IH1.
       lets P: (@subst_open_commute_typ x y x' T). rewrite Eqz in P.
       rewrite P in IH1. clear P.
@@ -2094,7 +2163,7 @@ Proof.
       repeat rewrite concat_assoc in IH2.
       assert (Ok': ok (G1 & x ~ S & G2 & x' ~ open_typ x' T)) by auto.
       specialize (IH2 eq_refl Ok').
-      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var*).
+      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var* ).
       unfold subst_ctx in IH2. rewrite map_push in IH2.
       lets P: (@subst_open_commute_typ x y x' T). rewrite Eqz in P.
       rewrite P in IH2. clear P.
@@ -2120,7 +2189,7 @@ Proof.
       repeat rewrite concat_assoc in IH.
       assert (Ok': ok (G1 & x ~ S & G2 & x' ~ T)) by auto.
       specialize (IH eq_refl Ok').
-      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var*).
+      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var* ).
       unfold subst_ctx in IH. rewrite map_push in IH.
       lets P: (@subst_open_commute_trm x y x' u). rewrite Eqz in P.
       rewrite P in IH. clear P.
@@ -2169,7 +2238,7 @@ Proof.
   specialize (P _ _ _ Ty G empty x). repeat rewrite concat_empty_r in P.
   apply (P eq_refl Ok Biy).
 Qed.
-
+*)
 
 (* ###################################################################### *)
 (** ** More stuff *)
@@ -2238,6 +2307,7 @@ Qed.
 (* ###################################################################### *)
 (** ** typ_has/hasnt total *)
 
+(*
 Lemma typ_has_total_impl: forall G A T, wf_typ_impl G A T -> A = \{} ->
   forall l, typ_hasnt G T l \/ exists D, l = label_of_dec D /\ typ_has G T D.
 Proof.
@@ -2299,6 +2369,7 @@ Proof.
 Qed.
 
 Print Assumptions typ_has_total.
+*)
 
 
 (* ###################################################################### *)
@@ -2541,6 +2612,7 @@ Hint Resolve subtyp_intersect subtyp_intersect_l subtyp_intersect_r
 Hint Resolve subtyp_intersect subtyp_union.
 *)
 
+(*
 Lemma subdec_refl: forall G D,
   wf_dec G D ->
   subdec G D D.
@@ -2903,7 +2975,6 @@ Proof.
 Qed.
 *)
 
-(*
 Lemma narrow_has:
    (forall G T D2, typ_has G T D2 -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
@@ -3076,8 +3147,92 @@ Proof.
   introv Has Wf St. apply* narrow_has.
 Qed.*)
 
-Axiom remove_history: forall G A T, wf_typ_impl G A T -> wf_typ G T.
+Axiom remove_history: forall G A T n, wf_typ_impl G A T n -> wf_typ G T.
 (* TODO doesn't hold as such, only if A "makes sense" *)
+
+Lemma narrow_wf: forall n,
+   (forall G1 x S1 S2 G2 T,
+    wf_typ_impl (G1 & x ~ S2 & G2) \{} T n -> 
+    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+    wf_typ_impl (G1 & x ~ S1 & G2) \{} T n)
+/\ (forall G1 x S1 S2 G2 D,
+    wf_dec_impl (G1 & x ~ S2 & G2) \{} D n ->
+    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+    wf_dec_impl (G1 & x ~ S1 & G2) \{} D n).
+Proof.
+  induction n; split; introv Wf StS; inversions Wf; eauto;
+  destruct IHn as [IH1 IH2]; eauto.
+  + (* case wf_rcd *)
+    apply remove_hyp_from_wf_dec in H3. destruct H3 as [n' WfD].
+    specialize (IH2 _ _ _ _ _ _ WfD StS).
+    (* Oh no! n' is at least (S n), which is too big! *)
+
+
+    introv Wf IHWf Eq1 Eq2 StS. subst. apply wf_rcd.
+    refine (IHWf _ _ _ _ _ _ eq_refl StS).
+    apply* IHWf. admit. (*!!! *)
+  + (* case wf_sel *)
+    introv Bix XHas WfX IHX WfT IHT WfU IHU. introv Eq1 Eq2 St. subst.
+    specialize (IHX _ _ _ _ _ eq_refl eq_refl St).
+    apply remove_history in IHX.
+    destruct (narrow_binds IHX Bix St) as [X' [Bix' StX]].
+    lets P: (narrow_has_middle XHas (proj2 (subtyp_regular StX)) St).
+            (*****************)
+    destruct P as [D1 [XHas' Sd]].
+    apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT1 StU1]]]].
+    subst D1.
+    lets P: (swap_sub_and_typ_has StX XHas'). destruct P as [D1 [X'Has Sd]].
+            (********************)
+    apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T'' [U'' [Eq [StT2 StU2]]]].
+    subst D1.
+    apply (wf_sel Bix' X'Has).
+    - apply (proj1 (subtyp_regular StX)).
+    - apply (proj2 (subtyp_regular StT2)).
+    - apply (proj1 (subtyp_regular StU2)).
+  + (* case wf_and  *) eauto.
+  + (* case wf_or   *) eauto.
+  + (* case wf_tmem *) eauto.
+  + (* case wf_mtd  *) eauto.
+Qed.
+
+Lemma narrow_wf:
+   (forall G A T n, wf_typ_impl G A T n -> forall G1 x S1 S2 G2,
+    G = G1 & x ~ S2 & G2 ->
+    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+    wf_typ_impl (G1 & x ~ S1 & G2) A T n)
+/\ (forall G A D n, wf_dec_impl G A D n -> forall G1 x S1 S2 G2,
+    G = G1 & x ~ S2 & G2 ->
+    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+    wf_dec_impl (G1 & x ~ S1 & G2) A D n).
+Proof.
+  apply wf_mutind.
+  + (* case wf_top *) eauto.
+  + (* case wf_bot *) eauto.
+  + (* case wf_hyp *) eauto.
+  + (* case wf_rcd *) eauto.
+  + (* case wf_sel *)
+    introv Bix XHas WfX IHX WfT IHT WfU IHU Eq St. subst.
+    specialize (IHX _ _ _ _ _ eq_refl St).
+    apply remove_history in IHX.
+    destruct (narrow_binds IHX Bix St) as [X' [Bix' StX]].
+    lets P: (narrow_has_middle XHas (proj2 (subtyp_regular StX)) St).
+            (*****************)
+    destruct P as [D1 [XHas' Sd]].
+    apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT1 StU1]]]].
+    subst D1.
+    lets P: (swap_sub_and_typ_has StX XHas'). destruct P as [D1 [X'Has Sd]].
+            (********************)
+    apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T'' [U'' [Eq [StT2 StU2]]]].
+    subst D1.
+    apply (wf_sel Bix' X'Has); rewrite <- (union_empty_l A); apply add_hyps_to_wf_typ.
+    - apply (proj1 (subtyp_regular StX)).
+    - apply (proj2 (subtyp_regular StT2)).
+    - apply (proj1 (subtyp_regular StU2)).
+  + (* case wf_and  *) eauto.
+  + (* case wf_or   *) eauto.
+  + (* case wf_tmem *) eauto.
+  + (* case wf_mtd  *) eauto.
+Qed.
 
 Lemma narrow_wf:
    (forall G A T, wf_typ_impl G A T -> forall G1 x S1 S2 G2,
