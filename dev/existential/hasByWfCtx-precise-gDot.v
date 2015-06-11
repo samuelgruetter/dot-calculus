@@ -2876,6 +2876,102 @@ Print Assumptions swap_sub_and_typ_has.
 
 
 (* ###################################################################### *)
+(** ** Soundness helper lemmas *)
+
+Lemma invert_typ_and_has: forall G T1 T2 D,
+   typ_has G (typ_and T1 T2) D ->
+   (typ_has G T1 D /\ typ_hasnt G T2 (label_of_dec D))
+\/ (typ_has G T2 D /\ typ_hasnt G T1 (label_of_dec D))
+\/ exists D1 D2, D1 && D2 == D /\ typ_has G T1 D1 /\ typ_has G T2 D2.
+Proof.
+  intros. inversions H; eauto 10.
+Qed.
+
+Lemma ty_def_to_label_eq: forall G d D,
+  ty_def G d D ->
+  label_of_def d = label_of_dec D.
+Proof.
+  intros. inversions H; auto.
+Qed.
+
+Lemma not_defs_has_and_hasnt: forall ds d,
+  defs_has ds d -> defs_hasnt ds (label_of_def d) -> False.
+Proof.
+  intro ds. induction ds.
+  - introv nilHas. inversions nilHas. (* contradiction *)
+  - introv dsHas dsHasnt. inversions dsHas; inversions dsHasnt. case_if.
+Qed.
+
+Lemma invert_ty_defs: forall G ds T D,
+  ty_defs G ds T ->
+  typ_has G T D ->
+  exists d, defs_has ds d /\ ty_def G d D.
+Proof.
+  introv Tyds. gen D. induction Tyds.
+  + introv THas. inversions THas.
+  + rename H into Tyd0, D into D0, d into d0, H0 into Hasnt.
+    introv THas.
+    apply invert_typ_and_has in THas.
+    destruct THas as [[THas D0Hasnt] | [[D0Has THasnt] | [D1 [D2 [Eq [THas D0Has]]]]]].
+    - (* case lhs has *)
+      inversions D0Hasnt.
+      specialize (IHTyds D THas). destruct IHTyds as [d [dsHas Tyd]].
+      exists d. refine (conj _ Tyd). unfold defs_has, get_def.
+      lets Eql1: (ty_def_to_label_eq Tyd0). case_if. apply dsHas.
+    - (* case rhs has *)
+      inversions D0Has.
+      exists d0. refine (conj _ Tyd0). unfold defs_has, get_def. case_if. reflexivity.
+    - (* case both have *)
+      inversions D0Has.
+      specialize (IHTyds D1 THas). destruct IHTyds as [d [dsHas Tyd]].
+      destruct (intersect_dec_label_eq _ _ Eq) as [Eq12 [Eq1 Eq2]].
+      lets Eql3: (ty_def_to_label_eq Tyd).
+      lets Eql4: (ty_def_to_label_eq Tyd0).
+      rewrite Eql4 in Hasnt. rewrite <- Eq12 in Hasnt. rewrite <- Eql3 in Hasnt.
+      exfalso. apply (not_defs_has_and_hasnt dsHas Hasnt).
+Qed.
+
+Lemma typ_has_to_defs_has: forall G T D x ds s,
+  wf_sto s G ->
+  typ_has G T D ->
+  binds x ds s ->
+  binds x T G ->
+  exists d, defs_has ds d /\ ty_def G d D.
+Proof.
+  introv Wf THas Bis BiG.
+  lets P: (invert_wf_sto_binds Wf Bis). destruct P as [T' [Bi' Tyds]].
+  apply (binds_func BiG) in Bi'. subst T'.
+  apply (invert_ty_defs Tyds THas).
+Qed.
+
+Lemma invert_ty_imp_call: forall G t m V2 u,
+  ty_imp G (trm_call t m u) V2 ->
+  exists T U V1,
+    ty_trm G t T /\
+    typ_has G T (dec_mtd m U V1) /\
+    ty_imp G u U /\
+    subtyp G V1 V2.
+Proof.
+  introv Ty. inversions Ty. inversions H.
+  exists T U T1. eauto.
+  admit.
+Qed.
+
+Lemma defs_has_unique: forall ds d1 d2,
+  label_of_def d1 = label_of_def d2 ->
+  defs_has ds d1 ->
+  defs_has ds d2 ->
+  d1 = d2.
+Proof.
+  intro ds. induction ds; introv Eq dsHas1 dsHas2.
+  + inversions dsHas1. (* contradiction *)
+  + inversions dsHas1; inversions dsHas2. do 2 case_if.
+    - inversions H1. inversions H0. reflexivity.
+    - eauto.
+Qed.
+
+
+(* ###################################################################### *)
 (** ** Narrowing *)
 
 (* Notice that all narrowing lemmas take quite strong wf hypotheses. *)
@@ -3502,102 +3598,6 @@ Proof.
 Qed.
 
 Print Assumptions narrow_ty.
-
-
-(* ###################################################################### *)
-(** ** Soundness helper lemmas *)
-
-Lemma invert_typ_and_has: forall G T1 T2 D,
-   typ_has G (typ_and T1 T2) D ->
-   (typ_has G T1 D /\ typ_hasnt G T2 (label_of_dec D))
-\/ (typ_has G T2 D /\ typ_hasnt G T1 (label_of_dec D))
-\/ exists D1 D2, D1 && D2 == D /\ typ_has G T1 D1 /\ typ_has G T2 D2.
-Proof.
-  intros. inversions H; eauto 10.
-Qed.
-
-Lemma ty_def_to_label_eq: forall G d D,
-  ty_def G d D ->
-  label_of_def d = label_of_dec D.
-Proof.
-  intros. inversions H; auto.
-Qed.
-
-Lemma not_defs_has_and_hasnt: forall ds d,
-  defs_has ds d -> defs_hasnt ds (label_of_def d) -> False.
-Proof.
-  intro ds. induction ds.
-  - introv nilHas. inversions nilHas. (* contradiction *)
-  - introv dsHas dsHasnt. inversions dsHas; inversions dsHasnt. case_if.
-Qed.
-
-Lemma invert_ty_defs: forall G ds T D,
-  ty_defs G ds T ->
-  typ_has G T D ->
-  exists d, defs_has ds d /\ ty_def G d D.
-Proof.
-  introv Tyds. gen D. induction Tyds.
-  + introv THas. inversions THas.
-  + rename H into Tyd0, D into D0, d into d0, H0 into Hasnt.
-    introv THas.
-    apply invert_typ_and_has in THas.
-    destruct THas as [[THas D0Hasnt] | [[D0Has THasnt] | [D1 [D2 [Eq [THas D0Has]]]]]].
-    - (* case lhs has *)
-      inversions D0Hasnt.
-      specialize (IHTyds D THas). destruct IHTyds as [d [dsHas Tyd]].
-      exists d. refine (conj _ Tyd). unfold defs_has, get_def.
-      lets Eql1: (ty_def_to_label_eq Tyd0). case_if. apply dsHas.
-    - (* case rhs has *)
-      inversions D0Has.
-      exists d0. refine (conj _ Tyd0). unfold defs_has, get_def. case_if. reflexivity.
-    - (* case both have *)
-      inversions D0Has.
-      specialize (IHTyds D1 THas). destruct IHTyds as [d [dsHas Tyd]].
-      destruct (intersect_dec_label_eq _ _ Eq) as [Eq12 [Eq1 Eq2]].
-      lets Eql3: (ty_def_to_label_eq Tyd).
-      lets Eql4: (ty_def_to_label_eq Tyd0).
-      rewrite Eql4 in Hasnt. rewrite <- Eq12 in Hasnt. rewrite <- Eql3 in Hasnt.
-      exfalso. apply (not_defs_has_and_hasnt dsHas Hasnt).
-Qed.
-
-Lemma typ_has_to_defs_has: forall G T D x ds s,
-  wf_sto s G ->
-  typ_has G T D ->
-  binds x ds s ->
-  binds x T G ->
-  exists d, defs_has ds d /\ ty_def G d D.
-Proof.
-  introv Wf THas Bis BiG.
-  lets P: (invert_wf_sto_binds Wf Bis). destruct P as [T' [Bi' Tyds]].
-  apply (binds_func BiG) in Bi'. subst T'.
-  apply (invert_ty_defs Tyds THas).
-Qed.
-
-Lemma invert_ty_imp_call: forall G t m V2 u,
-  ty_imp G (trm_call t m u) V2 ->
-  exists T U V1,
-    ty_trm G t T /\
-    typ_has G T (dec_mtd m U V1) /\
-    ty_imp G u U /\
-    subtyp G V1 V2.
-Proof.
-  introv Ty. inversions Ty. inversions H.
-  exists T U T1. eauto.
-  admit.
-Qed.
-
-Lemma defs_has_unique: forall ds d1 d2,
-  label_of_def d1 = label_of_def d2 ->
-  defs_has ds d1 ->
-  defs_has ds d2 ->
-  d1 = d2.
-Proof.
-  intro ds. induction ds; introv Eq dsHas1 dsHas2.
-  + inversions dsHas1. (* contradiction *)
-  + inversions dsHas1; inversions dsHas2. do 2 case_if.
-    - inversions H1. inversions H0. reflexivity.
-    - eauto.
-Qed.
 
 
 (* ###################################################################### *)
