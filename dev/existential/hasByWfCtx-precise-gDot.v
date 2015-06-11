@@ -485,8 +485,13 @@ with subdec: ctx -> dec -> dec -> Prop :=
       subtyp G T1 T2 ->
       subdec G (dec_mtd m S1 T1) (dec_mtd m S2 T2).
 
+(*
 Definition good_bounds_typ(G: ctx)(T: typ) :=
   forall L Lo Hi, typ_has G T (dec_typ L Lo Hi) -> subtyp G Lo Hi.
+*)
+
+Definition good_bounds(G: ctx) :=
+forall x X, binds x X G -> forall L Lo Hi, typ_has G X (dec_typ L Lo Hi) -> subtyp G Lo Hi.
 
 Inductive ty_trm: ctx -> trm -> typ -> Prop :=
   | ty_var: forall G x T,
@@ -508,11 +513,9 @@ Inductive ty_trm: ctx -> trm -> typ -> Prop :=
       ty_trm G (trm_new ds u) U
   (* Ideally, this rule would already be in subtyp, but it can't be there because
       of Coq's strict positivity restriction. *)
-  | ty_hyp: forall x X G t T,
-      binds x X G ->
-      wf_typ G X ->
+  | ty_hyp: forall G t T,
       wf_typ G T ->
-      (good_bounds_typ G X -> ty_trm G t T) ->
+      (good_bounds G -> ty_trm G t T) ->
       ty_trm G t T
 (* imprecise typing: subsumption allowed as last rule *)
 with ty_imp: ctx -> trm -> typ -> Prop :=
@@ -1521,10 +1524,18 @@ Proof.
   specialize (P G1 S U St G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
 Qed.
 
+(*
 Lemma strengthen_good_bounds: forall G1 G2 G3 X,
   wf_typ (G1 & G3) X ->
   good_bounds_typ (G1 & G2 & G3) X ->
   good_bounds_typ (G1 &      G3) X.
+Admitted.
+*)
+
+(* TODO does not really hold... *)
+Lemma shrink_good_bounds: forall G1 G2 G3,
+  good_bounds (G1 & G2 & G3) ->
+  good_bounds (G1 &      G3).
 Admitted.
 
 Lemma weaken_ty:
@@ -1564,9 +1575,11 @@ Proof.
       repeat rewrite concat_assoc in IH2. apply* IH2.
     - eauto.
   + (* case ty_hyp *)
-    introv Bix WfX WfT Ty IH Eq Ok. subst.
-    apply (ty_hyp (binds_weaken Bix Ok)); eauto.
-    intro Gb. refine (IH _ _ _ _ eq_refl Ok). apply (strengthen_good_bounds WfX Gb).
+    introv WfT Ty IH Eq Ok. subst.
+    apply (ty_hyp (weaken_wf_typ_middle WfT Ok)).
+    intro Gb. refine (IH _ _ _ _ eq_refl Ok).
+    apply (shrink_good_bounds Gb).
+          (******************)
   + (* case ty_sbsm *)
     introv Ty IH St Eq Ok. apply* ty_sbsm.
   + (* case ty_tdef *) eauto.
@@ -2054,11 +2067,11 @@ Proof.
 Qed.
 
 (* undo what the substitution lemma did: *)
-Lemma undo_subst_good_bounds_typ: forall G1 x S G2 y X,
+Lemma undo_subst_good_bounds: forall G1 x S G2 y,
   ok (G1 & x ~ S & G2) ->
   binds y (subst_typ x y S) (G1 & G2) ->
-  good_bounds_typ (subst_ctx x y (G1 & G2)) (subst_typ x y X) ->
-  good_bounds_typ (G1 & x ~ S & G2) X.
+  good_bounds (subst_ctx x y (G1 & G2)) ->
+  good_bounds (G1 & x ~ S & G2).
 Admitted.
 
 Lemma subst_ty: forall y S,
@@ -2122,12 +2135,11 @@ Proof.
       apply IH2. apply (binds_push_neq _ Biy). auto.
     - apply (subst_wf_typ WfU Ok Biy).
   + (* case ty_hyp *)
-    introv Bix WfX WfT Ty IH Eq Ok Biy. subst.
-    lets Bix': (subst_binds Bix Ok Biy).
-    apply (ty_hyp Bix'); eauto.
+    introv WfT Ty IH Eq Ok Biy. subst.
+    apply ty_hyp; eauto.
     introv Gb.
     refine (IH _ _ _ _ eq_refl Ok Biy).
-    apply (undo_subst_good_bounds_typ Ok Biy Gb).
+    apply (undo_subst_good_bounds Ok Biy Gb).
   + (* case ty_sbsm *)
     introv Ty IH St Eq Ok Biy. subst.
     lets St': (subst_subtyp St Ok Biy). apply ty_sbsm with (subst_typ x y T1); eauto.
@@ -3233,9 +3245,6 @@ Proof.
   introv WfT St. apply* narrow_wf.
 Qed.
 
-Definition good_bounds(G: ctx) :=
-forall x X, binds x X G -> forall L Lo Hi, typ_has G X (dec_typ L Lo Hi) -> subtyp G Lo Hi.
-
 Lemma wf_sto_to_good_bounds: forall s G, wf_sto s G -> good_bounds G.
 Admitted.
 
@@ -3330,6 +3339,20 @@ Qed.
 (* TODO doesn't hold, but it should be possible to prove some big alpha-renaming lemma
    to replace this if L is big enough. *)
 Axiom cofinite_vars_eq: forall (L: fset var) (x y: var), x \notin L -> y \notin L -> x = y.
+
+(* TODO these should follow from ty_hyp, or if they don't, add them as rules as well *)
+
+Lemma ty_imp_hyp: forall G t T,
+  wf_typ G T ->
+  (good_bounds G -> ty_imp G t T) ->
+  ty_imp G t T.
+Admitted.
+
+Lemma ty_def_hyp: forall G d D,
+  wf_dec G D ->
+  (good_bounds G -> ty_def G d D) ->
+  ty_def G d D.
+Admitted.
 
 Lemma narrow_ty:
    (forall G t T, ty_trm G t T -> forall G1 x S1 S2 G2,
