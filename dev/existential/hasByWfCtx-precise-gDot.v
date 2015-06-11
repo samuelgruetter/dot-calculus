@@ -1532,7 +1532,8 @@ Lemma strengthen_good_bounds: forall G1 G2 G3 X,
 Admitted.
 *)
 
-(* TODO does not really hold... *)
+(* TODO does not really hold, we need an additional hyp saying that (G1 & G3) is closed
+   by itself. *)
 Lemma shrink_good_bounds: forall G1 G2 G3,
   good_bounds (G1 & G2 & G3) ->
   good_bounds (G1 &      G3).
@@ -3241,6 +3242,14 @@ Lemma narrow_wf_typ_middle: forall G1 x S1 S2 G2 T,
   wf_typ (G1 & x ~ S2 & G2) T ->
   subtyp (G1 & x ~ S1 & G2) S1 S2 ->
   wf_typ (G1 & x ~ S1 & G2) T.
+Proof.
+  introv WfT St. apply* narrow_wf.
+Qed.
+
+Lemma narrow_wf_dec_middle: forall G1 x S1 S2 G2 D,
+  wf_dec (G1 & x ~ S2 & G2) D ->
+  subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+  wf_dec (G1 & x ~ S1 & G2) D.
 Proof.
   introv WfT St. apply* narrow_wf.
 Qed.
