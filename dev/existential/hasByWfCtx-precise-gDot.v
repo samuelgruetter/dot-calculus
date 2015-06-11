@@ -3292,6 +3292,10 @@ Proof.
   specialize (P _ _ _ St G x S1 S2 empty). repeat rewrite concat_empty_r in P. eauto.
 Qed.
 
+(* TODO doesn't hold, but it should be possible to prove some big alpha-renaming lemma
+   to replace this if L is big enough. *)
+Axiom cofinite_vars_eq: forall (L: fset var) (x y: var), x \notin L -> y \notin L -> x = y.
+
 Lemma narrow_ty:
    (forall G t T, ty_trm G t T -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
@@ -3340,19 +3344,41 @@ Proof.
     - apply (subtyp_trans StV2' StV2).
   + (* case ty_new *)
     introv _ IH1 _ IH2 WfU Eq Ok St. subst.
-    pick_fresh y. assert (yL: y \notin L) by auto.
-    assert (Ok': ok (G1 & x ~ S1 & G2 & y ~ open_typ y T)) by auto.
-    apply (weaken_subtyp_end Ok') in St.
-    specialize (IH1 y yL G1 x S1 S2 (G2 & y ~ open_typ y T)).
-    specialize (IH2 y yL G1 x S1 S2 (G2 & y ~ open_typ y T)).
-    repeat rewrite concat_assoc in IH1, IH2.
-    specialize (IH1 eq_refl Ok' St).
-    specialize (IH2 eq_refl Ok' St).
-    inversions IH2. rename T1 into U', H into Tyu, H0 into StU.
-    (* Problem: y cannot appear in U (by WfU), but what if it suddenly occurs in U'?
-       Or in other words: How to ensure that narrowing preserves the "fv-restriction"?
-    refine (ty_sbsm _ StU). *)
-    admit.
+    assert (C: exists L1 U', forall y, y \notin L1 -> 
+      ty_defs (G1 & x ~ S1 & G2 & y ~ open_typ y T) (open_defs y ds) (open_typ y T) /\
+      ty_trm (G1 & x ~ S1 & G2 & y ~ open_typ y T) (open_trm y u) U' /\
+      (* wf_typ (G1 & x ~ S1 & G2) U' *)
+      subtyp (G1 & x ~ S1 & G2) U' U).
+    {
+      pick_fresh y; assert (yL: y \notin L) by auto.
+      assert (Ok': ok (G1 & x ~ S1 & G2 & y ~ open_typ y T)) by auto.
+      apply (weaken_subtyp_end Ok') in St.
+      specialize (IH1 y yL G1 x S1 S2 (G2 & y ~ open_typ y T)).
+      specialize (IH2 y yL G1 x S1 S2 (G2 & y ~ open_typ y T)).
+      repeat rewrite concat_assoc in IH1, IH2.
+      specialize (IH1 eq_refl Ok' St).
+      specialize (IH2 eq_refl Ok' St).
+      inversions IH2. rename T1 into U', H into Tyu, H0 into StU.
+      match goal with
+      | F: y \notin (?L1 \u ?L2) |- _ => exists (L1 \u L2)
+      end.
+      exists U'.
+      intros y0 y0Fr.
+      rewrite (cofinite_vars_eq y0Fr Fr).
+      refine (conj IH1 (conj Tyu _)).
+      (* Problem: y cannot appear in U (by WfU), but what if it suddenly occurs in U'?
+         Or in other words: How to ensure that narrowing preserves the "fv-restriction"? *)
+      admit. (* almost StU *)
+    }
+    destruct C as [L1 [U' C]].
+    apply ty_sbsm with U'.
+    - apply_fresh ty_new as y; try pick_fresh y;
+      assert (yL1: y \notin L1) by auto; specialize (C y yL1).
+      * apply (proj31 C).
+      * apply (proj32 C).
+      * apply (proj1 (subtyp_regular (proj33 C))).
+    - pick_fresh y; assert (yL1: y \notin L1) by auto; specialize (C y yL1).
+      apply (proj33 C).
   + (* case ty_sbsm *)
     introv Ty IH St Eq Ok StS. subst.
     lets St': (narrow_subtyp_middle St StS). apply ty_imp_sbsm with T1; eauto.
