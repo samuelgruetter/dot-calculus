@@ -3415,7 +3415,7 @@ Proof.
     - pick_fresh y; assert (yL1: y \notin L1) by auto; specialize (C y yL1).
       apply (proj33 C).
   + (* case ty_hyp *)
-    introv Bix WfX WfT Ty IH Eq Ok Gb StS. subst.
+    introv Bix WfX WfT Ty IH Eq Ok StS. subst.
     assert (C: exists T',
       ty_trm (G1 & x0 ~ S1 & G2) t T' /\ subtyp (G1 & x0 ~ S1 & G2) T' T).
     {
@@ -3425,10 +3425,12 @@ Proof.
     apply (ty_sbsm Ty' StT).
   + (* case ty_sbsm *)
     introv Ty IH St Eq Ok StS. subst.
-    lets St': (narrow_subtyp_middle St StS). apply ty_imp_sbsm with T1; eauto.
+    assert (Gb: good_bounds (G1 & x ~ S1 & G2)) by admit. (* <------ !!!! *)
+    lets St': (narrow_subtyp_middle St Gb StS). apply ty_imp_sbsm with T1; eauto.
   + (* case ty_tdef *)
     introv St Eq Ok StS. subst.
-    lets St': (narrow_subtyp_middle St StS). eauto.
+    assert (Gb: good_bounds (G1 & x ~ S1 & G2)) by admit. (* <------ !!!! *)
+    lets St': (narrow_subtyp_middle St Gb StS). eauto.
   + (* case ty_mdef *)
     introv WfT WfU Tyu IH Eq Ok StS. subst.
     lets WfT': (narrow_wf_typ_middle WfT StS).
