@@ -1006,7 +1006,7 @@ Proof.
     reflexivity.
 Qed.
 
-Definition subst_fvar(x y z: var): var := If x = z then y else z.
+Definition subst_fvar(x y z: var): var := If z = x then y else z.
 
 Lemma subst_open_commute_avar: forall x y u,
   (forall a: avar, forall n: Datatypes.nat,
@@ -1721,11 +1721,25 @@ Proof.
     simpl in Eq. case_if. apply (IHds Eq).
 Qed.
 
-Lemma subst_binds: forall x y v T G,
+Lemma subst_binds_0: forall x y v T G,
   binds v T G ->
   binds v (subst_typ x y T) (subst_ctx x y G).
 Proof.
   introv Bi. unfold subst_ctx. apply binds_map. exact Bi.
+Qed.
+
+Lemma subst_binds: forall G1 x S G2 z Z y,
+  binds z Z (G1 & x ~ S & G2) ->
+  ok (G1 & x ~ S & G2) ->
+  binds y (subst_typ x y S) (G1 & G2) ->
+  binds (subst_fvar x y z) (subst_typ x y Z) (subst_ctx x y (G1 & G2)).
+Proof.
+  introv Biz Ok Biy. unfold subst_fvar. case_if.
+  - (* case x = z *)
+    lets Eq: (binds_middle_eq_inv Biz Ok). subst.
+    lets P: (subst_binds_0 x y Biy). rewrite subst_typ_idempotent in P. exact P.
+  - (* case x <> z *)
+    apply subst_binds_0. apply (binds_subst Biz). auto.
 Qed.
 
 Lemma subst_intersect_dec: forall x y D1 D2 D3,
@@ -1750,6 +1764,12 @@ Proof.
   + do 2 rewrite <- subst_label_of_dec in H. case_if.
 Qed.
 
+Lemma if_hoist: forall (A B: Type) (C: Prop) (f: A -> B) (e1 e2: A),
+  (If C then f e1 else f e2) = f (If C then e1 else e2).
+Proof.
+  intros. case_if*.
+Qed.
+
 Lemma subst_has_hasnt: forall y S,
    (forall G T D, typ_has G T D -> forall G1 G2 x,
     G = G1 & x ~ S & G2  ->
@@ -1772,18 +1792,8 @@ Proof.
     introv Bix THas IH1 HiHas IH2 Eq Ok Biy. subst.
     specialize (IH1 _ _ _ eq_refl Ok Biy).
     specialize (IH2 _ _ _ eq_refl Ok Biy).
-    simpl. case_if.
-    - (* case x = x0 *)
-      lets Eq: (binds_middle_eq_inv Bix Ok). subst.
-      apply typ_sel_has with (subst_typ x0 y S) (subst_typ x0 y Lo) (subst_typ x0 y Hi).
-      * lets P: (subst_binds x0 y Biy). rewrite subst_typ_idempotent in P. exact P.
-      * apply IH1.
-      * apply IH2.
-    - (* case x <> x0 *)
-      apply typ_sel_has with (subst_typ x0 y T) (subst_typ x0 y Lo) (subst_typ x0 y Hi).
-      * lets Bix': (binds_subst Bix H). apply (subst_binds _ _ Bix').
-      * apply IH1.
-      * apply IH2.
+    lets Bix': (subst_binds Bix Ok Biy).
+    simpl. rewrite if_hoist. apply* typ_sel_has.
   + (* case typ_and_has_1 *)
     intros. subst. apply typ_and_has_1.
     - eauto.
@@ -1807,18 +1817,8 @@ Proof.
     introv Bix THas IH1 HiHasnt IH2 Eq Ok Biy. subst.
     specialize (IH1 _ _ _ eq_refl Ok Biy).
     specialize (IH2 _ _ _ eq_refl Ok Biy).
-    simpl. case_if.
-    - (* case x = x0 *)
-      lets Eq: (binds_middle_eq_inv Bix Ok). subst.
-      apply typ_sel_hasnt with (subst_typ x0 y S) (subst_typ x0 y Lo) (subst_typ x0 y Hi).
-      * lets P: (subst_binds x0 y Biy). rewrite subst_typ_idempotent in P. exact P.
-      * apply IH1.
-      * apply IH2.
-    - (* case x <> x0 *)
-      apply typ_sel_hasnt with (subst_typ x0 y T) (subst_typ x0 y Lo) (subst_typ x0 y Hi).
-      * lets Bix': (binds_subst Bix H). apply (subst_binds _ _ Bix').
-      * apply IH1.
-      * apply IH2.
+    lets Bix': (subst_binds Bix Ok Biy).
+    simpl. rewrite if_hoist. apply* typ_sel_hasnt.
   + (* case typ_and_hasnt *)
     intros. subst. apply typ_and_hasnt; eauto.
   + (* case typ_or_hasnt_1 *)
@@ -1897,14 +1897,10 @@ Proof.
     specialize (IHLo _ _ _ _ eq_refl Ok Biy Su).
     specialize (IHHi _ _ _ _ eq_refl Ok Biy Su).
     destruct (subst_has_hasnt y S) as [SubstHas SubstHasnt].
-    simpl. case_if.
-    - lets Eq: (binds_middle_eq_inv Bix Ok). subst.
-      refine (wf_sel _ _ IHX IHLo IHHi).
-      * rewrite <- subst_typ_idempotent. apply (subst_binds _ _ Biy).
-      * apply (SubstHas _ _ _ XHas _ _ _ eq_refl Ok Biy).
-    - refine (wf_sel _ _ IHX IHLo IHHi).
-      * lets Bix': (binds_subst Bix H). apply (subst_binds _ _ Bix').
-      * apply (SubstHas _ _ _ XHas _ _ _ eq_refl Ok Biy).
+    lets Bix': (subst_binds Bix Ok Biy).
+    simpl. rewrite if_hoist.
+    refine (wf_sel Bix' _ IHX IHLo IHHi).
+    apply (SubstHas _ _ _ XHas _ _ _ eq_refl Ok Biy).
   + (* case wf_and *)
     intros. subst. apply wf_and; eauto.
   + (* case wf_or *)
@@ -1963,33 +1959,23 @@ Proof.
   + (* case subtyp_sel_l *)
     introv Bix WfX XHas St IH Eq Ok Biy. subst.
     specialize (IH _ _ _ eq_refl Ok Biy).
-    simpl. case_if.
-    - lets Eq: (binds_middle_eq_inv Bix Ok). subst.
-      apply subtyp_sel_l with (subst_typ x0 y S) (subst_typ x0 y T).
-      * lets P: (subst_binds x0 y Biy). rewrite subst_typ_idempotent in P. exact P.
-      * eauto.
-      * apply (subst_has XHas Ok Biy).
-      * apply IH.
-    - apply subtyp_sel_l with (subst_typ x0 y X) (subst_typ x0 y T).
-      * lets Bix': (binds_subst Bix H). apply (subst_binds _ _ Bix').
-      * eauto.
-      * apply (subst_has XHas Ok Biy).
-      * apply IH.
+    lets Bix': (subst_binds Bix Ok Biy).
+    simpl. rewrite if_hoist.
+    apply subtyp_sel_l with (subst_typ x0 y X) (subst_typ x0 y T).
+    * apply Bix'.
+    * eauto.
+    * apply (subst_has XHas Ok Biy).
+    * apply IH.
   + (* case subtyp_sel_r *)
     introv Bix WfX XHas St IH Eq Ok Biy. subst.
     specialize (IH _ _ _ eq_refl Ok Biy).
-    simpl. case_if.
-    - lets Eq: (binds_middle_eq_inv Bix Ok). subst.
-      apply subtyp_sel_r with (subst_typ x0 y S) (subst_typ x0 y U).
-      * lets P: (subst_binds x0 y Biy). rewrite subst_typ_idempotent in P. exact P.
-      * eauto.
-      * apply (subst_has XHas Ok Biy).
-      * apply IH.
-    - apply subtyp_sel_r with (subst_typ x0 y X) (subst_typ x0 y U).
-      * lets Bix': (binds_subst Bix H). apply (subst_binds _ _ Bix').
-      * eauto.
-      * apply (subst_has XHas Ok Biy).
-      * apply IH.
+    lets Bix': (subst_binds Bix Ok Biy).
+    simpl. rewrite if_hoist.
+    apply subtyp_sel_r with (subst_typ x0 y X) (subst_typ x0 y U).
+    * apply Bix'.
+    * eauto.
+    * apply (subst_has XHas Ok Biy).
+    * apply IH.
   + (* case subtyp_and *)
     introv St1 IH1 St2 IH2 Eq Ok Biy. subst.
     specialize (IH1 _ _ _ eq_refl Ok Biy).
@@ -2061,14 +2047,10 @@ Lemma subst_ty: forall y S,
 Proof.
   intros y S. apply ty_mutind.
   + (* case ty_var *)
-    introv Bix WfT Eq Ok Biy. subst. simpl. case_if.
-    - lets Eq: (binds_middle_eq_inv Bix Ok). subst.
-      apply ty_var.
-      * lets P: (subst_binds x0 y Biy). rewrite subst_typ_idempotent in P. exact P.
-      * eauto.
-    - apply ty_var.
-      * lets Bix': (binds_subst Bix H). apply (subst_binds _ _ Bix').
-      * eauto.
+    introv Bix WfT Eq Ok Biy. subst.
+    lets Bix': (subst_binds Bix Ok Biy).
+    simpl. rewrite if_hoist.
+    apply (ty_var Bix'). eauto.
   + (* case ty_call *)
     introv Tyt IH1 THas Tyu IH2 WfV Eq Ok Biy. subst.
     lets THas': (subst_has THas Ok Biy).
