@@ -3228,8 +3228,6 @@ Proof.
   + (* case subtyp_sel_l *)
     introv Bi2 WfX X2Has2 St IHSt Eq StS. subst. rename X into X2.
     specialize (IHSt _ _ _ _ _ eq_refl StS).
-    assert (Ok2: ok (G1 & x0 ~ S2 & G2)) by admit.
-    assert (Ok1: ok (G1 & x0 ~ S1 & G2)) by admit.
     lets WfX2: (narrow_wf_typ_middle WfX StS).
     lets P: (narrow_binds WfX2 Bi2 StS). destruct P as [X1 [Bi1 StX]].
     destruct (narrow_has_middle X2Has2 WfX2 StS) as [D [X2Has1 Sd]].
@@ -3246,8 +3244,6 @@ Proof.
   + (* case subtyp_sel_r *)
     introv Bi2 WfX X2Has2 St IHSt Eq StS. subst. rename X into X2.
     specialize (IHSt _ _ _ _ _ eq_refl StS).
-    assert (Ok2: ok (G1 & x0 ~ S2 & G2)) by admit.
-    assert (Ok1: ok (G1 & x0 ~ S1 & G2)) by admit.
     lets WfX2: (narrow_wf_typ_middle WfX StS).
     lets P: (narrow_binds WfX2 Bi2 StS). destruct P as [X1 [Bi1 StX]].
     destruct (narrow_has_middle X2Has2 WfX2 StS) as [D [X2Has1 Sd]].
@@ -3277,6 +3273,8 @@ Proof.
   + (* case subdec_mtd *) eauto.
 Qed.
 
+Print Assumptions narrow_subtyp_subdec.
+
 Lemma narrow_subtyp_middle: forall G1 x S1 S2 G2 T1 T2,
   subtyp (G1 & x ~ S2 & G2) T1 T2 ->
   subtyp (G1 & x ~ S1 & G2) S1 S2 ->
@@ -3297,34 +3295,38 @@ Qed.
 Lemma narrow_ty:
    (forall G t T, ty_trm G t T -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
+    ok (G1 & x ~ S1 & G2) ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     ty_imp (G1 & x ~ S1 & G2) t T)
 /\ (forall G t T, ty_imp G t T -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
+    ok (G1 & x ~ S1 & G2) ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     ty_imp (G1 & x ~ S1 & G2) t T)
 /\ (forall G d D, ty_def G d D -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
+    ok (G1 & x ~ S1 & G2) ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     ty_def (G1 & x ~ S1 & G2) d D)
 /\ (forall G ds T, ty_defs G ds T -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
+    ok (G1 & x ~ S1 & G2) ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     ty_defs (G1 & x ~ S1 & G2) ds T).
 Proof.
   apply ty_mutind.
   + (* case ty_var *)
-    introv Bi2 WfT Eq StS. subst.
+    introv Bi2 WfT Eq Ok StS. subst.
     lets WfT': (narrow_wf_typ_middle WfT StS).
     lets P: (narrow_binds WfT' Bi2 StS). destruct P as [T1 [Bi1 St]].
     lets WfT1: (proj1 (subtyp_regular St)).
     apply ty_sbsm with T1; eauto.
   + (* case ty_call *)
-    introv Tyt IH1 T2Has Tyu IH2 WfV2 Eq StS.
+    introv Tyt IH1 T2Has Tyu IH2 WfV2 Eq Ok StS.
     subst. rename T into T2, V into V2.
-    specialize (IH1 _ _ _ _ _ eq_refl StS).
+    specialize (IH1 _ _ _ _ _ eq_refl Ok StS).
     inversions IH1. rename H into Tyt', H0 into StT.
-    specialize (IH2 _ _ _ _ _ eq_refl StS).
+    specialize (IH2 _ _ _ _ _ eq_refl Ok StS).
     lets P: (narrow_has_middle T2Has (proj2 (subtyp_regular StT)) StS).
     destruct P as [D [T2Has' Sd]]. apply invert_subdec_mtd_sync_left in Sd.
     destruct Sd as [U2' [V2' [Eq [StU2 StV2]]]]. subst D.
@@ -3337,29 +3339,28 @@ Proof.
       * apply (proj1 (subtyp_regular StV2')).
     - apply (subtyp_trans StV2' StV2).
   + (* case ty_new *)
-    introv _ IH1 _ IH2 WfU Eq St. subst.
+    introv _ IH1 _ IH2 WfU Eq Ok St. subst.
     pick_fresh y. assert (yL: y \notin L) by auto.
-    assert (Ok: ok (G1 & x ~ S1 & G2)) by admit.
     assert (Ok': ok (G1 & x ~ S1 & G2 & y ~ open_typ y T)) by auto.
     apply (weaken_subtyp_end Ok') in St.
     specialize (IH1 y yL G1 x S1 S2 (G2 & y ~ open_typ y T)).
     specialize (IH2 y yL G1 x S1 S2 (G2 & y ~ open_typ y T)).
     repeat rewrite concat_assoc in IH1, IH2.
-    specialize (IH1 eq_refl St).
-    specialize (IH2 eq_refl St).
+    specialize (IH1 eq_refl Ok' St).
+    specialize (IH2 eq_refl Ok' St).
     inversions IH2. rename T1 into U', H into Tyu, H0 into StU.
     (* Problem: y cannot appear in U (by WfU), but what if it suddenly occurs in U'?
        Or in other words: How to ensure that narrowing preserves the "fv-restriction"?
     refine (ty_sbsm _ StU). *)
     admit.
   + (* case ty_sbsm *)
-    introv Ty IH St Eq StS. subst.
+    introv Ty IH St Eq Ok StS. subst.
     lets St': (narrow_subtyp_middle St StS). apply ty_imp_sbsm with T1; eauto.
   + (* case ty_tdef *)
-    introv St Eq StS. subst.
+    introv St Eq Ok StS. subst.
     lets St': (narrow_subtyp_middle St StS). eauto.
   + (* case ty_mdef *)
-    introv WfT WfU Tyu IH Eq StS. subst.
+    introv WfT WfU Tyu IH Eq Ok StS. subst.
     lets WfT': (narrow_wf_typ_middle WfT StS).
     lets WfU': (narrow_wf_typ_middle WfU StS).
     apply_fresh ty_mdef as y.
@@ -3367,24 +3368,27 @@ Proof.
     - exact WfU'.
     - assert (yL: y \notin L) by auto.
       specialize (IH y yL G1 x S1 S2 (G2 & y ~ T)). repeat rewrite concat_assoc in IH.
-      assert (Ok: ok (G1 & x ~ S1 & G2 & y ~ T)) by admit.
+      assert (Ok': ok (G1 & x ~ S1 & G2 & y ~ T)) by auto.
       assert (yG: y # (G1 & x ~ S1 & G2)) by auto.
-      apply (IH eq_refl (weaken_subtyp_end Ok StS)).
+      apply (IH eq_refl Ok' (weaken_subtyp_end Ok' StS)).
   + (* case ty_defs_nil *) eauto.
   + (* case ty_defs_cons *)
-    introv Tyds IH1 Tyd IH2 Hasnt Eq StS. subst.
+    introv Tyds IH1 Tyd IH2 Hasnt Eq Ok StS. subst.
     apply* ty_defs_cons.
 Qed.
 
 Lemma narrow_ty_imp_end: forall G x S1 S2 t T,
   ty_imp (G & x ~ S2) t T ->
+  ok (G & x ~ S1) ->
   subtyp (G & x ~ S1) S1 S2 ->
   ty_imp (G & x ~ S1) t T.
 Proof.
-  introv Ty St. destruct narrow_ty as [_ [P _]].
+  introv Ty Ok St. destruct narrow_ty as [_ [P _]].
   specialize (P _ _ _ Ty G x S1 S2 empty). repeat rewrite concat_empty_r in P.
-  apply (P eq_refl St).
+  apply (P eq_refl Ok St).
 Qed.
+
+Print Assumptions narrow_ty.
 
 
 (* ###################################################################### *)
@@ -3633,7 +3637,7 @@ Proof.
     apply (weaken_subtyp_end Oky') in StU.
     lets WfG: (wf_sto_to_wf_ctx Wf).
     assert (y'G: y' # G) by auto.
-    lets Tybody': (narrow_ty_imp_end Tybody StU).
+    lets Tybody': (narrow_ty_imp_end Tybody Oky' StU).
                   (*****************)
     lets P: (@trm_subst_principle_imp G y' y _ U1 V2 Tybody' Oky').
              (*******************)
