@@ -3188,13 +3188,21 @@ Proof.
   introv WfT St. apply* narrow_wf.
 Qed.
 
+Definition good_bounds(G: ctx) :=
+forall x X, binds x X G -> forall L Lo Hi, typ_has G X (dec_typ L Lo Hi) -> subtyp G Lo Hi.
+
+Lemma wf_sto_to_good_bounds: forall s G, wf_sto s G -> good_bounds G.
+Admitted.
+
 Lemma narrow_subtyp_subdec:
    (forall G T1 T2, subtyp G T1 T2 -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
+    good_bounds (G1 & x ~ S1 & G2) ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     subtyp (G1 & x ~ S1 & G2) T1 T2)
 /\ (forall G D1 D2, subdec G D1 D2 -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
+    good_bounds (G1 & x ~ S1 & G2) ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     subdec (G1 & x ~ S1 & G2) D1 D2).
 Proof.
@@ -3208,8 +3216,8 @@ Proof.
   + (* case subtyp_rcd *)
     eauto.
   + (* case subtyp_sel_l *)
-    introv Bi2 WfX X2Has2 St IHSt Eq StS. subst. rename X into X2.
-    specialize (IHSt _ _ _ _ _ eq_refl StS).
+    introv Bi2 WfX X2Has2 St IHSt Eq Gb StS. subst. rename X into X2.
+    specialize (IHSt _ _ _ _ _ eq_refl Gb StS).
     lets WfX2: (narrow_wf_typ_middle WfX StS).
     lets P: (narrow_binds WfX2 Bi2 StS). destruct P as [X1 [Bi1 StX]].
     destruct (narrow_has_middle X2Has2 WfX2 StS) as [D [X2Has1 Sd]].
@@ -3221,11 +3229,10 @@ Proof.
     refine (subtyp_trans _ StU1).
     refine (subtyp_trans _ StU2).
     apply (subtyp_sel_l Bi1 (proj1 (subtyp_regular StX)) X1Has).
-    admit. (* <--- !!! Will have
-        to add good-bounds hyp to env, but do we always have this?? *)
+    unfold good_bounds in Gb. apply (Gb _ _ Bi1 _ _ _ X1Has).
   + (* case subtyp_sel_r *)
-    introv Bi2 WfX X2Has2 St IHSt Eq StS. subst. rename X into X2.
-    specialize (IHSt _ _ _ _ _ eq_refl StS).
+    introv Bi2 WfX X2Has2 St IHSt Eq Gb StS. subst. rename X into X2.
+    specialize (IHSt _ _ _ _ _ eq_refl Gb StS).
     lets WfX2: (narrow_wf_typ_middle WfX StS).
     lets P: (narrow_binds WfX2 Bi2 StS). destruct P as [X1 [Bi1 StX]].
     destruct (narrow_has_middle X2Has2 WfX2 StS) as [D [X2Has1 Sd]].
@@ -3237,18 +3244,17 @@ Proof.
     refine (subtyp_trans StT1 _).
     refine (subtyp_trans StT2 _).
     apply (subtyp_sel_r Bi1 (proj1 (subtyp_regular StX)) X1Has).
-    admit. (* <--- !!! Will have
-        to add good-bounds hyp to env, but do we always have this?? *)
+    unfold good_bounds in Gb. apply (Gb _ _ Bi1 _ _ _ X1Has).
   + (* case subtyp_and *) eauto.
   + (* case subtyp_and_l *)
-    introv Wf1 Wf2 Eq StS. subst. apply subtyp_and_l; apply* narrow_wf.
+    intros. subst. apply subtyp_and_l; apply* narrow_wf.
   + (* case subtyp_and_r *)
-    introv Wf1 Wf2 Eq StS. subst. apply subtyp_and_r; apply* narrow_wf.
+    intros. subst. apply subtyp_and_r; apply* narrow_wf.
   + (* case subtyp_or *) eauto.
   + (* case subtyp_or_l *)
-    introv Wf1 Wf2 Eq StS. subst. apply subtyp_or_l; apply* narrow_wf.
+    intros. subst. apply subtyp_or_l; apply* narrow_wf.
   + (* case subtyp_or_r *)
-    introv Wf1 Wf2 Eq StS. subst. apply subtyp_or_r; apply* narrow_wf.
+    intros. subst. apply subtyp_or_r; apply* narrow_wf.
   + (* case subtyp_trans *)
     intros. apply subtyp_trans with T2; eauto.
   + (* case subdec_typ *) eauto.
@@ -3259,6 +3265,7 @@ Print Assumptions narrow_subtyp_subdec.
 
 Lemma narrow_subtyp_middle: forall G1 x S1 S2 G2 T1 T2,
   subtyp (G1 & x ~ S2 & G2) T1 T2 ->
+  good_bounds (G1 & x ~ S1 & G2) ->
   subtyp (G1 & x ~ S1 & G2) S1 S2 ->
   subtyp (G1 & x ~ S1 & G2) T1 T2.
 Proof.
@@ -3267,6 +3274,7 @@ Qed.
 
 Lemma narrow_subtyp_end: forall G x S1 S2 T1 T2,
   subtyp (G & x ~ S2) T1 T2 ->
+  good_bounds (G & x ~ S1) ->
   subtyp (G & x ~ S1) S1 S2 ->
   subtyp (G & x ~ S1) T1 T2.
 Proof.
