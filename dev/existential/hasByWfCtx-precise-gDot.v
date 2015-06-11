@@ -3358,37 +3358,41 @@ Lemma narrow_ty:
    (forall G t T, ty_trm G t T -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
     ok (G1 & x ~ S1 & G2) ->
+    good_bounds (G1 & x ~ S1 & G2) ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     ty_imp (G1 & x ~ S1 & G2) t T)
 /\ (forall G t T, ty_imp G t T -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
     ok (G1 & x ~ S1 & G2) ->
+    good_bounds (G1 & x ~ S1 & G2) ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     ty_imp (G1 & x ~ S1 & G2) t T)
 /\ (forall G d D, ty_def G d D -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
     ok (G1 & x ~ S1 & G2) ->
+    good_bounds (G1 & x ~ S1 & G2) ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     ty_def (G1 & x ~ S1 & G2) d D)
 /\ (forall G ds T, ty_defs G ds T -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
     ok (G1 & x ~ S1 & G2) ->
+    good_bounds (G1 & x ~ S1 & G2) ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     ty_defs (G1 & x ~ S1 & G2) ds T).
 Proof.
   apply ty_mutind.
   + (* case ty_var *)
-    introv Bi2 WfT Eq Ok StS. subst.
+    introv Bi2 WfT Eq Ok Gb StS. subst.
     lets WfT': (narrow_wf_typ_middle WfT StS).
     lets P: (narrow_binds WfT' Bi2 StS). destruct P as [T1 [Bi1 St]].
     lets WfT1: (proj1 (subtyp_regular St)).
     apply ty_sbsm with T1; eauto.
   + (* case ty_call *)
-    introv Tyt IH1 T2Has Tyu IH2 WfV2 Eq Ok StS.
+    introv Tyt IH1 T2Has Tyu IH2 WfV2 Eq Ok Gb StS.
     subst. rename T into T2, V into V2.
-    specialize (IH1 _ _ _ _ _ eq_refl Ok StS).
+    specialize (IH1 _ _ _ _ _ eq_refl Ok Gb StS).
     inversions IH1. rename H into Tyt', H0 into StT.
-    specialize (IH2 _ _ _ _ _ eq_refl Ok StS).
+    specialize (IH2 _ _ _ _ _ eq_refl Ok Gb StS).
     lets P: (narrow_has_middle T2Has (proj2 (subtyp_regular StT)) StS).
     destruct P as [D [T2Has' Sd]]. apply invert_subdec_mtd_sync_left in Sd.
     destruct Sd as [U2' [V2' [Eq [StU2 StV2]]]]. subst D.
@@ -3401,7 +3405,7 @@ Proof.
       * apply (proj1 (subtyp_regular StV2')).
     - apply (subtyp_trans StV2' StV2).
   + (* case ty_new *)
-    introv _ IH1 _ IH2 WfU Eq Ok St. subst.
+    introv _ IH1 _ IH2 WfU Eq Ok Gb St. subst.
     assert (C: exists L1 U', forall y, y \notin L1 -> 
       ty_defs (G1 & x ~ S1 & G2 & y ~ open_typ y T) (open_defs y ds) (open_typ y T) /\
       ty_trm (G1 & x ~ S1 & G2 & y ~ open_typ y T) (open_trm y u) U' /\
@@ -3414,8 +3418,9 @@ Proof.
       specialize (IH1 y yL G1 x S1 S2 (G2 & y ~ open_typ y T)).
       specialize (IH2 y yL G1 x S1 S2 (G2 & y ~ open_typ y T)).
       repeat rewrite concat_assoc in IH1, IH2.
-      specialize (IH1 eq_refl Ok' St).
-      specialize (IH2 eq_refl Ok' St).
+      assert (Gb': good_bounds (G1 & x ~ S1 & G2 & y ~ open_typ y T)) by admit. (* <- !!! *)
+      specialize (IH1 eq_refl Ok' Gb' St).
+      specialize (IH2 eq_refl Ok' Gb' St).
       inversions IH2. rename T1 into U', H into Tyu, H0 into StU.
       match goal with
       | F: y \notin (?L1 \u ?L2) |- _ => exists (L1 \u L2)
@@ -3438,20 +3443,20 @@ Proof.
     - pick_fresh y; assert (yL1: y \notin L1) by auto; specialize (C y yL1).
       apply (proj33 C).
   + (* case ty_hyp *)
-    introv WfT Ty IH Eq Ok StS. subst.
+    introv WfT Ty IH Eq Ok Gb2 StS. subst.
     apply (ty_imp_hyp (narrow_wf_typ_middle WfT StS)).
-    intro Gb. refine (IH _ _ _ _ _ _ eq_refl Ok StS).
-    admit. (* !!! must un-narrow Gb --> better give it as a hypothesis... *)
+    intro Gb1. refine (IH _ _ _ _ _ _ eq_refl Ok Gb1 StS).
+    admit.
   + (* case ty_sbsm *)
-    introv Ty IH St Eq Ok StS. subst.
-    assert (Gb: good_bounds (G1 & x ~ S1 & G2)) by admit. (* <------ !!!! *)
-    lets St': (narrow_subtyp_middle St Gb StS). apply ty_imp_sbsm with T1; eauto.
+    introv Ty IH St Eq Ok Gb2 StS. subst.
+    assert (Gb1: good_bounds (G1 & x ~ S1 & G2)) by admit. (* <------ !!!! *)
+    lets St': (narrow_subtyp_middle St Gb1 StS). apply ty_imp_sbsm with T1; eauto.
   + (* case ty_tdef *)
-    introv St Eq Ok StS. subst.
-    assert (Gb: good_bounds (G1 & x ~ S1 & G2)) by admit. (* <------ !!!! *)
-    lets St': (narrow_subtyp_middle St Gb StS). eauto.
+    introv St Eq Ok Gb2 StS. subst.
+    assert (Gb1: good_bounds (G1 & x ~ S1 & G2)) by admit. (* <------ !!!! *)
+    lets St': (narrow_subtyp_middle St Gb1 StS). eauto.
   + (* case ty_mdef *)
-    introv WfT WfU Tyu IH Eq Ok StS. subst.
+    introv WfT WfU Tyu IH Eq Ok Gb StS. subst.
     lets WfT': (narrow_wf_typ_middle WfT StS).
     lets WfU': (narrow_wf_typ_middle WfU StS).
     apply_fresh ty_mdef as y.
@@ -3461,16 +3466,17 @@ Proof.
       specialize (IH y yL G1 x S1 S2 (G2 & y ~ T)). repeat rewrite concat_assoc in IH.
       assert (Ok': ok (G1 & x ~ S1 & G2 & y ~ T)) by auto.
       assert (yG: y # (G1 & x ~ S1 & G2)) by auto.
-      apply (IH eq_refl Ok' (weaken_subtyp_end Ok' StS)).
+      assert (Gb': good_bounds (G1 & x ~ S1 & G2 & y ~ T)) by admit. (* <- !!! *)
+      apply (IH eq_refl Ok' Gb' (weaken_subtyp_end Ok' StS)).
   + (* case ty_defs_nil *) eauto.
   + (* case ty_defs_cons *)
-    introv Tyds IH1 Tyd IH2 Hasnt Eq Ok StS. subst.
-    apply* ty_defs_cons.
+    intros. subst. apply* ty_defs_cons.
 Qed.
 
 Lemma narrow_ty_imp_end: forall G x S1 S2 t T,
   ty_imp (G & x ~ S2) t T ->
   ok (G & x ~ S1) ->
+  good_bounds (G & x ~ S1) ->
   subtyp (G & x ~ S1) S1 S2 ->
   ty_imp (G & x ~ S1) t T.
 Proof.
@@ -3732,7 +3738,22 @@ Proof.
     apply (weaken_subtyp_end Oky') in StU.
     lets WfG: (wf_sto_to_wf_ctx Wf).
     assert (y'G: y' # G) by auto.
-    lets Tybody': (narrow_ty_imp_end Tybody Oky' StU).
+    assert (Gb: good_bounds (G & y' ~ U1)). {
+      unfold good_bounds. intros z Z Biz L1 Lo1 Hi1 ZHas.
+      lets P: (wf_sto_to_good_bounds Wf). unfold good_bounds in P.
+      apply binds_push_inv in Biz. destruct Biz as [[Eq1 Eq2] | [Ne Biz]].
+      - subst. rename ZHas into U1Has.
+        specialize (P _ _ BiGy L1 Lo1 Hi1).
+        destruct (typ_has_total WfU1 (label_typ L1)) as [U1Hasnt | [D [Eq U1Has']]].
+        * admit. (* contradiction *)
+        * assert (EqD: D = (dec_typ L1 Lo1 Hi1)) by admit. (* typ_has_unique *)
+          subst D. apply (weaken_subtyp_end Oky'). apply (P U1Has').
+      - specialize (P z Z Biz L1 Lo1 Hi1).
+        (* Problem: need to strengthen ZHas!
+           --> Try out an inductive/structural definition of good_bounds *)
+        admit.
+    }
+    lets Tybody': (narrow_ty_imp_end Tybody Oky' Gb StU).
                   (*****************)
     lets P: (@trm_subst_principle_imp G y' y _ U1 V2 Tybody' Oky').
              (*******************)
