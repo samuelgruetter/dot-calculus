@@ -466,6 +466,15 @@ Inductive subtyp: ctx -> typ -> typ -> Prop :=
       subtyp G T1 T2 ->
       subtyp G T2 T3 ->
       subtyp G T1 T3
+(* Error: Non strictly positive occurrence of "subtyp"
+   --> define the whole subtyping function as a Fixpoint with fuel?
+   --> or put the assumption in ty_trm? *)
+(*| subtyp_hyp: forall x X G L Lo Hi T1 T2,
+      binds x X G ->
+      typ_has G X (dec_typ L Lo Hi) ->
+      (subtyp G Lo Hi -> subtyp G T1 T2) ->
+      subtyp G T1 T2
+*)
 with subdec: ctx -> dec -> dec -> Prop :=
   | subdec_typ: forall G L Lo1 Hi1 Lo2 Hi2,
       subtyp G Lo2 Lo1 ->
@@ -475,6 +484,9 @@ with subdec: ctx -> dec -> dec -> Prop :=
       subtyp G S2 S1 ->
       subtyp G T1 T2 ->
       subdec G (dec_mtd m S1 T1) (dec_mtd m S2 T2).
+
+Definition good_bounds_typ(G: ctx)(T: typ) :=
+  forall L Lo Hi, typ_has G T (dec_typ L Lo Hi) -> subtyp G Lo Hi.
 
 Inductive ty_trm: ctx -> trm -> typ -> Prop :=
   | ty_var: forall G x T,
@@ -494,6 +506,14 @@ Inductive ty_trm: ctx -> trm -> typ -> Prop :=
          ty_trm (G & x ~ (open_typ x T)) (open_trm x u) U) ->
       wf_typ G U -> (* <-- even stronger than x \notin fv_typ U *)
       ty_trm G (trm_new ds u) U
+  (* Ideally, this rule would already be in subtyp, but it can't be there because
+      of Coq's strict positivity restriction. *)
+  | ty_hyp: forall x X G t T,
+      binds x X G ->
+      wf_typ G X ->
+      wf_typ G T ->
+      (good_bounds_typ G X -> ty_trm G t T) ->
+      ty_trm G t T
 (* imprecise typing: subsumption allowed as last rule *)
 with ty_imp: ctx -> trm -> typ -> Prop :=
   | ty_sbsm: forall G t T1 T2,
@@ -1501,6 +1521,12 @@ Proof.
   specialize (P G1 S U St G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
 Qed.
 
+Lemma strengthen_good_bounds: forall G1 G2 G3 X,
+  wf_typ (G1 & G3) X ->
+  good_bounds_typ (G1 & G2 & G3) X ->
+  good_bounds_typ (G1 &      G3) X.
+Admitted.
+
 Lemma weaken_ty:
    (forall G t T, ty_trm G t T -> forall G1 G2 G3,
     G = G1 & G3 ->
@@ -1537,6 +1563,10 @@ Proof.
     - specialize (IH2 x' x'L G1 G2 (G3 & x' ~ open_typ x' T)).
       repeat rewrite concat_assoc in IH2. apply* IH2.
     - eauto.
+  + (* case ty_hyp *)
+    introv Bix WfX WfT Ty IH Eq Ok. subst.
+    apply (ty_hyp (binds_weaken Bix Ok)); eauto.
+    intro Gb. refine (IH _ _ _ _ eq_refl Ok). apply (strengthen_good_bounds WfX Gb).
   + (* case ty_sbsm *)
     introv Ty IH St Eq Ok. apply* ty_sbsm.
   + (* case ty_tdef *) eauto.
@@ -2023,6 +2053,14 @@ Proof.
   apply (P eq_refl Ok Biy).
 Qed.
 
+(* undo what the substitution lemma did: *)
+Lemma undo_subst_good_bounds_typ: forall G1 x S G2 y X,
+  ok (G1 & x ~ S & G2) ->
+  binds y (subst_typ x y S) (G1 & G2) ->
+  good_bounds_typ (subst_ctx x y (G1 & G2)) (subst_typ x y X) ->
+  good_bounds_typ (G1 & x ~ S & G2) X.
+Admitted.
+
 Lemma subst_ty: forall y S,
    (forall G t T, ty_trm G t T -> forall G1 G2 x,
     G = G1 & x ~ S & G2  ->
@@ -2083,6 +2121,13 @@ Proof.
       rewrite P in IH2. clear P.
       apply IH2. apply (binds_push_neq _ Biy). auto.
     - apply (subst_wf_typ WfU Ok Biy).
+  + (* case ty_hyp *)
+    introv Bix WfX WfT Ty IH Eq Ok Biy. subst.
+    lets Bix': (subst_binds Bix Ok Biy).
+    apply (ty_hyp Bix'); eauto.
+    introv Gb.
+    refine (IH _ _ _ _ eq_refl Ok Biy).
+    apply (undo_subst_good_bounds_typ Ok Biy Gb).
   + (* case ty_sbsm *)
     introv Ty IH St Eq Ok Biy. subst.
     lets St': (subst_subtyp St Ok Biy). apply ty_sbsm with (subst_typ x y T1); eauto.
@@ -3369,6 +3414,15 @@ Proof.
       * apply (proj1 (subtyp_regular (proj33 C))).
     - pick_fresh y; assert (yL1: y \notin L1) by auto; specialize (C y yL1).
       apply (proj33 C).
+  + (* case ty_hyp *)
+    introv Bix WfX WfT Ty IH Eq Ok Gb StS. subst.
+    assert (C: exists T',
+      ty_trm (G1 & x0 ~ S1 & G2) t T' /\ subtyp (G1 & x0 ~ S1 & G2) T' T).
+    {
+      admit.
+    }
+    destruct C as [T' [Ty' StT]].
+    apply (ty_sbsm Ty' StT).
   + (* case ty_sbsm *)
     introv Ty IH St Eq Ok StS. subst.
     lets St': (narrow_subtyp_middle St StS). apply ty_imp_sbsm with T1; eauto.
@@ -3486,6 +3540,7 @@ Lemma invert_ty_imp_call: forall G t m V2 u,
 Proof.
   introv Ty. inversions Ty. inversions H.
   exists T U T1. eauto.
+  admit.
 Qed.
 
 Lemma defs_has_unique: forall ds d1 d2,
@@ -3530,7 +3585,8 @@ Proof.
         destruct IHarg as [s' [e' IHarg]]. do 2 eexists. apply (red_call2 x m IHarg).
       * (* arg is a var *)
         destruct IHarg as [y [o [Eq Bisy]]]. subst.
-        inversions Ty1. rename H0 into BiG, H2 into WfT.
+        inversions Ty1; [idtac | admit].
+        rename H0 into BiG, H2 into WfT.
         lets P: (typ_has_to_defs_has Wfs THas Bis BiG).
         destruct P as [d [dsHas Tyd]].
         inversions Tyd. rename H4 into WfU2, H5 into Tybody, H6 into St.
@@ -3541,6 +3597,8 @@ Proof.
     left. pick_fresh x.
     exists (open_trm x u) (s & x ~ (open_defs x ds)).
     apply* red_new.
+  + (* case ty_hyp *)
+    admit.
   + (* case ty_sbsm *)
     introv Ty IH St Wf. apply (IH s Wf).
 Qed.
@@ -3635,9 +3693,9 @@ Proof.
     exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
     apply invert_ty_imp_call in TyCall.
     destruct TyCall as [T [U2'' [V2'' [Tyx [THas [Tyy StV]]]]]].
-    inversions Tyx. rename H0 into BiGx, H2 into WfT.
-    inversions Tyy. inversions H.
-    rename T1 into U1, H0 into StU, H2 into BiGy, H4 into WfU2.
+    inversions Tyx; [idtac | admit]. rename H0 into BiGx, H2 into WfT.
+    inversions Tyy. inversions H; [idtac | admit].
+    rename T1 into U1, H0 into StU, H2 into BiGy, H4 into WfU1.
     lets P: (typ_has_to_defs_has Wf THas Bis BiGx). destruct P as [d [dsHas' Tyd]].
     inversions Tyd.
     clear H4. rename H5 into WfV, H6 into Tybody, u into body'.
@@ -3667,7 +3725,7 @@ Proof.
     assert (EqV2: (subst_typ y' y V2) = V2). { refine (@subst_fresh_typ y' y _ _). auto. }
     rewrite EqV2. exact StV.
   + (* red_new *)
-    introv Wf Ty. inversions Ty. inversions H0.
+    introv Wf Ty. inversions Ty. inversions H0; [idtac | admit].
     rename T0 into Tds, T into T2, H1 into StT, H4 into Tyds, H6 into Tyt, H8 into WfT.
     exists (x ~ (open_typ x Tds)).
     assert (xG: x # G) by apply* sto_unbound_to_ctx_unbound.
