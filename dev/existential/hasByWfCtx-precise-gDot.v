@@ -3448,9 +3448,63 @@ Qed.
 
 Print Assumptions remove_valid_history.
 
-(*
 Axiom remove_history: forall G A T, wf_typ_impl G A T -> wf_typ G T.
 (* TODO doesn't hold as such, only if A "makes sense" *)
+
+Section wf_ind.
+  Variable RT : ctx -> typ -> Prop.
+  Variable RD : ctx -> dec -> Prop.
+
+  Hypothesis CaseTop: forall G, RT G typ_top.
+  Hypothesis CaseBot: forall G, RT G typ_bot.
+  (* No CaseHyp because A is always empty. *)
+  Hypothesis CaseRcd: forall G D, RD G D -> RT G (typ_rcd D).
+  Hypothesis CaseSel: forall G x X L T U, binds x X G -> typ_has G X (dec_typ L T U) ->
+    RT G X -> RT G T -> RT G U -> RT G (typ_sel (avar_f x) L).
+  Hypothesis CaseAnd: forall G T1 T2, RT G T1 -> RT G T2 -> RT G (typ_and T1 T2).
+  Hypothesis CaseOr:  forall G T1 T2, RT G T1 -> RT G T2 -> RT G (typ_or  T1 T2).
+  Hypothesis CaseTmem: forall G L Lo Hi, RT G Lo -> RT G Hi -> RD G (dec_typ L Lo Hi).
+  Hypothesis CaseMtd: forall G m U V, RT G U -> RT G V -> RD G (dec_mtd m U V).
+
+  Lemma wf_typ_ind: forall G A T,
+    wf_typ_impl G A T -> A = \{} -> RT G T
+  with wf_dec_ind: forall G A D,
+    wf_dec_impl G A D -> A = \{} -> RD G D.
+  Proof.
+  - introv Wf Eq. destruct Wf; subst A.
+    + (* case wf_top *)
+      apply CaseTop.
+    + (* case wf_bot *)
+      apply CaseBot.
+    + (* case wf_hyp *)
+      exfalso. apply (in_empty_elim H).
+    + (* case wf_rcd *)
+      apply CaseRcd. refine (wf_dec_ind _ _ _ _ eq_refl).
+      apply remove_own_hyp_from_wf_dec in H. (* <-- Problem: Size might increase!! *)
+      rewrite empty_remove in H.
+      exact H.
+    + (* case wf_sel *)
+      apply (CaseSel H H0); refine (wf_typ_ind _ _ _ _ eq_refl); assumption.
+    + (* case wf_and *)
+      apply CaseAnd; refine (wf_typ_ind _ _ _ _ eq_refl); assumption.
+    + (* case wf_or *)
+      apply CaseOr; refine (wf_typ_ind _ _ _ _ eq_refl); assumption.
+  - introv Wf Eq. destruct Wf; subst A.
+    + (* case wf_tmem *)
+      apply CaseTmem; refine (wf_typ_ind _ _ _ _ eq_refl); assumption.
+    + (* case wf_mtd *)
+      apply CaseMtd; refine (wf_typ_ind _ _ _ _ eq_refl); assumption.
+  Admitted.
+
+  Theorem wf_mut_ind:
+    (forall G T, wf_typ G T -> RT G T) /\
+    (forall G D, wf_dec G D -> RD G D).
+  Proof.
+    split; introv H.
+    - apply (wf_typ_ind H eq_refl).
+    - apply (wf_dec_ind H eq_refl).
+  Qed.
+End wf_ind.
 
 Lemma narrow_wf:
    (forall G A T, wf_typ_impl G A T -> forall G1 x S1 S2 G2,
