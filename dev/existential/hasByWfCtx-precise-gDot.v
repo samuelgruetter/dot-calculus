@@ -1225,23 +1225,24 @@ Qed.
 Definition add_hyps_to_wf_typ(G: ctx)(A1 A2: fset typ) := (proj1 (add_hyps_to_wf A2)) G A1.
 Definition add_hyps_to_wf_dec(G: ctx)(A1 A2: fset typ) := (proj2 (add_hyps_to_wf A2)) G A1.
 
-Lemma remove_hyp_from_wf: forall G U, wf_typ G U ->
-   (forall G' A T, wf_typ_impl G' A T -> G' = G -> wf_typ_impl G (A \- \{ U }) T) 
-/\ (forall G' A D, wf_dec_impl G' A D -> G' = G -> wf_dec_impl G (A \- \{ U }) D).
+Lemma remove_hyp_from_wf: forall G A0 U, wf_typ_impl G A0 U ->
+   (forall G' A T, wf_typ_impl G' A T -> G' = G -> wf_typ_impl G (A0 \u (A \- \{ U })) T) 
+/\ (forall G' A D, wf_dec_impl G' A D -> G' = G -> wf_dec_impl G (A0 \u (A \- \{ U })) D).
 Proof.
   introv WfU. apply wf_mutind; eauto.
   + (* case wf_hyp *)
     introv In Eq. subst G0.
     destruct (classicT (T = U)) as [Eq | Ne].
     - subst T. rewrite <- (union_empty_l (A \- \{ U })). apply add_hyps_to_wf. exact WfU.
-    - apply wf_hyp. rewrite in_remove. apply (conj In). rewrite notin_singleton. exact Ne.
+    - apply wf_hyp. rewrite in_union. right. rewrite in_remove.
+      apply (conj In). rewrite notin_singleton. exact Ne.
   + (* case wf_rcd *)
     introv WfD IH Eq. subst G0. specialize (IH eq_refl).
     destruct (classicT (typ_rcd D = U)) as [Eq | Ne].
     - rewrite <- (union_empty_l (A \- \{ U })). subst U. apply add_hyps_to_wf. exact WfU.
     - assert (Eq: (A \u \{ typ_rcd D }) \- \{ U} = (A \- \{ U } \u \{ typ_rcd D})). {
         apply fset_extens; unfold subset; intros X H;
-        repeat (rewrite in_remove in * || rewrite in_union in *).
+        repeat (rewrite in_remove in * || rewrite in_union in * ).
         + auto_star.
         + destruct H as [[H1 H2] | H].
           - auto.
@@ -1250,6 +1251,7 @@ Proof.
             * rewrite notin_singleton. exact Ne.
       }
       rewrite Eq in IH.
+      rewrite union_assoc in IH.
       apply (wf_rcd IH).
   + (* case wf_sel *)
     intros G0 A x X L Lo Hi Bi XHas WfX IHX WfLo IHLo WfHi IHHi Eq. subst G0. eauto.
@@ -1266,14 +1268,89 @@ Proof.
   - exfalso. apply (notin_empty H).
 Qed.
 
-Lemma remove_hyp_from_wf_dec: forall G D,
-  wf_dec_impl G (\{} \u \{ typ_rcd D}) D ->
-  wf_dec G D.
+Lemma empty_remove: forall (T: Type) (v: T),
+  \{} \- \{ v } = \{}.
 Proof.
-  introv Wf1. lets Wf2: (wf_rcd Wf1).
+  intros. apply fset_extens; unfold subset; intros; rewrite in_remove in *.
+  - exfalso. apply (in_empty_elim (proj1 H)).
+  - exfalso. apply (in_empty_elim H).
+Qed.
+
+Lemma remove_notin: forall (T: Type) (A: fset T) (v: T),
+  v \notin A -> A \- \{ v } = A.
+Proof.
+  intros. apply fset_extens; unfold subset; intros.
+  - rewrite in_remove in H0. destruct H0. auto. 
+  - rewrite in_remove. apply (conj H0). rewrite notin_singleton.
+    intro. subst. apply H. assumption.
+Qed.
+
+(*
+Lemma remove_own_hyp_from_wf_dec: forall G A D,
+  wf_dec_impl G A D ->
+  wf_dec_impl G (A \- \{ typ_rcd D }) D.
+Proof.
+  introv Wf1.
+  assert (Eq: A = (A \- \{ typ_rcd D }) \u \{ typ_rcd D }) by admit.
+  rewrite Eq in Wf1.
+  lets Wf2: (wf_rcd Wf1).
   lets P: (proj2 (remove_hyp_from_wf Wf2)).
   specialize (P _ _ _ Wf1 eq_refl).
-  repeat rewrite union_empty_l in P. rewrite singleton_remove in P. exact P.
+  rewrite <- union_remove in P. rewrite <- Eq in P. rewrite union_same in P.
+  exact P.
+Qed.
+*)
+
+Lemma remove_own_hyp_from_wf_dec: forall G A D,
+  wf_dec_impl G (A \u \{ typ_rcd D }) D ->
+  wf_dec_impl G (A \- \{ typ_rcd D }) D.
+Proof.
+  introv Wf1.
+  assert (Eq: A \u \{ typ_rcd D } = (A \- \{ typ_rcd D }) \u \{ typ_rcd D }). {
+    apply fset_extens; unfold subset; intros; rewrite in_union in *.
+    + rewrite in_singleton in *. destruct (classicT (x = typ_rcd D)) as [Eq | Ne].
+      - subst. auto.
+      - left. rewrite in_remove. rewrite notin_singleton. destruct H.
+        * auto.
+        * exfalso. subst. auto.
+    + rewrite in_singleton in *. destruct (classicT (x = typ_rcd D)) as [Eq | Ne].
+      - subst. auto.
+      - left. rewrite in_remove in H. rewrite notin_singleton in H. repeat destruct H.
+        * auto.
+        * exfalso. auto.
+  }
+  rewrite Eq in Wf1.
+  lets Wf2: (wf_rcd Wf1).
+  lets P: (proj2 (remove_hyp_from_wf Wf2)).
+  specialize (P _ _ _ Wf1 eq_refl).
+  rewrite <- union_remove in P. rewrite <- Eq in P. rewrite union_assoc in P.
+  rewrite union_same in P. rewrite union_remove in P. rewrite singleton_remove in P.
+  rewrite union_empty_r in P.
+  exact P.
+Qed.
+
+Print Assumptions remove_own_hyp_from_wf_dec.
+
+Lemma weak_remove_own_hyp_from_wf_dec: forall G A D,
+  wf_dec_impl G (A \u \{ typ_rcd D }) D ->
+  wf_dec_impl G A D.
+Proof.
+  introv Wf.
+  destruct (classicT ((typ_rcd D) \in A)) as [In | Ni].
+  * assert (Eq: (A \u \{ typ_rcd D}) = A). {
+      apply fset_extens; unfold subset; intros.
+      - rewrite in_union, in_singleton in H. destruct H; subst; auto.
+      - rewrite in_union. auto.
+    }
+    rewrite Eq in Wf. exact Wf.
+  * assert (Eq: A = (A \u \{ typ_rcd D}) \- \{ typ_rcd D }). {
+      rewrite union_remove. rewrite singleton_remove. rewrite union_empty_r.
+      rewrite (remove_notin Ni). reflexivity.
+    }
+    rewrite Eq.
+    apply remove_own_hyp_from_wf_dec.
+    rewrite <- union_assoc. rewrite union_same.
+    exact Wf.
 Qed.
 
 Lemma invert_wf_rcd: forall G D,
@@ -1282,7 +1359,8 @@ Lemma invert_wf_rcd: forall G D,
 Proof.
   introv Wf. inversion Wf; subst.
   - in_empty_contradiction.
-  - apply (remove_hyp_from_wf_dec H2).
+  - lets P: (remove_own_hyp_from_wf_dec H2). rewrite union_empty_l in *.
+    rewrite empty_remove in P. exact P.
 Qed.
 
 Lemma invert_wf_and: forall G T1 T2,
@@ -1315,6 +1393,21 @@ Proof.
   intros. inversions H.
   - in_empty_contradiction.
   - exists X T U. eauto.
+Qed.
+
+Lemma invert_wf_sel_2: forall G a L,
+  wf_typ G (typ_sel a L) ->
+  exists x X T U,
+    a = avar_f x /\
+    binds x X G /\
+    typ_has G X (dec_typ L T U) /\
+    wf_typ G X /\
+    wf_typ G T /\
+    wf_typ G U.
+Proof.
+  intros. inversions H.
+  - in_empty_contradiction.
+  - exists x X T U. eauto 10.
 Qed.
 
 
@@ -3298,6 +3391,26 @@ Proof.
   + exfalso. rewrite in_empty in In. exact In.
 Qed.
 
+Lemma get_elem_in_nonempty: forall (T: Type) (A: fset T),
+  A <> \{} -> exists v, v \in A.
+Proof.
+  introv Ne. rewrite <- from_list_nil in Ne. destruct (fset_finite A) as [L Eq].
+  rewrite Eq in Ne. destruct L.
+  - exfalso. auto.
+  - exists t. rewrite from_list_cons in Eq. subst A.
+    rewrite in_union, in_singleton. auto.
+Qed.
+
+Lemma nonempty_intro: forall (T: Type) (A: fset T) (v: T),
+  v \in A -> A <> \{}.
+Proof.
+  introv In. intro Eq. subst A. apply (in_empty_elim In).
+Qed.
+
+Lemma union_singleton_r_non_empty: forall (T: Type) (A: fset T) (v: T),
+  A \u \{ v } <> \{}.
+Admitted.
+
 Module v1.
 (* This predicate is crafted in such a way that
    1) it's strong enough to be used by remove_valid_history
@@ -3322,6 +3435,7 @@ Proof.
 Qed.
 End v1.
 
+Module v2.
 (* This predicate is crafted in such a way that
    1) it's strong enough to be used by remove_valid_history
    2) it's weak enough to be maintained while doing mutual recursion over wf_typ/dec_impl
@@ -3343,7 +3457,273 @@ Proof.
         refine (conj _ WfT0). apply (shrink_preserves_disjoint D).
       * 
 Abort.
+End v2.
 
+Module v3.
+
+(* This predicate is crafted in such a way that
+   1) it's strong enough to be used by remove_valid_history
+   2) it's weak enough to be maintained while doing mutual recursion over wf_typ/dec_impl
+*)
+Definition valid_history(G: ctx)(A: fset typ) :=
+  (forall T, T \in A -> wf_typ G T).
+
+(* if history non-empty, we can always remove some element from it: *)
+Lemma shrink_history:
+   (forall G A T, wf_typ_impl G A T ->
+    A <> \{} ->
+    valid_history G A ->
+    exists U, U \in A /\ wf_typ_impl G (A \- \{ U }) T)
+/\ (forall G A D, wf_dec_impl G A D ->
+    A <> \{} ->
+    valid_history G A ->
+    exists U, U \in A /\ wf_dec_impl G (A \- \{ U }) D).
+Proof.
+  apply wf_mutind.
+  + (* case wf_top *)
+    introv Ne Vh. apply get_elem_in_nonempty in Ne. destruct Ne as [U In]. eauto.
+  + (* case wf_bot *)
+    introv Ne Vh. apply get_elem_in_nonempty in Ne. destruct Ne as [U In]. eauto.
+  + (* case wf_hyp *)
+    introv In Ne Vh. exists T. apply (conj In).
+    unfold valid_history in Vh. rewrite <- (union_empty_l (A \- \{ T})).
+    apply add_hyps_to_wf_typ. auto.
+  + (* case wf_rcd *)
+    introv WfD IH Ne Vh. apply remove_own_hyp_from_wf_dec in WfD.
+    specialize (IH (@union_singleton_r_non_empty _ _ _)).
+    (* doesn't work if A contains exactly 1 element, and this element is <> typ_rcd D,
+      because we must apply the IH, but cannot get its hyp. *)
+Abort. (*
+  + (* case wf_sel *) eauto.
+  + (* case wf_and  *) eauto.
+  + (* case wf_or   *) eauto.
+  + (* case wf_tmem *) eauto.
+  + (* case wf_mtd  *) eauto.
+  
+Qed.
+*)
+End v3.
+
+Module v4.
+
+(* This predicate is crafted in such a way that
+   1) it's strong enough to be used by remove_valid_history
+   2) it's weak enough to be maintained while doing mutual recursion over wf_typ/dec_impl
+*)
+Inductive valid_history: ctx -> fset typ -> Prop :=
+| vh_empty: forall G, 
+    valid_history G \{}
+| vh_push: forall G A D,
+    valid_history G A ->
+    (typ_rcd D) \notin A -> 
+    wf_typ_impl G A (typ_rcd D) ->
+    valid_history G (A \u \{ typ_rcd D }).
+
+Lemma invert_valid_history: forall G A T,
+  valid_history G A ->
+  T \in A ->
+  wf_typ_impl G (A \- \{ T}) T.
+Proof.
+  introv Vh. induction Vh; intro In.
+  - exfalso. apply (in_empty_elim In).
+  - rename H into Ni, H0 into WfD.
+    rewrite in_union in In. rewrite in_singleton in In. destruct In as [In | Eq].
+    * specialize (IHVh In).
+      rewrite union_remove. apply (add_hyps_to_wf_typ _ IHVh).
+    * subst. rewrite union_remove. rewrite singleton_remove. rewrite union_empty_r.
+      inversions WfD.
+      { exfalso. unfold notin in Ni. apply Ni. exact H. }
+      { apply wf_rcd. apply (add_hyps_to_wf_dec \{ typ_rcd D }).
+        apply (remove_own_hyp_from_wf_dec H2). }
+Qed.
+
+(* if history non-empty, we can always remove some element from it: *)
+Lemma shrink_history_0:
+   (forall G A T, wf_typ_impl G A T ->
+    A <> \{} ->
+    valid_history G A ->
+    exists U, U \in A /\ wf_typ_impl G (A \- \{ U }) T)
+/\ (forall G A D, wf_dec_impl G A D ->
+    A <> \{} ->
+    valid_history G A ->
+    exists U, U \in A /\ wf_dec_impl G (A \- \{ U }) D).
+Proof.
+  apply wf_mutind.
+  + (* case wf_top *)
+    introv Ne Vh. apply get_elem_in_nonempty in Ne. destruct Ne as [U In]. eauto.
+  + (* case wf_bot *)
+    introv Ne Vh. apply get_elem_in_nonempty in Ne. destruct Ne as [U In]. eauto.
+  + (* case wf_hyp *)
+    introv In Ne Vh. exists T. apply (conj In).
+    apply (invert_valid_history Vh In).
+(*
+  + (* case wf_hyp *)
+    introv In Ne Vh. exists T. apply (conj In).
+    gen T. induction Vh.
+    - exfalso. auto.
+    - rename H into Ni, H0 into WfD. intros T In.
+      rewrite in_union in In. rewrite in_singleton in In. destruct In as [In | Eq].
+      * specialize (IHVh (nonempty_intro In) T In).
+        rewrite union_remove. apply (add_hyps_to_wf_typ _ IHVh).
+      * subst. rewrite union_remove. rewrite singleton_remove. rewrite union_empty_r.
+        inversions WfD.
+        { exfalso. unfold notin in Ni. apply Ni. exact H. }
+        { apply wf_rcd. apply (add_hyps_to_wf_dec \{ typ_rcd D }).
+          apply (remove_own_hyp_from_wf_dec H2). } *)
+  + (* case wf_rcd *)
+    introv WfD IH Ne Vh. apply remove_own_hyp_from_wf_dec in WfD.
+    specialize (IH (@union_singleton_r_non_empty _ _ _)).
+    destruct (classicT (typ_rcd D \in A)) as [In | Ni].
+    - exists (typ_rcd D). apply (conj In).
+      apply wf_rcd. apply (add_hyps_to_wf_dec \{ typ_rcd D }). exact WfD.
+    - destruct IH as [U [In WfD']].
+      * apply (vh_push Vh Ni). apply wf_rcd.
+        rewrite (remove_notin Ni) in WfD. apply (add_hyps_to_wf_dec _ WfD).
+      * rewrite in_union in In. rewrite in_singleton in In.
+        destruct In as [In | Eq].
+        { exists U.
+          apply (conj In). apply wf_rcd.
+          assert (Neq: U <> typ_rcd D). {
+            intro Eq. rewrite <- Eq in Ni. apply Ni. apply In.
+          }
+          rewrite union_remove in WfD'.
+          rewrite <- notin_singleton in Neq.
+          rewrite (remove_notin Neq) in WfD'.
+          exact WfD'.
+        }
+        { subst. destruct (get_elem_in_nonempty Ne) as [U In]. exists U.
+          apply (conj In). apply wf_rcd.
+          lets WfU: (invert_valid_history Vh In).
+          lets WfD'': ((proj2 (remove_hyp_from_wf WfU)) _ _ _ WfD eq_refl).
+          rewrite <- union_remove in WfD''.
+          rewrite (remove_notin Ni) in WfD''.
+          rewrite union_same in WfD''.
+          apply (add_hyps_to_wf_dec _ WfD'').
+        }
+  + (* case wf_sel *)
+    introv Bix XHas WfX IHX WfT IHT WfU IHU Ne Vh.
+    (* Oh no! The different IHs might give different Us! *)
+Abort. (*
+  + (* case wf_and  *) eauto.
+  + (* case wf_or   *) eauto.
+  + (* case wf_tmem *) eauto.
+  + (* case wf_mtd  *) eauto.
+  
+Qed.
+*)
+
+Lemma shrink_wf_typ_history: forall G A T,
+  wf_typ_impl G A T ->
+  valid_history G A ->
+  forall U, U \in A -> wf_typ_impl G (A \- \{ U }) T.
+Proof.
+  introv WfT Vh In.
+  lets WfU: (invert_valid_history Vh In).
+  lets WfT': ((proj1 (remove_hyp_from_wf WfU)) _ _ _ WfT eq_refl).
+  rewrite <- union_remove in WfT'.
+  rewrite union_same in WfT'.
+  exact WfT'.
+Qed.
+
+Lemma remove_valid_history: forall G A T,
+  wf_typ_impl G A T ->
+  valid_history G A ->
+  wf_typ G T.
+Proof.
+  introv Wf Vh. gen T. induction Vh.
+  - intros. auto.
+  - rename H into Ni, H0 into WfD.
+    introv WfT. apply IHVh.
+    assert (Eq: A = (A \u \{ typ_rcd D}) \- \{ typ_rcd D }). {
+      rewrite union_remove. rewrite singleton_remove. rewrite union_empty_r.
+      rewrite (remove_notin Ni). reflexivity.
+    }
+    rewrite Eq.
+    refine (shrink_wf_typ_history WfT _ _).
+    + apply (vh_push Vh Ni WfD).
+    + rewrite in_union, in_singleton. auto.
+Qed.
+
+Lemma shrink_history:
+   (forall G A T, wf_typ_impl G A T ->
+    valid_history G A ->
+    forall U, U \in A -> wf_typ_impl G (A \- \{ U }) T)
+/\ (forall G A D, wf_dec_impl G A D ->
+    valid_history G A ->
+    forall U, U \in A -> wf_dec_impl G (A \- \{ U }) D).
+Proof.
+Abort.
+
+End v4.
+
+Inductive valid_history: ctx -> fset typ -> Prop :=
+| vh_empty: forall G, 
+    valid_history G \{}
+| vh_push: forall G A D,
+    valid_history G A ->
+    wf_typ_impl G A (typ_rcd D) ->
+    valid_history G (A \u \{ typ_rcd D }).
+
+Lemma invert_valid_history: forall G A T,
+  valid_history G A ->
+  T \in A ->
+  wf_typ_impl G (A \- \{ T}) T.
+Proof.
+  introv Vh. induction Vh; intro In.
+  - exfalso. apply (in_empty_elim In).
+  - rename H into WfD.
+    rewrite in_union in In. rewrite in_singleton in In. destruct In as [In | Eq].
+    * specialize (IHVh In).
+      rewrite union_remove. apply (add_hyps_to_wf_typ _ IHVh).
+    * subst. rewrite union_remove. rewrite singleton_remove. rewrite union_empty_r.
+      inversions WfD.
+      { apply (IHVh H). }
+      { apply wf_rcd. apply (add_hyps_to_wf_dec \{ typ_rcd D }).
+        apply (remove_own_hyp_from_wf_dec H2). }
+Qed.
+
+Lemma shrink_wf_typ_history: forall G A T,
+  wf_typ_impl G A T ->
+  valid_history G A ->
+  forall U, U \in A -> wf_typ_impl G (A \- \{ U }) T.
+Proof.
+  introv WfT Vh In.
+  lets WfU: (invert_valid_history Vh In).
+  lets WfT': ((proj1 (remove_hyp_from_wf WfU)) _ _ _ WfT eq_refl).
+  rewrite <- union_remove in WfT'.
+  rewrite union_same in WfT'.
+  exact WfT'.
+Qed.
+
+Lemma remove_valid_history: forall G A T,
+  wf_typ_impl G A T ->
+  valid_history G A ->
+  wf_typ G T.
+Proof.
+  introv Wf Vh. gen T. induction Vh.
+  - intros. auto.
+  - rename H into WfD.
+    introv WfT. apply IHVh.
+    destruct (classicT ((typ_rcd D) \in A)) as [In | Ni].
+    * assert (Eq: (A \u \{ typ_rcd D}) = A). {
+        apply fset_extens; unfold subset; intros.
+        - rewrite in_union, in_singleton in H. destruct H; subst; auto.
+        - rewrite in_union. auto.
+      }
+      rewrite Eq in WfT. exact WfT.
+    * assert (Eq: A = (A \u \{ typ_rcd D}) \- \{ typ_rcd D }). {
+        rewrite union_remove. rewrite singleton_remove. rewrite union_empty_r.
+        rewrite (remove_notin Ni). reflexivity.
+      }
+      rewrite Eq.
+      refine (shrink_wf_typ_history WfT _ _).
+      + apply (vh_push Vh WfD).
+      + rewrite in_union, in_singleton. auto.
+Qed.
+
+Print Assumptions remove_valid_history.
+
+(*
 Axiom remove_history: forall G A T, wf_typ_impl G A T -> wf_typ G T.
 (* TODO doesn't hold as such, only if A "makes sense" *)
 
