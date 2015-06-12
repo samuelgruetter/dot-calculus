@@ -3288,6 +3288,62 @@ Proof.
   introv Has Wf St. apply* narrow_has.
 Qed.
 
+Lemma shrink_preserves_disjoint: forall (T: Type) (A1 A2 B: fset T),
+  disjoint (A1 \u A2) B ->
+  disjoint A2 B.
+Proof.
+  introv D. unfold disjoint. apply fset_extens; unfold subset; introv In.
+  + unfold disjoint in D. rewrite <- D. rewrite in_inter in *. rewrite in_union in *.
+    destruct In as [InA2 InB]. auto.
+  + exfalso. rewrite in_empty in In. exact In.
+Qed.
+
+Module v1.
+(* This predicate is crafted in such a way that
+   1) it's strong enough to be used by remove_valid_history
+   2) it's weak enough to be maintained while doing mutual recursion over wf_typ/dec_impl
+*)
+Definition valid_history(G: ctx)(A: fset typ) :=
+  (forall T, T \in A -> wf_typ G T).
+
+Lemma remove_valid_history: forall L G, valid_history G (from_list L) ->
+   (forall T, wf_typ_impl G (from_list L) T -> wf_typ G T)
+/\ (forall D, wf_dec_impl G (from_list L) D -> wf_dec G D).
+Proof.
+  intros L G. induction L; intro Vh.
+  - rewrite from_list_nil. auto.
+  - unfold valid_history in *. split.
+    + introv WfT. rewrite from_list_cons in *. rename a into U.
+      refine (proj1 (IHL _) _ _).
+      * intros T0 T0L. specialize (Vh T0). rewrite in_union in Vh.
+        apply (Vh (or_intror T0L)).
+      * admit. (* same problem!! *)
+    + admit. (* same as for wf_typ *) 
+Qed.
+End v1.
+
+(* This predicate is crafted in such a way that
+   1) it's strong enough to be used by remove_valid_history
+   2) it's weak enough to be maintained while doing mutual recursion over wf_typ/dec_impl
+*)
+Definition valid_history(G: ctx)(A: fset typ) :=
+  (forall T, T \in A -> exists A', disjoint A A' /\ wf_typ_impl G A' T).
+
+Lemma remove_valid_history: forall L G, valid_history G (from_list L) ->
+   (forall T, wf_typ_impl G (from_list L) T -> wf_typ G T)
+/\ (forall D, wf_dec_impl G (from_list L) D -> wf_dec G D).
+Proof.
+  intros L G. induction L; intro Vh.
+  - rewrite from_list_nil. auto.
+  - unfold valid_history in *. split.
+    + introv WfT. rewrite from_list_cons in *. rename a into U.
+      refine (proj1 (IHL _) _ _).
+      * intros T0 T0L. specialize (Vh T0). rewrite in_union in Vh.
+        specialize (Vh (or_intror T0L)). destruct Vh as [A' [D WfT0]]. exists A'.
+        refine (conj _ WfT0). apply (shrink_preserves_disjoint D).
+      * 
+Abort.
+
 Axiom remove_history: forall G A T, wf_typ_impl G A T -> wf_typ G T.
 (* TODO doesn't hold as such, only if A "makes sense" *)
 
