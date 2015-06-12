@@ -3455,10 +3455,12 @@ Axiom remove_history: forall G A T, wf_typ_impl G A T -> wf_typ G T.
 Lemma narrow_wf:
    (forall G A T, wf_typ_impl G A T -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
+    valid_history (G1 & x ~ S2 & G2) A ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     wf_typ_impl (G1 & x ~ S1 & G2) A T)
 /\ (forall G A D, wf_dec_impl G A D -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
+    valid_history (G1 & x ~ S2 & G2) A ->
     subtyp (G1 & x ~ S1 & G2) S1 S2 ->
     wf_dec_impl (G1 & x ~ S1 & G2) A D).
 Proof.
@@ -3466,12 +3468,21 @@ Proof.
   + (* case wf_top *) eauto.
   + (* case wf_bot *) eauto.
   + (* case wf_hyp *) eauto.
-  + (* case wf_rcd *) eauto.
+  + (* case wf_rcd *)
+    introv WfD IH Eq Vh St. subst.
+    apply wf_rcd.
+    refine (IH _ _ _ _ _ eq_refl _ St). apply (vh_push Vh).
+    apply (wf_rcd WfD).
   + (* case wf_sel *)
-    introv Bix XHas WfX IHX WfT IHT WfU IHU Eq St. subst.
-    specialize (IHX _ _ _ _ _ eq_refl St).
-    apply remove_history in IHX.
-    destruct (narrow_binds IHX Bix St) as [X' [Bix' StX]].
+    introv Bix XHas WfX IHX WfT IHT WfU IHU. introv Eq Vh St. subst.
+    specialize (IHX _ _ _ _ _ eq_refl Vh St).
+    assert (IHX': wf_typ (G1 & x0 ~ S1 & G2) X). {
+      apply (remove_valid_history IHX).
+      (* Oh no! Need to narrow valid_history, but it contains wf jugments
+         --> chicken/egg problem!! *)
+      admit.
+    }
+    destruct (narrow_binds IHX' Bix St) as [X' [Bix' StX]].
     lets P: (narrow_has_middle XHas (proj2 (subtyp_regular StX)) St).
             (*****************)
     destruct P as [D1 [XHas' Sd]].
@@ -3492,6 +3503,8 @@ Proof.
 Qed.
 
 Print Assumptions narrow_wf.
+
+Hint Constructors valid_history.
 
 Lemma narrow_wf_typ_middle: forall G1 x S1 S2 G2 T,
   wf_typ (G1 & x ~ S2 & G2) T ->
