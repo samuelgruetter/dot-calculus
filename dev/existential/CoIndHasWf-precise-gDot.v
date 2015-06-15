@@ -300,7 +300,9 @@ Definition dec_top(l: label): dec := match l with
 end.
 *)
 
-Inductive typ_has: ctx -> typ -> dec -> Prop :=
+(* The only reason this is coinductive is that in typ_has_total, we need to go from
+   "wf" to "has", so if "wf" is coinductive, "has" must be so as well. *)
+CoInductive typ_has: ctx -> typ -> dec -> Prop :=
 (*| typ_top_has: typ_top has nothing *)
   | typ_bot_has: forall G l,
       typ_has G typ_bot (dec_bot l)
@@ -372,46 +374,39 @@ Computational types are those which have a corresponding constructor on term lev
 i.e. only typ_rcd.
 Non-expansive types are those which are just "aliases" [in a broad sense ;-)],
 i.e. bounds of path types and/or-types.
-Since we only want to allow guarded recursion, only the rules for compuational types
-add the type being checked to the assumptions (i.e. only wf_rcd). *)
-Inductive wf_typ_impl: ctx -> fset typ -> typ -> Prop :=
-  | wf_top: forall G A,
-      wf_typ_impl G A typ_top
-  | wf_bot: forall G A,
-      wf_typ_impl G A typ_bot
-  | wf_hyp: forall G A T,
-      T \in A ->
-      wf_typ_impl G A T
-  | wf_rcd: forall G A D,
-      wf_dec_impl G (A \u \{(typ_rcd D)}) D ->
-      wf_typ_impl G A (typ_rcd D)
-  | wf_sel: forall G A x X L T U,
+TODO make sure we only allow guarded recursion. *)
+CoInductive wf_typ: ctx -> typ -> Prop :=
+  | wf_top: forall G,
+      wf_typ G typ_top
+  | wf_bot: forall G,
+      wf_typ G typ_bot
+  | wf_rcd: forall G D,
+      wf_dec G D ->
+      wf_typ G (typ_rcd D)
+  | wf_sel: forall G x X L T U,
       binds x X G ->
       typ_has G X (dec_typ L T U) ->
-      wf_typ_impl G A X ->
-      wf_typ_impl G A T ->
-      wf_typ_impl G A U ->
-      wf_typ_impl G A (typ_sel (avar_f x) L)
-  | wf_and: forall G A T1 T2,
-      wf_typ_impl G A T1 ->
-      wf_typ_impl G A T2 ->
-      wf_typ_impl G A (typ_and T1 T2)
-  | wf_or: forall G A T1 T2,
-      wf_typ_impl G A T1 ->
-      wf_typ_impl G A T2 ->
-      wf_typ_impl G A (typ_or T1 T2)
-with wf_dec_impl: ctx -> fset typ -> dec -> Prop :=
-  | wf_tmem: forall G A L Lo Hi,
-      wf_typ_impl G A Lo ->
-      wf_typ_impl G A Hi ->
-      wf_dec_impl G A (dec_typ L Lo Hi)
-  | wf_mtd: forall G A m U V,
-      wf_typ_impl G A U ->
-      wf_typ_impl G A V ->
-      wf_dec_impl G A (dec_mtd m U V).
-
-Notation wf_typ G T := (wf_typ_impl G \{} T).
-Notation wf_dec G D := (wf_dec_impl G \{} D).
+      wf_typ G X ->
+      wf_typ G T ->
+      wf_typ G U ->
+      wf_typ G (typ_sel (avar_f x) L)
+  | wf_and: forall G T1 T2,
+      wf_typ G T1 ->
+      wf_typ G T2 ->
+      wf_typ G (typ_and T1 T2)
+  | wf_or: forall G T1 T2,
+      wf_typ G T1 ->
+      wf_typ G T2 ->
+      wf_typ G (typ_or T1 T2)
+with wf_dec: ctx -> dec -> Prop :=
+  | wf_tmem: forall G L Lo Hi,
+      wf_typ G Lo ->
+      wf_typ G Hi ->
+      wf_dec G (dec_typ L Lo Hi)
+  | wf_mtd: forall G m U V,
+      wf_typ G U ->
+      wf_typ G V ->
+      wf_dec G (dec_mtd m U V).
 
 Inductive subtyp: ctx -> typ -> typ -> Prop :=
   | subtyp_refl: forall G T,
@@ -588,14 +583,6 @@ with   def_mut  := Induction for def  Sort Prop
 with   defs_mut := Induction for defs Sort Prop.
 Combined Scheme trm_mutind from trm_mut, def_mut, defs_mut.
 
-Scheme typ_has_mut := Induction for typ_has Sort Prop
-with typ_hasnt_mut := Induction for typ_hasnt Sort Prop.
-Combined Scheme typ_has_mutind from typ_has_mut, typ_hasnt_mut.
-
-Scheme wf_typ_mut := Induction for wf_typ_impl Sort Prop
-with   wf_dec_mut := Induction for wf_dec_impl Sort Prop.
-Combined Scheme wf_mutind from wf_typ_mut, wf_dec_mut.
-
 Scheme subtyp_mut := Induction for subtyp Sort Prop
 with   subdec_mut := Induction for subdec Sort Prop.
 Combined Scheme subtyp_mutind from subtyp_mut, subdec_mut.
@@ -609,6 +596,304 @@ Combined Scheme ty_mutind from ty_trm_mut, ty_imp_mut, ty_def_mut, ty_defs_mut.
 Scheme ty_trm_mut2 := Induction for ty_trm Sort Prop
 with   ty_imp_mut2 := Induction for ty_imp Sort Prop.
 Combined Scheme ty_trm_imp_mutind from ty_trm_mut2, ty_imp_mut2.
+
+
+(* ###################################################################### *)
+(** ** CoInduction principles *)
+
+(* Coinduction: See http://adam.chlipala.net/cpdt/html/Coinductive.html *)
+
+(*
+Lemma invert_typ_top_has: forall G D, typ_has G typ_top D -> False.
+Proof.
+  intros. inversions H.
+Qed.
+*)
+
+Section has_coind.
+  Variable RHas: ctx -> typ -> dec -> Prop.
+  Variable RHasnt: ctx -> typ -> label -> Prop.
+
+  Hypothesis CaseTopHas: forall G D,
+    RHas G typ_top D -> False.
+
+  Hypothesis CaseBotHas: forall G D,
+    RHas G typ_bot D -> exists l, D = (dec_bot l).
+
+  Hypothesis CaseRcdHas: forall G D1 D2,
+    RHas G (typ_rcd D1) D2 -> D1 = D2.
+
+  Hypothesis CaseSelHas: forall G a L D,
+    RHas G (typ_sel a L) D -> exists x T Lo Hi,
+    a = avar_f x /\ binds x T G /\ RHas G T (dec_typ L Lo Hi) /\ RHas G Hi D.
+
+  Hypothesis CaseAndHas: forall G T1 T2 D,
+    RHas G (typ_and T1 T2) D ->
+    (RHas G T1 D /\ RHasnt G T2 (label_of_dec D)) \/
+    (RHasnt G T1 (label_of_dec D) /\ RHas G T2 D) \/
+    (exists D1 D2, D1 && D2 == D /\ RHas G T1 D1 /\ RHas G T2 D2).
+
+  Hypothesis CaseOrHas: forall G T1 T2 D,
+    RHas G (typ_or T1 T2) D ->
+    exists D1 D2, D1 || D2 == D /\ RHas G T1 D1 /\ RHas G T2 D2.
+
+  Hypothesis CaseBotHasnt: forall G l,
+    RHasnt G typ_bot l -> False.
+
+  Hypothesis CaseRcdHasnt: forall G D l,
+    RHasnt G (typ_rcd D) l -> l <> label_of_dec D.
+
+  Hypothesis CaseSelHasnt: forall G a L l,
+    RHasnt G (typ_sel a L) l -> exists x T Lo Hi,
+    a = avar_f x /\ binds x T G /\ RHas G T (dec_typ L Lo Hi) /\ RHasnt G Hi l.
+
+  Hypothesis CaseAndHasnt: forall G T1 T2 l,
+    RHasnt G (typ_and T1 T2) l ->
+    RHasnt G T1 l /\ RHasnt G T2 l.
+
+  Hypothesis CaseOrHasnt: forall G T1 T2 l,
+    RHasnt G (typ_or T1 T2) l ->
+    (exists D2, label_of_dec D2 = l /\ RHasnt G T1 l /\ RHas G T2 D2) \/
+    (exists D1, label_of_dec D1 = l /\ RHas G T1 D1 /\ RHasnt G T2 l) \/
+    (RHasnt G T1 l /\ RHasnt G T2 l).
+
+  Theorem typ_has_coind: forall G T D,
+    RHas G T D -> typ_has G T D
+  with typ_hasnt_coind: forall G T l,
+    RHasnt G T l -> typ_hasnt G T l.
+  Proof.
+  - intros. destruct T.
+    + (* case typ_top_has *)
+      exfalso. apply (CaseTopHas H).
+    + (* case typ_bot_has *)
+      destruct (CaseBotHas H) as [l Eq]. subst. apply typ_bot_has.
+    + (* case typ_rcd_has *)
+      lets Eq: (CaseRcdHas H). subst. apply typ_rcd_has.
+    + (* case typ_sel_has *)
+      destruct (CaseSelHas H) as [x [T [Lo [Hi [Eq [Bi [R1 R2]]]]]]]. subst.
+      apply (typ_sel_has Bi (typ_has_coind _ _ _ R1) (typ_has_coind _ _ _ R2)).
+    + (* case typ_and_has *)
+      destruct (CaseAndHas H) as [H1 | [H1 | H1]].
+      * destruct H1 as [R1 R2].
+        apply typ_and_has_1; eauto.
+      * destruct H1 as [R1 R2].
+        apply typ_and_has_2; eauto.
+      * destruct H1 as [D1 [D2 [Eq [R1 R2]]]].
+        refine (typ_and_has_12 _ _ Eq); eauto.
+    + (* case typ_or_has *)
+      destruct (CaseOrHas H) as [D1 [D2 [Eq [R1 R2]]]].
+      refine (typ_or_has _ _ Eq); eauto.
+  - intros. destruct T.
+    + (* case typ_top_hasnt *)
+      apply typ_top_hasnt.
+    + (* case typ_bot_hasnt *)
+      exfalso. apply (CaseBotHasnt H).
+    + (* case typ_rcd_hasnt *)
+      apply typ_rcd_hasnt. apply (CaseRcdHasnt H).
+    + (* case typ_sel_hasnt *)
+      destruct (CaseSelHasnt H) as [x [T [Lo [Hi [Eq [Bi [R1 R2]]]]]]]. subst.
+      apply (typ_sel_hasnt Bi (typ_has_coind _ _ _ R1) (typ_hasnt_coind _ _ _ R2)).
+    + (* case typ_and_hasnt *)
+      destruct (CaseAndHasnt H) as [R1 R2].
+      apply typ_and_hasnt; eauto.
+    + (* case typ_or_hasnt *)
+      destruct (CaseOrHasnt H) as [H1 | [H1 | H1]].
+      * destruct H1 as [D1 [Eq [R1 R2]]]. subst.
+        apply typ_or_hasnt_1; eauto.
+      * destruct H1 as [D2 [Eq [R1 R2]]]. subst.
+        apply typ_or_hasnt_2; eauto.
+      * destruct H1 as [R1 R2].
+        apply typ_or_hasnt_12; eauto.
+  Qed.
+
+  Theorem has_mut_coind:
+    (forall G T D, RHas G T D-> typ_has G T D) /\
+    (forall G T l, RHasnt G T l -> typ_hasnt G T l).
+  Proof.
+    split; introv H.
+    - apply (typ_has_coind H).
+    - apply (typ_hasnt_coind H).
+  Qed.
+
+End has_coind.
+
+(*
+Section has_coind.
+  Unset Implicit Arguments.
+
+  Variable RHas: forall G T D, typ_has G T D -> Prop.
+  Variable RHasnt: forall G T l, typ_hasnt G T l -> Prop.
+
+  Hypothesis CaseSel: 
+
+  Hypothesis CaseSel: forall G (x : var) (T : typ) (L : typ_label) (Lo Hi : typ) (D: dec)
+     (Bi : binds x T G) (Has : typ_has G T (dec_typ L Lo Hi)),
+
+ RHas G T (dec_typ L Lo Hi) t ->
+ forall t0 : typ_has G Hi D,
+ RHas G Hi D t0 -> RHas G (typ_sel (avar_f x) L) D (typ_sel_has b t t0)) ->
+
+
+(forall G T1 T2 D (t : typ_has G T1 D),
+ RHas G T1 D t ->
+ forall t0 : typ_hasnt G T2 (label_of_dec D),
+ RHasnt G T2 (label_of_dec D) t0 -> RHas G (typ_and T1 T2) D (typ_and_has_1 t t0)) ->
+
+
+(forall G T1 T2 D
+   (t : typ_hasnt G T1 (label_of_dec D)),
+ RHasnt G T1 (label_of_dec D) t ->
+ forall t0 : typ_has G T2 D,
+ RHas G T2 D t0 -> RHas G (typ_and T1 T2) D (typ_and_has_2 t t0)) ->
+
+
+(forall G T1 T2 (D1 D2 D3 : dec) (t : typ_has G T1 D1),
+ RHas G T1 D1 t ->
+ forall t0 : typ_has G T2 D2,
+ RHas G T2 D2 t0 ->
+ forall e : D1 && D2 == D3, RHas G (typ_and T1 T2) D3 (typ_and_has_12 t t0 e)) ->
+
+
+(forall G T1 T2 (D1 D2 D3 : dec) (t : typ_has G T1 D1),
+ RHas G T1 D1 t ->
+ forall t0 : typ_has G T2 D2,
+ RHas G T2 D2 t0 ->
+ forall e : D1 || D2 == D3, RHas G (typ_or T1 T2) D3 (typ_or_has t t0 e)) ->
+
+
+(forall G l, RHasnt G typ_top l (typ_top_hasnt G l)) ->
+
+
+(forall G D l (n : l <> label_of_dec D),
+ RHasnt G (typ_rcd D) l (typ_rcd_hasnt G D n)) ->
+
+
+(forall G (x : var) (T : typ) (L : typ_label) (Lo Hi : typ)
+   l (b : binds x T G) (t : typ_has G T (dec_typ L Lo Hi)),
+ RHas G T (dec_typ L Lo Hi) t ->
+ forall t0 : typ_hasnt G Hi l,
+ RHasnt G Hi l t0 -> RHasnt G (typ_sel (avar_f x) L) l (typ_sel_hasnt b t t0)) ->
+
+
+(forall G T1 T2 l (t : typ_hasnt G T1 l),
+ RHasnt G T1 l t ->
+ forall t0 : typ_hasnt G T2 l,
+ RHasnt G T2 l t0 -> RHasnt G (typ_and T1 T2) l (typ_and_hasnt t t0)) ->
+
+
+(forall G T1 T2 D
+   (t : typ_hasnt G T1 (label_of_dec D)),
+ RHasnt G T1 (label_of_dec D) t ->
+ forall t0 : typ_has G T2 D,
+ RHas G T2 D t0 -> RHasnt G (typ_or T1 T2) (label_of_dec D) (typ_or_hasnt_1 t t0)) ->
+
+
+(forall G T1 T2 D (t : typ_has G T1 D),
+ RHas G T1 D t ->
+ forall t0 : typ_hasnt G T2 (label_of_dec D),
+ RHasnt G T2 (label_of_dec D) t0 ->
+ RHasnt G (typ_or T1 T2) (label_of_dec D) (typ_or_hasnt_2 t t0)) ->
+
+
+(forall G T1 T2 l (t : typ_hasnt G T1 l),
+ RHasnt G T1 l t ->
+ forall t0 : typ_hasnt G T2 l,
+ RHasnt G T2 l t0 -> RHasnt G (typ_or T1 T2) l (typ_or_hasnt_12 t t0)) ->
+
+
+(forall G (t : typ) (d : dec) (t0 : typ_has c t d), RHas c t d t0) /\
+
+
+(forall G (t : typ) l (t0 : typ_hasnt c t l), RHasnt c t l t0)
+
+  Theorem typ_has_coind: forall G T D (Has: typ_has G T D) RHas G T D -> typ_has G T D
+  with typ_hasnt_coind: forall G T l,
+    RHasnt G T l -> typ_hasnt G T l.
+  Proof.
+
+  Theorem wf_typ_coind: forall G T,
+    RT G T -> wf_typ G T
+  with wf_dec_coind: forall G D,
+    RD G D -> wf_dec G D.
+  Proof.
+*)
+
+Section wf_coind.
+  Variable RT : ctx -> typ -> Prop.
+  Variable RD : ctx -> dec -> Prop.
+
+  Hypothesis CaseRcd: forall G D,
+    RT G (typ_rcd D) -> RD G D.
+
+  Hypothesis CaseSel: forall G a L,
+    RT G (typ_sel a L) -> 
+    exists x X T U, 
+      a = avar_f x /\
+      binds x X G /\
+      typ_has G X (dec_typ L T U) /\
+      RT G X /\
+      RT G T /\
+      RT G U.
+
+  Hypothesis CaseAnd: forall G T1 T2,
+    RT G (typ_and T1 T2) ->
+    RT G T1 /\ RT G T2.
+
+  Hypothesis CaseOr: forall G T1 T2,
+    RT G (typ_or T1 T2) ->
+    RT G T1 /\ RT G T2.
+
+  Hypothesis CaseTmem: forall G L T U,
+    RD G (dec_typ L T U) ->
+    RT G T /\ RT G U.
+
+  Hypothesis CaseMtd: forall G m T U,
+    RD G (dec_mtd m T U) ->
+    RT G T /\ RT G U.
+
+  Theorem wf_typ_coind: forall G T,
+    RT G T -> wf_typ G T
+  with wf_dec_coind: forall G D,
+    RD G D -> wf_dec G D.
+  Proof.
+  - intros. destruct T.
+    + (* case wf_top *)
+      apply wf_top.
+    + (* case wf_bot *)
+      apply wf_bot.
+    + (* case wf_rcd *)
+      lets P: (CaseRcd H). apply wf_rcd. apply (wf_dec_coind _ _ P).
+    + (* case wf_sel *)
+      lets P: (CaseSel H). destruct P as [x [X [T [U [Eq [Bi [Has [R1 [R2 R3]]]]]]]]].
+      subst a.
+      apply (wf_sel Bi Has).
+      * apply (wf_typ_coind _ _ R1).
+      * apply (wf_typ_coind _ _ R2).
+      * apply (wf_typ_coind _ _ R3).
+    + (* case wf_and *)
+      lets P: (CaseAnd H). destruct P as [R1 R2].
+      apply (wf_and (wf_typ_coind _ _ R1) (wf_typ_coind _ _ R2)).
+    + (* case wf_or *)
+      lets P: (CaseOr H). destruct P as [R1 R2].
+      apply (wf_or (wf_typ_coind _ _ R1) (wf_typ_coind _ _ R2)).
+  - intros. destruct D.
+    + (* case wf_tmem *)
+      lets P: (CaseTmem H). destruct P as [R1 R2].
+      apply (wf_tmem _ (wf_typ_coind _ _ R1) (wf_typ_coind _ _ R2)).
+    + (* case wf_mtd *)
+      lets P: (CaseMtd H). destruct P as [R1 R2].
+      apply (wf_mtd _ (wf_typ_coind _ _ R1) (wf_typ_coind _ _ R2)).
+  Qed.
+
+  Theorem wf_mut_coind:
+    (forall G T, RT G T -> wf_typ G T) /\
+    (forall G D, RD G D -> wf_dec G D).
+  Proof.
+    split; introv H.
+    - apply (wf_typ_coind H).
+    - apply (wf_dec_coind H).
+  Qed.
+End wf_coind.
 
 
 (* ###################################################################### *)
@@ -648,7 +933,7 @@ Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
 
 Hint Constructors
   typ_has typ_hasnt
-  wf_typ_impl wf_dec_impl
+  wf_typ wf_dec
   subtyp subdec
   ty_trm ty_imp ty_def ty_defs.
 Hint Constructors wf_sto.
@@ -724,6 +1009,7 @@ trm_new (defs_cons (defs_cons defs_nil
 (trm_new defs_nil
 (trm_var (avar_b 0))).
 
+(* TODO cofix
 Fact tc1: ty_trm empty ex1 typ_top.
 Proof.
   assert (ne1: label_typ E <> label_typ Stream). {
@@ -917,6 +1203,7 @@ Proof.
 Qed.
 
 Print Assumptions tc1.
+*)
 
 End Examples1.
 
@@ -1203,182 +1490,18 @@ Proof.
   apply* subst_idempotent_trm_def_defs.
 Qed.
 
-
-(* ###################################################################### *)
-(** ** Growing and shrinking the assumptions of wf *)
-
-Lemma add_hyps_to_wf: forall A2,
-   (forall G A1 T, wf_typ_impl G A1 T -> wf_typ_impl G (A1 \u A2) T) 
-/\ (forall G A1 D, wf_dec_impl G A1 D -> wf_dec_impl G (A1 \u A2) D).
-Proof.
-  intro A2. apply wf_mutind; eauto.
-  + (* case wf_hyp *)
-    intros. apply wf_hyp. rewrite in_union. auto.
-  + (* case wf_rcd *)
-    intros G A1 D WfD IH.
-    rewrite <- union_assoc in *.
-    rewrite (union_comm \{ typ_rcd D } A2) in *.
-    rewrite union_assoc in *.
-    eauto.
-Qed.
-
-Definition add_hyps_to_wf_typ(G: ctx)(A1 A2: fset typ) := (proj1 (add_hyps_to_wf A2)) G A1.
-Definition add_hyps_to_wf_dec(G: ctx)(A1 A2: fset typ) := (proj2 (add_hyps_to_wf A2)) G A1.
-
-Lemma remove_hyp_from_wf: forall G A0 U, wf_typ_impl G A0 U ->
-   (forall G' A T, wf_typ_impl G' A T -> G' = G -> wf_typ_impl G (A0 \u (A \- \{ U })) T) 
-/\ (forall G' A D, wf_dec_impl G' A D -> G' = G -> wf_dec_impl G (A0 \u (A \- \{ U })) D).
-Proof.
-  introv WfU. apply wf_mutind; eauto.
-  + (* case wf_hyp *)
-    introv In Eq. subst G0.
-    destruct (classicT (T = U)) as [Eq | Ne].
-    - subst T. rewrite <- (union_empty_l (A \- \{ U })). apply add_hyps_to_wf. exact WfU.
-    - apply wf_hyp. rewrite in_union. right. rewrite in_remove.
-      apply (conj In). rewrite notin_singleton. exact Ne.
-  + (* case wf_rcd *)
-    introv WfD IH Eq. subst G0. specialize (IH eq_refl).
-    destruct (classicT (typ_rcd D = U)) as [Eq | Ne].
-    - rewrite <- (union_empty_l (A \- \{ U })). subst U. apply add_hyps_to_wf. exact WfU.
-    - assert (Eq: (A \u \{ typ_rcd D }) \- \{ U} = (A \- \{ U } \u \{ typ_rcd D})). {
-        apply fset_extens; unfold subset; intros X H;
-        repeat (rewrite in_remove in * || rewrite in_union in * ).
-        + auto_star.
-        + destruct H as [[H1 H2] | H].
-          - auto.
-          - rewrite in_singleton in H. subst X. split.
-            * right. rewrite in_singleton. reflexivity.
-            * rewrite notin_singleton. exact Ne.
-      }
-      rewrite Eq in IH.
-      rewrite union_assoc in IH.
-      apply (wf_rcd IH).
-  + (* case wf_sel *)
-    intros G0 A x X L Lo Hi Bi XHas WfX IHX WfLo IHLo WfHi IHHi Eq. subst G0. eauto.
-Qed.
-
-Print Assumptions remove_hyp_from_wf.
-
-Lemma singleton_remove: forall (T: Type) (v: T),
-  \{ v } \- \{ v } = \{}.
-Proof.
-  intros. apply fset_extens; unfold subset; intros.
-  - rewrite in_remove in H. destruct H as [H1 H2]. rewrite in_singleton in H1. subst.
-    exfalso. rewrite notin_singleton in H2. apply H2. reflexivity.
-  - exfalso. apply (notin_empty H).
-Qed.
-
-Lemma empty_remove: forall (T: Type) (v: T),
-  \{} \- \{ v } = \{}.
-Proof.
-  intros. apply fset_extens; unfold subset; intros; rewrite in_remove in *.
-  - exfalso. apply (in_empty_elim (proj1 H)).
-  - exfalso. apply (in_empty_elim H).
-Qed.
-
-Lemma remove_notin: forall (T: Type) (A: fset T) (v: T),
-  v \notin A -> A \- \{ v } = A.
-Proof.
-  intros. apply fset_extens; unfold subset; intros.
-  - rewrite in_remove in H0. destruct H0. auto. 
-  - rewrite in_remove. apply (conj H0). rewrite notin_singleton.
-    intro. subst. apply H. assumption.
-Qed.
-
-(*
-Lemma remove_own_hyp_from_wf_dec: forall G A D,
-  wf_dec_impl G A D ->
-  wf_dec_impl G (A \- \{ typ_rcd D }) D.
-Proof.
-  introv Wf1.
-  assert (Eq: A = (A \- \{ typ_rcd D }) \u \{ typ_rcd D }) by admit.
-  rewrite Eq in Wf1.
-  lets Wf2: (wf_rcd Wf1).
-  lets P: (proj2 (remove_hyp_from_wf Wf2)).
-  specialize (P _ _ _ Wf1 eq_refl).
-  rewrite <- union_remove in P. rewrite <- Eq in P. rewrite union_same in P.
-  exact P.
-Qed.
-*)
-
-Lemma remove_own_hyp_from_wf_dec: forall G A D,
-  wf_dec_impl G (A \u \{ typ_rcd D }) D ->
-  wf_dec_impl G (A \- \{ typ_rcd D }) D.
-Proof.
-  introv Wf1.
-  assert (Eq: A \u \{ typ_rcd D } = (A \- \{ typ_rcd D }) \u \{ typ_rcd D }). {
-    apply fset_extens; unfold subset; intros; rewrite in_union in *.
-    + rewrite in_singleton in *. destruct (classicT (x = typ_rcd D)) as [Eq | Ne].
-      - subst. auto.
-      - left. rewrite in_remove. rewrite notin_singleton. destruct H.
-        * auto.
-        * exfalso. subst. auto.
-    + rewrite in_singleton in *. destruct (classicT (x = typ_rcd D)) as [Eq | Ne].
-      - subst. auto.
-      - left. rewrite in_remove in H. rewrite notin_singleton in H. repeat destruct H.
-        * auto.
-        * exfalso. auto.
-  }
-  rewrite Eq in Wf1.
-  lets Wf2: (wf_rcd Wf1).
-  lets P: (proj2 (remove_hyp_from_wf Wf2)).
-  specialize (P _ _ _ Wf1 eq_refl).
-  rewrite <- union_remove in P. rewrite <- Eq in P. rewrite union_assoc in P.
-  rewrite union_same in P. rewrite union_remove in P. rewrite singleton_remove in P.
-  rewrite union_empty_r in P.
-  exact P.
-Qed.
-
-Print Assumptions remove_own_hyp_from_wf_dec.
-
-Lemma weak_remove_own_hyp_from_wf_dec: forall G A D,
-  wf_dec_impl G (A \u \{ typ_rcd D }) D ->
-  wf_dec_impl G A D.
-Proof.
-  introv Wf.
-  destruct (classicT ((typ_rcd D) \in A)) as [In | Ni].
-  * assert (Eq: (A \u \{ typ_rcd D}) = A). {
-      apply fset_extens; unfold subset; intros.
-      - rewrite in_union, in_singleton in H. destruct H; subst; auto.
-      - rewrite in_union. auto.
-    }
-    rewrite Eq in Wf. exact Wf.
-  * assert (Eq: A = (A \u \{ typ_rcd D}) \- \{ typ_rcd D }). {
-      rewrite union_remove. rewrite singleton_remove. rewrite union_empty_r.
-      rewrite (remove_notin Ni). reflexivity.
-    }
-    rewrite Eq.
-    apply remove_own_hyp_from_wf_dec.
-    rewrite <- union_assoc. rewrite union_same.
-    exact Wf.
-Qed.
-
-Lemma invert_wf_rcd: forall G D,
-  wf_typ G (typ_rcd D) ->
-  wf_dec G D.
-Proof.
-  introv Wf. inversion Wf; subst.
-  - in_empty_contradiction.
-  - lets P: (remove_own_hyp_from_wf_dec H2). rewrite union_empty_l in *.
-    rewrite empty_remove in P. exact P.
-Qed.
-
 Lemma invert_wf_and: forall G T1 T2,
   wf_typ G (typ_and T1 T2) ->
   wf_typ G T1 /\ wf_typ G T2.
 Proof.
-  introv Wf. inversions Wf.
-  - in_empty_contradiction.
-  - eauto.
+  introv Wf. inversions Wf. eauto.
 Qed.
 
 Lemma invert_wf_or: forall G T1 T2,
   wf_typ G (typ_or T1 T2) ->
   wf_typ G T1 /\ wf_typ G T2.
 Proof.
-  introv Wf. inversions Wf.
-  - in_empty_contradiction.
-  - eauto.
+  introv Wf. inversions Wf. eauto.
 Qed.
 
 Lemma invert_wf_sel: forall G x L,
@@ -1390,9 +1513,7 @@ Lemma invert_wf_sel: forall G x L,
     wf_typ G T /\
     wf_typ G U.
 Proof.
-  intros. inversions H.
-  - in_empty_contradiction.
-  - exists X T U. eauto.
+  intros. inversions H. exists X T U. eauto.
 Qed.
 
 Lemma invert_wf_sel_2: forall G a L,
@@ -1405,9 +1526,7 @@ Lemma invert_wf_sel_2: forall G a L,
     wf_typ G T /\
     wf_typ G U.
 Proof.
-  intros. inversions H.
-  - in_empty_contradiction.
-  - exists x X T U. eauto 10.
+  intros. inversions H. exists x X T U. eauto 10.
 Qed.
 
 
@@ -1429,9 +1548,6 @@ Proof.
     end;
     eauto
   ].
-  (* case subtyp_rcd *)
-  introv Sd Wf. destruct Wf as [Wf1 Wf2].
-  split; apply wf_rcd; apply add_hyps_to_wf_dec; assumption.
 Qed.
 
 Definition subtyp_regular := proj1 subtyping_regular.
@@ -1458,9 +1574,6 @@ Proof.
     end;
     eauto
   ].
-  (* case ty_defs_cons *)
-  introv Tyds WfT TyD WfD Hasnt.
-  apply (wf_and WfT). apply wf_rcd. apply add_hyps_to_wf_dec; assumption.
 Qed.
 
 Definition ty_trm_regular  := proj41 typing_regular.
@@ -1473,32 +1586,42 @@ Definition ty_defs_regular := proj44 typing_regular.
 (** ** Weakening *)
 
 Lemma weaken_has:
-   (forall G T D, typ_has G T D -> forall G1 G2 G3,
-    G = G1 & G3 ->
-    ok (G1 & G2 & G3) ->
-    typ_has (G1 & G2 & G3) T D)
-/\ (forall G T l, typ_hasnt G T l -> forall G1 G2 G3,
-    G = G1 & G3 ->
-    ok (G1 & G2 & G3) ->
-    typ_hasnt (G1 & G2 & G3) T l).
+   (forall G T D, (exists G1 G2 G3,
+      G = G1 & G2 & G3 /\
+      ok (G1 & G2 & G3) /\
+      typ_has (G1 & G3) T D) ->
+    typ_has G T D)
+/\ (forall G T l, (exists G1 G2 G3,
+      G = G1 & G2 & G3 /\
+      ok (G1 & G2 & G3) /\
+      typ_hasnt (G1 & G3) T l) ->
+    typ_hasnt G T l).
 Proof.
-  apply typ_has_mutind.
-  + (* case typ_bot_has *) eauto.
-  + (* case typ_rcd_has *) eauto.
+  apply has_mut_coind;
+    introv H; destruct H as [G1 [G2 [G3 [Eq [Ok H]]]]]; subst.
+  + (* case typ_top_has *)
+    inversions H.
+  + (* case typ_bot_has *)
+    inversions H. eauto.
+  + (* case typ_rcd_has *)
+    inversions H. eauto.
   + (* case typ_sel_has *)
-    introv Bi THas IH1 HiHas IH2 Eq Ok. subst. lets Bi': (binds_weaken Bi Ok). eauto.
-  + (* case typ_and_has_1 *) eauto.
-  + (* case typ_and_has_2 *) eauto.
-  + (* case typ_and_has_12 *) eauto.
-  + (* case typ_or_has *) eauto.
-  + (* case typ_top_hasnt *) eauto.
-  + (* case typ_rcd_hasnt *) eauto.
+    inversions H. lets Bi': (binds_weaken H2 Ok). jauto.
+  + (* case typ_and_has *)
+    inversions H; [ left | (right; left) | (right; right; exists D1 D2; apply (conj H6)) ];
+    split; exists G1 G2 G3; eauto.
+  + (* case typ_or_has *)
+    inversions H. jauto.
+  + (* case typ_bot_hasnt *)
+    inversions H.
+  + (* case typ_rcd_hasnt *)
+    inversions H. assumption.
   + (* case typ_sel_hasnt *)
-    introv Bi THas IH1 HiHasnt IH2 Eq Ok. subst. lets Bi': (binds_weaken Bi Ok). eauto.
-  + (* case typ_and_hasnt *) eauto.
-  + (* case typ_or_hasnt_1 *) eauto.
-  + (* case typ_or_hasnt_2 *) eauto.
-  + (* case typ_or_hasnt_12 *) eauto.
+    inversions H. lets Bi': (binds_weaken H2 Ok). jauto.
+  + (* case typ_and_hasnt *)
+    inversions H. jauto.
+  + (* case typ_or_has *)
+    inversions H; [ (left; exists D) | (right; left; exists D) | (right; right) ]; jauto.
 Qed.
 
 Lemma weaken_has_middle: forall G1 G2 G3 T D,
@@ -1506,14 +1629,14 @@ Lemma weaken_has_middle: forall G1 G2 G3 T D,
   ok (G1 & G2 & G3) ->
   typ_has (G1 & G2 & G3) T D.
 Proof.
-  introv Has Ok. eapply (proj1 weaken_has); eauto.
+  introv Has Ok. eapply (proj1 weaken_has); jauto.
 Qed.
 
 Lemma weaken_typ_has_end: forall G1 G2 T D,
   ok (G1 & G2) -> typ_has G1 T D -> typ_has (G1 & G2) T D.
 Proof.
-  introv Ok Has. destruct weaken_has as [P _].
-  specialize (P G1 _ _ Has G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
+  introv Ok Has. rewrite <- (concat_empty_r (G1 & G2)).
+  apply weaken_has_middle; rewrite concat_empty_r; assumption.
 Qed.
 
 Lemma weaken_hasnt_middle: forall G1 G2 G3 T l,
@@ -1521,25 +1644,38 @@ Lemma weaken_hasnt_middle: forall G1 G2 G3 T l,
   ok (G1 & G2 & G3) ->
   typ_hasnt (G1 & G2 & G3) T l.
 Proof.
-  introv Hasnt Ok. eapply (proj2 weaken_has); eauto.
+  introv Hasnt Ok. eapply (proj2 weaken_has); jauto.
 Qed.
 
 Lemma weaken_wf:
-   (forall G A T, wf_typ_impl G A T -> forall G1 G2 G3,
-      G = G1 & G3 ->
-      ok (G1 & G2 & G3) ->
-      wf_typ_impl (G1 & G2 & G3) A T)
-/\ (forall G A D, wf_dec_impl G A D -> forall G1 G2 G3,
-      G = G1 & G3 ->
-      ok (G1 & G2 & G3) ->
-      wf_dec_impl (G1 & G2 & G3) A D).
+   (forall G T, (exists G1 G2 G3,
+      G = G1 & G2 & G3 /\
+      ok (G1 & G2 & G3) /\
+      wf_typ (G1 & G3) T) ->
+    wf_typ G T)
+/\ (forall G D, (exists G1 G2 G3,
+      G = G1 & G2 & G3 /\
+      ok (G1 & G2 & G3) /\
+      wf_dec (G1 & G3) D) ->
+    wf_dec G D).
 Proof.
-  apply wf_mutind; eauto.
+  apply wf_mut_coind;
+    introv H; destruct H as [G1 [G2 [G3 [Eq [Ok Wf]]]]]; subst; inversions Wf.
+  (* case wf_rcd *)
+  - do 3 eexists. eauto.
   (* case wf_sel *)
-  introv Bi XHas WfX IHX WfT IHT WFU IHU Eq Ok. subst G.
-  lets Bi': (binds_weaken Bi Ok).
-  lets XHas': ((proj1 weaken_has) _ _ _ XHas _ _ _ eq_refl Ok).
-  repeat split; repeat eexists; eauto.
+  - do 4 eexists.
+    lets Bi': (binds_weaken H1 Ok).
+    lets XHas': (weaken_has_middle H2 Ok).
+    repeat split; repeat eexists; eauto.
+  (* case wf_and *)
+  - split; repeat eexists; eauto.
+  (* case wf_or *)
+  - split; repeat eexists; eauto.
+  (* case wf_tmem *)
+  - split; repeat eexists; eauto.
+  (* case wf_mtd *)
+  - split; repeat eexists; eauto.
 Qed.
 
 Lemma weaken_wf_typ_middle: forall G1 G2 G3 T,
@@ -1547,7 +1683,7 @@ Lemma weaken_wf_typ_middle: forall G1 G2 G3 T,
   ok (G1 & G2 & G3) ->
   wf_typ (G1 & G2 & G3) T.
 Proof.
-  introv Wf Ok. eapply (proj1 weaken_wf); eauto.
+  introv Wf Ok. eapply (proj1 weaken_wf); jauto.
 Qed.
 
 Print Assumptions weaken_wf_typ_middle.
@@ -1569,8 +1705,14 @@ Lemma weaken_wf_dec_middle: forall G1 G2 G3 D,
   ok (G1 & G2 & G3) ->
   wf_dec (G1 & G2 & G3) D.
 Proof.
-  introv Wf Ok. eapply (proj2 weaken_wf); eauto.
+  introv Wf Ok. eapply (proj2 weaken_wf); jauto.
 Qed.
+
+Section weaken_subtyp_subdec_sec.
+
+(* We want these to be used by auto only inside this section: *)
+Hint Resolve
+ weaken_has_middle weaken_hasnt_middle weaken_wf_typ_middle weaken_wf_dec_middle.
 
 Lemma weaken_subtyp_subdec:
    (forall G T1 T2, subtyp G T1 T2 -> forall G1 G2 G3,
@@ -1582,28 +1724,26 @@ Lemma weaken_subtyp_subdec:
     ok (G1 & G2 & G3) ->
     subdec (G1 & G2 & G3) D1 D2).
 Proof.
-  destruct weaken_has as [WHas WHasnt].
-  destruct weaken_wf as [WWfTyp WWfDec].
   apply subtyp_mutind.
-  + (* case subtyp_refl  *) eauto.
-  + (* case subtyp_top   *) eauto.
-  + (* case subtyp_bot   *) eauto.
-  + (* case subtyp_rcd   *) eauto.
+  + (* case subtyp_refl  *) intros; subst; eauto.
+  + (* case subtyp_top   *) intros; subst; eauto.
+  + (* case subtyp_bot   *) intros; subst; eauto.
+  + (* case subtyp_rcd   *) intros; subst; eauto.
   + (* case subtyp_sel_l *)
     introv Bix WfX XHas St IH Eq Ok. subst. apply subtyp_sel_l with X T; eauto.
     apply (binds_weaken Bix Ok).
   + (* case subtyp_sel_r *)
     introv Bix WfX XHas St IH Eq Ok. subst. apply subtyp_sel_r with X U; eauto.
     apply (binds_weaken Bix Ok).
-  + (* case subtyp_and   *) eauto.
-  + (* case subtyp_and_l *) eauto.
-  + (* case subtyp_and_r *) eauto.
-  + (* case subtyp_or    *) eauto.
-  + (* case subtyp_or_l  *) eauto.
-  + (* case subtyp_or_r  *) eauto.
-  + (* case subtyp_trans *) eauto.
-  + (* case subdec_typ   *) eauto.
-  + (* case subdec_mtd   *) eauto.
+  + (* case subtyp_and   *) intros; subst; eauto.
+  + (* case subtyp_and_l *) intros; subst; eauto.
+  + (* case subtyp_and_r *) intros; subst; eauto.
+  + (* case subtyp_or    *) intros; subst; eauto.
+  + (* case subtyp_or_l  *) intros; subst; eauto.
+  + (* case subtyp_or_r  *) intros; subst; eauto.
+  + (* case subtyp_trans *) intros; subst; eauto.
+  + (* case subdec_typ   *) intros; subst; eauto.
+  + (* case subdec_mtd   *) intros; subst; eauto.
 Qed.
 
 Lemma weaken_subtyp_end: forall G1 G2 S U,
