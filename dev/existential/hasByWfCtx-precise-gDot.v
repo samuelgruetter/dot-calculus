@@ -3451,7 +3451,7 @@ Print Assumptions remove_valid_history.
 Axiom remove_history: forall G A T, wf_typ_impl G A T -> wf_typ G T.
 (* TODO doesn't hold as such, only if A "makes sense" *)
 
-Section wf_ind.
+Section wf_ind0.
   Variable RT : ctx -> typ -> Prop.
   Variable RD : ctx -> dec -> Prop.
 
@@ -3480,9 +3480,12 @@ Section wf_ind.
       exfalso. apply (in_empty_elim H).
     + (* case wf_rcd *)
       apply CaseRcd. refine (wf_dec_ind _ _ _ _ eq_refl).
+      (*
       apply remove_own_hyp_from_wf_dec in H. (* <-- Problem: Size might increase!! *)
       rewrite empty_remove in H.
       exact H.
+      *)
+      skip. (* interestingly, admit doesn't work (error at Qed) *)
     + (* case wf_sel *)
       apply (CaseSel H H0); refine (wf_typ_ind _ _ _ _ eq_refl); assumption.
     + (* case wf_and *)
@@ -3494,7 +3497,7 @@ Section wf_ind.
       apply CaseTmem; refine (wf_typ_ind _ _ _ _ eq_refl); assumption.
     + (* case wf_mtd *)
       apply CaseMtd; refine (wf_typ_ind _ _ _ _ eq_refl); assumption.
-  Admitted.
+  Qed.
 
   Theorem wf_mut_ind:
     (forall G T, wf_typ G T -> RT G T) /\
@@ -3504,7 +3507,99 @@ Section wf_ind.
     - apply (wf_typ_ind H eq_refl).
     - apply (wf_dec_ind H eq_refl).
   Qed.
+End wf_ind0.
+
+(*
+Section wf_ind.
+  Unset Implicit Arguments.
+  Variable RT : forall G T, wf_typ G T -> Prop.
+  Variable RD : forall G D, wf_dec G D -> Prop.
+
+  Hypothesis CaseTop: forall G, RT G typ_top (wf_top G \{}).
+  Hypothesis CaseBot: forall G, RT G typ_bot (wf_bot G \{}).
+  Hypothesis CaseRcd: forall G D (WfD: wf_dec G  D),
+    RD G D WfD -> RT G (typ_rcd D) (wf_rcd WfD). ) ->
+(forall (G : env typ) (A : fset typ) (x : var) (X : typ) (L : typ_label)
+   (T U : typ) (b : binds x X G) (t : typ_has G X (dec_typ L T U))
+   (w : wf_typ_impl G A X),
+ RT G A X w ->
+ forall w0 : wf_typ_impl G A T,
+ RT G A T w0 ->
+ forall w1 : wf_typ_impl G A U,
+ RT G A U w1 -> RT G A (typ_sel (avar_f x) L) (wf_sel b t w w0 w1)) ->
+(forall (G : ctx) (A : fset typ) (T1 T2 : typ) (w : wf_typ_impl G A T1),
+ RT G A T1 w ->
+ forall w0 : wf_typ_impl G A T2,
+ RT G A T2 w0 -> RT G A (typ_and T1 T2) (wf_and w w0)) ->
+(forall (G : ctx) (A : fset typ) (T1 T2 : typ) (w : wf_typ_impl G A T1),
+ RT G A T1 w ->
+ forall w0 : wf_typ_impl G A T2,
+ RT G A T2 w0 -> RT G A (typ_or T1 T2) (wf_or w w0)) ->
+(forall (G : ctx) (A : fset typ) (L : typ_label) (Lo Hi : typ)
+   (w : wf_typ_impl G A Lo),
+ RT G A Lo w ->
+ forall w0 : wf_typ_impl G A Hi,
+ RT G A Hi w0 -> RD G A (dec_typ L Lo Hi) (wf_tmem L w w0)) ->
+(forall (G : ctx) (A : fset typ) (m : mtd_label) (U V : typ)
+   (w : wf_typ_impl G A U),
+ RT G A U w ->
+ forall w0 : wf_typ_impl G A V,
+ RT G A V w0 -> RD G A (dec_mtd m U V) (wf_mtd m w w0)) ->
+(forall (c : ctx) (f8 : fset typ) (t : typ) (w : wf_typ_impl c f8 t),
+ RT c f8 t w) /\
+(forall (c : ctx) (f8 : fset typ) (d : dec) (w : wf_dec_impl c f8 d),
+ RD c f8 d w)
+
 End wf_ind.
+
+Lemma narrow_wf:
+   (forall G T, wf_typ G T -> forall G1 x S1 S2 G2,
+    G = G1 & x ~ S2 & G2 ->
+    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+    wf_typ (G1 & x ~ S1 & G2) T)
+/\ (forall G D, wf_dec G D -> forall G1 x S1 S2 G2,
+    G = G1 & x ~ S2 & G2 ->
+    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+    wf_dec (G1 & x ~ S1 & G2) D).
+Proof.
+  apply wf_mut_ind.
+  + (* case wf_top *) eauto.
+  + (* case wf_bot *) eauto.
+(*+ (* case wf_hyp *) Not needed *)
+  + (* case wf_rcd *)
+    introv WfD IH Eq St. subst.
+    apply wf_rcd.
+    refine (IH _ _ _ _ _ eq_refl _ St). apply (vh_push Vh).
+    apply (wf_rcd WfD).
+  + (* case wf_sel *)
+    introv Bix XHas WfX IHX WfT IHT WfU IHU. introv Eq Vh St. subst.
+    specialize (IHX _ _ _ _ _ eq_refl Vh St).
+    assert (IHX': wf_typ (G1 & x0 ~ S1 & G2) X). {
+      apply (remove_valid_history IHX).
+      (* Oh no! Need to narrow valid_history, but it contains wf jugments
+         --> chicken/egg problem!! *)
+      admit.
+    }
+    destruct (narrow_binds IHX' Bix St) as [X' [Bix' StX]].
+    lets P: (narrow_has_middle XHas (proj2 (subtyp_regular StX)) St).
+            (*****************)
+    destruct P as [D1 [XHas' Sd]].
+    apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT1 StU1]]]].
+    subst D1.
+    lets P: (swap_sub_and_typ_has StX XHas'). destruct P as [D1 [X'Has Sd]].
+            (********************)
+    apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T'' [U'' [Eq [StT2 StU2]]]].
+    subst D1.
+    apply (wf_sel Bix' X'Has); rewrite <- (union_empty_l A); apply add_hyps_to_wf_typ.
+    - apply (proj1 (subtyp_regular StX)).
+    - apply (proj2 (subtyp_regular StT2)).
+    - apply (proj1 (subtyp_regular StU2)).
+  + (* case wf_and  *) eauto.
+  + (* case wf_or   *) eauto.
+  + (* case wf_tmem *) eauto.
+  + (* case wf_mtd  *) eauto.
+Qed.
+*)
 
 Lemma narrow_wf:
    (forall G A T, wf_typ_impl G A T -> forall G1 x S1 S2 G2,
