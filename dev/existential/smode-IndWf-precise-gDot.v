@@ -300,65 +300,68 @@ Definition dec_top(l: label): dec := match l with
 end.
 *)
 
-Inductive typ_has: ctx -> typ -> dec -> Prop :=
+(* smode = "do the typ_has/typ_hasnt judgments need to be stable under narrowing?" *)
+Inductive smode : Set := stable | unstable.
+
+Inductive typ_has: smode -> ctx -> typ -> dec -> Prop :=
 (*| typ_top_has: typ_top has nothing *)
-  | typ_bot_has: forall G l,
-      typ_has G typ_bot (dec_bot l)
-  | typ_rcd_has: forall G D,
-      typ_has G (typ_rcd D) D
+  | typ_bot_has: forall m G l,
+      typ_has m G typ_bot (dec_bot l)
+  | typ_rcd_has: forall m G D,
+      typ_has m G (typ_rcd D) D
   | typ_sel_has: forall G x T L Lo Hi D,
       binds x T G ->
-      typ_has  G T (dec_typ L Lo Hi) ->
-      typ_has  G Hi D ->
-      typ_has G (typ_sel (avar_f x) L) D
-  | typ_and_has_1: forall G T1 T2 D,
-      typ_has G T1 D ->
-      typ_hasnt G T2 (label_of_dec D) ->
-      typ_has G (typ_and T1 T2) D
-  | typ_and_has_2: forall G T1 T2 D,
-      typ_hasnt G T1 (label_of_dec D) ->
-      typ_has G T2 D ->
-      typ_has G (typ_and T1 T2) D
-  | typ_and_has_12: forall G T1 T2 D1 D2 D3,
-      typ_has G T1 D1 ->
-      typ_has G T2 D2 ->
+      typ_has unstable G T (dec_typ L Lo Hi) ->
+      typ_has unstable G Hi D ->
+      typ_has unstable G (typ_sel (avar_f x) L) D
+  | typ_and_has_1: forall m G T1 T2 D,
+      typ_has m G T1 D ->
+      typ_hasnt m G T2 (label_of_dec D) ->
+      typ_has m G (typ_and T1 T2) D
+  | typ_and_has_2: forall m G T1 T2 D,
+      typ_hasnt m G T1 (label_of_dec D) ->
+      typ_has m G T2 D ->
+      typ_has m G (typ_and T1 T2) D
+  | typ_and_has_12: forall m G T1 T2 D1 D2 D3,
+      typ_has m G T1 D1 ->
+      typ_has m G T2 D2 ->
       D1 && D2 == D3 ->
-      typ_has G (typ_and T1 T2) D3
-  | typ_or_has: forall G T1 T2 D1 D2 D3,
-      typ_has G T1 D1 ->
-      typ_has G T2 D2 ->
+      typ_has m G (typ_and T1 T2) D3
+  | typ_or_has: forall m G T1 T2 D1 D2 D3,
+      typ_has m G T1 D1 ->
+      typ_has m G T2 D2 ->
       D1 || D2 == D3 ->
-      typ_has G (typ_or T1 T2) D3
-with typ_hasnt: ctx -> typ -> label -> Prop :=
-  | typ_top_hasnt: forall G l,
-      typ_hasnt G typ_top l
+      typ_has m G (typ_or T1 T2) D3
+with typ_hasnt: smode -> ctx -> typ -> label -> Prop :=
+  | typ_top_hasnt: forall m G l,
+      typ_hasnt m G typ_top l
 (*| typ_bot_hasnt: There's no label that typ_bot hasn't. *)
-  | typ_rcd_hasnt: forall G D l,
+  | typ_rcd_hasnt: forall m G D l,
       l <> label_of_dec D ->
-      typ_hasnt G (typ_rcd D) l
+      typ_hasnt m G (typ_rcd D) l
   | typ_sel_hasnt: forall G x T L Lo Hi l,
       binds x T G ->
-      typ_has    G T (dec_typ L Lo Hi) ->
-      typ_hasnt  G Hi l ->
-      typ_hasnt G (typ_sel (avar_f x) L) l
-  | typ_and_hasnt: forall G T1 T2 l, 
-      typ_hasnt G T1 l ->
-      typ_hasnt G T2 l ->
-      typ_hasnt G (typ_and T1 T2) l
+      typ_has   unstable G T (dec_typ L Lo Hi) ->
+      typ_hasnt unstable G Hi l ->
+      typ_hasnt unstable G (typ_sel (avar_f x) L) l
+  | typ_and_hasnt: forall m G T1 T2 l, 
+      typ_hasnt m G T1 l ->
+      typ_hasnt m G T2 l ->
+      typ_hasnt m G (typ_and T1 T2) l
 (* could also just have two typ_or_hasnt rules, which only explore 1 type, but for
    the proofs, it's better to always explore both types *)
-  | typ_or_hasnt_1: forall G T1 T2 D,
-      typ_hasnt G T1 (label_of_dec D) ->
-      typ_has G T2 D ->
-      typ_hasnt G (typ_or T1 T2) (label_of_dec D)
-  | typ_or_hasnt_2: forall G T1 T2 D,
-      typ_has G T1 D ->
-      typ_hasnt G T2 (label_of_dec D) ->
-      typ_hasnt G (typ_or T1 T2) (label_of_dec D)
-  | typ_or_hasnt_12: forall G T1 T2 l,
-      typ_hasnt G T1 l ->
-      typ_hasnt G T2 l ->
-      typ_hasnt G (typ_or T1 T2) l.
+  | typ_or_hasnt_1: forall m G T1 T2 D,
+      typ_hasnt m G T1 (label_of_dec D) ->
+      typ_has   m G T2 D ->
+      typ_hasnt m G (typ_or T1 T2) (label_of_dec D)
+  | typ_or_hasnt_2: forall m G T1 T2 D,
+      typ_has   m G T1 D ->
+      typ_hasnt m G T2 (label_of_dec D) ->
+      typ_hasnt m G (typ_or T1 T2) (label_of_dec D)
+  | typ_or_hasnt_12: forall m G T1 T2 l,
+      typ_hasnt m G T1 l ->
+      typ_hasnt m G T2 l ->
+      typ_hasnt m G (typ_or T1 T2) l.
 
 
 (* wf means "well-formed", not "well-founded" ;-)
@@ -387,7 +390,7 @@ Inductive wf_typ_impl: ctx -> fset typ -> typ -> Prop :=
       wf_typ_impl G A (typ_rcd D)
   | wf_sel: forall G A x X L T U,
       binds x X G ->
-      typ_has G X (dec_typ L T U) ->
+      typ_has stable G X (dec_typ L T U) -> (* <-- restriction: X cannot be an y.L *)
       wf_typ_impl G A X ->
       wf_typ_impl G A T ->
       wf_typ_impl G A U ->
@@ -429,13 +432,13 @@ Inductive subtyp: ctx -> typ -> typ -> Prop :=
   | subtyp_sel_l: forall G x X L T U,
       binds x X G ->
       wf_typ G X ->
-      typ_has G X (dec_typ L T U) ->
+      typ_has stable G X (dec_typ L T U) ->  (* <-- restriction: X cannot be an y.L *)
       subtyp G T U -> (* <-- probably not needed, but keep for symmetry with subtyp_sel_r *)
       subtyp G (typ_sel (avar_f x) L) U
   | subtyp_sel_r: forall G x X L T U,
       binds x X G ->
       wf_typ G X ->
-      typ_has G X (dec_typ L T U) ->
+      typ_has stable G X (dec_typ L T U) -> (* <-- restriction: X cannot be an y.L *)
       subtyp G T U -> (* <-- makes proofs a lot easier!! *)
       subtyp G T (typ_sel (avar_f x) L)
   | subtyp_and: forall G T U1 U2,
@@ -486,7 +489,7 @@ with subdec: ctx -> dec -> dec -> Prop :=
       subdec G (dec_mtd m S1 T1) (dec_mtd m S2 T2).
 
 Definition good_bounds_typ(G: ctx)(T: typ) :=
-  forall L Lo Hi, typ_has G T (dec_typ L Lo Hi) -> subtyp G Lo Hi.
+  forall L Lo Hi, typ_has stable G T (dec_typ L Lo Hi) -> subtyp G Lo Hi.
 
 Definition good_bounds(G: ctx) :=
   forall x X, binds x X G -> good_bounds_typ G X.
@@ -498,7 +501,7 @@ Inductive ty_trm: ctx -> trm -> typ -> Prop :=
       ty_trm G (trm_var (avar_f x)) T
   | ty_call: forall G t T m U V u,
       ty_trm G t T ->
-      typ_has G T (dec_mtd m U V) ->
+      typ_has unstable G T (dec_mtd m U V) ->
       ty_imp G u U -> (* <-- allows subsumption *)
       wf_typ G V ->
       ty_trm G (trm_call t m u) V
@@ -1203,6 +1206,15 @@ Proof.
   apply* subst_idempotent_trm_def_defs.
 Qed.
 
+(* ###################################################################### *)
+
+Lemma smode_to_unstable:
+   (forall m G T D, typ_has m G T D -> typ_has unstable G T D)
+/\ (forall m G T l, typ_hasnt m G T l -> typ_hasnt unstable G T l).
+Proof.
+  apply typ_has_mutind; intros; eauto.
+Qed.
+
 
 (* ###################################################################### *)
 (** ** Growing and shrinking the assumptions of wf *)
@@ -1385,7 +1397,7 @@ Lemma invert_wf_sel: forall G x L,
   wf_typ G (typ_sel (avar_f x) L) ->
   exists X T U,
     binds x X G /\
-    typ_has G X (dec_typ L T U) /\
+    typ_has stable G X (dec_typ L T U) /\
     wf_typ G X /\
     wf_typ G T /\
     wf_typ G U.
@@ -1400,7 +1412,7 @@ Lemma invert_wf_sel_2: forall G a L,
   exists x X T U,
     a = avar_f x /\
     binds x X G /\
-    typ_has G X (dec_typ L T U) /\
+    typ_has stable G X (dec_typ L T U) /\
     wf_typ G X /\
     wf_typ G T /\
     wf_typ G U.
@@ -1473,14 +1485,14 @@ Definition ty_defs_regular := proj44 typing_regular.
 (** ** Weakening *)
 
 Lemma weaken_has:
-   (forall G T D, typ_has G T D -> forall G1 G2 G3,
+   (forall m G T D, typ_has m G T D -> forall G1 G2 G3,
     G = G1 & G3 ->
     ok (G1 & G2 & G3) ->
-    typ_has (G1 & G2 & G3) T D)
-/\ (forall G T l, typ_hasnt G T l -> forall G1 G2 G3,
+    typ_has m (G1 & G2 & G3) T D)
+/\ (forall m G T l, typ_hasnt m G T l -> forall G1 G2 G3,
     G = G1 & G3 ->
     ok (G1 & G2 & G3) ->
-    typ_hasnt (G1 & G2 & G3) T l).
+    typ_hasnt m (G1 & G2 & G3) T l).
 Proof.
   apply typ_has_mutind.
   + (* case typ_bot_has *) eauto.
@@ -1501,25 +1513,25 @@ Proof.
   + (* case typ_or_hasnt_12 *) eauto.
 Qed.
 
-Lemma weaken_has_middle: forall G1 G2 G3 T D,
-  typ_has (G1 & G3) T D ->
+Lemma weaken_has_middle: forall m G1 G2 G3 T D,
+  typ_has m (G1 & G3) T D ->
   ok (G1 & G2 & G3) ->
-  typ_has (G1 & G2 & G3) T D.
+  typ_has m (G1 & G2 & G3) T D.
 Proof.
   introv Has Ok. eapply (proj1 weaken_has); eauto.
 Qed.
 
-Lemma weaken_typ_has_end: forall G1 G2 T D,
-  ok (G1 & G2) -> typ_has G1 T D -> typ_has (G1 & G2) T D.
+Lemma weaken_typ_has_end: forall m G1 G2 T D,
+  ok (G1 & G2) -> typ_has m G1 T D -> typ_has m (G1 & G2) T D.
 Proof.
   introv Ok Has. destruct weaken_has as [P _].
-  specialize (P G1 _ _ Has G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
+  specialize (P m G1 _ _ Has G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
 Qed.
 
-Lemma weaken_hasnt_middle: forall G1 G2 G3 T l,
-  typ_hasnt (G1 & G3) T l ->
+Lemma weaken_hasnt_middle: forall m G1 G2 G3 T l,
+  typ_hasnt m (G1 & G3) T l ->
   ok (G1 & G2 & G3) ->
-  typ_hasnt (G1 & G2 & G3) T l.
+  typ_hasnt m (G1 & G2 & G3) T l.
 Proof.
   introv Hasnt Ok. eapply (proj2 weaken_has); eauto.
 Qed.
@@ -1538,7 +1550,7 @@ Proof.
   (* case wf_sel *)
   introv Bi XHas WfX IHX WfT IHT WFU IHU Eq Ok. subst G.
   lets Bi': (binds_weaken Bi Ok).
-  lets XHas': ((proj1 weaken_has) _ _ _ XHas _ _ _ eq_refl Ok).
+  lets XHas': ((proj1 weaken_has) _ _ _ _ XHas _ _ _ eq_refl Ok).
   repeat split; repeat eexists; eauto.
 Qed.
 
@@ -1906,21 +1918,21 @@ Proof.
 Qed.
 
 Lemma subst_has_hasnt: forall y S,
-   (forall G T D, typ_has G T D -> forall G1 G2 x,
+   (forall m G T D, typ_has m G T D -> forall G1 G2 x,
     G = G1 & x ~ S & G2  ->
     ok (G1 & x ~ S & G2) ->
     binds y (subst_typ x y S) (G1 & G2) ->
-    typ_has (subst_ctx x y (G1 & G2)) (subst_typ x y T) (subst_dec x y D))
-/\ (forall G T l, typ_hasnt G T l -> forall G1 G2 x,
+    typ_has m (subst_ctx x y (G1 & G2)) (subst_typ x y T) (subst_dec x y D))
+/\ (forall m G T l, typ_hasnt m G T l -> forall G1 G2 x,
     G = G1 & x ~ S & G2  ->
     ok (G1 & x ~ S & G2) ->
     binds y (subst_typ x y S) (G1 & G2) ->
-    typ_hasnt (subst_ctx x y (G1 & G2)) (subst_typ x y T) l).
+    typ_hasnt m (subst_ctx x y (G1 & G2)) (subst_typ x y T) l).
 Proof.
   intros y S. apply typ_has_mutind.
   + (* case typ_bot_has *)
     intros. subst.
-    lets P: (typ_bot_has (subst_ctx x y (G1 & G2)) l). destruct l; eauto.
+    lets P: (typ_bot_has m (subst_ctx x y (G1 & G2)) l). destruct l; eauto.
   + (* case typ_rcd_has *)
     intros. subst. apply typ_rcd_has.
   + (* case typ_sel_has *)
@@ -1968,20 +1980,20 @@ Qed.
 
 Print Assumptions subst_has_hasnt.
 
-Lemma subst_has: forall G1 x y S G2 T D,
-  typ_has (G1 & x ~ S & G2) T D ->
+Lemma subst_has: forall m G1 x y S G2 T D,
+  typ_has m (G1 & x ~ S & G2) T D ->
   ok (G1 & x ~ S & G2) ->
   binds y (subst_typ x y S) (G1 & G2) ->
-  typ_has (subst_ctx x y (G1 & G2)) (subst_typ x y T) (subst_dec x y D).
+  typ_has m (subst_ctx x y (G1 & G2)) (subst_typ x y T) (subst_dec x y D).
 Proof.
   intros. apply* subst_has_hasnt.
 Qed.
 
-Lemma subst_hasnt: forall G1 x y S G2 T l,
-  typ_hasnt (G1 & x ~ S & G2) T l ->
+Lemma subst_hasnt: forall m G1 x y S G2 T l,
+  typ_hasnt m (G1 & x ~ S & G2) T l ->
   ok (G1 & x ~ S & G2) ->
   binds y (subst_typ x y S) (G1 & G2) ->
-  typ_hasnt (subst_ctx x y (G1 & G2)) (subst_typ x y T) l.
+  typ_hasnt m (subst_ctx x y (G1 & G2)) (subst_typ x y T) l.
 Proof.
   intros. apply* subst_has_hasnt.
 Qed.
@@ -2035,7 +2047,7 @@ Proof.
     lets Bix': (subst_binds Bix Ok Biy).
     simpl. rewrite if_hoist.
     refine (wf_sel Bix' _ IHX IHLo IHHi).
-    apply (SubstHas _ _ _ XHas _ _ _ eq_refl Ok Biy).
+    apply (SubstHas _ _ _ _ XHas _ _ _ eq_refl Ok Biy).
   + (* case wf_and *)
     intros. subst. apply wf_and; eauto.
   + (* case wf_or *)
@@ -2368,8 +2380,21 @@ Qed.
 (* ###################################################################### *)
 (** ** typ_has/hasnt total *)
 
-Lemma typ_has_total_impl: forall G A T, wf_typ_impl G A T -> A = \{} ->
-  forall l, typ_hasnt G T l \/ exists D, l = label_of_dec D /\ typ_has G T D.
+Hint Resolve (proj1 smode_to_unstable) (proj2 smode_to_unstable).
+
+Fixpoint no_toplevel_sel(T: typ): bool := match T with
+| typ_top       => true
+| typ_bot       => true
+| typ_rcd _     => true
+| typ_sel _ _   => false
+| typ_and T1 T2 => (andb (no_toplevel_sel T1) (no_toplevel_sel T2))
+| typ_or  T1 T2 => (andb (no_toplevel_sel T1) (no_toplevel_sel T2))
+end.
+
+Lemma typ_has_total_impl: forall G A T, wf_typ_impl G A T -> A = \{} -> forall l,
+  let m := (if (no_toplevel_sel T) then stable else unstable) in
+  typ_hasnt m G T l \/
+  exists D, l = label_of_dec D /\ typ_has m G T D.
 Proof.
   introv Wf. induction Wf; intros Eq l; subst.
   + (* case wf_top *)
@@ -2385,50 +2410,52 @@ Proof.
     - right. exists D. split.
       * apply Eq.
       * apply typ_rcd_has.
-    - left. apply (typ_rcd_hasnt _ _ Ne).
+    - left. apply (typ_rcd_hasnt _ _ _ Ne).
   + (* case wf_sel *)
     specialize (IHWf3 eq_refl l). destruct IHWf3 as [UHasnt | [D [Eq UHas]]].
-    - left. apply (typ_sel_hasnt H H0 UHasnt).
+    - left. simpl. apply (typ_sel_hasnt H ((proj1 smode_to_unstable) _ _ _ _ H0)
+                                          ((proj2 smode_to_unstable) _ _ _ _ UHasnt)).
     - right. exists D. split.
       * apply Eq.
-      * apply (typ_sel_has H H0 UHas).
+      * apply (typ_sel_has H ((proj1 smode_to_unstable) _ _ _ _ H0)
+                             ((proj1 smode_to_unstable) _ _ _ _ UHas)).
   + (* case wf_and *)
-    specialize (IHWf1 eq_refl l). specialize (IHWf2 eq_refl l).
+    specialize (IHWf1 eq_refl l). specialize (IHWf2 eq_refl l). simpl.
     destruct IHWf1 as [T1Hasnt | [D1 [Eq1 T1Has]]];
     destruct IHWf2 as [T2Hasnt | [D2 [Eq2 T2Has]]].
-    - left. apply (typ_and_hasnt T1Hasnt T2Hasnt).
+    - left.
+      destruct (no_toplevel_sel T1); destruct (no_toplevel_sel T2); simpl; eauto.
     - right. exists D2. apply (conj Eq2).
-      rewrite Eq2 in T1Hasnt. apply (typ_and_has_2 T1Hasnt T2Has).
+      rewrite Eq2 in T1Hasnt.
+      destruct (no_toplevel_sel T1); destruct (no_toplevel_sel T2); simpl; eauto.
     - right. exists D1. apply (conj Eq1).
-      rewrite Eq1 in T2Hasnt. apply (typ_and_has_1 T1Has T2Hasnt).
+      rewrite Eq1 in T2Hasnt.
+      destruct (no_toplevel_sel T1); destruct (no_toplevel_sel T2); simpl; eauto.
     - right.
       lets Eq12: Eq2. rewrite Eq1 in Eq12.
       destruct (intersect_dec_total D1 D2 Eq12) as [D12 Eq].
       exists D12. rewrite Eq1.
       apply (conj (proj32 (intersect_dec_label_eq _ _ Eq))).
-      apply (typ_and_has_12 T1Has T2Has Eq).
+      destruct (no_toplevel_sel T1); destruct (no_toplevel_sel T2); simpl; eauto.
   + (* case wf_or *)
-    specialize (IHWf1 eq_refl l). specialize (IHWf2 eq_refl l).
+    specialize (IHWf1 eq_refl l). specialize (IHWf2 eq_refl l). simpl.
     destruct IHWf1 as [T1Hasnt | [D1 [Eq1 T1Has]]];
     destruct IHWf2 as [T2Hasnt | [D2 [Eq2 T2Has]]].
-    - left. apply (typ_or_hasnt_12 T1Hasnt T2Hasnt).
-    - left. subst. apply (typ_or_hasnt_1 T1Hasnt T2Has).
-    - left. subst. apply (typ_or_hasnt_2 T1Has T2Hasnt).
+    - left.
+      destruct (no_toplevel_sel T1); destruct (no_toplevel_sel T2); simpl; eauto.
+    - left. subst.
+      destruct (no_toplevel_sel T1); destruct (no_toplevel_sel T2); simpl; eauto.
+    - left. subst.
+      destruct (no_toplevel_sel T1); destruct (no_toplevel_sel T2); simpl; eauto.
     - right.
       lets Eq12: Eq2. rewrite Eq1 in Eq12.
       destruct (union_dec_total D1 D2 Eq12) as [D12 Eq].
       exists D12. rewrite Eq1.
       apply (conj (proj32 (union_dec_label_eq _ _ Eq))).
-      apply (typ_or_has T1Has T2Has Eq).
+      destruct (no_toplevel_sel T1); destruct (no_toplevel_sel T2); simpl; eauto.
 Qed.
 
-Lemma typ_has_total: forall G T, wf_typ G T ->
-  forall l, typ_hasnt G T l \/ exists D, l = label_of_dec D /\ typ_has G T D.
-Proof.
-  intros. apply* typ_has_total_impl.
-Qed.
-
-Print Assumptions typ_has_total.
+Print Assumptions typ_has_total_impl.
 
 
 (* ###################################################################### *)
@@ -2452,11 +2479,11 @@ Qed.
 
 (* need to prove the same things several times to make sure we always have an IH *)
 Lemma typ_has_unique_and_not_hasnt:
-   (forall G T D1, typ_has G T D1 ->
-        (forall D2, typ_has G T D2 -> label_of_dec D1 = label_of_dec D2 -> D1 = D2)
-     /\ (typ_hasnt G T (label_of_dec D1) -> False))
-/\ (forall G T l, typ_hasnt G T l ->
-      forall D, l = label_of_dec D -> typ_has G T D -> False).
+   (forall m G T D1, typ_has m G T D1 ->
+        (forall D2, typ_has m G T D2 -> label_of_dec D1 = label_of_dec D2 -> D1 = D2)
+     /\ (typ_hasnt m G T (label_of_dec D1) -> False))
+/\ (forall m G T l, typ_hasnt m G T l ->
+      forall D, l = label_of_dec D -> typ_has m G T D -> False).
 Proof.
   apply typ_has_mutind; try split.
   + (* case typ_bot_has *)
@@ -2467,11 +2494,11 @@ Proof.
   + (* case typ_rcd_has *)
     introv Has Eq. inversions Has. reflexivity.
   + (* case typ_rcd_has *)
-    introv Hasnt. inversions Hasnt. apply H1. reflexivity.
+    introv Hasnt. inversions Hasnt. auto.
   + (* case typ_sel_has *)
     rename b into Bi, t into THas, H into IH1, t0 into HiHas, H0 into IH2.
     introv Has' Eq.
-    inversions Has'. rename T0 into T', H1 into Bi', H3 into THas', H5 into HiHas'.
+    inversions Has'. rename T0 into T', H1 into Bi', H2 into THas', H4 into HiHas'.
     lets EqT: (binds_func Bi' Bi). subst T'. clear Bi'.
     destruct IH1 as [IH1 _]. destruct IH2 as [IH2 _].
     specialize (IH1 _ THas' eq_refl). symmetry in IH1. inversions IH1.
@@ -2480,7 +2507,7 @@ Proof.
     rename b into Bi, t into THas, H into IH1, t0 into HiHas, H0 into IH2.
     introv Hasnt.
     destruct IH2 as [_ IH2]. inversions Hasnt.
-    rename T0 into T', H1 into Bi', H3 into THas', H5 into HiHasnt.
+    rename T0 into T', H1 into Bi', H2 into THas', H4 into HiHasnt.
     lets EqT: (binds_func Bi' Bi). subst T'. clear Bi'.
     destruct IH1 as [IH1 _]. specialize (IH1 _ THas' eq_refl).
     symmetry in IH1. inversions IH1. apply (IH2 HiHasnt).
@@ -2489,23 +2516,23 @@ Proof.
     introv Has' Eq. destruct IH1 as [IH1 _].
     inversions Has'.
     - eauto.
-    - exfalso. apply (IH2 _ Eq H4).
-    - exfalso. refine (IH2 _ _ H3).
-      rewrite Eq. symmetry. apply (proj33 (intersect_dec_label_eq _ _ H5)).
+    - exfalso. apply (IH2 _ Eq H5).
+    - exfalso. refine (IH2 _ _ H4).
+      rewrite Eq. symmetry. apply (proj33 (intersect_dec_label_eq _ _ H6)).
   + (* case typ_and_has_1 *)
     rename t into T1Has, H into IH1, t0 into T2Has, H0 into IH2.
-    introv T12Hasnt. inversions T12Hasnt. destruct IH1 as [_ IH1]. apply (IH1 H2).
+    introv T12Hasnt. inversions T12Hasnt. destruct IH1 as [_ IH1]. apply (IH1 H3).
   + (* case typ_and_has_2 *)
     rename t into T1Hasnt, H into IH1, t0 into T2Has, H0 into IH2.
     introv Has' Eq. destruct IH2 as [IH2 _].
     inversions Has'.
-    - exfalso. refine (IH1 _ Eq H2).
+    - exfalso. refine (IH1 _ Eq H3).
     - eauto.
     - exfalso. refine (IH1 _ _ H1).
-      rewrite Eq. symmetry. apply (proj32 (intersect_dec_label_eq _ _ H5)).
+      rewrite Eq. symmetry. apply (proj32 (intersect_dec_label_eq _ _ H6)).
   + (* case typ_and_has_2 *)
     rename t into T1Hasnt, H into IH1, t0 into T2Has, H0 into IH2.
-    introv T12Hasnt. inversions T12Hasnt. destruct IH2 as [_ IH2]. apply (IH2 H4).
+    introv T12Hasnt. inversions T12Hasnt. destruct IH2 as [_ IH2]. apply (IH2 H5).
   + (* case typ_and_has_12 *)
     rename t into T1Has, H into IH1, t0 into T2Has, H0 into IH2.
     introv Has' Eq.
@@ -2516,54 +2543,54 @@ Proof.
     rewrite <- Eq3 in Eq13. symmetry in Eq13; rename Eq13 into Eq1. clear Eq12.
     lets Eq: (conj Eq0 (conj Eq1 (conj Eq2 Eq3))). clear Eq0 Eq1 Eq2 Eq3.
     inversions Has'.
-    - exfalso. rewrite <- (proj41 Eq) in H4. rewrite (proj43 Eq) in H4.
-      destruct IH2 as [_ IH2]. apply (IH2 H4).
-    - exfalso. rewrite <- (proj41 Eq) in H2. rewrite (proj42 Eq) in H2.
-      destruct IH1 as [_ IH1]. apply (IH1 H2).
-    - destruct (intersect_dec_label_eq _ _ H5) as [Eq45 [Eq40 Eq50]].
+    - exfalso. rewrite <- (proj41 Eq) in H5. rewrite (proj43 Eq) in H5.
+      destruct IH2 as [_ IH2]. apply (IH2 H5).
+    - exfalso. rewrite <- (proj41 Eq) in H3. rewrite (proj42 Eq) in H3.
+      destruct IH1 as [_ IH1]. apply (IH1 H3).
+    - destruct (intersect_dec_label_eq _ _ H6) as [Eq45 [Eq40 Eq50]].
       destruct IH1 as [IH1 _]. specialize (IH1 D4).
       rewrite Eq40 in IH1. rewrite <- (proj41 Eq) in IH1. rewrite <- (proj42 Eq) in IH1.
       specialize (IH1 H1 eq_refl). subst D4.
       destruct IH2 as [IH2 _]. specialize (IH2 D5).
       rewrite Eq50 in IH2. rewrite <- (proj41 Eq) in IH2. rewrite <- (proj43 Eq) in IH2.
-      specialize (IH2 H3 eq_refl). subst D5.
-      apply (intersect_dec_unique _ _ e H5).
+      specialize (IH2 H4 eq_refl). subst D5.
+      apply (intersect_dec_unique _ _ e H6).
   + (* case typ_and_has_12 *)
     rename t into T1Hasnt, H into IH1, t0 into T2Has, H0 into IH2.
     introv T12Hasnt. inversions T12Hasnt. destruct IH2 as [_ IH2].
     destruct (intersect_dec_label_eq _ _ e) as [Eq12 [Eq13 Eq23]].
-    rewrite Eq23 in IH2. apply (IH2 H4).
+    rewrite Eq23 in IH2. apply (IH2 H5).
   + (* case typ_or_has *)
     rename t into T1Has, H into IH1, t0 into T2Has, H0 into IH2.
     introv T12Has Eq. inversions T12Has.
     remember (label_of_dec D0) as l eqn: Eq0.
     symmetry in Eq. rename Eq into Eq3.
     destruct (union_dec_label_eq _ _ e) as [Eq12 [Eq13 Eq23]].
-    destruct (union_dec_label_eq _ _ H5) as [Eq45 [Eq40 Eq50]].
+    destruct (union_dec_label_eq _ _ H6) as [Eq45 [Eq40 Eq50]].
     destruct IH1 as [IH1 _]. specialize (IH1 D4).
     rewrite Eq40 in IH1. rewrite <- Eq0 in IH1. rewrite Eq3 in IH1.
     specialize (IH1 H1 Eq13). subst D4.
     destruct IH2 as [IH2 _]. specialize (IH2 D5).
     rewrite Eq50 in IH2. rewrite <- Eq0 in IH2. rewrite Eq3 in IH2.
-    specialize (IH2 H3 Eq23). subst D5.
-    apply (union_dec_unique _ _ e H5).
+    specialize (IH2 H4 Eq23). subst D5.
+    apply (union_dec_unique _ _ e H6).
   + (* case typ_or_has *)
     rename t into T1Has, H into IH1, t0 into T2Has, H0 into IH2.
     destruct (union_dec_label_eq _ _ e) as [Eq12 [Eq13 Eq23]].
     introv T12Hasnt. inversions T12Hasnt.
     - destruct IH1 as [_ IH1].
-      rewrite Eq13 in IH1. rewrite H2 in H3. apply (IH1 H3).
+      rewrite Eq13 in IH1. rewrite H3 in H4. apply (IH1 H4).
     - destruct IH2 as [_ IH2].
-      rewrite Eq23 in IH2. rewrite H2 in H4. apply (IH2 H4).
+      rewrite Eq23 in IH2. rewrite H3 in H5. apply (IH2 H5).
     - destruct IH1 as [_ IH1].
-      rewrite Eq13 in IH1. apply (IH1 H2).
+      rewrite Eq13 in IH1. apply (IH1 H3).
   + (* case typ_top_hasnt *)
     introv Eq Has. inversions Has.
   + (* case typ_rcd_hasnt *)
     introv Ne Eq Has. inversions Has. apply Ne. reflexivity.
   + (* case typ_sel_hasnt *)
     introv Bi THas IH1 HiHasnt IH2 Eq Has'.
-    inversions Has'. rename T0 into T', H1 into Bi', H3 into THas', H5 into HiHas.
+    inversions Has'. rename T0 into T', H1 into Bi', H2 into THas', H4 into HiHas.
     lets EqT: (binds_func Bi' Bi). subst T'. clear Bi'.
     destruct IH1 as [IH1 _]. specialize (IH1 _ THas' eq_refl).
     symmetry in IH1. inversions IH1. apply (IH2 _ eq_refl HiHas).
@@ -2572,41 +2599,41 @@ Proof.
     inversions Has'.
     - eauto.
     - eauto.
-    - destruct (intersect_dec_label_eq _ _ H5) as [Eq12 [Eq1 Eq2]].
+    - destruct (intersect_dec_label_eq _ _ H6) as [Eq12 [Eq1 Eq2]].
       rewrite <- Eq1 in *. apply (IH1 _ eq_refl H1).
   + (* case typ_or_hasnt_1 *)
     introv T1Hasnt IH1 T2Has IH2 Eq Has'. inversions Has'.
-    destruct (union_dec_label_eq _ _ H5) as [Eq12 [Eq1 Eq2]].
+    destruct (union_dec_label_eq _ _ H6) as [Eq12 [Eq1 Eq2]].
     rewrite <- Eq1 in *. apply (IH1 _ Eq H1).
   + (* case typ_or_hasnt_2 *)
     introv T1Has IH1 T2Hasnt IH2 Eq Has'. inversions Has'.
-    destruct (union_dec_label_eq _ _ H5) as [Eq12 [Eq1 Eq2]].
-    rewrite <- Eq1 in *. refine (IH2 _ _ H3). rewrite Eq. exact Eq12.
+    destruct (union_dec_label_eq _ _ H6) as [Eq12 [Eq1 Eq2]].
+    rewrite <- Eq1 in *. refine (IH2 _ _ H4). rewrite Eq. exact Eq12.
   + (* case typ_or_hasnt_12 *)
     introv T1Hasnt IH1 T2Hasnt IH2 Eq Has'. inversions Has'.
-    destruct (union_dec_label_eq _ _ H5) as [Eq12 [Eq1 Eq2]].
-    rewrite <- Eq2 in *. refine (IH2 _ eq_refl H3).
+    destruct (union_dec_label_eq _ _ H6) as [Eq12 [Eq1 Eq2]].
+    rewrite <- Eq2 in *. refine (IH2 _ eq_refl H4).
 Qed.
 
 Print Assumptions typ_has_unique_and_not_hasnt.
 
-Lemma typ_has_unique: forall G T D1 D2,
-  typ_has G T D1 ->
-  typ_has G T D2 ->
+Lemma typ_has_unique: forall m G T D1 D2,
+  typ_has m G T D1 ->
+  typ_has m G T D2 ->
   label_of_dec D1 = label_of_dec D2 ->
   D1 = D2.
 Proof.
   introv H1 H2 Eq.
   destruct typ_has_unique_and_not_hasnt as [P _].
-  specialize (P G T D1 H1). destruct P as [P _]. apply (P _ H2 Eq).
+  specialize (P m G T D1 H1). destruct P as [P _]. apply (P _ H2 Eq).
 Qed.
 
-Lemma not_typ_has_and_hasnt: forall G T D,
-  typ_has G T D -> typ_hasnt G T (label_of_dec D) -> False.
+Lemma not_typ_has_and_hasnt: forall m G T D,
+  typ_has m G T D -> typ_hasnt m G T (label_of_dec D) -> False.
 Proof.
   introv Has Hasnt.
   destruct typ_has_unique_and_not_hasnt as [_ P].
-  apply (P G T (label_of_dec D) Hasnt D eq_refl Has).
+  apply (P m G T (label_of_dec D) Hasnt D eq_refl Has).
 Qed.
 
 
@@ -2815,8 +2842,8 @@ Proof.
   eauto.
 Qed.
 
-Lemma typ_has_preserves_wf: forall G T D,
-  typ_has G T D ->
+Lemma typ_has_preserves_wf: forall m G T D,
+  typ_has m G T D ->
   wf_typ G T ->
   wf_dec G D.
 Proof.
@@ -2831,7 +2858,8 @@ Proof.
       proof trees for recursive types. *)
     - in_empty_contradiction.
     - lets Eq: (binds_func H H2). subst T.
-      lets Eq: (typ_has_unique H3 Has1 eq_refl). inversions Eq.
+      lets Eq: (typ_has_unique ((proj1 smode_to_unstable) _ _ _ _ H3) Has1 eq_refl).
+      inversions Eq.
       apply IHHas2. assumption.
   + (* case typ_and_has_1 *)
     inversions Wf.
@@ -2862,9 +2890,9 @@ Qed.
 
 Lemma swap_sub_and_typ_has: forall G T1 T2 D2,
   subtyp G T1 T2 ->
-  typ_has G T2 D2 ->
+  typ_has unstable G T2 D2 ->
   exists D1,
-    typ_has G T1 D1 /\
+    typ_has unstable G T1 D1 /\
     subdec G D1 D2.
 Proof.
   introv St. gen D2. induction St; introv T2Has.
@@ -2891,13 +2919,13 @@ Proof.
     inversions T2Has.
     lets Eq: (binds_func H1 Bi). subst T0.
     apply IHSt. clear IHSt.
-    lets Eq: (typ_has_unique H3 XHas eq_refl). inversions Eq.
-    exact H5.
+    lets Eq: (typ_has_unique H2 ((proj1 smode_to_unstable) _ _ _ _ XHas) eq_refl).
+    inversions Eq. assumption.
   + (* case subtyp_and *)
     inversions T2Has.
     - eauto.
     - eauto.
-    - rename H1 into U1Has, H3 into U2Has, H5 into Eq, D1 into DU1, D0 into DU2.
+    - rename H1 into U1Has, H4 into U2Has, H6 into Eq, D1 into DU1, D0 into DU2.
       specialize (IHSt1 _ U1Has). destruct IHSt1 as [D1 [THas Sd1]].
       specialize (IHSt2 _ U2Has). destruct IHSt2 as [D1' [THas' Sd2]].
       destruct (intersect_dec_label_eq _ _ Eq) as [Eq1 _].
@@ -2909,11 +2937,11 @@ Proof.
       apply (subdec_intersect Sd1 Sd2 Eq).
   + (* case subtyp_and_l *)
     rename T2Has into T1Has, D2 into D1, H into WfT1, H0 into WfT2.
-    lets T2Has: (typ_has_total WfT2). specialize (T2Has (label_of_dec D1)).
+    lets T2Has: (typ_has_total_impl WfT2 eq_refl). specialize (T2Has (label_of_dec D1)).
                 (*************)
     destruct T2Has as [T2Hasnt | [D2 [Eq T2Has]]].
     - exists D1. split.
-      * auto.
+      * eauto.
       * apply subdec_refl. apply (typ_has_preserves_wf T1Has WfT1).
     - destruct (intersect_dec_total _ _ Eq) as [D12 Eq12]. exists D12. split.
       * eauto.
@@ -2922,11 +2950,11 @@ Proof.
         apply (subdec_intersect_l Eq12 WfD1 WfD2).
   + (* case subtyp_and_r *)
     rename H into WfT1, H0 into WfT2.
-    lets T1Has: (typ_has_total WfT1). specialize (T1Has (label_of_dec D2)).
+    lets T1Has: (typ_has_total_impl WfT1 eq_refl). specialize (T1Has (label_of_dec D2)).
                 (*************)
     destruct T1Has as [T1Hasnt | [D1 [Eq T1Has]]].
     - exists D2. split.
-      * auto.
+      * eauto.
       * apply subdec_refl. apply (typ_has_preserves_wf T2Has WfT2).
     - symmetry in Eq.
       destruct (intersect_dec_total _ _ Eq) as [D12 Eq12]. exists D12. split.
@@ -2945,13 +2973,13 @@ Proof.
     - apply (typ_or_has T1Has T2Has Eq12).
     - apply (subdec_union Sd1 Sd2 Eq12).
   + (* case subtyp_or_l *)
-    inversions T2Has. rename H3 into T1Has, H5 into T2Has, D2 into D12, D0 into D2.
-    exists D1. apply (conj T1Has). apply (subdec_union_l H7).
+    inversions T2Has. rename H3 into T1Has, H6 into T2Has, D2 into D12, D0 into D2.
+    exists D1. apply (conj T1Has). apply (subdec_union_l H8).
     - apply (typ_has_preserves_wf T1Has H).
     - apply (typ_has_preserves_wf T2Has H0).
   + (* case subtyp_or_r *)
-    inversions T2Has. rename H3 into T1Has, H5 into T2Has, D2 into D12, D0 into D2.
-    exists D2. apply (conj T2Has). apply (subdec_union_r H7).
+    inversions T2Has. rename H3 into T1Has, H6 into T2Has, D2 into D12, D0 into D2.
+    exists D2. apply (conj T2Has). apply (subdec_union_r H8).
     - apply (typ_has_preserves_wf T1Has H).
     - apply (typ_has_preserves_wf T2Has H0).
   + (* case subtyp_trans *)
@@ -2969,11 +2997,11 @@ Print Assumptions swap_sub_and_typ_has.
 (* ###################################################################### *)
 (** ** Soundness helper lemmas *)
 
-Lemma invert_typ_and_has: forall G T1 T2 D,
-   typ_has G (typ_and T1 T2) D ->
-   (typ_has G T1 D /\ typ_hasnt G T2 (label_of_dec D))
-\/ (typ_has G T2 D /\ typ_hasnt G T1 (label_of_dec D))
-\/ exists D1 D2, D1 && D2 == D /\ typ_has G T1 D1 /\ typ_has G T2 D2.
+Lemma invert_typ_and_has: forall m G T1 T2 D,
+   typ_has m G (typ_and T1 T2) D ->
+   (typ_has m G T1 D /\ typ_hasnt m G T2 (label_of_dec D))
+\/ (typ_has m G T2 D /\ typ_hasnt m G T1 (label_of_dec D))
+\/ exists D1 D2, D1 && D2 == D /\ typ_has m G T1 D1 /\ typ_has m G T2 D2.
 Proof.
   intros. inversions H; eauto 10.
 Qed.
@@ -2993,9 +3021,9 @@ Proof.
   - introv dsHas dsHasnt. inversions dsHas; inversions dsHasnt. case_if.
 Qed.
 
-Lemma invert_ty_defs: forall G ds T D,
+Lemma invert_ty_defs: forall m G ds T D,
   ty_defs G ds T ->
-  typ_has G T D ->
+  typ_has m G T D ->
   exists d, defs_has ds d /\ ty_def G d D.
 Proof.
   introv Tyds. gen D. induction Tyds.
@@ -3022,9 +3050,9 @@ Proof.
       exfalso. apply (not_defs_has_and_hasnt dsHas Hasnt).
 Qed.
 
-Lemma typ_has_to_defs_has: forall G T D x ds s,
+Lemma typ_has_to_defs_has: forall m G T D x ds s,
   wf_sto s G ->
-  typ_has G T D ->
+  typ_has m G T D ->
   binds x ds s ->
   binds x T G ->
   exists d, defs_has ds d /\ ty_def G d D.
@@ -3039,7 +3067,7 @@ Lemma invert_ty_imp_call: forall G t m V2 u,
   ty_imp G (trm_call t m u) V2 ->
   exists T U V1,
     ty_trm G t T /\
-    typ_has G T (dec_mtd m U V1) /\
+    typ_has unstable G T (dec_mtd m U V1) /\
     ty_imp G u U /\
     subtyp G V1 V2.
 Proof.
@@ -3155,6 +3183,22 @@ Proof.
 Qed.
 *)
 
+Lemma narrow_has_stable:
+   (forall m G T D, typ_has m G T D -> forall G1 x S1 S2 G2,
+    G = G1 & x ~ S2 & G2 ->
+    m = stable ->
+    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+    typ_has m (G1 & x ~ S1 & G2) T D)
+/\ (forall m G T l, typ_hasnt m G T l -> forall G1 x S1 S2 G2,
+    G = G1 & x ~ S2 & G2 ->
+    m = stable ->
+    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+    typ_hasnt m (G1 & x ~ S1 & G2) T l).
+Proof.
+  apply typ_has_mutind; intros; try discriminate; subst; eauto.
+Qed.
+
+(*
 Lemma narrow_has:
    (forall G T D2, typ_has G T D2 -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
@@ -3380,6 +3424,7 @@ Lemma narrow_has_middle: forall G1 x S1 S2 G2 T D2,
 Proof.
   introv Has Wf St. apply* narrow_has.
 Qed.
+*)
 
 Inductive valid_history: ctx -> fset typ -> Prop :=
 | vh_empty: forall G, 
@@ -3459,8 +3504,8 @@ Section wf_ind0.
   Hypothesis CaseBot: forall G, RT G typ_bot.
   (* No CaseHyp because A is always empty. *)
   Hypothesis CaseRcd: forall G D, RD G D -> RT G (typ_rcd D).
-  Hypothesis CaseSel: forall G x X L T U, binds x X G -> typ_has G X (dec_typ L T U) ->
-    RT G X -> RT G T -> RT G U -> RT G (typ_sel (avar_f x) L).
+  Hypothesis CaseSel: forall G x X L T U, binds x X G -> typ_has stable G X (dec_typ L T U)
+    -> RT G X -> RT G T -> RT G U -> RT G (typ_sel (avar_f x) L).
   Hypothesis CaseAnd: forall G T1 T2, RT G T1 -> RT G T2 -> RT G (typ_and T1 T2).
   Hypothesis CaseOr:  forall G T1 T2, RT G T1 -> RT G T2 -> RT G (typ_or  T1 T2).
   Hypothesis CaseTmem: forall G L Lo Hi, RT G Lo -> RT G Hi -> RD G (dec_typ L Lo Hi).
