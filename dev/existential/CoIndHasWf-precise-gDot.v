@@ -2045,6 +2045,7 @@ Proof.
   intros. case_if*.
 Qed.
 
+(*
 Lemma subst_has_hasnt: forall y S,
    (forall G T D, typ_has G T D -> forall G1 G2 x,
     G = G1 & x ~ S & G2  ->
@@ -2346,7 +2347,7 @@ Proof.
       repeat rewrite concat_assoc in IH1.
       assert (Ok': ok (G1 & x ~ S & G2 & x' ~ open_typ x' T)) by auto.
       specialize (IH1 eq_refl Ok').
-      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var*).
+      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var* ).
       unfold subst_ctx in IH1. rewrite map_push in IH1.
       lets P: (@subst_open_commute_typ x y x' T). rewrite Eqz in P.
       rewrite P in IH1. clear P.
@@ -2358,7 +2359,7 @@ Proof.
       repeat rewrite concat_assoc in IH2.
       assert (Ok': ok (G1 & x ~ S & G2 & x' ~ open_typ x' T)) by auto.
       specialize (IH2 eq_refl Ok').
-      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var*).
+      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var* ).
       unfold subst_ctx in IH2. rewrite map_push in IH2.
       lets P: (@subst_open_commute_typ x y x' T). rewrite Eqz in P.
       rewrite P in IH2. clear P.
@@ -2390,7 +2391,7 @@ Proof.
       repeat rewrite concat_assoc in IH.
       assert (Ok': ok (G1 & x ~ S & G2 & x' ~ T)) by auto.
       specialize (IH eq_refl Ok').
-      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var*).
+      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var* ).
       unfold subst_ctx in IH. rewrite map_push in IH.
       lets P: (@subst_open_commute_trm x y x' u). rewrite Eqz in P.
       rewrite P in IH. clear P.
@@ -2439,6 +2440,7 @@ Proof.
   specialize (P _ _ _ Ty G empty x). repeat rewrite concat_empty_r in P.
   apply (P eq_refl Ok Biy).
 Qed.
+*)
 
 
 (* ###################################################################### *)
@@ -2508,10 +2510,10 @@ Qed.
 (* ###################################################################### *)
 (** ** typ_has/hasnt total *)
 
-Lemma typ_has_total_impl: forall G A T, wf_typ_impl G A T -> A = \{} ->
+Lemma typ_has_total: forall G T, wf_typ G T ->
   forall l, typ_hasnt G T l \/ exists D, l = label_of_dec D /\ typ_has G T D.
 Proof.
-  introv Wf. induction Wf; intros Eq l; subst.
+  introv Wf. intro l. right. cofix. induction Wf; intros Eq l; subst.
   + (* case wf_top *)
     left. apply typ_top_hasnt.
   + (* case wf_bot *)
