@@ -2582,7 +2582,117 @@ Lemma supertyp_has_good_bounds: forall G T1 T2,
   subtyp G T1 T2 ->
   good_bounds_typ G T1 ->
   good_bounds_typ G T2.
-Admitted.
+Proof.
+  introv St. unfold good_bounds_typ. induction St; introv Gb T2Has.
+  + (* case subtyp_refl *)
+    eauto.
+  + (* case subtyp_top *)
+    inversions T2Has.
+  + (* case subtyp_bot *)
+    specialize (Gb L typ_top typ_bot (typ_bot_has G (label_typ L))).
+    lets WfD: (typ_has_preserves_wf T2Has H). inversions WfD.
+    refine (subtyp_trans (subtyp_top H4) _).
+    refine (subtyp_trans _ (subtyp_bot H6)).
+    exact Gb.
+  + (* case subtyp_rcd *)
+    inversions T2Has.
+    apply invert_subdec_typ_sync_left in H. destruct H as [Lo' [Hi' [Eq [StLo StHi]]]].
+    subst. eauto.
+  + (* case subtyp_sel_l *)
+    eauto.
+  + (* case subtyp_sel_r *)
+    inversions T2Has.
+    lets Eq: (binds_func H5 H). subst T0.
+    lets Eq: (typ_has_unique H7 H2 eq_refl). inversions Eq.
+    eauto.
+  + (* case subtyp_and *)
+    inversions T2Has.
+    - eauto.
+    - eauto.
+    - destruct D1 as [L1 Lo1 Hi1 | ]; destruct D2 as [L2 Lo2 Hi2 | ];
+      unfold intersect_dec in H5; simpl in H5; case_if; inversions H5.
+      symmetry in H. inversions H.
+      specialize (IHSt1 Gb _ _ _ H1). specialize (IHSt2 Gb _ _ _ H3).
+      lets P: (swap_sub_and_typ_has St1 H1). destruct P as [D1 [THas Sd]].
+              (********************)
+      apply invert_subdec_typ_sync_left in Sd.
+      destruct Sd as [Lo0 [Hi0 [Eq [StLo1 StHi1]]]]. subst.
+      lets P: (swap_sub_and_typ_has St2 H3). destruct P as [D1 [THas' Sd]].
+              (********************)
+      apply invert_subdec_typ_sync_left in Sd.
+      destruct Sd as [Lo0' [Hi0' [Eq [StLo2 StHi2]]]]. subst.
+      lets Eq: (typ_has_unique THas' THas eq_refl). inversions Eq. clear THas'.
+      specialize (Gb _ _ _ THas).
+      apply subtyp_and; apply subtyp_or.
+      * exact IHSt1.
+      * apply (subtyp_trans StLo2 (subtyp_trans Gb StHi1)).
+      * apply (subtyp_trans StLo1 (subtyp_trans Gb StHi2)).
+      * exact IHSt2.
+  + (* case subtyp_and_l *)
+    rename T2Has into T1Has, Lo into Lo1, Hi into Hi1.
+    destruct (typ_has_total H0 (label_typ L)) as [T2Hasnt | [D2 [Eq T2Has]]].
+    - eauto.
+    - symmetry in Eq. destruct D2 as [L' Lo2 Hi2 | ]; inversions Eq.
+      specialize (Gb L (typ_or Lo1 Lo2) (typ_and Hi1 Hi2)).
+      lets Wf1: (typ_has_preserves_wf T1Has H). inversions Wf1.
+      lets Wf2: (typ_has_preserves_wf T2Has H0). inversions Wf2.
+      refine (subtyp_trans _ (subtyp_and_l H7 H9)).
+      refine (subtyp_trans (subtyp_or_l H5 H6) _).
+      apply Gb.
+      apply (typ_and_has_12 T1Has T2Has). unfold intersect_dec. simpl. case_if. reflexivity.
+  + (* case subtyp_and_r *)
+    rename Lo into Lo2, Hi into Hi2.
+    destruct (typ_has_total H (label_typ L)) as [T1Hasnt | [D1 [Eq T1Has]]].
+    - eauto.
+    - symmetry in Eq. destruct D1 as [L' Lo1 Hi1 | ]; inversions Eq.
+      specialize (Gb L (typ_or Lo1 Lo2) (typ_and Hi1 Hi2)).
+      lets Wf1: (typ_has_preserves_wf T1Has H). inversions Wf1.
+      lets Wf2: (typ_has_preserves_wf T2Has H0). inversions Wf2.
+      refine (subtyp_trans _ (subtyp_and_r H7 H9)).
+      refine (subtyp_trans (subtyp_or_r H5 H6) _).
+      apply Gb.
+      apply (typ_and_has_12 T1Has T2Has). unfold intersect_dec. simpl. case_if. reflexivity.
+  + (* case subtyp_or *)
+    rename T2Has into UHas.
+    lets P: (swap_sub_and_typ_has St1 UHas). destruct P as [D1 [T1Has Sd]].
+            (********************)
+    apply invert_subdec_typ_sync_left in Sd.
+    destruct Sd as [Lo1 [Hi1 [Eq [StLo1 StHi1]]]]. subst.
+    lets P: (swap_sub_and_typ_has St2 UHas). destruct P as [D2 [T2Has Sd]].
+            (********************)
+    apply invert_subdec_typ_sync_left in Sd.
+    destruct Sd as [Lo2 [Hi2 [Eq [StLo2 StHi2]]]]. subst.
+    refine (subtyp_trans _ (subtyp_or StHi1 StHi2)).
+    refine (subtyp_trans (subtyp_and StLo1 StLo2) _).
+    apply Gb with L. apply (typ_or_has T1Has T2Has).
+    unfold union_dec. simpl. case_if. reflexivity.
+  + (* case subtyp_or_l *)
+    inversions T2Has.
+    destruct D1 as [L1 Lo1 Hi1 | ]; destruct D2 as [L2 Lo2 Hi2 | ];
+    unfold union_dec in H7; simpl in H7; case_if; inversions H7.
+    symmetry in H1. inversions H1.
+    specialize (Gb _ _ _ H3).
+    lets Wf1: (typ_has_preserves_wf H3 H). inversions Wf1.
+    lets Wf2: (typ_has_preserves_wf H5 H0). inversions Wf2.
+    refine (subtyp_trans (subtyp_and_l H7 H8) _).
+    refine (subtyp_trans _ (subtyp_or_l H9 H11)).
+    exact Gb.
+  + (* case subtyp_or_r *)
+    inversions T2Has.
+    destruct D1 as [L1 Lo1 Hi1 | ]; destruct D2 as [L2 Lo2 Hi2 | ];
+    unfold union_dec in H7; simpl in H7; case_if; inversions H7.
+    symmetry in H1. inversions H1.
+    specialize (Gb _ _ _ H5).
+    lets Wf1: (typ_has_preserves_wf H3 H). inversions Wf1.
+    lets Wf2: (typ_has_preserves_wf H5 H0). inversions Wf2.
+    refine (subtyp_trans (subtyp_and_r H7 H8) _).
+    refine (subtyp_trans _ (subtyp_or_r H9 H11)).
+    exact Gb.
+  + (* case subtyp_trans *)
+    eauto.
+Qed.
+
+Print Assumptions supertyp_has_good_bounds.
 
 Lemma good_bounds_push: forall G y T,
   good_bounds G ->
