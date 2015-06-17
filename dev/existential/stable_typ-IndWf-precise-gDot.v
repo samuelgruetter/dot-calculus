@@ -1306,22 +1306,6 @@ Proof.
     intro. subst. apply H. assumption.
 Qed.
 
-(*
-Lemma remove_own_hyp_from_wf_dec: forall G A D,
-  wf_dec_impl G A D ->
-  wf_dec_impl G (A \- \{ typ_rcd D }) D.
-Proof.
-  introv Wf1.
-  assert (Eq: A = (A \- \{ typ_rcd D }) \u \{ typ_rcd D }) by admit.
-  rewrite Eq in Wf1.
-  lets Wf2: (wf_rcd Wf1).
-  lets P: (proj2 (remove_hyp_from_wf Wf2)).
-  specialize (P _ _ _ Wf1 eq_refl).
-  rewrite <- union_remove in P. rewrite <- Eq in P. rewrite union_same in P.
-  exact P.
-Qed.
-*)
-
 Lemma remove_own_hyp_from_wf_dec: forall G A D,
   wf_dec_impl G (A \u \{ typ_rcd D }) D ->
   wf_dec_impl G (A \- \{ typ_rcd D }) D.
@@ -1636,14 +1620,6 @@ Proof.
   specialize (P G1 S U St G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
 Qed.
 
-(*
-Lemma strengthen_good_bounds: forall G1 G2 G3 X,
-  wf_typ (G1 & G3) X ->
-  good_bounds_typ (G1 & G2 & G3) X ->
-  good_bounds_typ (G1 &      G3) X.
-Admitted.
-*)
-
 (* TODO does not really hold, we need an additional hyp saying that (G1 & G3) is closed
    by itself. *)
 Lemma shrink_good_bounds: forall G1 G2 G3,
@@ -1777,28 +1753,18 @@ Qed.
 Lemma ctx_binds_to_sto_binds: forall s G x T,
   wf_sto s G ->
   binds x T G ->
-  exists o, binds x o s.
+  exists ds, binds x ds s /\ ty_defs G ds T.
 Proof.
   introv Wf Bi. gen x T Bi. induction Wf; intros.
   + false* binds_empty_inv.
   + unfolds binds. rewrite get_push in *. case_if.
-    - eauto.
-    - eauto.
+    - inversions Bi. eauto.
+    - specialize (IHWf _ _ Bi). destruct IHWf as [ds' [Bi' Tyds]].
+      exists ds'. apply (conj Bi'). refine (weaken_ty_defs_end _ Tyds).
+      apply wf_sto_to_ok_G in Wf. auto.
 Qed.
 
 Lemma sto_binds_to_ctx_binds: forall s G x ds,
-  wf_sto s G ->
-  binds x ds s ->
-  exists T, binds x T G.
-Proof.
-  introv Wf Bi. gen x Bi. induction Wf; intros.
-  + false* binds_empty_inv.
-  + unfolds binds. rewrite get_push in *. case_if.
-    - inversions Bi. exists T. reflexivity.
-    - auto.
-Qed.
-
-Lemma invert_wf_sto_binds: forall s G x ds,
   wf_sto s G ->
   binds x ds s ->
   exists T, binds x T G /\ ty_defs G ds T.
@@ -1807,9 +1773,9 @@ Proof.
   + false* binds_empty_inv.
   + unfolds binds. rewrite get_push in *. case_if.
     - inversions Bi. exists T. auto.
-    - specialize (IHWf _ Bi). destruct IHWf as [T0 [Bi0 Tyds]].
-      exists T0. apply (conj Bi0). refine (weaken_ty_defs_end _ Tyds).
-      lets Ok: (wf_sto_to_ok_G Wf). auto.
+    - specialize (IHWf _ Bi). destruct IHWf as [U [Bi' Tyds]].
+      exists U. apply (conj Bi'). refine (weaken_ty_defs_end _ Tyds).
+      apply wf_sto_to_ok_G in Wf. auto.
 Qed.
 
 Lemma sto_unbound_to_ctx_unbound: forall s G x,
@@ -1924,6 +1890,11 @@ Lemma if_hoist: forall (A B: Type) (C: Prop) (f: A -> B) (e1 e2: A),
   (If C then f e1 else f e2) = f (If C then e1 else e2).
 Proof.
   intros. case_if*.
+Qed.
+
+Lemma subst_stable_typ: forall x y T, stable_typ T -> stable_typ (subst_typ x y T).
+Proof.
+  intros x y T. induction T; intro S; simpl; inversions S; auto.
 Qed.
 
 Lemma subst_has_hasnt: forall y S,
@@ -2057,7 +2028,7 @@ Proof.
     lets Bix': (subst_binds Bix Ok Biy).
     simpl. rewrite if_hoist.
     refine (wf_sel Bix' _ _ IHX IHLo IHHi).
-    - admit.
+    - apply (subst_stable_typ _ _ Sb).
     - apply (SubstHas _ _ _ XHas _ _ _ eq_refl Ok Biy).
   + (* case wf_and *)
     intros. subst. apply wf_and; eauto.
@@ -2122,7 +2093,7 @@ Proof.
     apply subtyp_sel_l with (subst_typ x0 y X) (subst_typ x0 y T).
     * apply Bix'.
     * eauto.
-    * admit.
+    * apply (subst_stable_typ _ _ Sb).
     * apply (subst_has XHas Ok Biy).
     * apply IH.
   + (* case subtyp_sel_r *)
@@ -2133,7 +2104,7 @@ Proof.
     apply subtyp_sel_r with (subst_typ x0 y X) (subst_typ x0 y U).
     * apply Bix'.
     * eauto.
-    * admit.
+    * apply (subst_stable_typ _ _ Sb).
     * apply (subst_has XHas Ok Biy).
     * apply IH.
   + (* case subtyp_and *)
@@ -3055,7 +3026,7 @@ Lemma typ_has_to_defs_has: forall G T D x ds s,
   exists d, defs_has ds d /\ ty_def G d D.
 Proof.
   introv Wf THas Bis BiG.
-  lets P: (invert_wf_sto_binds Wf Bis). destruct P as [T' [Bi' Tyds]].
+  lets P: (sto_binds_to_ctx_binds Wf Bis). destruct P as [T' [Bi' Tyds]].
   apply (binds_func BiG) in Bi'. subst T'.
   apply (invert_ty_defs Tyds THas).
 Qed.
@@ -3507,159 +3478,6 @@ Qed.
 
 Print Assumptions remove_valid_history.
 
-Axiom remove_history: forall G A T, wf_typ_impl G A T -> wf_typ G T.
-(* TODO doesn't hold as such, only if A "makes sense" *)
-
-Section wf_ind0.
-  Variable RT : ctx -> typ -> Prop.
-  Variable RD : ctx -> dec -> Prop.
-
-  Hypothesis CaseTop: forall G, RT G typ_top.
-  Hypothesis CaseBot: forall G, RT G typ_bot.
-  (* No CaseHyp because A is always empty. *)
-  Hypothesis CaseRcd: forall G D, RD G D -> RT G (typ_rcd D).
-  Hypothesis CaseSel: forall G x X L T U, binds x X G -> typ_has G X (dec_typ L T U) ->
-    RT G X -> RT G T -> RT G U -> RT G (typ_sel (avar_f x) L).
-  Hypothesis CaseAnd: forall G T1 T2, RT G T1 -> RT G T2 -> RT G (typ_and T1 T2).
-  Hypothesis CaseOr:  forall G T1 T2, RT G T1 -> RT G T2 -> RT G (typ_or  T1 T2).
-  Hypothesis CaseTmem: forall G L Lo Hi, RT G Lo -> RT G Hi -> RD G (dec_typ L Lo Hi).
-  Hypothesis CaseMtd: forall G m U V, RT G U -> RT G V -> RD G (dec_mtd m U V).
-
-  Lemma wf_typ_ind: forall G A T,
-    wf_typ_impl G A T -> A = \{} -> RT G T
-  with wf_dec_ind: forall G A D,
-    wf_dec_impl G A D -> A = \{} -> RD G D.
-  Proof.
-  - introv Wf Eq. destruct Wf; subst A.
-    + (* case wf_top *)
-      apply CaseTop.
-    + (* case wf_bot *)
-      apply CaseBot.
-    + (* case wf_hyp *)
-      exfalso. apply (in_empty_elim H).
-    + (* case wf_rcd *)
-      apply CaseRcd. refine (wf_dec_ind _ _ _ _ eq_refl).
-      (*
-      apply remove_own_hyp_from_wf_dec in H. (* <-- Problem: Size might increase!! *)
-      rewrite empty_remove in H.
-      exact H.
-      *)
-      skip. (* interestingly, admit doesn't work (error at Qed) *)
-    + (* case wf_sel *)
-      apply (CaseSel H H1); refine (wf_typ_ind _ _ _ _ eq_refl); assumption.
-    + (* case wf_and *)
-      apply CaseAnd; refine (wf_typ_ind _ _ _ _ eq_refl); assumption.
-    + (* case wf_or *)
-      apply CaseOr; refine (wf_typ_ind _ _ _ _ eq_refl); assumption.
-  - introv Wf Eq. destruct Wf; subst A.
-    + (* case wf_tmem *)
-      apply CaseTmem; refine (wf_typ_ind _ _ _ _ eq_refl); assumption.
-    + (* case wf_mtd *)
-      apply CaseMtd; refine (wf_typ_ind _ _ _ _ eq_refl); assumption.
-  Qed.
-
-  Theorem wf_mut_ind:
-    (forall G T, wf_typ G T -> RT G T) /\
-    (forall G D, wf_dec G D -> RD G D).
-  Proof.
-    split; introv H.
-    - apply (wf_typ_ind H eq_refl).
-    - apply (wf_dec_ind H eq_refl).
-  Qed.
-End wf_ind0.
-
-(*
-Section wf_ind.
-  Unset Implicit Arguments.
-  Variable RT : forall G T, wf_typ G T -> Prop.
-  Variable RD : forall G D, wf_dec G D -> Prop.
-
-  Hypothesis CaseTop: forall G, RT G typ_top (wf_top G \{}).
-  Hypothesis CaseBot: forall G, RT G typ_bot (wf_bot G \{}).
-  Hypothesis CaseRcd: forall G D (WfD: wf_dec G  D),
-    RD G D WfD -> RT G (typ_rcd D) (wf_rcd WfD). ) ->
-(forall (G : env typ) (A : fset typ) (x : var) (X : typ) (L : typ_label)
-   (T U : typ) (b : binds x X G) (t : typ_has G X (dec_typ L T U))
-   (w : wf_typ_impl G A X),
- RT G A X w ->
- forall w0 : wf_typ_impl G A T,
- RT G A T w0 ->
- forall w1 : wf_typ_impl G A U,
- RT G A U w1 -> RT G A (typ_sel (avar_f x) L) (wf_sel b t w w0 w1)) ->
-(forall (G : ctx) (A : fset typ) (T1 T2 : typ) (w : wf_typ_impl G A T1),
- RT G A T1 w ->
- forall w0 : wf_typ_impl G A T2,
- RT G A T2 w0 -> RT G A (typ_and T1 T2) (wf_and w w0)) ->
-(forall (G : ctx) (A : fset typ) (T1 T2 : typ) (w : wf_typ_impl G A T1),
- RT G A T1 w ->
- forall w0 : wf_typ_impl G A T2,
- RT G A T2 w0 -> RT G A (typ_or T1 T2) (wf_or w w0)) ->
-(forall (G : ctx) (A : fset typ) (L : typ_label) (Lo Hi : typ)
-   (w : wf_typ_impl G A Lo),
- RT G A Lo w ->
- forall w0 : wf_typ_impl G A Hi,
- RT G A Hi w0 -> RD G A (dec_typ L Lo Hi) (wf_tmem L w w0)) ->
-(forall (G : ctx) (A : fset typ) (m : mtd_label) (U V : typ)
-   (w : wf_typ_impl G A U),
- RT G A U w ->
- forall w0 : wf_typ_impl G A V,
- RT G A V w0 -> RD G A (dec_mtd m U V) (wf_mtd m w w0)) ->
-(forall (c : ctx) (f8 : fset typ) (t : typ) (w : wf_typ_impl c f8 t),
- RT c f8 t w) /\
-(forall (c : ctx) (f8 : fset typ) (d : dec) (w : wf_dec_impl c f8 d),
- RD c f8 d w)
-
-End wf_ind.
-
-Lemma narrow_wf:
-   (forall G T, wf_typ G T -> forall G1 x S1 S2 G2,
-    G = G1 & x ~ S2 & G2 ->
-    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
-    wf_typ (G1 & x ~ S1 & G2) T)
-/\ (forall G D, wf_dec G D -> forall G1 x S1 S2 G2,
-    G = G1 & x ~ S2 & G2 ->
-    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
-    wf_dec (G1 & x ~ S1 & G2) D).
-Proof.
-  apply wf_mut_ind.
-  + (* case wf_top *) eauto.
-  + (* case wf_bot *) eauto.
-(*+ (* case wf_hyp *) Not needed *)
-  + (* case wf_rcd *)
-    introv WfD IH Eq St. subst.
-    apply wf_rcd.
-    refine (IH _ _ _ _ _ eq_refl _ St). apply (vh_push Vh).
-    apply (wf_rcd WfD).
-  + (* case wf_sel *)
-    introv Bix XHas WfX IHX WfT IHT WfU IHU. introv Eq Vh St. subst.
-    specialize (IHX _ _ _ _ _ eq_refl Vh St).
-    assert (IHX': wf_typ (G1 & x0 ~ S1 & G2) X). {
-      apply (remove_valid_history IHX).
-      (* Oh no! Need to narrow valid_history, but it contains wf jugments
-         --> chicken/egg problem!! *)
-      admit.
-    }
-    destruct (narrow_binds IHX' Bix St) as [X' [Bix' StX]].
-    lets P: (narrow_has_middle XHas (proj2 (subtyp_regular StX)) St).
-            (*****************)
-    destruct P as [D1 [XHas' Sd]].
-    apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT1 StU1]]]].
-    subst D1.
-    lets P: (swap_sub_and_typ_has StX XHas'). destruct P as [D1 [X'Has Sd]].
-            (********************)
-    apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T'' [U'' [Eq [StT2 StU2]]]].
-    subst D1.
-    apply (wf_sel Bix' X'Has); rewrite <- (union_empty_l A); apply add_hyps_to_wf_typ.
-    - apply (proj1 (subtyp_regular StX)).
-    - apply (proj2 (subtyp_regular StT2)).
-    - apply (proj1 (subtyp_regular StU2)).
-  + (* case wf_and  *) eauto.
-  + (* case wf_or   *) eauto.
-  + (* case wf_tmem *) eauto.
-  + (* case wf_mtd  *) eauto.
-Qed.
-*)
-
 Lemma narrow_wf:
    (forall G A T, wf_typ_impl G A T -> forall G1 x S1 S2 G2,
     G = G1 & x ~ S2 & G2 ->
@@ -3723,8 +3541,21 @@ Proof.
   introv WfT St. apply* narrow_wf.
 Qed.
 
+Lemma ty_defs_to_good_bounds_typ: forall G ds T,
+  ty_defs G ds T ->
+  good_bounds_typ G T.
+Proof.
+  unfold good_bounds_typ. introv Tyds THas.
+  destruct (invert_ty_defs Tyds THas) as [d [dsHas Tyd]].
+  inversions Tyd. assumption.
+Qed.
+
 Lemma wf_sto_to_good_bounds: forall s G, wf_sto s G -> good_bounds G.
-Admitted.
+Proof.
+  unfold good_bounds. introv Wf BiG.
+  destruct (ctx_binds_to_sto_binds Wf BiG) as [ds [Bis Tyds]].
+  apply (ty_defs_to_good_bounds_typ Tyds).
+Qed.
 
 Lemma narrow_subtyp_subdec:
    (forall G T1 T2, subtyp G T1 T2 -> forall G1 x S1 S2 G2,
@@ -4022,7 +3853,7 @@ Proof.
   apply ty_trm_imp_mutind.
   + (* case ty_var *)
     introv BiG WfT Wfs.
-    right. destruct (ctx_binds_to_sto_binds Wfs BiG) as [o Bis].
+    right. destruct (ctx_binds_to_sto_binds Wfs BiG) as [o [Bis Tyds]].
     exists x o. auto.
   + (* case ty_call *)
     introv Ty1 IHrec THas Ty2 IHarg WfV Wfs. left.
@@ -4049,7 +3880,9 @@ Proof.
     exists (open_trm x u) (s & x ~ (open_defs x ds)).
     apply* red_new.
   + (* case ty_hyp *)
-    admit.
+    introv WfT Ty IH Wfs.
+    lets Gb: (wf_sto_to_good_bounds Wfs).
+    apply* IH.
   + (* case ty_sbsm *)
     introv Ty IH St Wf. apply (IH s Wf).
 Qed.
@@ -4187,9 +4020,7 @@ Proof.
     lets Ok: (wf_sto_to_ok_G Wf).
     assert (Oky': ok (G & y' ~ U1)) by auto.
     apply (weaken_subtyp_end Oky') in StU.
-    destruct (ctx_binds_to_sto_binds Wf BiGy) as [dsy Bisy].
-    destruct (invert_wf_sto_binds Wf Bisy) as [U1' [BiGy' Tydsy]].
-    lets Eq: (binds_func BiGy' BiGy). subst U1'. clear BiGy'.
+    destruct (ctx_binds_to_sto_binds Wf BiGy) as [dsy [Bisy Tydsy]].
     lets SbU1: (defs_have_stable_typ Tydsy).
     lets Tybody': (narrow_ty_imp_end Tybody Oky' SbU1 Gb' StU).
                   (*****************)
