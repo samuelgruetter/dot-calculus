@@ -2295,6 +2295,216 @@ Qed.
 
 
 (* ###################################################################### *)
+(** ** Strengthening *)
+
+(* omg...
+
+Lemma ok_binds_concat_inv: forall (T: Type) G1 G2 x (X: T),
+  ok (G1 & G2) ->
+  binds x X (G1 & G2) ->
+  binds x X G1 /\ x # G2 \/ binds x X G2 /\ x # G1.
+Proof.
+  introv Ok. gen G2 x X. apply (env_ind (fun G2 =>
+    ok (G1 & G2) ->
+    forall (x : var) (X : T),
+    binds x X (G1 & G2) -> binds x X G1 /\ x # G2 \/ binds x X G2 /\ x # G1)).
+  - introv Ok Bi. rewrite concat_empty_r in Bi. left. auto.
+  - introv IH Ok Bi. rewrite concat_assoc in *. apply binds_push_inv in Bi.
+    + destruct Bi as [[Eq1 Eq2] | [Ne Bi2]].
+      * subst. right. split; auto. intro H. apply get_some in H.
+        destruct H as [X Bi]. apply ok_concat_inv_l in Ok.
+        specialize (IH Ok x X). unfold binds in IH at 1. rewrite get_concat in IH.
+        destruct (get x E) as [X' | ] eqn: Eq.
+get
+        binds _concat_l
+
+Qed.
+
+Lemma ok_concat_both_inv: forall (T: Type) G1 G2 x (X1 X2: T),
+  ok (G1 & G2) ->
+  binds x X1 G1 ->
+  binds x X2 G2 ->
+  False.
+Proof.
+  introv Ok Bi1 Bi2.
+  apply get_some_inv in Bi1.
+  apply get_some_inv in Bi2.
+binds_concat_inv'
+binds_concat_inv':
+  forall (A : Type) (x : var) (v : A) (E1 E2 : env A),
+  binds x v (E1 & E2) -> x # E2 /\ binds x v E1 \/ binds x v E2
+binds
+dom
+
+  introv Ok. gen G2 x X1 X2. apply (env_ind (fun G2 =>
+    ok (G1 & G2) ->
+    forall (x : var) (X1 X2 : T), binds x X1 G1 -> binds x X2 G2 -> False)).
+  - introv Ok Bi1 Bi2. apply (binds_empty_inv Bi2).
+  - introv IH Ok Bi1 Bi2. apply binds_push_inv in Bi2.
+    + destruct Bi2 as [[Eq1 Eq2] | [Ne Bi2]].
+      * subst. get
+Qed.
+*)
+
+Lemma strengthened_binds_unique: forall (T: Type) G1 G2 G3 x (X X': T),
+  ok (G1 & G2 & G3) ->
+  binds x X (G1 & G2 & G3) ->
+  binds x X' (G1 & G3) ->
+  X = X'.
+Proof.
+(*
+  introv Ok Bi Bi'.
+  destruct (binds_concat_inv Bi) as [Bi3 | [xG3 Bi12]].
+  - destruct (binds_concat_inv Bi') as [Bi3' | [xG3 Bi1]].
+    * apply (binds_func Bi3 Bi3').
+    * exfalso. apply (binds_fresh_inv Bi3 xG3).
+  - destruct (binds_concat_inv Bi') as [Bi3' | [xG3' Bi1]].
+    * exfalso. apply (binds_fresh_inv Bi3' xG3).
+    * destruct (binds_concat_inv Bi12) as [Bi2 | [xG2 Bi1']].
+      + apply ok_concat_inv_l in Ok. ok
+assert (x \in (dom G2)) by auto.
+
+  - destruct (binds_concat_inv Bi') as [Bi3' | [xG3' Bi1]].
+    * exfalso. apply (binds_fresh_inv Bi3' xG3).
+    * 
+
+ apply (binds_func Bi3 Bi3').
+    * exfalso. apply (binds_fresh_inv Bi3 xG3).
+
+
+*)
+  introv Ok Bi Bi'.
+  assert (xG2: x # G2). {
+    destruct (binds_concat_inv Bi) as [Bi3 | [xG3 Bi12]].
+    - admit.
+    - admit.
+  }
+  lets Bi'': (binds_remove Bi xG2).
+  apply (binds_func Bi'' Bi').
+Qed.
+
+Lemma strengthen_has:
+   (forall G T D, typ_has G T D -> forall G1 G2 G3,
+    G = G1 & G2 & G3 ->
+    ok (G1 & G2 & G3) ->
+    wf_typ (G1 & G3) T ->
+    typ_has (G1 & G3) T D)
+/\ (forall G T l, typ_hasnt G T l -> forall G1 G2 G3,
+    G = G1 & G2 & G3 ->
+    ok (G1 & G2 & G3) ->
+    wf_typ (G1 & G3) T ->
+    typ_hasnt (G1 & G3) T l).
+Proof.
+  apply typ_has_mutind; try solve [intros; subst; destruct_wf; eauto].
+  + (* case typ_sel_has *)
+    introv Bi THas IH1 HiHas IH2 Eq Ok Wf. subst.
+    apply invert_wf_sel in Wf.
+    destruct Wf as [T' [Lo' [Hi' [Bi' [THas' [WfT [WfLo WfHi]]]]]]].
+    lets Eq: (strengthened_binds_unique Ok Bi Bi'). subst T'.
+    specialize (IH1 _ _ _ eq_refl Ok WfT).
+    lets Eq: (typ_has_unique THas' IH1 eq_refl). inversions Eq.
+    specialize (IH2 _ _ _ eq_refl Ok WfHi).
+    apply (typ_sel_has Bi' THas' IH2).
+  + (* case typ_sel_hasnt *)
+    introv Bi THas IH1 HiHasnt IH2 Eq Ok Wf. subst.
+    apply invert_wf_sel in Wf.
+    destruct Wf as [T' [Lo' [Hi' [Bi' [THas' [WfT [WfLo WfHi]]]]]]].
+    lets Eq: (strengthened_binds_unique Ok Bi Bi'). subst T'.
+    specialize (IH1 _ _ _ eq_refl Ok WfT).
+    lets Eq: (typ_has_unique THas' IH1 eq_refl). inversions Eq.
+    specialize (IH2 _ _ _ eq_refl Ok WfHi).
+    apply (typ_sel_hasnt Bi' THas' IH2).
+Qed.
+
+Print Assumptions strengthen_has.
+
+Lemma strengthen_subtyp_subdec:
+   (forall G T1 T2, subtyp G T1 T2 -> forall G1 G2 G3,
+    G = G1 & G2 & G3 ->
+    ok (G1 & G2 & G3) ->
+    wf_typ (G1 & G3) T1 ->
+    wf_typ (G1 & G3) T2 ->
+    subtyp (G1 & G3) T1 T2)
+/\ (forall G D1 D2, subdec G D1 D2 -> forall G1 G2 G3,
+    G = G1 & G2 & G3 ->
+    ok (G1 & G2 & G3) ->
+    wf_dec (G1 & G3) D1 ->
+    wf_dec (G1 & G3) D2 ->
+    subdec (G1 & G3) D1 D2).
+Proof.
+  apply subtyp_mutind.
+  + (* case subtyp_refl  *) eauto.
+  + (* case subtyp_top   *) eauto.
+  + (* case subtyp_bot   *) eauto.
+  + (* case subtyp_rcd   *)
+    introv Sd IH Eq Ok Wf1 Wf2. subst.
+    apply invert_wf_rcd in Wf1.
+    apply invert_wf_rcd in Wf2.
+    eauto.
+  + (* case subtyp_sel_l *)
+    introv Bix WfX Sb XHas St IH Eq Ok Wf1 WfU. subst.
+    apply invert_wf_sel in Wf1.
+    destruct Wf1 as [X' [T' [U' [Bix' [XHas' [WfX' [WfT' WfU']]]]]]].
+    lets Eq: (strengthened_binds_unique Ok Bix Bix'). subst X'.
+    lets XHas'': ((proj1 strengthen_has) _ _ _ XHas _ _ _ eq_refl Ok WfX').
+    lets Eq: (typ_has_unique XHas' XHas'' eq_refl). inversions Eq.
+    apply (subtyp_sel_l Bix' WfX' Sb XHas').
+    apply* IH.
+  + (* case subtyp_sel_r *)
+    introv Bix WfX Sb XHas St IH Eq Ok WfT Wf1. subst.
+    apply invert_wf_sel in Wf1.
+    destruct Wf1 as [X' [T' [U' [Bix' [XHas' [WfX' [WfT' WfU']]]]]]].
+    lets Eq: (strengthened_binds_unique Ok Bix Bix'). subst X'.
+    lets XHas'': ((proj1 strengthen_has) _ _ _ XHas _ _ _ eq_refl Ok WfX').
+    lets Eq: (typ_has_unique XHas' XHas'' eq_refl). inversions Eq.
+    apply (subtyp_sel_r Bix' WfX' Sb XHas').
+    apply* IH.
+  + (* case subtyp_and   *)
+    introv St1 IH1 St2 IH2 Eq OK WfT Wf. apply invert_wf_and in Wf. destruct Wf. eauto.
+  + (* case subtyp_and_l *)
+    introv Wf1 Wf2 Eq Ok Wf Wf1'. apply invert_wf_and in Wf. destruct Wf. eauto.
+  + (* case subtyp_and_r *)
+    introv Wf1 Wf2 Eq Ok Wf Wf1'. apply invert_wf_and in Wf. destruct Wf. eauto.
+  + (* case subtyp_or    *)
+    introv St1 IH1 St2 IH2 Eq OK Wf WfU. apply invert_wf_or in Wf. destruct Wf. eauto.
+  + (* case subtyp_or_l  *)
+    introv Wf1 Wf2 Eq Ok Wf1' Wf. apply invert_wf_or in Wf. destruct Wf. eauto.
+  + (* case subtyp_or_r  *)
+    introv Wf1 Wf2 Eq Ok Wf1' Wf. apply invert_wf_or in Wf. destruct Wf. eauto.
+  + (* case subtyp_trans *)
+    introv St1 IH1 St2 IH2 Eq Ok Wf1 Wf3. subst.
+    lets Wf2: (proj1 (subtyp_regular St2)).
+    (* Problem: We might not be able to strengthen Wf2, i.e. wf_typ (G1 & & G3) T2 might
+       not hold.
+       But still, I believe that the conclusion always holds, but how to prove it? *)
+    (* probably not like this: *)
+    gen_eq G: (G1 & G2 & G3). gen_eq A: (@FsetImpl.empty typ).
+    induction Wf2; intros Eq1 Eq2; subst.
+    - (* case wf_top *)
+      eapply (@subtyp_trans _ _ typ_top _); eauto.
+    - (* case wf_bot *)
+      eapply (@subtyp_trans _ _ typ_bot _); eauto.
+    - (* case wf_hyp *)
+      in_empty_contradiction.
+    - (* case wf_rcd *)
+      admit. (* No chance: D might contain stuff defined only in G2! *)
+    - (* case wf_sel *)
+      specialize (IHWf2_3 Ok Wf1 Wf3). (* refine (IHWf2_3 _ _ _ _ eq_refl eq_refl). *)
+      admit.
+    - (* case wf_and *)
+      admit.
+    - (* case wf_or *)
+      admit.
+  + (* case subdec_typ   *)
+    introv StLo IH1 StHi IH2 Eq Ok Wf1 Wf2. subst. destruct_wf. eauto.
+  + (* case subdec_mtd   *)
+    introv StLo IH1 StHi IH2 Eq Ok Wf1 Wf2. subst. destruct_wf. eauto.
+Qed.
+
+Print Assumptions strengthen_subtyp_subdec.
+
+
+(* ###################################################################### *)
 (** ** Weakening on term level *)
 
 (* Note: Takes good_bound hyp, which is quite strong, but thanks to this, we don't
