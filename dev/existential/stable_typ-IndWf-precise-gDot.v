@@ -2936,12 +2936,23 @@ Print Assumptions swap_sub_and_typ_has.
 (* ###################################################################### *)
 (** ** Properties of good_bounds *)
 
+Lemma distribute_and: forall (P1 P2 Q1 Q2: Prop),
+  (P1 /\ P2 -> Q1 /\ Q2) -> ((P1 /\ P2 -> Q1) /\ (P1 /\ P2 -> Q2)).
+Proof.
+  intros. split; intro H0; specialize (H H0); destruct H; auto.
+Qed.
+
 Lemma supertyp_has_good_bounds: forall G T1 T2,
   subtyp G T1 T2 ->
   good_bounds_typ G T1 ->
   good_bounds_typ G T2.
 Proof.
-  introv St. unfold good_bounds_typ. induction St; introv Gb T2Has.
+  introv St. unfold good_bounds_typ.
+  induction St; introv Gb; destruct Gb as [Wf Gb];
+  repeat match goal with
+  | H: _ /\ _ -> _ /\ _ |- _ => apply distribute_and in H; apply proj2 in H
+  end;
+  try (split; [(solve [eauto 4]) | introv T2Has]).
   + (* case subtyp_refl *)
     eauto.
   + (* case subtyp_top *)
@@ -2970,7 +2981,8 @@ Proof.
     - destruct D1 as [L1 Lo1 Hi1 | ]; destruct D2 as [L2 Lo2 Hi2 | ];
       unfold intersect_dec in H5; simpl in H5; case_if; inversions H5.
       symmetry in H. inversions H.
-      specialize (IHSt1 Gb _ _ _ H1). specialize (IHSt2 Gb _ _ _ H3).
+      specialize (IHSt1 (conj Wf Gb) _ _ _ H1).
+      specialize (IHSt2 (conj Wf Gb) _ _ _ H3).
       lets P: (swap_sub_and_typ_has St1 H1). destruct P as [D1 [THas Sd]].
               (********************)
       apply invert_subdec_typ_sync_left in Sd.
@@ -3047,6 +3059,8 @@ Proof.
     refine (subtyp_trans _ (subtyp_or_r H9 H11)).
     exact Gb.
   + (* case subtyp_trans *)
+    destruct (subtyp_regular St1) as [Wf1 Wf2].
+    destruct (subtyp_regular St2) as [_ Wf3].
     eauto.
 Qed.
 
@@ -4064,7 +4078,8 @@ Proof.
       subst D.
       refine (subtyp_trans _ StU).
       apply (subtyp_sel_l Bi1 (proj1 (subtyp_regular StS)) SbS1 S1Has).
-      unfold good_bounds in Gb. apply (Gb _ _ Bi1 _ _ _ S1Has).
+      unfold good_bounds, good_bounds_typ in Gb.
+      specialize (Gb _ _ Bi1). destruct Gb as [_ Gb]. apply (Gb _ _ _ S1Has).
   + (* case subtyp_sel_r *)
     introv Bi2 WfX SbX XHas St IHSt Eq SbS1 Gb StS. subst.
     lets WfX': (narrow_wf_typ_middle WfX SbS1 StS).
@@ -4078,7 +4093,8 @@ Proof.
       subst D.
       refine (subtyp_trans StT _).
       apply (subtyp_sel_r Bi1 (proj1 (subtyp_regular StS)) SbS1 S1Has).
-      unfold good_bounds in Gb. apply (Gb _ _ Bi1 _ _ _ S1Has).
+      unfold good_bounds, good_bounds_typ in Gb.
+      specialize (Gb _ _ Bi1). destruct Gb as [_ Gb]. apply (Gb _ _ _ S1Has).
   + (* case subtyp_and *) eauto.
   + (* case subtyp_and_l *)
     intros. subst. apply subtyp_and_l; apply* narrow_wf.
