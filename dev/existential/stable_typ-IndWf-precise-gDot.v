@@ -641,15 +641,6 @@ Ltac gather_vars :=
 Ltac pick_fresh x :=
   let L := gather_vars in (pick_fresh_gen L x).
 
-Ltac destruct_wf :=
-  repeat match goal with
-  | W: wf_dec _ (dec_typ _ _ _) |- _ => inversions W
-  | W: wf_dec _ (dec_mtd _ _ _) |- _ => inversions W
-  | W: wf_typ _ (typ_rcd _)     |- _ => inversions W
-  | W: wf_typ _ (typ_and _ _)   |- _ => inversions W
-  | W: wf_typ _ (typ_or _ _)    |- _ => inversions W
-  end.
-
 Ltac in_empty_contradiction :=
   solve [match goal with
   | H: _ \in \{} |- _ => rewrite in_empty in H; exfalso; exact H
@@ -1415,6 +1406,19 @@ Proof.
   - exists x X T U. eauto 10.
 Qed.
 
+Ltac destruct_wf :=
+  repeat match goal with
+  | W: wf_dec _ (dec_typ _ _ _)         |- _ => inversions W
+  | W: wf_dec _ (dec_mtd _ _ _)         |- _ => inversions W
+  | W: wf_typ _ (typ_rcd _)             |- _ => apply invert_wf_rcd in W
+  | W: wf_typ _ (typ_sel (avar_f _) _)  |- _ => apply invert_wf_sel in W;
+                                                destruct W as [? [? [? [? [? [? [? ?]]]]]]]
+  | W: wf_typ _ (typ_and _ _)           |- _ => apply invert_wf_and in W
+  | W: wf_typ _ (typ_or _ _)            |- _ => apply invert_wf_or in W
+  | H: wf_typ _ _ /\ wf_typ _ _         |- _ => destruct H
+  | H: wf_dec _ _ /\ wf_dec _ _         |- _ => destruct H
+  end.
+
 
 (* ###################################################################### *)
 (** ** Regularity of Typing *)
@@ -1424,16 +1428,7 @@ Lemma subtyping_regular:
    (forall G T1 T2, subtyp G T1 T2 -> wf_typ G T1 /\ wf_typ G T2)
 /\ (forall G D1 D2, subdec G D1 D2 -> wf_dec G D1 /\ wf_dec G D2).
 Proof.
-  apply subtyp_mutind;
-  try solve [
-    intros; split; subst;
-    repeat match goal with
-    | H: _ /\ _ |- _ => destruct H
-    | H: wf_dec _ (dec_typ _ _ _) |- _ => inversions H
-    | H: wf_dec _ (dec_mtd _ _ _) |- _ => inversions H
-    end;
-    eauto
-  ].
+  apply subtyp_mutind; try solve [intros; split; subst; destruct_wf; eauto].
   (* case subtyp_rcd *)
   introv Sd Wf. destruct Wf as [Wf1 Wf2].
   split; apply wf_rcd; apply add_hyps_to_wf_dec; assumption.
