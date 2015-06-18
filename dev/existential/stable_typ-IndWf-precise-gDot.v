@@ -2297,6 +2297,81 @@ Qed.
 (* ###################################################################### *)
 (** ** Weakening on term level *)
 
+(* Note: Takes good_bound hyp, which is quite strong, but thanks to this, we don't
+   need any shrink_good_bounds and strengthen_subtyp stuff *)
+Lemma weaken_ty_gb:
+   (forall G t T, ty_trm G t T -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    good_bounds (G1 & G3) ->
+    ok (G1 & G2 & G3) ->
+    ty_trm (G1 & G2 & G3) t T)
+/\ (forall G t T, ty_imp G t T -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    good_bounds (G1 & G3) ->
+    ok (G1 & G2 & G3) ->
+    ty_imp (G1 & G2 & G3) t T)
+/\ (forall G d D, ty_def G d D -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    good_bounds (G1 & G3) ->
+    ok (G1 & G2 & G3) ->
+    ty_def (G1 & G2 & G3) d D)
+/\ (forall G ds T, ty_defs G ds T -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    good_bounds (G1 & G3) ->
+    ok (G1 & G2 & G3) ->
+    ty_defs (G1 & G2 & G3) ds T).
+Proof.
+  destruct weaken_has as [WHas WHasnt].
+  destruct weaken_wf as [WWfTyp WWfDec].
+  destruct weaken_subtyp_subdec as [WSt WSd].
+  apply ty_mutind.
+  + (* case ty_var *)
+    introv Bix WfT Eq Gb Ok. subst. apply ty_var; eauto.
+    apply (binds_weaken Bix Ok).
+  + (* case ty_call *)
+    introv Tyt IH1 THas Tyu IH2 WfV Eq Gb Ok. subst.
+    eapply ty_call.
+    - apply* IH1.
+    - eauto.
+    - apply* IH2.
+    - eauto.
+  + (* case ty_new *)
+    introv Tyds IH1 Tyu IH2 WfU Eq Gb Ok. subst.
+    apply_fresh ty_new as x'; try assert (x'L: x' \notin L) by auto.
+    - specialize (IH1 x' x'L G1 G2 (G3 & x' ~ open_typ x' T)).
+      repeat rewrite concat_assoc in IH1.
+      specialize (Tyds x' x'L).
+      assert (Ok': ok (G1 & G3 & x' ~ open_typ x' T)) by auto.
+      lets Gb2: (good_bounds_push_ty_defs Gb Tyds Ok').
+      apply* IH1.
+    - specialize (IH2 x' x'L G1 G2 (G3 & x' ~ open_typ x' T)).
+      repeat rewrite concat_assoc in IH2.
+      specialize (Tyds x' x'L).
+      assert (Ok': ok (G1 & G3 & x' ~ open_typ x' T)) by auto.
+      lets Gb2: (good_bounds_push_ty_defs Gb Tyds Ok').
+      apply* IH2.
+    - eauto.
+  + (* case ty_hyp *)
+    introv WfT Ty IH Eq Gb Ok. subst.
+    apply (ty_hyp (weaken_wf_typ_middle WfT Ok)).
+    intro Gb'. apply (IH Gb _ _ _ eq_refl Gb Ok).
+  + (* case ty_sbsm *)
+    introv Ty IH St Eq Gb Ok. apply* ty_sbsm.
+  + (* case ty_tdef *) eauto.
+  + (* case ty_mdef *)
+    introv WfT WfU2 Tyu IH Eq Gb Ok. subst.
+    apply_fresh ty_mdef as x'; eauto.
+    assert (x'L: x' \notin L) by auto.
+    specialize (IH x' x'L G1 G2 (G3 & x' ~ T)).
+    repeat rewrite concat_assoc in IH.
+    apply* IH.
+    (* Problem: T might have bad bounds, so we have to apply ty_hyp, but this will
+       give us [good_bounds (G1 & G2 & G3 & x' ~ T)], which we'll have to strengthen! *)
+    admit.
+  + (* case ty_defs_nil *) eauto.
+  + (* case ty_defs_cons *) eauto.
+Qed.
+
 Lemma weaken_ty:
    (forall G t T, ty_trm G t T -> forall G1 G2 G3,
     G = G1 & G3 ->
