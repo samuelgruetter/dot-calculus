@@ -2102,6 +2102,7 @@ Proof.
 Qed.
 
 Lemma invert_ty_imp_call: forall G t m V2 u,
+  good_bounds G ->
   ty_imp G (trm_call t m u) V2 ->
   exists T U V1,
     ty_trm G t T /\
@@ -2109,9 +2110,14 @@ Lemma invert_ty_imp_call: forall G t m V2 u,
     ty_imp G u U /\
     subtyp G V1 V2.
 Proof.
-  introv Ty. inversions Ty. inversions H.
-  exists T U T1. eauto.
-  admit.
+  introv Gb Ty. inversions Ty.
+  gen_eq t0: (trm_call t m u). induction H; intro Eq; inversions Eq.
+  - do 3 eexists. repeat split.
+    * exact H.
+    * exact H1.
+    * exact H2.
+    * exact H0.
+  - clear H3. apply (H2 Gb Gb H0 eq_refl).
 Qed.
 
 Lemma defs_has_unique: forall ds d1 d2,
@@ -4483,7 +4489,8 @@ Proof.
     intros G V Wf TyCall.
     rename H into Bis, H0 into dsHas, T into U2, U into V2, V into V2'.
     exists (@empty typ). rewrite concat_empty_r. apply (conj Wf).
-    apply invert_ty_imp_call in TyCall.
+    lets Gb: (wf_sto_to_good_bounds Wf).
+    apply (invert_ty_imp_call Gb) in TyCall.
     destruct TyCall as [T [U2'' [V2'' [Tyx [THas [Tyy StV]]]]]].
     inversions Tyx; [idtac | admit]. rename H0 into BiGx, H2 into WfT.
     inversions Tyy. inversions H; [idtac | admit].
@@ -4503,7 +4510,6 @@ Proof.
        y' ~ U2 to y' ~ U1 in Tybody.
        But narrowing requires good_bounds: *)
     assert (Gb': good_bounds (G & y' ~ U2)). {
-      lets Gb: (wf_sto_to_good_bounds Wf).
       lets GbU1: (Gb _ _ BiGy).
       lets GbU2: (supertyp_has_good_bounds StU GbU1).
       assert (Oky': ok (G & y' ~ U2)) by auto.
@@ -4545,7 +4551,7 @@ Proof.
     - refine (ty_sbsm _ (weaken_subtyp_end (Okx _) StT)). apply* C2.
   + (* red_call1 *)
     intros G Tr2 Wf TyCall.
-    apply invert_ty_imp_call in TyCall.
+    apply (invert_ty_imp_call (wf_sto_to_good_bounds Wf)) in TyCall.
     destruct TyCall as [To2 [Ta [Tr1 [Tyo [Has [Tya Str]]]]]].
     specialize (IHRed _ _ Wf (ty_trm_to_ty_imp Tyo)). destruct IHRed as [G' [Wf' Tyo']].
     inversions Tyo'. rename T1 into To1, H into Tyo', H0 into Sto.
@@ -4563,7 +4569,7 @@ Proof.
     - apply (proj1 (subtyp_regular Str')).
   + (* red_call2 *)
     intros G Tr2 Wf TyCall.
-    apply invert_ty_imp_call in TyCall.
+    apply (invert_ty_imp_call (wf_sto_to_good_bounds Wf)) in TyCall.
     destruct TyCall as [To2 [Ta [Tr1 [Tyo [Has [Tya Str]]]]]].
     specialize (IHRed _ _ Wf Tya). destruct IHRed as [G' [Wf' Tya']].
     lets Ok': (wf_sto_to_ok_G Wf').
