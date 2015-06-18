@@ -2101,6 +2101,31 @@ Proof.
       exfalso. apply (not_defs_has_and_hasnt dsHas Hasnt).
 Qed.
 
+Lemma invert_ty_var: forall G x T,
+  good_bounds G ->
+  ty_trm G (trm_var (avar_f x)) T ->
+  binds x T G.
+Proof.
+  introv Gb Ty. gen_eq t: (trm_var (avar_f x)). induction Ty; intro Eq; inversions Eq.
+  - assumption.
+  - apply* H1.
+Qed.
+
+Lemma invert_ty_new: forall G ds u U,
+  good_bounds G ->
+  ty_trm G (trm_new ds u) U ->
+  exists L T,
+     (forall x, x \notin L ->
+        ty_defs (G & x ~ open_typ x T) (open_defs x ds) (open_typ x T))
+  /\ (forall x, x \notin L ->
+        ty_trm (G & x ~ open_typ x T) (open_trm x u) U)
+  /\ (wf_typ G U).
+Proof.
+  introv Gb Ty. gen_eq t: (trm_new ds u). induction Ty; intro Eq; inversions Eq.
+  - eauto.
+  - apply* H1.
+Qed.
+
 Lemma invert_ty_imp_call: forall G t m V2 u,
   good_bounds G ->
   ty_imp G (trm_call t m u) V2 ->
@@ -4375,8 +4400,8 @@ Proof.
         destruct IHarg as [s' [e' IHarg]]. do 2 eexists. apply (red_call2 x m IHarg).
       * (* arg is a var *)
         destruct IHarg as [y [o [Eq Bisy]]]. subst.
-        inversions Ty1; [idtac | admit].
-        rename H0 into BiG, H2 into WfT.
+        apply (invert_ty_var (wf_sto_to_good_bounds Wfs)) in Ty1.
+        rename Ty1 into BiG.
         lets P: (typ_has_to_defs_has Wfs THas Bis BiG).
         destruct P as [d [dsHas Tyd]].
         inversions Tyd. rename H4 into WfU2, H5 into Tybody, H6 into St.
@@ -4492,9 +4517,9 @@ Proof.
     lets Gb: (wf_sto_to_good_bounds Wf).
     apply (invert_ty_imp_call Gb) in TyCall.
     destruct TyCall as [T [U2'' [V2'' [Tyx [THas [Tyy StV]]]]]].
-    inversions Tyx; [idtac | admit]. rename H0 into BiGx, H2 into WfT.
-    inversions Tyy. inversions H; [idtac | admit].
-    rename T1 into U1, H0 into StU, H2 into BiGy, H4 into WfU1.
+    apply (invert_ty_var Gb) in Tyx. rename Tyx into BiGx.
+    inversions Tyy. apply (invert_ty_var Gb) in H.
+    rename T1 into U1, H0 into StU, H into BiGy.
     lets P: (typ_has_to_defs_has Wf THas Bis BiGx). destruct P as [d [dsHas' Tyd]].
     inversions Tyd.
     clear H4. rename H5 into WfV, H6 into Tybody, u into body'.
@@ -4533,8 +4558,10 @@ Proof.
     assert (EqV2: (subst_typ y' y V2) = V2). { refine (@subst_fresh_typ y' y _ _). auto. }
     rewrite EqV2. exact StV.
   + (* red_new *)
-    introv Wf Ty. inversions Ty. inversions H0; [idtac | admit].
-    rename T0 into Tds, T into T2, H1 into StT, H4 into Tyds, H6 into Tyt, H8 into WfT.
+    introv Wf Ty. inversions Ty. rename H1 into StT.
+    lets Gb: (wf_sto_to_good_bounds Wf).
+    apply (invert_ty_new Gb) in H0.
+    destruct H0 as [L [Tds [Tyds [Tyt WfT]]]].
     exists (x ~ (open_typ x Tds)).
     assert (xG: x # G) by apply* sto_unbound_to_ctx_unbound.
     lets Ok: (wf_sto_to_ok_G Wf).
