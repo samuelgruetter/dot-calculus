@@ -646,6 +646,17 @@ Ltac in_empty_contradiction :=
   | H: _ \in \{} |- _ => rewrite in_empty in H; exfalso; exact H
   end].
 
+Ltac eq_specialize :=
+  repeat match goal with
+  | H:                 _ = _ -> _ |- _ => specialize (H         eq_refl)
+  | H: forall _      , _ = _ -> _ |- _ => specialize (H _       eq_refl)
+  | H: forall _ _    , _ = _ -> _ |- _ => specialize (H _ _     eq_refl)
+  | H: forall _ _ _  , _ = _ -> _ |- _ => specialize (H _ _ _   eq_refl)
+  | H: forall _ _ _ _, _ = _ -> _ |- _ => specialize (H _ _ _ _ eq_refl)
+  end.
+
+Ltac crush := eq_specialize; eauto.
+
 Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
   apply_fresh_base T gather_vars x.
 
@@ -1249,7 +1260,7 @@ Proof.
     - apply wf_hyp. rewrite in_union. right. rewrite in_remove.
       apply (conj In). rewrite notin_singleton. exact Ne.
   + (* case wf_rcd *)
-    introv WfD IH Eq. subst G0. specialize (IH eq_refl).
+    introv WfD IH Eq. subst G0. eq_specialize.
     destruct (classicT (typ_rcd D = U)) as [Eq | Ne].
     - rewrite <- (union_empty_l (A \- \{ U })). subst U. apply add_hyps_to_wf. exact WfU.
     - assert (Eq: (A \u \{ typ_rcd D }) \- \{ U} = (A \- \{ U } \u \{ typ_rcd D})). {
@@ -2377,22 +2388,22 @@ Lemma strengthen_has:
 Proof.
   apply typ_has_mutind; try solve [intros; subst; destruct_wf; eauto].
   + (* case typ_sel_has *)
-    introv Bi THas IH1 HiHas IH2 Eq Ok Wf. subst.
+    introv Bi THas IH1 HiHas IH2 Eq Ok Wf. subst. eq_specialize.
     apply invert_wf_sel in Wf.
     destruct Wf as [T' [Lo' [Hi' [Bi' [THas' [WfT [WfLo WfHi]]]]]]].
     lets Eq: (strengthened_binds_unique Ok Bi Bi'). subst T'.
-    specialize (IH1 _ _ _ eq_refl Ok WfT).
+    specialize (IH1 Ok WfT).
     lets Eq: (typ_has_unique THas' IH1 eq_refl). inversions Eq.
-    specialize (IH2 _ _ _ eq_refl Ok WfHi).
+    specialize (IH2 Ok WfHi).
     apply (typ_sel_has Bi' THas' IH2).
   + (* case typ_sel_hasnt *)
-    introv Bi THas IH1 HiHasnt IH2 Eq Ok Wf. subst.
+    introv Bi THas IH1 HiHasnt IH2 Eq Ok Wf. subst. eq_specialize.
     apply invert_wf_sel in Wf.
     destruct Wf as [T' [Lo' [Hi' [Bi' [THas' [WfT [WfLo WfHi]]]]]]].
     lets Eq: (strengthened_binds_unique Ok Bi Bi'). subst T'.
-    specialize (IH1 _ _ _ eq_refl Ok WfT).
+    specialize (IH1 Ok WfT).
     lets Eq: (typ_has_unique THas' IH1 eq_refl). inversions Eq.
-    specialize (IH2 _ _ _ eq_refl Ok WfHi).
+    specialize (IH2 Ok WfHi).
     apply (typ_sel_hasnt Bi' THas' IH2).
 Qed.
 
@@ -2692,7 +2703,7 @@ Proof.
   + (* case ty_tdef *) eauto.
   + (* case ty_mdef *)
     introv WfT WfU2 Tyu IH Eq Ok. subst.
-    apply_fresh ty_mdef as x'; eauto.
+    apply_fresh ty_mdef as x'; [eauto | eauto | idtac].
     assert (x'L: x' \notin L) by auto.
     specialize (IH x' x'L G1 G2 (G3 & x' ~ T)).
     repeat rewrite concat_assoc in IH. apply* IH.
@@ -3210,9 +3221,9 @@ Proof.
   + (* case typ_rcd_has *)
     intros. subst. apply typ_rcd_has.
   + (* case typ_sel_has *)
-    introv Bix THas IH1 HiHas IH2 Eq Ok Biy. subst.
-    specialize (IH1 _ _ _ eq_refl Ok Biy).
-    specialize (IH2 _ _ _ eq_refl Ok Biy).
+    introv Bix THas IH1 HiHas IH2 Eq Ok Biy. subst. eq_specialize.
+    specialize (IH1 Ok Biy).
+    specialize (IH2 Ok Biy).
     lets Bix': (subst_binds Bix Ok Biy).
     simpl. rewrite if_hoist. apply* typ_sel_has.
   + (* case typ_and_has_1 *)
@@ -3235,9 +3246,9 @@ Proof.
     intros. subst. apply typ_rcd_hasnt.
     rewrite <- subst_label_of_dec. assumption.
   + (* case typ_sel_hasnt *)
-    introv Bix THas IH1 HiHasnt IH2 Eq Ok Biy. subst.
-    specialize (IH1 _ _ _ eq_refl Ok Biy).
-    specialize (IH2 _ _ _ eq_refl Ok Biy).
+    introv Bix THas IH1 HiHasnt IH2 Eq Ok Biy. subst. eq_specialize.
+    specialize (IH1 Ok Biy).
+    specialize (IH2 Ok Biy).
     lets Bix': (subst_binds Bix Ok Biy).
     simpl. rewrite if_hoist. apply* typ_sel_hasnt.
   + (* case typ_and_hasnt *)
@@ -3380,8 +3391,8 @@ Proof.
   + (* case subtyp_rcd *)
     introv Sd IH Eq Ok Biy. subst. apply subtyp_rcd. eauto.
   + (* case subtyp_sel_l *)
-    introv Bix WfX Sb XHas St IH Eq Ok Biy. subst.
-    specialize (IH _ _ _ eq_refl Ok Biy).
+    introv Bix WfX Sb XHas St IH Eq Ok Biy. subst. eq_specialize.
+    specialize (IH Ok Biy).
     lets Bix': (subst_binds Bix Ok Biy).
     simpl. rewrite if_hoist.
     apply subtyp_sel_l with (subst_typ x0 y X) (subst_typ x0 y T).
@@ -3391,8 +3402,8 @@ Proof.
     * apply (subst_has XHas Ok Biy).
     * apply IH.
   + (* case subtyp_sel_r *)
-    introv Bix WfX Sb XHas St IH Eq Ok Biy. subst.
-    specialize (IH _ _ _ eq_refl Ok Biy).
+    introv Bix WfX Sb XHas St IH Eq Ok Biy. subst. eq_specialize.
+    specialize (IH Ok Biy).
     lets Bix': (subst_binds Bix Ok Biy).
     simpl. rewrite if_hoist.
     apply subtyp_sel_r with (subst_typ x0 y X) (subst_typ x0 y U).
@@ -3402,29 +3413,29 @@ Proof.
     * apply (subst_has XHas Ok Biy).
     * apply IH.
   + (* case subtyp_and *)
-    introv St1 IH1 St2 IH2 Eq Ok Biy. subst.
-    specialize (IH1 _ _ _ eq_refl Ok Biy).
-    specialize (IH2 _ _ _ eq_refl Ok Biy).
+    introv St1 IH1 St2 IH2 Eq Ok Biy. subst. eq_specialize.
+    specialize (IH1 Ok Biy).
+    specialize (IH2 Ok Biy).
     apply subtyp_and; eauto.
   + (* case subtyp_and_l *)
     introv Wf1 Wf2 Eq Ok Biy. subst. apply subtyp_and_l; eauto.
   + (* case subtyp_and_r *)
     introv Wf1 Wf2 Eq Ok Biy. subst. apply subtyp_and_r; eauto.
   + (* case subtyp_or *)
-    intros. subst. apply subtyp_or; eauto.
+    intros. subst. eq_specialize. apply subtyp_or; eauto.
   + (* case subtyp_or_l *)
-    intros. subst. apply subtyp_or_l; eauto.
+    intros. subst. eq_specialize. apply subtyp_or_l; eauto.
   + (* case subtyp_or_r *)
-    intros. subst. apply subtyp_or_r; eauto.
+    intros. subst. eq_specialize. apply subtyp_or_r; eauto.
   + (* case subtyp_trans *)
-    introv St12 IH12 St23 IH23 Eq Ok Biy. subst.
-    specialize (IH12 _ _ _ eq_refl Ok Biy).
-    specialize (IH23 _ _ _ eq_refl Ok Biy).
+    introv St12 IH12 St23 IH23 Eq Ok Biy. subst. eq_specialize.
+    specialize (IH12 Ok Biy).
+    specialize (IH23 Ok Biy).
     apply subtyp_trans with (subst_typ x y T2); eauto.
   + (* case subdec_typ *)
-    intros. subst. apply subdec_typ; eauto.
+    intros. subst. eq_specialize. apply subdec_typ; eauto.
   + (* case subdec_mtd *)
-    intros. subst. apply subdec_mtd; eauto.
+    intros. subst. eq_specialize. apply subdec_mtd; eauto.
 Qed.
 
 Lemma subst_subtyp: forall G1 x y S G2 T1 T2,
@@ -4138,7 +4149,10 @@ Proof.
   + (* case subtyp_or_r *)
     intros. subst. apply subtyp_or_r; apply* narrow_wf.
   + (* case subtyp_trans *)
-    intros. apply subtyp_trans with T2; eauto.
+    intros. subst.
+    specialize (H _ _ _ _ _ eq_refl H2 H3 H4).
+    specialize (H0 _ _ _ _ _ eq_refl H2 H3 H4).
+    apply subtyp_trans with T2; eauto.
   + (* case subdec_typ *) eauto.
   + (* case subdec_mtd *) eauto.
 Qed.
