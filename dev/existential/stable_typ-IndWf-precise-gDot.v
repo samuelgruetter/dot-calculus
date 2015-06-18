@@ -2431,6 +2431,13 @@ Qed.
 
 Print Assumptions good_bounds_push_ty_defs.
 
+Axiom strengthen_subtyp_trans: forall G1 G2 G3 T1 T2 T3,
+  subtyp (G1 & G2 & G3) T1 T2 ->
+  subtyp (G1 & G2 & G3) T2 T3 ->
+  wf_typ (G1 & G3) T1 ->
+  wf_typ (G1 & G3) T3 ->
+  subtyp (G1 & G3) T1 T3.
+
 Lemma strengthen_subtyp_subdec:
    (forall G T1 T2, subtyp G T1 T2 -> forall G1 G2 G3,
     G = G1 & G2 & G3 ->
@@ -2490,7 +2497,8 @@ Proof.
     (* Problem: We might not be able to strengthen Wf2, i.e. wf_typ (G1 & & G3) T2 might
        not hold.
        But still, I believe that the conclusion always holds, but how to prove it? *)
-    (* probably not like this: *)
+    apply (strengthen_subtyp_trans St1 St2 Wf1 Wf3).
+    (* probably not like this:
     gen_eq G: (G1 & G2 & G3). gen_eq A: (@FsetImpl.empty typ).
     induction Wf2; intros Eq1 Eq2; subst.
     - (* case wf_top *)
@@ -2508,6 +2516,7 @@ Proof.
       admit.
     - (* case wf_or *)
       admit.
+    *)
   + (* case subdec_typ   *)
     introv StLo IH1 StHi IH2 Eq Ok Wf1 Wf2. subst. destruct_wf. eauto.
   + (* case subdec_mtd   *)
