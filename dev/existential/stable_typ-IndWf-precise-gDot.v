@@ -1649,350 +1649,6 @@ Qed.
 
 
 (* ###################################################################### *)
-(** ** Weakening *)
-
-Lemma weaken_has:
-   (forall G T D, typ_has G T D -> forall G1 G2 G3,
-    G = G1 & G3 ->
-    ok (G1 & G2 & G3) ->
-    typ_has (G1 & G2 & G3) T D)
-/\ (forall G T l, typ_hasnt G T l -> forall G1 G2 G3,
-    G = G1 & G3 ->
-    ok (G1 & G2 & G3) ->
-    typ_hasnt (G1 & G2 & G3) T l).
-Proof.
-  apply typ_has_mutind.
-  + (* case typ_bot_has *) eauto.
-  + (* case typ_rcd_has *) eauto.
-  + (* case typ_sel_has *)
-    introv Bi THas IH1 HiHas IH2 Eq Ok. subst. lets Bi': (binds_weaken Bi Ok). eauto.
-  + (* case typ_and_has_1 *) eauto.
-  + (* case typ_and_has_2 *) eauto.
-  + (* case typ_and_has_12 *) eauto.
-  + (* case typ_or_has *) eauto.
-  + (* case typ_top_hasnt *) eauto.
-  + (* case typ_rcd_hasnt *) eauto.
-  + (* case typ_sel_hasnt *)
-    introv Bi THas IH1 HiHasnt IH2 Eq Ok. subst. lets Bi': (binds_weaken Bi Ok). eauto.
-  + (* case typ_and_hasnt *) eauto.
-  + (* case typ_or_hasnt_1 *) eauto.
-  + (* case typ_or_hasnt_2 *) eauto.
-  + (* case typ_or_hasnt_12 *) eauto.
-Qed.
-
-Lemma weaken_has_middle: forall G1 G2 G3 T D,
-  typ_has (G1 & G3) T D ->
-  ok (G1 & G2 & G3) ->
-  typ_has (G1 & G2 & G3) T D.
-Proof.
-  introv Has Ok. eapply (proj1 weaken_has); eauto.
-Qed.
-
-Lemma weaken_typ_has_end: forall G1 G2 T D,
-  ok (G1 & G2) -> typ_has G1 T D -> typ_has (G1 & G2) T D.
-Proof.
-  introv Ok Has. destruct weaken_has as [P _].
-  specialize (P G1 _ _ Has G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
-Qed.
-
-Lemma weaken_hasnt_middle: forall G1 G2 G3 T l,
-  typ_hasnt (G1 & G3) T l ->
-  ok (G1 & G2 & G3) ->
-  typ_hasnt (G1 & G2 & G3) T l.
-Proof.
-  introv Hasnt Ok. eapply (proj2 weaken_has); eauto.
-Qed.
-
-Lemma weaken_wf:
-   (forall G A T, wf_typ_impl G A T -> forall G1 G2 G3,
-      G = G1 & G3 ->
-      ok (G1 & G2 & G3) ->
-      wf_typ_impl (G1 & G2 & G3) A T)
-/\ (forall G A D, wf_dec_impl G A D -> forall G1 G2 G3,
-      G = G1 & G3 ->
-      ok (G1 & G2 & G3) ->
-      wf_dec_impl (G1 & G2 & G3) A D).
-Proof.
-  apply wf_mutind; eauto.
-  (* case wf_sel *)
-  introv Bi Sb XHas WfX IHX WfT IHT WFU IHU. introv Eq Ok. subst G.
-  lets Bi': (binds_weaken Bi Ok).
-  lets XHas': ((proj1 weaken_has) _ _ _ XHas _ _ _ eq_refl Ok).
-  repeat split; repeat eexists; eauto.
-Qed.
-
-Lemma weaken_wf_typ_middle: forall G1 G2 G3 T,
-  wf_typ (G1 & G3) T ->
-  ok (G1 & G2 & G3) ->
-  wf_typ (G1 & G2 & G3) T.
-Proof.
-  introv Wf Ok. eapply (proj1 weaken_wf); eauto.
-Qed.
-
-Print Assumptions weaken_wf_typ_middle.
-
-Lemma weaken_wf_typ_end: forall G1 G2 T,
-  wf_typ G1 T ->
-  ok (G1 & G2) ->
-  wf_typ (G1 & G2) T.
-Proof.
-  intros.
-  assert (Eq1: G1 & G2 = G1 & G2 & empty) by (rewrite concat_empty_r; reflexivity).
-  assert (Eq2: G1 = G1 & empty) by (rewrite concat_empty_r; reflexivity).
-  rewrite Eq1 in *. rewrite Eq2 in H.
-  apply* weaken_wf_typ_middle.
-Qed.
-
-Lemma weaken_wf_dec_middle: forall G1 G2 G3 D,
-  wf_dec (G1 & G3) D ->
-  ok (G1 & G2 & G3) ->
-  wf_dec (G1 & G2 & G3) D.
-Proof.
-  introv Wf Ok. eapply (proj2 weaken_wf); eauto.
-Qed.
-
-Lemma weaken_subtyp_subdec:
-   (forall G T1 T2, subtyp G T1 T2 -> forall G1 G2 G3,
-    G = G1 & G3 ->
-    ok (G1 & G2 & G3) ->
-    subtyp (G1 & G2 & G3) T1 T2)
-/\ (forall G D1 D2, subdec G D1 D2 -> forall G1 G2 G3,
-    G = G1 & G3 ->
-    ok (G1 & G2 & G3) ->
-    subdec (G1 & G2 & G3) D1 D2).
-Proof.
-  destruct weaken_has as [WHas WHasnt].
-  destruct weaken_wf as [WWfTyp WWfDec].
-  apply subtyp_mutind.
-  + (* case subtyp_refl  *) eauto.
-  + (* case subtyp_top   *) eauto.
-  + (* case subtyp_bot   *) eauto.
-  + (* case subtyp_rcd   *) eauto.
-  + (* case subtyp_sel_l *)
-    introv Bix WfX Sb XHas St IH Eq Ok. subst. apply subtyp_sel_l with X T; eauto.
-    apply (binds_weaken Bix Ok).
-  + (* case subtyp_sel_r *)
-    introv Bix WfX Sb XHas St IH Eq Ok. subst. apply subtyp_sel_r with X U; eauto.
-    apply (binds_weaken Bix Ok).
-  + (* case subtyp_and   *) eauto.
-  + (* case subtyp_and_l *) eauto.
-  + (* case subtyp_and_r *) eauto.
-  + (* case subtyp_or    *) eauto.
-  + (* case subtyp_or_l  *) eauto.
-  + (* case subtyp_or_r  *) eauto.
-  + (* case subtyp_trans *) eauto.
-  + (* case subdec_typ   *) eauto.
-  + (* case subdec_mtd   *) eauto.
-Qed.
-
-Lemma weaken_subtyp_end: forall G1 G2 S U,
-  ok (G1 & G2) -> 
-  subtyp G1        S U ->
-  subtyp (G1 & G2) S U.
-Proof.
-  introv Ok St. destruct weaken_subtyp_subdec as [P _].
-  specialize (P G1 S U St G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
-Qed.
-
-(* TODO does not really hold, we need an additional hyp saying that (G1 & G3) is closed
-   by itself. *)
-Lemma shrink_good_bounds: forall G1 G2 G3,
-  good_bounds (G1 & G2 & G3) ->
-  good_bounds (G1 &      G3).
-Admitted.
-
-Lemma weaken_ty:
-   (forall G t T, ty_trm G t T -> forall G1 G2 G3,
-    G = G1 & G3 ->
-    ok (G1 & G2 & G3) ->
-    ty_trm (G1 & G2 & G3) t T)
-/\ (forall G t T, ty_imp G t T -> forall G1 G2 G3,
-    G = G1 & G3 ->
-    ok (G1 & G2 & G3) ->
-    ty_imp (G1 & G2 & G3) t T)
-/\ (forall G d D, ty_def G d D -> forall G1 G2 G3,
-    G = G1 & G3 ->
-    ok (G1 & G2 & G3) ->
-    ty_def (G1 & G2 & G3) d D)
-/\ (forall G ds T, ty_defs G ds T -> forall G1 G2 G3,
-    G = G1 & G3 ->
-    ok (G1 & G2 & G3) ->
-    ty_defs (G1 & G2 & G3) ds T).
-Proof.
-  destruct weaken_has as [WHas WHasnt].
-  destruct weaken_wf as [WWfTyp WWfDec].
-  destruct weaken_subtyp_subdec as [WSt WSd].
-  apply ty_mutind.
-  + (* case ty_var *)
-    introv Bix WfT Eq Ok. subst. apply ty_var; eauto.
-    apply (binds_weaken Bix Ok).
-  + (* case ty_call *)
-    introv Tyt IH1 THas Tyu IH2 WfV Eq Ok. subst.
-    eapply ty_call; eauto.
-  + (* case ty_new *)
-    introv Tyds IH1 Tyu IH2 WfU Eq Ok. subst.
-    apply_fresh ty_new as x'; try assert (x'L: x' \notin L) by auto.
-    - specialize (IH1 x' x'L G1 G2 (G3 & x' ~ open_typ x' T)).
-      repeat rewrite concat_assoc in IH1. apply* IH1.
-    - specialize (IH2 x' x'L G1 G2 (G3 & x' ~ open_typ x' T)).
-      repeat rewrite concat_assoc in IH2. apply* IH2.
-    - eauto.
-  + (* case ty_hyp *)
-    introv WfT Ty IH Eq Ok. subst.
-    apply (ty_hyp (weaken_wf_typ_middle WfT Ok)).
-    intro Gb. refine (IH _ _ _ _ eq_refl Ok).
-    apply (shrink_good_bounds Gb).
-          (******************)
-  + (* case ty_sbsm *)
-    introv Ty IH St Eq Ok. apply* ty_sbsm.
-  + (* case ty_tdef *) eauto.
-  + (* case ty_mdef *)
-    introv WfT WfU2 Tyu IH Eq Ok. subst.
-    apply_fresh ty_mdef as x'; eauto.
-    assert (x'L: x' \notin L) by auto.
-    specialize (IH x' x'L G1 G2 (G3 & x' ~ T)).
-    repeat rewrite concat_assoc in IH. apply* IH.
-  + (* case ty_defs_nil *) eauto.
-  + (* case ty_defs_cons *) eauto.
-Qed.
-
-Lemma weaken_ty_trm_middle: forall G1 G2 G3 t T,
-  ok (G1 & G2 & G3) -> ty_trm (G1 & G3) t T -> ty_trm (G1 & G2 & G3) t T.
-Proof.
-  introv Ok Ty. apply* weaken_ty.
-Qed.
-
-Lemma weaken_ty_trm_end: forall G1 G2 t T,
-  ok (G1 & G2) -> 
-  ty_trm G1        t T ->
-  ty_trm (G1 & G2) t T.
-Proof.
-  introv Ok Ty. destruct weaken_ty as [P _].
-  specialize (P G1 _ _ Ty G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
-Qed.
-
-Lemma weaken_ty_imp_end: forall G1 G2 t T,
-  ok (G1 & G2) -> 
-  ty_imp G1        t T ->
-  ty_imp (G1 & G2) t T.
-Proof.
-  introv Ok Ty. destruct weaken_ty as [_ [P _]].
-  specialize (P G1 _ _ Ty G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
-Qed.
-
-Lemma weaken_ty_defs_middle: forall G1 G2 G3 ds T,
-  ok (G1 & G2 & G3) -> ty_defs (G1 & G3) ds T -> ty_defs (G1 & G2 & G3) ds T.
-Proof.
-  introv Ok Ty. apply* weaken_ty.
-Qed.
-
-Lemma weaken_ty_defs_end: forall G1 G2 ds T,
-  ok (G1 & G2) -> ty_defs G1 ds T -> ty_defs (G1 & G2) ds T.
-Proof.
-  introv Ok Ty. destruct weaken_ty as [_ [_ [_ P]]].
-  specialize (P G1 _ _ Ty G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
-Qed.
-
-
-(* ###################################################################### *)
-(** ** Well-formed context *)
-
-(* Note that T may contain variables defined anywhere in G, not just those
-   defined before. *)
-Definition wf_ctx(G: ctx) := ok G /\ forall x T, binds x T G -> wf_typ G T.
-
-Lemma wf_sto_to_ok_s: forall s G,
-  wf_sto s G -> ok s.
-Proof. intros. induction H; jauto. Qed.
-
-Lemma wf_sto_to_ok_G: forall s G,
-  wf_sto s G -> ok G.
-Proof. intros. induction H; jauto. Qed.
-
-Hint Resolve wf_sto_to_ok_s wf_sto_to_ok_G.
-
-Lemma wf_ctx_push: forall G x T,
-  wf_ctx G ->
-  x # G ->
-  wf_typ (G & x ~ T) T ->
-  wf_ctx (G & x ~ T).
-Proof.
-  introv WfG WfT. unfold wf_ctx in *. destruct WfG as [Ok WfG]. split.
-  - auto.
-  - introv Bi. apply binds_push_inv in Bi. destruct Bi as [[Eq1 Eq2] | [Ne Bi]].
-    * subst. assumption.
-    * apply weaken_wf_typ_end; eauto.
-Qed.
-
-Lemma ctx_binds_to_sto_binds: forall s G x T,
-  wf_sto s G ->
-  binds x T G ->
-  exists ds, binds x ds s /\ ty_defs G ds T.
-Proof.
-  introv Wf Bi. gen x T Bi. induction Wf; intros.
-  + false* binds_empty_inv.
-  + unfolds binds. rewrite get_push in *. case_if.
-    - inversions Bi. eauto.
-    - specialize (IHWf _ _ Bi). destruct IHWf as [ds' [Bi' Tyds]].
-      exists ds'. apply (conj Bi'). refine (weaken_ty_defs_end _ Tyds).
-      apply wf_sto_to_ok_G in Wf. auto.
-Qed.
-
-Lemma sto_binds_to_ctx_binds: forall s G x ds,
-  wf_sto s G ->
-  binds x ds s ->
-  exists T, binds x T G /\ ty_defs G ds T.
-Proof.
-  introv Wf Bi. gen x Bi. induction Wf; intros.
-  + false* binds_empty_inv.
-  + unfolds binds. rewrite get_push in *. case_if.
-    - inversions Bi. exists T. auto.
-    - specialize (IHWf _ Bi). destruct IHWf as [U [Bi' Tyds]].
-      exists U. apply (conj Bi'). refine (weaken_ty_defs_end _ Tyds).
-      apply wf_sto_to_ok_G in Wf. auto.
-Qed.
-
-Lemma sto_unbound_to_ctx_unbound: forall s G x,
-  wf_sto s G ->
-  x # s ->
-  x # G.
-Proof.
-  introv Wf Ub_s.
-  induction Wf.
-  + auto.
-  + destruct (classicT (x0 = x)) as [Eq | Ne].
-    - subst. false (fresh_push_eq_inv Ub_s). 
-    - auto.
-Qed.
-
-Lemma ctx_unbound_to_sto_unbound: forall s G x,
-  wf_sto s G ->
-  x # G ->
-  x # s.
-Proof.
-  introv Wf Ub.
-  induction Wf.
-  + auto.
-  + destruct (classicT (x0 = x)) as [Eq | Ne].
-    - subst. false (fresh_push_eq_inv Ub). 
-    - auto.
-Qed.
-
-Lemma wf_sto_to_wf_ctx: forall s G,
-  wf_sto s G -> wf_ctx G.
-Proof.
-  introv Wf. induction Wf; unfold wf_ctx in *.
-  - split; auto. intros. exfalso. apply (binds_empty_inv H).
-  - destruct IHWf as [Ok IH]. split; auto.
-    intros. apply binds_push_inv in H2. destruct H2 as [[Eq1 Eq2] | [Ne Bi]].
-    + subst. apply (ty_defs_regular H1).
-    + apply weaken_wf_typ_end.
-      * apply (IH _ _ Bi).
-      * refine (ok_push _ Ok H0).
-Qed.
-
-
-(* ###################################################################### *)
 (** ** Properties of declaration intersection/union *)
 
 Lemma intersect_dec_total: forall D1 D2,
@@ -2371,6 +2027,493 @@ Print Assumptions typ_has_preserves_wf.
 
 
 (* ###################################################################### *)
+(** ** Some inversion lemmas *)
+
+Lemma invert_typ_and_has: forall G T1 T2 D,
+   typ_has G (typ_and T1 T2) D ->
+   (typ_has G T1 D /\ typ_hasnt G T2 (label_of_dec D))
+\/ (typ_has G T2 D /\ typ_hasnt G T1 (label_of_dec D))
+\/ exists D1 D2, D1 && D2 == D /\ typ_has G T1 D1 /\ typ_has G T2 D2.
+Proof.
+  intros. inversions H; eauto 10.
+Qed.
+
+Lemma ty_def_to_label_eq: forall G d D,
+  ty_def G d D ->
+  label_of_def d = label_of_dec D.
+Proof.
+  intros. inversions H; auto.
+Qed.
+
+Lemma not_defs_has_and_hasnt: forall ds d,
+  defs_has ds d -> defs_hasnt ds (label_of_def d) -> False.
+Proof.
+  intro ds. induction ds.
+  - introv nilHas. inversions nilHas. (* contradiction *)
+  - introv dsHas dsHasnt. inversions dsHas; inversions dsHasnt. case_if.
+Qed.
+
+Lemma invert_ty_defs: forall G ds T D,
+  ty_defs G ds T ->
+  typ_has G T D ->
+  exists d, defs_has ds d /\ ty_def G d D.
+Proof.
+  introv Tyds. gen D. induction Tyds.
+  + introv THas. inversions THas.
+  + rename H into Tyd0, D into D0, d into d0, H0 into Hasnt.
+    introv THas.
+    apply invert_typ_and_has in THas.
+    destruct THas as [[THas D0Hasnt] | [[D0Has THasnt] | [D1 [D2 [Eq [THas D0Has]]]]]].
+    - (* case lhs has *)
+      inversions D0Hasnt.
+      specialize (IHTyds D THas). destruct IHTyds as [d [dsHas Tyd]].
+      exists d. refine (conj _ Tyd). unfold defs_has, get_def.
+      lets Eql1: (ty_def_to_label_eq Tyd0). case_if. apply dsHas.
+    - (* case rhs has *)
+      inversions D0Has.
+      exists d0. refine (conj _ Tyd0). unfold defs_has, get_def. case_if. reflexivity.
+    - (* case both have *)
+      inversions D0Has.
+      specialize (IHTyds D1 THas). destruct IHTyds as [d [dsHas Tyd]].
+      destruct (intersect_dec_label_eq _ _ Eq) as [Eq12 [Eq1 Eq2]].
+      lets Eql3: (ty_def_to_label_eq Tyd).
+      lets Eql4: (ty_def_to_label_eq Tyd0).
+      rewrite Eql4 in Hasnt. rewrite <- Eq12 in Hasnt. rewrite <- Eql3 in Hasnt.
+      exfalso. apply (not_defs_has_and_hasnt dsHas Hasnt).
+Qed.
+
+Lemma invert_ty_imp_call: forall G t m V2 u,
+  ty_imp G (trm_call t m u) V2 ->
+  exists T U V1,
+    ty_trm G t T /\
+    typ_has G T (dec_mtd m U V1) /\
+    ty_imp G u U /\
+    subtyp G V1 V2.
+Proof.
+  introv Ty. inversions Ty. inversions H.
+  exists T U T1. eauto.
+  admit.
+Qed.
+
+Lemma defs_has_unique: forall ds d1 d2,
+  label_of_def d1 = label_of_def d2 ->
+  defs_has ds d1 ->
+  defs_has ds d2 ->
+  d1 = d2.
+Proof.
+  intro ds. induction ds; introv Eq dsHas1 dsHas2.
+  + inversions dsHas1. (* contradiction *)
+  + inversions dsHas1; inversions dsHas2. do 2 case_if.
+    - inversions H1. inversions H0. reflexivity.
+    - eauto.
+Qed.
+
+
+(* ###################################################################### *)
+(** ** Weakening on type level *)
+
+Lemma weaken_has:
+   (forall G T D, typ_has G T D -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    typ_has (G1 & G2 & G3) T D)
+/\ (forall G T l, typ_hasnt G T l -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    typ_hasnt (G1 & G2 & G3) T l).
+Proof.
+  apply typ_has_mutind.
+  + (* case typ_bot_has *) eauto.
+  + (* case typ_rcd_has *) eauto.
+  + (* case typ_sel_has *)
+    introv Bi THas IH1 HiHas IH2 Eq Ok. subst. lets Bi': (binds_weaken Bi Ok). eauto.
+  + (* case typ_and_has_1 *) eauto.
+  + (* case typ_and_has_2 *) eauto.
+  + (* case typ_and_has_12 *) eauto.
+  + (* case typ_or_has *) eauto.
+  + (* case typ_top_hasnt *) eauto.
+  + (* case typ_rcd_hasnt *) eauto.
+  + (* case typ_sel_hasnt *)
+    introv Bi THas IH1 HiHasnt IH2 Eq Ok. subst. lets Bi': (binds_weaken Bi Ok). eauto.
+  + (* case typ_and_hasnt *) eauto.
+  + (* case typ_or_hasnt_1 *) eauto.
+  + (* case typ_or_hasnt_2 *) eauto.
+  + (* case typ_or_hasnt_12 *) eauto.
+Qed.
+
+Lemma weaken_has_middle: forall G1 G2 G3 T D,
+  typ_has (G1 & G3) T D ->
+  ok (G1 & G2 & G3) ->
+  typ_has (G1 & G2 & G3) T D.
+Proof.
+  introv Has Ok. eapply (proj1 weaken_has); eauto.
+Qed.
+
+Lemma weaken_typ_has_end: forall G1 G2 T D,
+  ok (G1 & G2) -> typ_has G1 T D -> typ_has (G1 & G2) T D.
+Proof.
+  introv Ok Has. destruct weaken_has as [P _].
+  specialize (P G1 _ _ Has G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
+Qed.
+
+Lemma weaken_hasnt_middle: forall G1 G2 G3 T l,
+  typ_hasnt (G1 & G3) T l ->
+  ok (G1 & G2 & G3) ->
+  typ_hasnt (G1 & G2 & G3) T l.
+Proof.
+  introv Hasnt Ok. eapply (proj2 weaken_has); eauto.
+Qed.
+
+Lemma weaken_wf:
+   (forall G A T, wf_typ_impl G A T -> forall G1 G2 G3,
+      G = G1 & G3 ->
+      ok (G1 & G2 & G3) ->
+      wf_typ_impl (G1 & G2 & G3) A T)
+/\ (forall G A D, wf_dec_impl G A D -> forall G1 G2 G3,
+      G = G1 & G3 ->
+      ok (G1 & G2 & G3) ->
+      wf_dec_impl (G1 & G2 & G3) A D).
+Proof.
+  apply wf_mutind; eauto.
+  (* case wf_sel *)
+  introv Bi Sb XHas WfX IHX WfT IHT WFU IHU. introv Eq Ok. subst G.
+  lets Bi': (binds_weaken Bi Ok).
+  lets XHas': ((proj1 weaken_has) _ _ _ XHas _ _ _ eq_refl Ok).
+  repeat split; repeat eexists; eauto.
+Qed.
+
+Lemma weaken_wf_typ_middle: forall G1 G2 G3 T,
+  wf_typ (G1 & G3) T ->
+  ok (G1 & G2 & G3) ->
+  wf_typ (G1 & G2 & G3) T.
+Proof.
+  introv Wf Ok. eapply (proj1 weaken_wf); eauto.
+Qed.
+
+Print Assumptions weaken_wf_typ_middle.
+
+Lemma weaken_wf_typ_end: forall G1 G2 T,
+  wf_typ G1 T ->
+  ok (G1 & G2) ->
+  wf_typ (G1 & G2) T.
+Proof.
+  intros.
+  assert (Eq1: G1 & G2 = G1 & G2 & empty) by (rewrite concat_empty_r; reflexivity).
+  assert (Eq2: G1 = G1 & empty) by (rewrite concat_empty_r; reflexivity).
+  rewrite Eq1 in *. rewrite Eq2 in H.
+  apply* weaken_wf_typ_middle.
+Qed.
+
+Lemma weaken_wf_dec_middle: forall G1 G2 G3 D,
+  wf_dec (G1 & G3) D ->
+  ok (G1 & G2 & G3) ->
+  wf_dec (G1 & G2 & G3) D.
+Proof.
+  introv Wf Ok. eapply (proj2 weaken_wf); eauto.
+Qed.
+
+Lemma weaken_subtyp_subdec:
+   (forall G T1 T2, subtyp G T1 T2 -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    subtyp (G1 & G2 & G3) T1 T2)
+/\ (forall G D1 D2, subdec G D1 D2 -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    subdec (G1 & G2 & G3) D1 D2).
+Proof.
+  destruct weaken_has as [WHas WHasnt].
+  destruct weaken_wf as [WWfTyp WWfDec].
+  apply subtyp_mutind.
+  + (* case subtyp_refl  *) eauto.
+  + (* case subtyp_top   *) eauto.
+  + (* case subtyp_bot   *) eauto.
+  + (* case subtyp_rcd   *) eauto.
+  + (* case subtyp_sel_l *)
+    introv Bix WfX Sb XHas St IH Eq Ok. subst. apply subtyp_sel_l with X T; eauto.
+    apply (binds_weaken Bix Ok).
+  + (* case subtyp_sel_r *)
+    introv Bix WfX Sb XHas St IH Eq Ok. subst. apply subtyp_sel_r with X U; eauto.
+    apply (binds_weaken Bix Ok).
+  + (* case subtyp_and   *) eauto.
+  + (* case subtyp_and_l *) eauto.
+  + (* case subtyp_and_r *) eauto.
+  + (* case subtyp_or    *) eauto.
+  + (* case subtyp_or_l  *) eauto.
+  + (* case subtyp_or_r  *) eauto.
+  + (* case subtyp_trans *) eauto.
+  + (* case subdec_typ   *) eauto.
+  + (* case subdec_mtd   *) eauto.
+Qed.
+
+Lemma weaken_subtyp_end: forall G1 G2 S U,
+  ok (G1 & G2) -> 
+  subtyp G1        S U ->
+  subtyp (G1 & G2) S U.
+Proof.
+  introv Ok St. destruct weaken_subtyp_subdec as [P _].
+  specialize (P G1 S U St G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
+Qed.
+
+(* TODO does not really hold, we need an additional hyp saying that (G1 & G3) is closed
+   by itself. *)
+Lemma shrink_good_bounds: forall G1 G2 G3,
+  good_bounds (G1 & G2 & G3) ->
+  good_bounds (G1 &      G3).
+Admitted.
+
+
+(* ###################################################################### *)
+(** ** Basic property about good bounds *)
+
+Lemma ty_defs_to_good_bounds_typ: forall G ds T,
+  ty_defs G ds T ->
+  good_bounds_typ G T.
+Proof.
+  unfold good_bounds_typ. introv Tyds THas.
+  destruct (invert_ty_defs Tyds THas) as [d [dsHas Tyd]].
+  inversions Tyd. assumption.
+Qed.
+
+Lemma good_bounds_push: forall G y T,
+  good_bounds G ->
+  good_bounds_typ G T ->
+  good_bounds (G & y ~ T).
+Admitted.
+
+Lemma good_bounds_push_ty_defs: forall G y ds T,
+  good_bounds G ->
+  ty_defs (G & y ~ T) ds T ->
+  ok (G & y ~ T) ->
+  good_bounds (G & y ~ T).
+Proof.
+  introv Gb Tyds Ok. unfold good_bounds in *. introv Bix XHas.
+  apply binds_push_inv in Bix. destruct Bix as [[Eq1 Eq2] | [Ne Bix]].
+  - subst. rename XHas into THas.
+    destruct (invert_ty_defs Tyds THas) as [d [dsHas Tyd]].
+    inversions Tyd. assumption.
+  - (* TODO add hypothesis saying G is closed, so that we can strengthen XHas into XHas':*)
+    assert (XHas': typ_has G X (dec_typ L Lo Hi)) by admit.
+    apply (weaken_subtyp_end Ok).
+    apply (Gb _ _ Bix _ _ _ XHas').
+Qed.
+
+
+(* ###################################################################### *)
+(** ** Weakening on term level *)
+
+Lemma weaken_ty:
+   (forall G t T, ty_trm G t T -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    ty_trm (G1 & G2 & G3) t T)
+/\ (forall G t T, ty_imp G t T -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    ty_imp (G1 & G2 & G3) t T)
+/\ (forall G d D, ty_def G d D -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    ty_def (G1 & G2 & G3) d D)
+/\ (forall G ds T, ty_defs G ds T -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    ty_defs (G1 & G2 & G3) ds T).
+Proof.
+  destruct weaken_has as [WHas WHasnt].
+  destruct weaken_wf as [WWfTyp WWfDec].
+  destruct weaken_subtyp_subdec as [WSt WSd].
+  apply ty_mutind.
+  + (* case ty_var *)
+    introv Bix WfT Eq Ok. subst. apply ty_var; eauto.
+    apply (binds_weaken Bix Ok).
+  + (* case ty_call *)
+    introv Tyt IH1 THas Tyu IH2 WfV Eq Ok. subst.
+    eapply ty_call; eauto.
+  + (* case ty_new *)
+    introv Tyds IH1 Tyu IH2 WfU Eq Ok. subst.
+    apply_fresh ty_new as x'; try assert (x'L: x' \notin L) by auto.
+    - specialize (IH1 x' x'L G1 G2 (G3 & x' ~ open_typ x' T)).
+      repeat rewrite concat_assoc in IH1. apply* IH1.
+    - specialize (IH2 x' x'L G1 G2 (G3 & x' ~ open_typ x' T)).
+      repeat rewrite concat_assoc in IH2. apply* IH2.
+    - eauto.
+  + (* case ty_hyp *)
+    introv WfT Ty IH Eq Ok. subst.
+    apply (ty_hyp (weaken_wf_typ_middle WfT Ok)).
+    intro Gb. refine (IH _ _ _ _ eq_refl Ok).
+    apply (shrink_good_bounds Gb).
+          (******************)
+  + (* case ty_sbsm *)
+    introv Ty IH St Eq Ok. apply* ty_sbsm.
+  + (* case ty_tdef *) eauto.
+  + (* case ty_mdef *)
+    introv WfT WfU2 Tyu IH Eq Ok. subst.
+    apply_fresh ty_mdef as x'; eauto.
+    assert (x'L: x' \notin L) by auto.
+    specialize (IH x' x'L G1 G2 (G3 & x' ~ T)).
+    repeat rewrite concat_assoc in IH. apply* IH.
+  + (* case ty_defs_nil *) eauto.
+  + (* case ty_defs_cons *) eauto.
+Qed.
+
+Lemma weaken_ty_trm_middle: forall G1 G2 G3 t T,
+  ok (G1 & G2 & G3) -> ty_trm (G1 & G3) t T -> ty_trm (G1 & G2 & G3) t T.
+Proof.
+  introv Ok Ty. apply* weaken_ty.
+Qed.
+
+Lemma weaken_ty_trm_end: forall G1 G2 t T,
+  ok (G1 & G2) -> 
+  ty_trm G1        t T ->
+  ty_trm (G1 & G2) t T.
+Proof.
+  introv Ok Ty. destruct weaken_ty as [P _].
+  specialize (P G1 _ _ Ty G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
+Qed.
+
+Lemma weaken_ty_imp_end: forall G1 G2 t T,
+  ok (G1 & G2) -> 
+  ty_imp G1        t T ->
+  ty_imp (G1 & G2) t T.
+Proof.
+  introv Ok Ty. destruct weaken_ty as [_ [P _]].
+  specialize (P G1 _ _ Ty G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
+Qed.
+
+Lemma weaken_ty_defs_middle: forall G1 G2 G3 ds T,
+  ok (G1 & G2 & G3) -> ty_defs (G1 & G3) ds T -> ty_defs (G1 & G2 & G3) ds T.
+Proof.
+  introv Ok Ty. apply* weaken_ty.
+Qed.
+
+Lemma weaken_ty_defs_end: forall G1 G2 ds T,
+  ok (G1 & G2) -> ty_defs G1 ds T -> ty_defs (G1 & G2) ds T.
+Proof.
+  introv Ok Ty. destruct weaken_ty as [_ [_ [_ P]]].
+  specialize (P G1 _ _ Ty G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
+Qed.
+
+
+(* ###################################################################### *)
+(** ** Well-formed context *)
+
+(* Note that T may contain variables defined anywhere in G, not just those
+   defined before. *)
+Definition wf_ctx(G: ctx) := ok G /\ forall x T, binds x T G -> wf_typ G T.
+
+Lemma wf_sto_to_ok_s: forall s G,
+  wf_sto s G -> ok s.
+Proof. intros. induction H; jauto. Qed.
+
+Lemma wf_sto_to_ok_G: forall s G,
+  wf_sto s G -> ok G.
+Proof. intros. induction H; jauto. Qed.
+
+Hint Resolve wf_sto_to_ok_s wf_sto_to_ok_G.
+
+Lemma wf_ctx_push: forall G x T,
+  wf_ctx G ->
+  x # G ->
+  wf_typ (G & x ~ T) T ->
+  wf_ctx (G & x ~ T).
+Proof.
+  introv WfG WfT. unfold wf_ctx in *. destruct WfG as [Ok WfG]. split.
+  - auto.
+  - introv Bi. apply binds_push_inv in Bi. destruct Bi as [[Eq1 Eq2] | [Ne Bi]].
+    * subst. assumption.
+    * apply weaken_wf_typ_end; eauto.
+Qed.
+
+Lemma ctx_binds_to_sto_binds: forall s G x T,
+  wf_sto s G ->
+  binds x T G ->
+  exists ds, binds x ds s /\ ty_defs G ds T.
+Proof.
+  introv Wf Bi. gen x T Bi. induction Wf; intros.
+  + false* binds_empty_inv.
+  + unfolds binds. rewrite get_push in *. case_if.
+    - inversions Bi. eauto.
+    - specialize (IHWf _ _ Bi). destruct IHWf as [ds' [Bi' Tyds]].
+      exists ds'. apply (conj Bi'). refine (weaken_ty_defs_end _ Tyds).
+      apply wf_sto_to_ok_G in Wf. auto.
+Qed.
+
+Lemma sto_binds_to_ctx_binds: forall s G x ds,
+  wf_sto s G ->
+  binds x ds s ->
+  exists T, binds x T G /\ ty_defs G ds T.
+Proof.
+  introv Wf Bi. gen x Bi. induction Wf; intros.
+  + false* binds_empty_inv.
+  + unfolds binds. rewrite get_push in *. case_if.
+    - inversions Bi. exists T. auto.
+    - specialize (IHWf _ Bi). destruct IHWf as [U [Bi' Tyds]].
+      exists U. apply (conj Bi'). refine (weaken_ty_defs_end _ Tyds).
+      apply wf_sto_to_ok_G in Wf. auto.
+Qed.
+
+Lemma sto_unbound_to_ctx_unbound: forall s G x,
+  wf_sto s G ->
+  x # s ->
+  x # G.
+Proof.
+  introv Wf Ub_s.
+  induction Wf.
+  + auto.
+  + destruct (classicT (x0 = x)) as [Eq | Ne].
+    - subst. false (fresh_push_eq_inv Ub_s). 
+    - auto.
+Qed.
+
+Lemma ctx_unbound_to_sto_unbound: forall s G x,
+  wf_sto s G ->
+  x # G ->
+  x # s.
+Proof.
+  introv Wf Ub.
+  induction Wf.
+  + auto.
+  + destruct (classicT (x0 = x)) as [Eq | Ne].
+    - subst. false (fresh_push_eq_inv Ub). 
+    - auto.
+Qed.
+
+Lemma wf_sto_to_wf_ctx: forall s G,
+  wf_sto s G -> wf_ctx G.
+Proof.
+  introv Wf. induction Wf; unfold wf_ctx in *.
+  - split; auto. intros. exfalso. apply (binds_empty_inv H).
+  - destruct IHWf as [Ok IH]. split; auto.
+    intros. apply binds_push_inv in H2. destruct H2 as [[Eq1 Eq2] | [Ne Bi]].
+    + subst. apply (ty_defs_regular H1).
+    + apply weaken_wf_typ_end.
+      * apply (IH _ _ Bi).
+      * refine (ok_push _ Ok H0).
+Qed.
+
+Lemma typ_has_to_defs_has: forall G T D x ds s,
+  wf_sto s G ->
+  typ_has G T D ->
+  binds x ds s ->
+  binds x T G ->
+  exists d, defs_has ds d /\ ty_def G d D.
+Proof.
+  introv Wf THas Bis BiG.
+  lets P: (sto_binds_to_ctx_binds Wf Bis). destruct P as [T' [Bi' Tyds]].
+  apply (binds_func BiG) in Bi'. subst T'.
+  apply (invert_ty_defs Tyds THas).
+Qed.
+
+Lemma wf_sto_to_good_bounds: forall s G, wf_sto s G -> good_bounds G.
+Proof.
+  unfold good_bounds. introv Wf BiG.
+  destruct (ctx_binds_to_sto_binds Wf BiG) as [ds [Bis Tyds]].
+  apply (ty_defs_to_good_bounds_typ Tyds).
+Qed.
+
+
+(* ###################################################################### *)
 (** ** subtyp-and-then-lookup to lookup-and-then-subdec *)
 
 Lemma swap_sub_and_typ_has: forall G T1 T2 D2,
@@ -2477,102 +2620,6 @@ Proof.
 Qed.
 
 Print Assumptions swap_sub_and_typ_has.
-
-
-(* ###################################################################### *)
-(** ** Some inversion lemmas *)
-
-Lemma invert_typ_and_has: forall G T1 T2 D,
-   typ_has G (typ_and T1 T2) D ->
-   (typ_has G T1 D /\ typ_hasnt G T2 (label_of_dec D))
-\/ (typ_has G T2 D /\ typ_hasnt G T1 (label_of_dec D))
-\/ exists D1 D2, D1 && D2 == D /\ typ_has G T1 D1 /\ typ_has G T2 D2.
-Proof.
-  intros. inversions H; eauto 10.
-Qed.
-
-Lemma ty_def_to_label_eq: forall G d D,
-  ty_def G d D ->
-  label_of_def d = label_of_dec D.
-Proof.
-  intros. inversions H; auto.
-Qed.
-
-Lemma not_defs_has_and_hasnt: forall ds d,
-  defs_has ds d -> defs_hasnt ds (label_of_def d) -> False.
-Proof.
-  intro ds. induction ds.
-  - introv nilHas. inversions nilHas. (* contradiction *)
-  - introv dsHas dsHasnt. inversions dsHas; inversions dsHasnt. case_if.
-Qed.
-
-Lemma invert_ty_defs: forall G ds T D,
-  ty_defs G ds T ->
-  typ_has G T D ->
-  exists d, defs_has ds d /\ ty_def G d D.
-Proof.
-  introv Tyds. gen D. induction Tyds.
-  + introv THas. inversions THas.
-  + rename H into Tyd0, D into D0, d into d0, H0 into Hasnt.
-    introv THas.
-    apply invert_typ_and_has in THas.
-    destruct THas as [[THas D0Hasnt] | [[D0Has THasnt] | [D1 [D2 [Eq [THas D0Has]]]]]].
-    - (* case lhs has *)
-      inversions D0Hasnt.
-      specialize (IHTyds D THas). destruct IHTyds as [d [dsHas Tyd]].
-      exists d. refine (conj _ Tyd). unfold defs_has, get_def.
-      lets Eql1: (ty_def_to_label_eq Tyd0). case_if. apply dsHas.
-    - (* case rhs has *)
-      inversions D0Has.
-      exists d0. refine (conj _ Tyd0). unfold defs_has, get_def. case_if. reflexivity.
-    - (* case both have *)
-      inversions D0Has.
-      specialize (IHTyds D1 THas). destruct IHTyds as [d [dsHas Tyd]].
-      destruct (intersect_dec_label_eq _ _ Eq) as [Eq12 [Eq1 Eq2]].
-      lets Eql3: (ty_def_to_label_eq Tyd).
-      lets Eql4: (ty_def_to_label_eq Tyd0).
-      rewrite Eql4 in Hasnt. rewrite <- Eq12 in Hasnt. rewrite <- Eql3 in Hasnt.
-      exfalso. apply (not_defs_has_and_hasnt dsHas Hasnt).
-Qed.
-
-Lemma typ_has_to_defs_has: forall G T D x ds s,
-  wf_sto s G ->
-  typ_has G T D ->
-  binds x ds s ->
-  binds x T G ->
-  exists d, defs_has ds d /\ ty_def G d D.
-Proof.
-  introv Wf THas Bis BiG.
-  lets P: (sto_binds_to_ctx_binds Wf Bis). destruct P as [T' [Bi' Tyds]].
-  apply (binds_func BiG) in Bi'. subst T'.
-  apply (invert_ty_defs Tyds THas).
-Qed.
-
-Lemma invert_ty_imp_call: forall G t m V2 u,
-  ty_imp G (trm_call t m u) V2 ->
-  exists T U V1,
-    ty_trm G t T /\
-    typ_has G T (dec_mtd m U V1) /\
-    ty_imp G u U /\
-    subtyp G V1 V2.
-Proof.
-  introv Ty. inversions Ty. inversions H.
-  exists T U T1. eauto.
-  admit.
-Qed.
-
-Lemma defs_has_unique: forall ds d1 d2,
-  label_of_def d1 = label_of_def d2 ->
-  defs_has ds d1 ->
-  defs_has ds d2 ->
-  d1 = d2.
-Proof.
-  intro ds. induction ds; introv Eq dsHas1 dsHas2.
-  + inversions dsHas1. (* contradiction *)
-  + inversions dsHas1; inversions dsHas2. do 2 case_if.
-    - inversions H1. inversions H0. reflexivity.
-    - eauto.
-Qed.
 
 
 (* ###################################################################### *)
@@ -2694,29 +2741,6 @@ Qed.
 
 Print Assumptions supertyp_has_good_bounds.
 
-Lemma good_bounds_push: forall G y T,
-  good_bounds G ->
-  good_bounds_typ G T ->
-  good_bounds (G & y ~ T).
-Admitted.
-
-Lemma good_bounds_push_ty_defs: forall G y ds T,
-  good_bounds G ->
-  ty_defs (G & y ~ T) ds T ->
-  ok (G & y ~ T) ->
-  good_bounds (G & y ~ T).
-Proof.
-  introv Gb Tyds Ok. unfold good_bounds in *. introv Bix XHas.
-  apply binds_push_inv in Bix. destruct Bix as [[Eq1 Eq2] | [Ne Bix]].
-  - subst. rename XHas into THas.
-    destruct (invert_ty_defs Tyds THas) as [d [dsHas Tyd]].
-    inversions Tyd. assumption.
-  - (* TODO add hypothesis saying G is closed, so that we can strengthen XHas into XHas':*)
-    assert (XHas': typ_has G X (dec_typ L Lo Hi)) by admit.
-    apply (weaken_subtyp_end Ok).
-    apply (Gb _ _ Bix _ _ _ XHas').
-Qed.
-
 (* TODO these should follow from ty_hyp, or if they don't, add them as rules as well
   But note: only used in narrow_ty *)
 Lemma ty_imp_hyp: forall G t T,
@@ -2729,23 +2753,6 @@ Lemma ty_def_hyp: forall G d D,
   (good_bounds G -> ty_def G d D) ->
   ty_def G d D.
 Admitted.
-
-
-Lemma ty_defs_to_good_bounds_typ: forall G ds T,
-  ty_defs G ds T ->
-  good_bounds_typ G T.
-Proof.
-  unfold good_bounds_typ. introv Tyds THas.
-  destruct (invert_ty_defs Tyds THas) as [d [dsHas Tyd]].
-  inversions Tyd. assumption.
-Qed.
-
-Lemma wf_sto_to_good_bounds: forall s G, wf_sto s G -> good_bounds G.
-Proof.
-  unfold good_bounds. introv Wf BiG.
-  destruct (ctx_binds_to_sto_binds Wf BiG) as [ds [Bis Tyds]].
-  apply (ty_defs_to_good_bounds_typ Tyds).
-Qed.
 
 
 (* ###################################################################### *)
