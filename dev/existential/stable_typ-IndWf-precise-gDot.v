@@ -2277,12 +2277,6 @@ Proof.
   inversions Tyd. assumption.
 Qed.
 
-Lemma good_bounds_push: forall G y T,
-  good_bounds G ->
-  good_bounds_typ G T ->
-  good_bounds (G & y ~ T).
-Admitted.
-
 (* omg...
 
 Lemma ok_binds_concat_inv: forall (T: Type) G1 G2 x (X: T),
@@ -2404,6 +2398,19 @@ Qed.
 
 Print Assumptions strengthen_has.
 
+Lemma strengthen_has_end: forall G1 G2 T D,
+  ok (G1 & G2) ->
+  wf_typ G1 T ->
+  typ_has (G1 & G2) T D ->
+  typ_has G1 T D.
+Proof.
+  introv Ok Wf Has.
+  rewrite <- (concat_empty_r G1).
+  rewrite <- (concat_empty_r G1) in Wf.
+  rewrite <- (concat_empty_r (G1 & G2)) in Has, Ok.
+  apply ((proj1 strengthen_has) _ _ _ Has G1 G2 empty eq_refl Ok Wf).
+Qed.
+
 Lemma good_bounds_push_ty_defs: forall G y ds T,
   good_bounds G ->
   ty_defs (G & y ~ T) ds T ->
@@ -2419,10 +2426,7 @@ Proof.
   - unfold good_bounds_typ. specialize (Gb x X Bix). destruct Gb as [Wf Gb]. split.
     * apply (weaken_wf_typ_end Wf Ok).
     * introv XHas. apply (weaken_subtyp_end Ok). apply (Gb L).
-      rewrite <- (concat_empty_r G).
-      rewrite <- (concat_empty_r G) in Wf.
-      rewrite <- (concat_empty_r (G & y ~ T)) in XHas, Ok.
-      apply ((proj1 strengthen_has) _ _ _ XHas G (y ~ T) empty eq_refl Ok Wf).
+      apply (strengthen_has_end Ok Wf XHas).
 Qed.
 
 Print Assumptions good_bounds_push_ty_defs.
@@ -2511,6 +2515,25 @@ Proof.
 Qed.
 
 Print Assumptions strengthen_subtyp_subdec.
+
+Lemma good_bounds_push: forall G y T,
+  ok (G & y ~ T) ->
+  good_bounds G ->
+  good_bounds_typ G T ->
+  good_bounds (G & y ~ T).
+Proof.
+  unfold good_bounds, good_bounds_typ. introv Ok Gb GbT Bi.
+  apply binds_push_inv in Bi. destruct Bi as [[Eq1 Eq2] | [Ne Bi]].
+  - subst. split.
+    * refine (weaken_wf_typ_end _ Ok). apply (proj1 GbT).
+    * destruct GbT as [WfT GbT]. intros.
+      apply (weaken_subtyp_end Ok). apply (GbT L).
+      apply (strengthen_has_end Ok WfT H).
+  - specialize (Gb x X Bi). destruct Gb as [Wf Gb]. split.
+    * apply (weaken_wf_typ_end Wf Ok).
+    * introv XHas. apply (weaken_subtyp_end Ok). apply (Gb L).
+      apply (strengthen_has_end Ok Wf XHas).
+Qed.
 
 Lemma shrink_good_bounds: forall G1 G2 G3,
   ok (G1 & G2 & G3) ->
@@ -4452,6 +4475,7 @@ Proof.
     pick_fresh y'.
     assert (y'L: y' \notin L) by auto.
     specialize (Tybody y' y'L).
+    lets Ok: (wf_sto_to_ok_G Wf).
     (* Before we can apply the substitution principle, we must narrow 
        y' ~ U2 to y' ~ U1 in Tybody.
        But narrowing requires good_bounds: *)
@@ -4459,9 +4483,9 @@ Proof.
       lets Gb: (wf_sto_to_good_bounds Wf).
       lets GbU1: (Gb _ _ BiGy).
       lets GbU2: (supertyp_has_good_bounds StU GbU1).
-      apply (good_bounds_push Gb GbU2).
+      assert (Oky': ok (G & y' ~ U2)) by auto.
+      apply (good_bounds_push Oky' Gb GbU2).
     }
-    lets Ok: (wf_sto_to_ok_G Wf).
     assert (Oky': ok (G & y' ~ U1)) by auto.
     apply (weaken_subtyp_end Oky') in StU.
     destruct (ctx_binds_to_sto_binds Wf BiGy) as [dsy [Bisy Tydsy]].
