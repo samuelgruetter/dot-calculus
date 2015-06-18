@@ -498,7 +498,7 @@ with subdec: ctx -> dec -> dec -> Prop :=
       subdec G (dec_mtd m S1 T1) (dec_mtd m S2 T2).
 
 Definition good_bounds_typ(G: ctx)(T: typ) :=
-  forall L Lo Hi, typ_has G T (dec_typ L Lo Hi) -> subtyp G Lo Hi.
+  wf_typ G T /\ (forall L Lo Hi, typ_has G T (dec_typ L Lo Hi) -> subtyp G Lo Hi).
 
 Definition good_bounds(G: ctx) :=
   forall x X, binds x X G -> good_bounds_typ G X.
@@ -2250,24 +2250,19 @@ Proof.
   specialize (P G1 S U St G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
 Qed.
 
-(* TODO does not really hold, we need an additional hyp saying that (G1 & G3) is closed
-   by itself. *)
-Lemma shrink_good_bounds: forall G1 G2 G3,
-  good_bounds (G1 & G2 & G3) ->
-  good_bounds (G1 &      G3).
-Admitted.
-
 
 (* ###################################################################### *)
-(** ** Basic property about good bounds *)
+(** ** Strengthening *)
 
 Lemma ty_defs_to_good_bounds_typ: forall G ds T,
   ty_defs G ds T ->
   good_bounds_typ G T.
 Proof.
-  unfold good_bounds_typ. introv Tyds THas.
-  destruct (invert_ty_defs Tyds THas) as [d [dsHas Tyd]].
-  inversions Tyd. assumption.
+  unfold good_bounds_typ. introv Tyds. split.
+  - apply (ty_defs_regular Tyds).
+  - introv THas.
+    destruct (invert_ty_defs Tyds THas) as [d [dsHas Tyd]].
+    inversions Tyd. assumption.
 Qed.
 
 Lemma good_bounds_push: forall G y T,
@@ -2275,27 +2270,6 @@ Lemma good_bounds_push: forall G y T,
   good_bounds_typ G T ->
   good_bounds (G & y ~ T).
 Admitted.
-
-Lemma good_bounds_push_ty_defs: forall G y ds T,
-  good_bounds G ->
-  ty_defs (G & y ~ T) ds T ->
-  ok (G & y ~ T) ->
-  good_bounds (G & y ~ T).
-Proof.
-  introv Gb Tyds Ok. unfold good_bounds in *. introv Bix XHas.
-  apply binds_push_inv in Bix. destruct Bix as [[Eq1 Eq2] | [Ne Bix]].
-  - subst. rename XHas into THas.
-    destruct (invert_ty_defs Tyds THas) as [d [dsHas Tyd]].
-    inversions Tyd. assumption.
-  - (* TODO add hypothesis saying G is closed, so that we can strengthen XHas into XHas':*)
-    assert (XHas': typ_has G X (dec_typ L Lo Hi)) by admit.
-    apply (weaken_subtyp_end Ok).
-    apply (Gb _ _ Bix _ _ _ XHas').
-Qed.
-
-
-(* ###################################################################### *)
-(** ** Strengthening *)
 
 (* omg...
 
@@ -2418,6 +2392,29 @@ Qed.
 
 Print Assumptions strengthen_has.
 
+Lemma good_bounds_push_ty_defs: forall G y ds T,
+  good_bounds G ->
+  ty_defs (G & y ~ T) ds T ->
+  ok (G & y ~ T) ->
+  good_bounds (G & y ~ T).
+Proof.
+  introv Gb Tyds Ok. unfold good_bounds in *. introv Bix.
+  apply binds_push_inv in Bix. destruct Bix as [[Eq1 Eq2] | [Ne Bix]].
+  - subst. unfold good_bounds_typ. split.
+    * apply (ty_defs_regular Tyds).
+    * introv THas. destruct (invert_ty_defs Tyds THas) as [d [dsHas Tyd]].
+      inversions Tyd. assumption.
+  - unfold good_bounds_typ. specialize (Gb x X Bix). destruct Gb as [Wf Gb]. split.
+    * apply (weaken_wf_typ_end Wf Ok).
+    * introv XHas. apply (weaken_subtyp_end Ok). apply (Gb L).
+      rewrite <- (concat_empty_r G).
+      rewrite <- (concat_empty_r G) in Wf.
+      rewrite <- (concat_empty_r (G & y ~ T)) in XHas, Ok.
+      apply ((proj1 strengthen_has) _ _ _ XHas G (y ~ T) empty eq_refl Ok Wf).
+Qed.
+
+Print Assumptions good_bounds_push_ty_defs.
+
 Lemma strengthen_subtyp_subdec:
    (forall G T1 T2, subtyp G T1 T2 -> forall G1 G2 G3,
     G = G1 & G2 & G3 ->
@@ -2502,6 +2499,27 @@ Proof.
 Qed.
 
 Print Assumptions strengthen_subtyp_subdec.
+
+Lemma shrink_good_bounds: forall G1 G2 G3,
+  ok (G1 & G2 & G3) ->
+  (forall x X, binds x X (G1 & G3) -> wf_typ (G1 & G3) X) ->
+  good_bounds (G1 & G2 & G3) ->
+  good_bounds (G1 &      G3).
+Proof.
+  unfold good_bounds, good_bounds_typ. introv Ok Wf Gb Bi.
+  assert (Bi': binds x X (G1 & G2 & G3)) by admit.
+  specialize (Gb _ _ Bi'). 
+  destruct Gb as [WfX Gb].
+  specialize (Wf _ _ Bi).
+  split.
+  - exact Wf.
+  - introv XHas.
+    lets WfD: (typ_has_preserves_wf XHas Wf). inversions WfD.
+    refine ((proj1 strengthen_subtyp_subdec) _ _ _ _ G1 G2 G3 eq_refl Ok H3 H5).
+    apply (Gb _ _ _ (weaken_has_middle XHas Ok)).
+Qed.
+
+Print Assumptions shrink_good_bounds.
 
 
 (* ###################################################################### *)
@@ -2622,8 +2640,9 @@ Proof.
     introv WfT Ty IH Eq Ok. subst.
     apply (ty_hyp (weaken_wf_typ_middle WfT Ok)).
     intro Gb. refine (IH _ _ _ _ eq_refl Ok).
-    apply (shrink_good_bounds Gb).
-          (******************)
+    refine (shrink_good_bounds Ok _ Gb).
+           (******************)
+    admit. (* <--- TODO *)
   + (* case ty_sbsm *)
     introv Ty IH St Eq Ok. apply* ty_sbsm.
   + (* case ty_tdef *) eauto.
