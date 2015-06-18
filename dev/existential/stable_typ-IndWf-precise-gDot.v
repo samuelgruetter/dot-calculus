@@ -1437,6 +1437,17 @@ Qed.
 Definition subtyp_regular := proj1 subtyping_regular.
 Definition subdec_regular := proj2 subtyping_regular.
 
+Definition subtyp_regular_1(G: ctx)(T1 T2: typ)(St: subtyp G T1 T2) :=
+  (proj1 (subtyp_regular St)).
+Definition subtyp_regular_2(G: ctx)(T1 T2: typ)(St: subtyp G T1 T2) :=
+  (proj2 (subtyp_regular St)).
+Definition subdec_regular_1(G: ctx)(D1 D2: dec)(Sd: subdec G D1 D2) :=
+  (proj1 (subdec_regular Sd)).
+Definition subdec_regular_2(G: ctx)(D1 D2: dec)(Sd: subdec G D1 D2) :=
+  (proj2 (subdec_regular Sd)).
+
+Hint Resolve subtyp_regular_1 subtyp_regular_2 subdec_regular_1 subdec_regular_2.
+
 Lemma typing_regular:
    (forall G t T, ty_trm G t T ->
       wf_typ G T)
@@ -1467,6 +1478,8 @@ Definition ty_trm_regular  := proj41 typing_regular.
 Definition ty_imp_regular  := proj42 typing_regular.
 Definition ty_def_regular  := proj43 typing_regular.
 Definition ty_defs_regular := proj44 typing_regular.
+
+Hint Resolve ty_trm_regular ty_imp_regular ty_def_regular ty_defs_regular.
 
 
 (* ###################################################################### *)
@@ -1639,7 +1652,7 @@ Lemma ty_trm_to_ty_imp: forall G t T,
   ty_trm G t T ->
   ty_imp G t T.
 Proof.
-  introv Ty. lets Wf: (ty_trm_regular Ty). apply (ty_sbsm Ty). apply (subtyp_refl Wf).
+  introv Ty. apply (ty_sbsm Ty). eauto.
 Qed.
 
 
@@ -2258,11 +2271,10 @@ Lemma ty_defs_to_good_bounds_typ: forall G ds T,
   ty_defs G ds T ->
   good_bounds_typ G T.
 Proof.
-  unfold good_bounds_typ. introv Tyds. split.
-  - apply (ty_defs_regular Tyds).
-  - introv THas.
-    destruct (invert_ty_defs Tyds THas) as [d [dsHas Tyd]].
-    inversions Tyd. assumption.
+  unfold good_bounds_typ. introv Tyds. split; [eauto | idtac].
+  introv THas.
+  destruct (invert_ty_defs Tyds THas) as [d [dsHas Tyd]].
+  inversions Tyd. assumption.
 Qed.
 
 Lemma good_bounds_push: forall G y T,
