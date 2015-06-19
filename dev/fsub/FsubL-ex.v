@@ -1458,6 +1458,31 @@ Proof.
       rewrite concat_empty_r.
       eauto.
       eauto.
+    + apply* sub_ex2; eauto using sub_trans, sub_trans_ok.
+    + apply_fresh sub_ex1 as Y; auto.
+      apply* sub_trans.
+      apply_empty* sub_weakening. apply sub_trans_ok. assumption.
+    + apply_fresh sub_ex1 as Y; auto.
+      apply* sub_trans.
+      apply_empty* sub_weakening. apply sub_trans_ok. assumption.
+    + apply_fresh sub_ex1 as Y; auto.
+      apply* sub_trans.
+      apply_empty* sub_weakening. apply sub_trans_ok. assumption.
+  - (* case ex *)
+    inversion H12; inversion H23; subst; auto.
+    + apply* sub_trans_tvar; eauto using sub_trans, sub_trans_ok.
+    + apply* sub_trans_tvar; eauto using sub_trans, sub_trans_ok.
+    + apply* sub_ex2; eauto using sub_trans, sub_trans_ok.
+    + apply* sub_trans_tvar_lower; eauto using sub_trans, sub_trans_ok.
+    + apply_fresh sub_ex1 as Y; auto.
+      apply* sub_trans.
+      apply_empty* sub_weakening. apply sub_trans_ok. assumption.
+    + apply_fresh sub_ex1 as Y; auto.
+      apply* sub_trans.
+      apply_empty* sub_weakening. apply sub_trans_ok. assumption.
+    + apply* sub_trans_tvar_lower; eauto using sub_trans, sub_trans_ok.
+    + (* need to show sub norans E T1 T3 *) skip.
+    + apply* sub_ex2; eauto using sub_trans, sub_trans_ok.
 Qed.
 
 Inductive follow_ub : env -> typ -> typ -> Prop :=
