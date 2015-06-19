@@ -12,6 +12,8 @@
   and implementation by Samuel Gruetter,
   cf. https://github.com/samuelgruetter/dot-calculus/blob/master/stable/DotTransitivity-SingleDecBind.v
 
+This variant tries to add existentials that are not structural in subtyping.
+
 ***************************************************************************)
 
 Set Implicit Arguments.
@@ -34,7 +36,8 @@ Inductive typ : Set :=
   | typ_bvar  : nat -> typ
   | typ_fvar  : var -> typ
   | typ_arrow : typ -> typ -> typ
-  | typ_all   : typ -> typ -> typ -> typ.
+  | typ_all   : typ -> typ -> typ -> typ
+  | typ_ex    : typ -> typ -> typ -> typ.
 
 (** Representation of pre-terms *)
 
@@ -56,6 +59,7 @@ Fixpoint open_tt_rec (K : nat) (U : typ) (T : typ) {struct T} : typ :=
   | typ_fvar X      => typ_fvar X
   | typ_arrow T1 T2 => typ_arrow (open_tt_rec K U T1) (open_tt_rec K U T2)
   | typ_all T0 T1 T2   => typ_all (open_tt_rec K U T0) (open_tt_rec K U T1) (open_tt_rec (S K) U T2)
+  | typ_ex T0 T1 T2   => typ_ex (open_tt_rec K U T0) (open_tt_rec K U T1) (open_tt_rec (S K) U T2)
   end.
 
 Definition open_tt T U := open_tt_rec 0 U T.
@@ -111,7 +115,12 @@ Inductive type : typ -> Prop :=
       type T0 ->
       type T1 ->
       (forall X, X \notin L -> type (T2 open_tt_var X)) ->
-      type (typ_all T0 T1 T2).
+      type (typ_all T0 T1 T2)
+  | type_ex : forall L T0 T1 T2,
+      type T0 ->
+      type T1 ->
+      (forall X, X \notin L -> type (T2 open_tt_var X)) ->
+      type (typ_ex T0 T1 T2).
 
 (** Terms as locally closed pre-terms *)
 
@@ -168,7 +177,14 @@ Inductive wft : env -> typ -> Prop :=
       wft E T1 ->
       (forall X, X \notin L ->
         wft (E & X ~ bind_sub T0 T1) (T2 open_tt_var X)) ->
-      wft E (typ_all T0 T1 T2).
+      wft E (typ_all T0 T1 T2)
+  | wft_ex : forall L E T0 T1 T2,
+      wft E T0 ->
+      wft E T1 ->
+      (forall X, X \notin L ->
+        wft (E & X ~ bind_sub T0 T1) (T2 open_tt_var X)) ->
+      wft E (typ_ex T0 T1 T2).
+
 
 (** A environment E is well-formed if it contains no duplicate bindings
   and if each type in it is well-formed with respect to the environment
@@ -226,6 +242,24 @@ Inductive sub : sub_mode -> env -> typ -> typ -> Prop :=
       (forall X, X \notin L ->
           sub oktrans (E & X ~ bind_sub T0 T1) (S2 open_tt_var X) (T2 open_tt_var X)) ->
       sub notrans E (typ_all S0 S1 S2) (typ_all T0 T1 T2)
+  | sub_refl_ex : forall E T0 T1 T2,
+      okt E ->
+      wft E (typ_ex T0 T1 T2) ->
+      sub notrans E (typ_ex T0 T1 T2) (typ_ex T0 T1 T2)
+  | sub_ex1 : forall L E S U T1 T2,
+      sub oktrans E S U ->
+      wft E T2 ->
+      (forall X, X \notin L ->
+          sub oktrans (E & X ~ bind_sub S U) (T1 open_tt_var X) T2) ->
+      sub notrans E (typ_ex S U T1) T2
+  | sub_ex2 : forall L E S U T1 T2 Tx,
+      sub oktrans E S U ->
+      sub oktrans E S Tx ->
+      sub oktrans E Tx U ->
+      sub oktrans E T1 (open_tt T2 Tx) ->
+      (forall X, X \notin L ->
+        wft (E & X ~ bind_sub S U) (T2 open_tt_var X)) ->
+      sub notrans E T1 (typ_ex S U T2)
   | sub_trans_ok : forall E T1 T2,
       sub notrans E T1 T2 ->
       sub oktrans E T1 T2
@@ -325,6 +359,7 @@ Fixpoint fv_tt (T : typ) {struct T} : vars :=
   | typ_fvar X      => \{X}
   | typ_arrow T1 T2 => (fv_tt T1) \u (fv_tt T2)
   | typ_all T0 T1 T2   => (fv_tt T0) \u (fv_tt T1) \u (fv_tt T2)
+  | typ_ex T0 T1 T2   => (fv_tt T0) \u (fv_tt T1) \u (fv_tt T2)
   end.
 
 (** Computing free type variables in a term *)
@@ -361,6 +396,7 @@ Fixpoint subst_tt (Z : var) (U : typ) (T : typ) {struct T} : typ :=
   | typ_fvar X      => If X = Z then U else (typ_fvar X)
   | typ_arrow T1 T2 => typ_arrow (subst_tt Z U T1) (subst_tt Z U T2)
   | typ_all T0 T1 T2   => typ_all (subst_tt Z U T0) (subst_tt Z U T1) (subst_tt Z U T2)
+  | typ_ex T0 T1 T2 => typ_ex (subst_tt Z U T0) (subst_tt Z U T1) (subst_tt Z U T2)
   end.
 
 (** Substitution for free type variables in terms. *)
@@ -403,7 +439,7 @@ Definition subst_tb (Z : var) (P : typ) (b : bind) : bind :=
 Hint Constructors type term wft ok okt value red.
 
 Hint Resolve
-  sub_top sub_bot sub_refl_tvar sub_arrow sub_refl_all
+  sub_top sub_bot sub_refl_tvar sub_arrow sub_refl_all sub_refl_ex
   typing_var typing_app typing_tapp typing_sub.
 
 (** Gathering free names already used in the proofs *)
@@ -488,6 +524,7 @@ Lemma open_tt_rec_type : forall T U,
   type T -> forall k, T = open_tt_rec k U T.
 Proof.
   induction 1; intros; simpl; f_equal*. unfolds open_tt.
+  pick_fresh X. apply* (@open_tt_rec_type_core T2 0 (typ_fvar X)).
   pick_fresh X. apply* (@open_tt_rec_type_core T2 0 (typ_fvar X)).
 Qed.
 
@@ -708,6 +745,7 @@ Proof.
   induction 1; intros; simpl; auto.
   case_var*.
   apply_fresh* type_all as X. rewrite* subst_tt_open_tt_var.
+  apply_fresh* type_ex as X. rewrite* subst_tt_open_tt_var.
 Qed.
 
 Lemma subst_te_term : forall e Z P,
@@ -754,6 +792,8 @@ Proof.
   apply (@wft_var T0 T1). apply* binds_weaken.
   (* case: all *)
   apply_fresh* wft_all as Y. apply_ih_bind* H2.
+  (* case: ex *)
+  apply_fresh* wft_ex as Y. apply_ih_bind* H2.
 Qed.
 
 (** Through narrowing *)
@@ -771,6 +811,7 @@ Proof.
     applys wft_var. apply~ binds_concat_left.
      apply* binds_concat_left.
   apply_fresh* wft_all as Y. apply_ih_bind* H2.
+  apply_fresh* wft_ex as Y. apply_ih_bind* H2.
 Qed.
 
 (** Through strengthening *)
@@ -788,6 +829,7 @@ Proof.
       apply~ binds_concat_left.
   (* todo: binds_cases tactic *)
   apply_fresh* wft_all as Y. apply_ih_bind* H2.
+  apply_fresh* wft_ex as Y. apply_ih_bind* H2.
 Qed.
 
 (** Through type substitution *)
@@ -815,6 +857,11 @@ Proof.
    lets: wft_type.
    rewrite* subst_tt_open_tt_var.
    apply_ih_map_bind* H0.
+  apply_fresh* wft_ex as Y.
+   unsimpl ((subst_tb Z P) (bind_sub T0 T1)).
+   lets: wft_type.
+   rewrite* subst_tt_open_tt_var.
+   apply_ih_map_bind* H0.
 Qed.
 
 (** Through type reduction *)
@@ -822,6 +869,19 @@ Qed.
 Lemma wft_open : forall E U T0 T1 T2,
   ok E ->
   wft E (typ_all T0 T1 T2) ->
+  wft E U ->
+  wft E (open_tt T2 U).
+Proof.
+  introv Ok WA WU. inversions WA. pick_fresh X.
+  auto* wft_type. rewrite* (@subst_tt_intro X).
+  lets K: (@wft_subst_tb empty).
+  specializes_vars K. clean_empty K. apply* K.
+  (* todo: apply empty ? *)
+Qed.
+
+Lemma wft_open_ex : forall E U T0 T1 T2,
+  ok E ->
+  wft E (typ_ex T0 T1 T2) ->
   wft E U ->
   wft E (open_tt T2 U).
 Proof.
@@ -1030,6 +1090,7 @@ Proof.
  induction T; simpl; intros k Fr; auto.
  specializes IHT1 k. specializes IHT2 k. auto.
  specializes IHT1 k. specializes IHT2 k. specializes IHT3 (S k). auto.
+ specializes IHT1 k. specializes IHT2 k. specializes IHT3 (S k). auto.
 Qed.
 
 Lemma notin_fv_wf : forall E X T,
@@ -1040,6 +1101,7 @@ Proof.
   eauto.
   rewrite notin_singleton. intro. subst. applys binds_fresh_inv H Fr.
   notin_simpl; auto.
+  notin_simpl; auto. pick_fresh Y. apply* (@notin_fv_tt_open Y).
   notin_simpl; auto. pick_fresh Y. apply* (@notin_fv_tt_open Y).
 Qed.
 
@@ -1071,6 +1133,15 @@ Proof.
    split;
    apply_fresh wft_all as Y; try assumption;
    forwards~: (H3 Y); apply_empty* (@wft_narrow T0 T1).
+  auto*.
+  split. auto*.
+   inversion IHsub as [_ [HwfS HwfU]].
+   split.
+   apply_fresh wft_ex as Y; try assumption;
+   forwards~: (H2 Y); apply_empty* (@wft_narrow S U).
+   assumption.
+  split. auto*.
+   split. auto*. auto*.
   auto*. auto*.
 Qed.
 
@@ -1205,6 +1276,17 @@ Proof.
   apply* binds_weaken.
   (* case: all *)
   apply_fresh* sub_all as Y. apply_ih_bind* H0.
+  (* case: ex1 *)
+  apply_fresh* sub_ex1 as Y. apply_ih_bind* H1.
+  (* case: ex2 *)
+  apply_fresh sub_ex2 as Y.
+  apply* IHTyp1.
+  apply* IHTyp2.
+  apply* IHTyp3.
+  apply* IHTyp4.
+  rewrite <- concat_assoc. apply wft_weaken. rewrite concat_assoc.
+  apply* H.
+  rewrite concat_assoc. auto.
   (* case: trans_ok *)
   apply* sub_trans_ok.
   (* case: trans *)
@@ -1299,7 +1381,8 @@ Inductive notvar : typ -> Prop :=
   | notvar_top   : notvar typ_top
   | notvar_bot   : notvar typ_bot
   | notvar_arrow : forall T1 T2, notvar (typ_arrow T1 T2)
-  | notvar_all   : forall T0 T1 T2, notvar (typ_all T0 T1 T2).
+  | notvar_all   : forall T0 T1 T2, notvar (typ_all T0 T1 T2)
+  | notvar_ex    : forall T0 T1 T2, notvar (typ_ex T0 T1 T2).
 
 Hint Constructors notvar.
 
