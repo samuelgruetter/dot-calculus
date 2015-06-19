@@ -1415,21 +1415,37 @@ Proof.
     + apply* sub_top.
     + apply* sub_trans_tvar_lower.
       apply* sub_trans. apply sub_trans_ok. assumption.
+    + apply sub_ex2 with (Tx:=Tx); auto.
+      apply* sub_trans. apply sub_trans_ok. assumption.
   - (* case bot *)
     inversion H12; subst.
     + apply* sub_bot.
     + apply* sub_trans_tvar.
       apply* sub_trans. apply sub_trans_ok. assumption.
+    + apply_fresh* sub_ex1 as Y.
+      apply* sub_trans. apply sub_trans_ok. apply_empty* sub_weakening.
   - (* case arrow *)
     inversion H12; inversion H23; subst; auto.
     + apply* sub_trans_tvar; eauto using sub_trans, sub_trans_ok.
     + apply* sub_trans_tvar; eauto using sub_trans, sub_trans_ok.
+    + apply* sub_ex2; eauto using sub_trans, sub_trans_ok.
     + apply* sub_trans_tvar_lower; eauto using sub_trans, sub_trans_ok.
     + apply* sub_arrow; eauto using sub_trans, sub_trans_ok.
+    + apply* sub_ex2; eauto using sub_trans, sub_trans_ok.
+    + apply_fresh sub_ex1 as Y; auto.
+      apply* sub_trans.
+      apply_empty* sub_weakening. apply sub_trans_ok. assumption.
+    + apply_fresh sub_ex1 as Y; auto.
+      apply* sub_trans.
+      apply_empty* sub_weakening. apply sub_trans_ok. assumption.
+    + apply_fresh sub_ex1 as Y; auto.
+      apply* sub_trans.
+      apply_empty* sub_weakening. apply sub_trans_ok. assumption.
   - (* case all *)
     inversion H12; inversion H23; subst; auto.
     + apply* sub_trans_tvar; eauto using sub_trans, sub_trans_ok.
     + apply* sub_trans_tvar; eauto using sub_trans, sub_trans_ok.
+    + apply* sub_ex2; eauto using sub_trans, sub_trans_ok.
     + apply* sub_trans_tvar_lower; eauto using sub_trans, sub_trans_ok.
     + apply sub_all with (L:=L \u L0); eauto using sub_trans.
       intros Y Fr.
