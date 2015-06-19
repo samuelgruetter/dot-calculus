@@ -1681,6 +1681,10 @@ Proof.
     auto 10.
     set (Hst := (sub_trans_notvar (notvar_all _ _ _) H Hch2b)).
     auto 10.
+  - (* case refl_ex *)
+    assumption.
+  - (* case sub_ex1 *) skip.
+  - (* case sub_ex2 *) skip.
   - (* case trans_ok *)
     apply (prepend_chain E _ _ _ H (prepend_chain E _ _ _ H0 Hch)).
   - (* case trans *)
@@ -1751,6 +1755,13 @@ Proof.
    unsimpl (subst_tb Z P (bind_sub T0 T1)).
    do 2 rewrite* subst_tt_open_tt_var.
    apply_ih_map_bind* H0.
+  apply* sub_refl_ex.
+   change (typ_ex (subst_tt Z P T0) (subst_tt Z P T1) (subst_tt Z P T2))
+          with
+          (subst_tt Z P (typ_ex T0 T1 T2)).
+   auto*.
+  skip.
+  skip.
   apply* sub_trans_ok.
   apply* sub_trans.
 Qed.
@@ -1798,6 +1809,7 @@ Proof.
   apply* (@sub_trans_tvar_lower T0 T1). binds_cases H; auto*.
   (* case: all *)
   apply_fresh* sub_all as X. apply_ih_bind* H0.
+  skip. skip.
   (* case: trans_ok *)
   apply* sub_trans_ok.
   (* case: trans *)
@@ -1974,6 +1986,7 @@ Proof.
   induction T; try solve [ congruence ].
   apply IHTyp; auto.
   apply binds_empty_inv in H0. inversion H0.
+  skip.
 Qed.
 
 Lemma canonical_form_abs : forall t U1 U2,
@@ -1988,6 +2001,7 @@ Proof.
       apply value_not_bot in Typ; try assumption. congruence.
       false (binds_empty_inv H0).
       inversions H0. forwards*: IHTyp.
+  skip.
 Qed.
 
 Lemma canonical_form_tabs : forall t U0 U1 U2,
@@ -2003,6 +2017,7 @@ Proof.
       false* binds_empty_inv.
       inversions H0. forwards*: IHTyp.
       inversions H0. forwards*: IHTyp.
+  skip.
 Qed.
 
 (* ********************************************************************** *)
