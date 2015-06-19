@@ -252,13 +252,12 @@ Inductive sub : sub_mode -> env -> typ -> typ -> Prop :=
       (forall X, X \notin L ->
           sub oktrans (E & X ~ bind_sub S U) (T1 open_tt_var X) T2) ->
       sub notrans E (typ_ex S U T1) T2
-  | sub_ex2 : forall L E S U T1 T2 Tx,
+  | sub_ex2 : forall E S U T1 T2 Tx,
       sub oktrans E S U ->
       sub oktrans E S Tx ->
       sub oktrans E Tx U ->
       sub oktrans E T1 (open_tt T2 Tx) ->
-      (forall X, X \notin L ->
-        wft (E & X ~ bind_sub S U) (T2 open_tt_var X)) ->
+      wft E (typ_ex S U T2) ->
       sub notrans E T1 (typ_ex S U T2)
   | sub_trans_ok : forall E T1 T2,
       sub notrans E T1 T2 ->
@@ -1279,14 +1278,12 @@ Proof.
   (* case: ex1 *)
   apply_fresh* sub_ex1 as Y. apply_ih_bind* H1.
   (* case: ex2 *)
-  apply_fresh sub_ex2 as Y.
+  eapply sub_ex2.
   apply* IHTyp1.
   apply* IHTyp2.
   apply* IHTyp3.
   apply* IHTyp4.
-  rewrite <- concat_assoc. apply wft_weaken. rewrite concat_assoc.
-  apply* H.
-  rewrite concat_assoc. auto.
+  apply* wft_weaken.
   (* case: trans_ok *)
   apply* sub_trans_ok.
   (* case: trans *)
@@ -1353,6 +1350,25 @@ Proof.
     auto.
     auto.
     auto.
+  apply sub_refl_ex.
+    apply* (@okt_narrow Q0 Q1).
+    apply* (@wft_narrow Q0 Q1).
+  apply_fresh* sub_ex1 as Y. apply_ih_bind H1.
+    auto.
+    apply TransQ1.
+    apply TransQ0.
+    auto.
+    auto.
+    auto.
+    auto.
+  eapply sub_ex2.
+    apply IHSsubT1 with (Q3:=Q0) (Q2:=Q1); auto.
+    apply IHSsubT2 with (Q3:=Q0) (Q2:=Q1); auto.
+    apply IHSsubT3 with (Q3:=Q0) (Q2:=Q1); auto.
+    apply IHSsubT4 with (Q3:=Q0) (Q2:=Q1); auto.
+    apply wft_narrow with (V0:=Q0) (V1:=Q1); auto.
+    apply ok_from_okt.
+    apply okt_narrow with (V0:=Q0) (V1:=Q1); auto.
   apply* sub_trans_ok.
   apply *sub_trans.
 Qed.
