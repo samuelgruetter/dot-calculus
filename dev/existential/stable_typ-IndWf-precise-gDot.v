@@ -503,6 +503,135 @@ Definition good_bounds_typ(G: ctx)(T: typ) :=
 Definition good_bounds(G: ctx) :=
   forall x X, binds x X G -> good_bounds_typ G X.
 
+(** 
+Can we avoid shrink_good_bounds?
+Or defer it until we have a wf_sto and only shrink to a prefix?
+
+ty_hyp hyp can pick any subenv --> weakening should work
+ --> but inversion lemmas need to shrink good env before giving it to hyp of ty_hyp 
+but since ty_hyp has a subenv hyp, we and
+  subenv G1 G2 /\ good_bounds G2 -> good_bounds G1
+we're fine there.
+But if we have this, we can also leave things as is and just apply this implication in
+weakening.
+
+Because really, this one:
+  subenv G1 G2 /\ good_bounds G2 -> good_bounds G1
+is the hard part --> approx the same as shrink_good_bounds:
+
+  ok (G1 & G2 & G3) ->
+  (forall x X, binds x X (G1 & G3) -> wf_typ (G1 & G3) X) ->
+  good_bounds (G1 & G2 & G3) ->
+  good_bounds (G1 &      G3).
+
+Q: What kinds of env shrinking are allowed?
+Only at the end --> can shrink wf_sto in inversion lemmas
+
+Instead of encoding the dependency structure in the subenv judgment (or good_bounds),
+already encode it in the env itself
+==--> unique destruction of the env into smaller, consistent sub-envs
+==   (which is a desirable property)
+
+-----
+
+closed_env which can insert in the middle, and good_bounds, and subenv following
+ the same structure?
+
+*)
+
+(* ###################################################################### *)
+(** ** Closed *)
+
+Inductive closed_typ: ctx -> typ -> Prop :=
+  | closed_top: forall G,
+      closed_typ G typ_top
+  | closed_bot: forall G,
+      closed_typ G typ_bot
+  | closed_rcd: forall G D,
+      closed_dec G D ->
+      closed_typ G (typ_rcd D)
+  | closed_sel: forall G x X L,
+      binds x X G ->
+      closed_typ G (typ_sel (avar_f x) L)
+  | closed_and: forall G T1 T2,
+      closed_typ G T1 ->
+      closed_typ G T2 ->
+      closed_typ G (typ_and T1 T2)
+  | closed_or: forall G T1 T2,
+      closed_typ G T1 ->
+      closed_typ G T2 ->
+      closed_typ G (typ_or T1 T2)
+with closed_dec: ctx -> dec -> Prop :=
+  | closed_tmem: forall G L Lo Hi,
+      closed_typ G Lo ->
+      closed_typ G Hi ->
+      closed_dec G (dec_typ L Lo Hi)
+  | closed_mtd: forall G m U V,
+      closed_typ G U ->
+      closed_typ G V ->
+      closed_dec G (dec_mtd m U V).
+
+Inductive closed_env: ctx -> Prop :=
+  | closed_empty: closed_env empty
+  | closed_insert: forall G1 G2 x T,
+      closed_env G1 ->
+      closed_env G2 ->
+      x # G1 ->
+      x # G2 ->
+      closed_typ (G1 & x ~ T) T ->
+      closed_env (G1 & x ~ T & G2).
+
+(*
+Goal: all valid weakening steps (defined by a subenv relation)
+must be such that going from good_bounds on the bigger env
+to good_bounds on the smaller env is easy.
+
+------
+
+weakening axiom (rule)?
+
+--> inversion lemmas will "push-back" weakening axiom (for ty_trm/def/defs judgments they
+return) or apply the weakening lemmas before returning (for has/subtyp judgments).
+BUT in order to apply their IH, they'll have to shrink the good_bounds hyp!
+
+-------
+
+weakening / ty_mdef will suppose good bounds for 
+ G1 & G2 & G3 & x ~ T
+(because of T which might have bad bounds now)
+
+but IH wants good bounds on (if good_bounds is a hyp of weakening)
+G1 & G3 & x ~ T
+
+-------
+
+
+Prove permutation lemmas (should be easy),
+then only prove weakening for appending at the end,
+and ty_hyp supposes good_bounds on a closed prefix of env.
+Weakening on ty_hyp will still be easy, because if
+G1 is a closed prefix of G2, it's also a closed prefix of (G2 & G3).
+In the inversion lemmas, we'll have to provide a good_bounds hyp to ty_hyp, but
+we can get that for all prefixes of G because wf_sto is defined "step-by-step".
+
+BUT how will the permutation lemma deal with ty_hyp? "being prefix" is not preserved
+by permutation!
+
+-----
+
+Next try:
+
+Prove permutation lemmas (should be easy),
+then only prove weakening for appending at the end,
+and ty_hyp supposes good_bounds on a the same of env as in its conclusion.
+Weakening on ty_hyp will need to shrink good_bounds (G1 & G2) to good_bounds G1,
+which is also hard. Except if we define good_bounds step-wise, but then the
+permutation lemma won't work any more, because it would have to permute good_bounds.
+
+
+
+*)
+
 Inductive ty_trm: ctx -> trm -> typ -> Prop :=
   | ty_var: forall G x T,
       binds x T G ->
@@ -2712,6 +2841,63 @@ Proof.
 Qed.
 
 Print Assumptions weaken_ty.
+
+Lemma weaken_ty_end_only:
+   (forall G t T, ty_trm G t T -> forall G',
+    True ->
+    ok (G & G') ->
+    ty_trm (G & G') t T)
+/\ (forall G t T, ty_imp G t T -> forall G',
+    True ->
+    ok (G & G') ->
+    ty_imp (G & G') t T)
+/\ (forall G d D, ty_def G d D -> forall G',
+    True ->
+    ok (G & G') ->
+    ty_def (G & G') d D)
+/\ (forall G ds T, ty_defs G ds T -> forall G',
+    True ->
+    ok (G & G') ->
+    ty_defs (G & G') ds T).
+Proof.
+  apply ty_mutind.
+  + (* case ty_var *)
+    introv Bix WfT Eq Ok. subst. admit. (* apply ty_var; eauto.
+    apply (binds_weaken Bix Ok).*)
+  + (* case ty_call *)
+    introv Tyt IH1 THas Tyu IH2 WfV Eq Ok. subst.
+    eapply ty_call.
+    - eauto.
+    - apply* weaken_typ_has_end.
+    - apply* IH2.
+    - apply* weaken_wf_typ_end.
+  + (* case ty_new *)
+    introv Tyds IH1 Tyu IH2 WfU Eq Ok. subst.
+    apply_fresh ty_new as x'; try assert (x'L: x' \notin L) by auto.
+    - specialize (IH1 x' x'L G' I).
+      repeat rewrite concat_assoc in IH1. apply* IH1.
+    - specialize (IH2 x' x'L G1 G2 (G3 & x' ~ open_typ x' T)).
+      repeat rewrite concat_assoc in IH2. apply* IH2.
+    - eauto.
+  + (* case ty_hyp *)
+    introv WfT Ty IH Eq Ok. subst.
+    apply (ty_hyp (weaken_wf_typ_middle WfT Ok)).
+    intro Gb. refine (IH _ _ _ _ eq_refl Ok).
+    refine (shrink_good_bounds Ok _ Gb).
+           (******************)
+    admit. (* <--- that's why we don't use this lemma as such *)
+  + (* case ty_sbsm *)
+    introv Ty IH St Eq Ok. apply* ty_sbsm.
+  + (* case ty_tdef *) eauto.
+  + (* case ty_mdef *)
+    introv WfT WfU2 Tyu IH Eq Ok. subst.
+    apply_fresh ty_mdef as x'; [eauto | eauto | idtac].
+    assert (x'L: x' \notin L) by auto.
+    specialize (IH x' x'L G1 G2 (G3 & x' ~ T)).
+    repeat rewrite concat_assoc in IH. apply* IH.
+  + (* case ty_defs_nil *) eauto.
+  + (* case ty_defs_cons *) eauto.
+Qed.
 
 Lemma weaken_ty_without_good_bounds:
    (forall G t T, ty_trm G t T -> forall G1 G2 G3,
