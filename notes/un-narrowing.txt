@@ -1,0 +1,164 @@
+
+Getting rid of "un-narrowing"
+=============================
+
+Currently, dev/existential/stable_typ-IndWf-precise-gDot.v needs un-narrowing, either in narrowing/case ty_hyp or in narrowing/case ty_mtd.
+
+S1 <: S2 ->
+good_bounds (G1 & x ~ S2 & G2) ->           (* <-- available if it helps, but we can also ignore it*)
+good_bounds (G1 & x ~ S1 & G2 & y ~ T) ->
+good_bounds (G1 & x ~ S2 & G2 & y ~ T)
+
+And this does not hold, because maybe T's bounds are only good because S1's type members are very precise.
+
+Note: If we give good_bounds to narrow_subtyp, narrow_subtyp works. But then we also have to prove narrow_ty (which is needed in preservation/case red_call), and that's where the problems occur.
+
+So we need to change something. Ideas:
+
+
+
+Add rule saying "if bad bounds, everything typechecks"
+------------------------------------------------------
+
+add rule
+~good_bounds G => every term typechecks
+
+but ~good_bounds is not preserved by narrowing
+
+Note: If good_bounds G2, and G1 is a more precise env, G3 a less precise env
+--> cannot say anything about whether good_bounds G1/good_bounds G3
+
+
+
+Only prove narrowing towards env with good bounds
+-------------------------------------------------
+
+no ty_hyp, because narrowing/ty_hyp would have to unnarrow good_bounds
+but something in ty_mtd so that it can give good_bounds to its IH
+say ty_mtd can suppose good_bounds
+but then again, in narrowing/ty_mtd, you can suppose good bounds in the precise env, but need to have it for the less precise env to instantiate the hyp --> needs un-narrowing
+
+
+
+Distinguishing two kinds of unrealizability
+-------------------------------------------
+
+two kinds of unrealizable:
+1)  temporarily bad:
+    x : { L: a.T1 .. a.T2 }
+    where upper bound of a.T1 is not a subtype of a.T2
+    narrowing might make the bounds of a.T1/T2 more precise, so that it suddenly becomes realizable
+2)  really bad:
+    x : { L: Top \/ Bot .. Top /\ Bot }    typically the result of intersection in narrowing
+    equiv to  x : { L: Top .. Bot }
+    will never ever become realizable again, no matter how much more narrowing we do
+
+add typing rule
+really bad env => anything typechecks
+works for narrowing, because narrowed really bad is still really bad
+
+inverted_bounds judgment:
+at least one var's type has at least one member with inverted bounds, i.e. upperBound <: lowerBound and not lowerBound <: upperBound
+
+inverted_bounds => really bad
+converse probably also holds
+
+Now the plan is:
+no ty_hyp
+ty_mdef takes good_bounds just for arg type T (not like ty_hyp, but you have to prove it, cannot suppose it)
+ty_mdef_contrad: if T inverted bounds, body typechecks (rule)
+narrow_ty takes good_bounds hyp for more precise env
+case ty_mdef: we need to have that after narrowing either T still has good bounds, or it has inverted bounds (but exclude the "temporarily bad") case
+case ty_mdef_contrad: inverted bounds still inverted in more precise env
+
+3 kinds of envs:
+- good bounds
+- temporarily bad
+- really bad = inverted_bounds
+
+keep (good_bounds \/ inverted_bounds) invariant
+should be preserved by narrowing <--- NOT the case!!
+
+no!                                                 v-- added by narrowing
+x : { T1: Bot .. {a: Int},   T2: {a: Int} .. Top } /\ { T1: Bot .. {c: Int},  T2: {b: Int}..Top }
+y : { L: x.T1 .. x.T2 }
+upper bound of T1: {a: Int}/\{c: Int}
+lower bound of T2: {a: Int}/\{b: Int}
+--> uncomparable, i.e. y.L has not good_bounds but not inverted_bounds either
+
+But this is excluded if we say "only narrow towards good_bounds envs".
+
+But here's an example where we narrow towards an env with good bounds, but still good_bounds_typ is not preserved:
+
+o1 : { M1: Bot .. { X: Bot .. {a: Int} }
+o2 : { M2: Bot .. Top }
+type under consideration: o1.M1 /\ o2.M2
+has one member X: Bot .. {a: Int}, which has good bounds.
+Now narrow o2's type to { M2: Bot .. { X: {b: Int}..Top } }
+now the type o1.M1 /\ o2.M2 has the member
+   (X: Bot .. {a: Int}) && (X: {b: Int}..Top)
+== (X: {b: Int} .. {a: Int})
+which has bad bounds.
+But note that they're only temporarily bad, not "really bad", so it's not true that (good_bounds \/ inverted_bounds) is preserved by narrowing, because we can go from good_bounds to temporarily bad bounds.
+
+Why this matters:
+
+Say: narrow_ty takes good_bounds hyp,
+no ty_hyp rule, ty_mdef takes good_bounds for arg type T
+narrow_ty/case ty_mdef must narrow good_bounds_typ T to give it to IH
+But if narrow_good_bounds already requires a good_bounds env, we have a chicken-egg problem.
+But if ty_mdef requires good_bounds of T in the env without T, one can think it might work.
+Of course, if narrow_has_preserving_gb is only applied for types with good bounds in the narrowed env, narrowing obviously does preserve good bounds.
+But narrow_has_preserving_gb will also be applied for the type T which is the argument type in ty_mdef, and which is not yet in the good_bounds env. We have good_bounds_typ G2 T, (G2 being the less precise env), so we know that all type decls D that T has in G2 have good bounds. But when narrowing this typ_has G2 T D to the more precise env G1, the bounds of D might become bad, as illustrated in the above example.
+
+
+
+General notes
+-------------
+
+lattice of envs: bot = env where every var has type Bot
+
+what if we remove the subtyp hyp in subtyp_sel_l/r?
+--> narrow_subtyp won't need good_bounds for itself any more,
+    but swap_sub_and_typ_has will need good_bounds
+
+reasons why bounds get bad: and-cases of typ_has
+
+Is there a counterex to preservation because of 
+realizable  --narrow-->  unrealizable  --narrow-->  realizable ?
+
+TODO: try to prove narrow_good_bounds_typ to see where it doesn't hold, and check if inverted_bounds holds there.
+Not really done, but during and-narrowing also "temporarily bad" bounds can happen.
+
+
+
+Undeveloped ideas:
+------------------
+
+* use classicT
+* mark that we're in hypothetical env (without wf_sto)?
+  so what?
+* could combine narrow+subst_ty
+* parameterize typing judgment with all good_bounds hyps it needs?
+  with just one for the final env?
+    narrowing becomes
+    (good_bounds G2 -> ty G2 t T) ->
+    (good_bounds G1 -> ty G1 t T)
+* more powerful "good_bounds G" which says
+  "G has good bounds, and all the following less precise versions of G as well"
+
+
+
+Add narrowing axiom (term typing rule)
+--------------------------------------
+
+no ty_hyp rule, but ty_nax ("narrowing axiom")
+
+--> need a combined subst+narrow lemma (see nax-pr-muDot.v), not yet tried out...
+
+no narrowing, but narrowing-axiom-pushback?
+or only inversion lemmas for typing which can hide the ty_nax case?
+
+But we still need a substitution lemma, and will this one work?
+
+
