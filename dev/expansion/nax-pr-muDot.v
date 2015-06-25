@@ -2125,7 +2125,18 @@ Proof.
       rewrite Eq; clear Eq.
       apply_fresh subtyp_nax as z.
       * assert (zL: z \notin L) by auto. apply (Sds z zL).
-      * (* IHSt is useless because Ds1 <> Ds2 !!! *)
+      * specialize (IHSt E1 E2 E3 x0). (* IHSt is useless because Ds1 <> Ds2 !!! *)
+(*   IH should be stronger and not just allow to go from
+     G1 & y ~ S & G2 & x ~ S & G3 
+     to
+     G1 & y ~ S & G2 &         (subst_ctx x y G3)
+     
+     but it should allow to go from
+     G1 & y ~ S1 & G2 & x ~ S2 & G3 
+     to
+     G1 & y ~ S1 & G2 &         (subst_ctx x y G3)
+     where S1 <: S2, i.e. it includes narrowing
+*)
       admit.
     - destruct H as [G5 [G6 [Eq1 [Eq2 Eq3]]]]. subst.
       admit.
