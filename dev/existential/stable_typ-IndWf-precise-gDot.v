@@ -4787,6 +4787,232 @@ Proof.
   specialize (P _ _ _ St G x S1 S2 empty). repeat rewrite concat_empty_r in P. eauto.
 Qed.
 
+(* -------- *)
+
+Inductive gb_dec: ctx -> dec -> Prop :=
+| gb_dec_typ: forall G L Lo Hi,
+    subtyp G Lo Hi ->
+    gb_dec G (dec_typ L Lo Hi)
+| gb_dec_mtd: forall G m U V,
+    gb_dec G (dec_mtd m U V).
+
+Hint Constructors gb_dec.
+
+(* inverted bounds 
+Inductive ib_dec: ctx -> dec -> Prop :=
+| ib_dec_typ: forall G L Lo Hi,
+    subtyp G Hi Lo ->
+    ~ subtyp G Lo Hi ->
+    ib_dec G (dec_typ L Lo Hi).
+
+   Problem with "~ subtyp G Lo Hi" is that it means "cannot prove", not
+   "really not subtyp", so it's not preserved by narrowing, because
+   maybe before narrowing, a.T1 <: a.T2 cannot be proven, but after narrowing it can. *)
+
+Lemma top_not_subtyp_of_bot: forall G,
+  ~ subtyp G typ_top typ_bot.
+Proof.
+  unfold not. introv St. gen_eq T2: typ_bot. gen_eq T1: typ_top.
+  induction St; intros Eq1 Eq2; subst; try discriminate.
+  (* case subtyp_trans *)
+  destruct T2 as [ | | D | a L | U V | U V ]; auto.
+  + (* case rcd *)
+    
+
+  try solve [inversions St1];
+  try solve [inversions St2].
+Abort. (* see existential/nohas-lambdaDOT.v, existential/lamvdaDOT, this is very messy *)
+
+Lemma narrow_gb_dec: forall G1 x S1 S2 G2 D,
+  gb_dec (G1 & x ~ S2 & G2) D ->
+  stable_typ S1 ->
+  good_bounds (G1 & x ~ S1 & G2) ->
+  subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+  gb_dec (G1 & x ~ S1 & G2) D.
+Proof.
+  introv GbD Sb Gb StS. inversions GbD; constructor.
+  apply* narrow_subtyp_middle.
+Qed.
+
+Lemma var_has_to_gb: forall G T D x,
+  good_bounds G ->
+  binds x T G ->
+  typ_has G T D ->
+  gb_dec G D.
+Proof.
+  introv Gb Bi THas.
+  destruct D as [L Lo Hi | m U V].
+  - apply good_bounds_to_old in Gb. unfold good_bounds_old, good_bounds_typ in Gb.
+    specialize (Gb _ _ Bi). destruct Gb as [_ Gb].
+    specialize (Gb L Lo Hi THas).
+    apply (gb_dec_typ _ Gb).
+  - apply gb_dec_mtd.
+Qed.
+
+Lemma intersect_preserves_gb_dec: forall G D1 D2 D12,
+  D1 && D2 == D12 ->
+  gb_dec G D1 ->
+  gb_dec G D2 ->
+  gb_dec G D12.
+Proof.
+  introv Eq Gb1 Gb2. unfold intersect_dec in Eq. case_if.
+  destruct D1 as [L S1 U1 | m S1 U1];
+  destruct D2 as [L' S2 U2 | m' S2 U2]; try discriminate.
+  - simpl in H. symmetry in H. inversions H. inversions Eq. apply gb_dec_typ.
+    inversions Gb1. inversions Gb2.
+    (* Does not hold, even if good_bounds G, because D1, D2 might not occur in G at all *)
+Abort.
+
+Lemma narrow_has_gb:
+   (forall G T D2, typ_has G T D2 -> forall G1 x S1 S2 G2,
+    G = G1 & x ~ S2 & G2 ->
+    stable_typ S1 ->
+    good_bounds (G1 & x ~ S2 & G2) ->
+    good_bounds (G1 & x ~ S1 & G2) ->
+    gb_dec G D2 ->
+    wf_typ (G1 & x ~ S1 & G2) T ->
+    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+    exists D1,
+      typ_has (G1 & x ~ S1 & G2) T D1 /\
+      subdec (G1 & x ~ S1 & G2) D1 D2 /\
+      gb_dec (G1 & x ~ S1 & G2) D1)
+/\ (forall G T l, typ_hasnt G T l -> forall G1 x S1 S2 G2,
+    G = G1 & x ~ S2 & G2 ->
+    stable_typ S1 ->
+    good_bounds (G1 & x ~ S2 & G2) ->
+    good_bounds (G1 & x ~ S1 & G2) ->
+    wf_typ (G1 & x ~ S1 & G2) T ->
+    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+    typ_hasnt (G1 & x ~ S1 & G2) T l 
+    \/ exists D, 
+         label_of_dec D = l /\
+         typ_has (G1 & x ~ S1 & G2) T D /\
+         gb_dec  (G1 & x ~ S1 & G2) D).
+Proof.
+  apply typ_has_mutind.
+  + (* case typ_bot_has *)
+    intros. subst. exists (dec_bot l). apply (conj (typ_bot_has _ _)).
+    split.
+    - destruct l; simpl; eauto.
+    - apply* narrow_gb_dec.
+  (*
+  + (* case typ_bot_has *)
+    intros. subst. exists (dec_bot l). apply (conj (typ_bot_has _ _)).
+    destruct l as [L | m].
+    - repeat split.
+      * simpl. eauto.
+      * simpl in *. inversions H2. apply gb_dec_typ. apply* narrow_subtyp_middle.
+    - simpl. eauto.
+  *)
+  + (* case typ_rcd_has *)
+    intros. subst. apply invert_wf_rcd in H4. exists D.
+    repeat split; eauto. apply* narrow_gb_dec.
+  + (* case typ_sel_has *)
+    intros G x X2 L Lo2 Hi2 D2 Bix2 X2Has0 IH1 Hi2Has0 IH2 G1 x0 S1 S2 G2 Eq Sb Gb2 Gb1
+           GbD Wf St.
+    subst.
+    apply invert_wf_sel in Wf. destruct Wf as [X1 [T [U [Bix1 [X1Has [WfX1 [WfT WfU]]]]]]].
+    lets StX: (narrow_binds_2 WfX1 Bix2 Bix1 St).
+    lets WfX2: (proj2 (subtyp_regular StX)).
+    specialize (IH1 _ _ _ _ _ eq_refl Sb Gb2 Gb1 (var_has_to_gb Gb2 Bix2 X2Has0) WfX2 St).
+    destruct IH1 as [D0 [X2Has [Sd0 GbD1]]].
+    apply invert_subdec_typ_sync_left in Sd0.
+    destruct Sd0 as [Lo1 [Hi1 [Eq [StLo12 StHi12]]]]. subst D0.
+    lets WfHi2: (proj2 (subtyp_regular StHi12)).
+    specialize (IH2 _ _ _ _ _ eq_refl Sb Gb2 Gb1 GbD WfHi2 St).
+    destruct IH2 as [D1 [Hi2Has [Sd12 Gb']]].
+    lets P: (swap_sub_and_typ_has StX X2Has).
+            (********************)
+    destruct P as [D0 [X1Has' Sd0]].
+    apply invert_subdec_typ_sync_left in Sd0.
+    destruct Sd0 as [Lo0 [Hi0 [Eq [StLo01 StHi01]]]]. subst D0.
+    lets StLo: (subtyp_trans StLo12 StLo01).
+    lets StHi: (subtyp_trans StHi01 StHi12).
+    lets P: (swap_sub_and_typ_has StHi Hi2Has).
+            (********************)
+    destruct P as [D0 [Hi0Has Sd01]].
+    exists D0. repeat split.
+    - apply (typ_sel_has Bix1 X1Has' Hi0Has).
+    - apply (subdec_trans Sd01 Sd12).
+    - (* also need swap_sub_and_typ_has which preserves gb_dec *)
+      admit. (* <----------- *) 
+  + (* case typ_and_has_1 *)
+    introv _ IH1 _ IH2. introv Eq Sb Gb2 Gb1 GbD Wf St. subst. rename D into D1.
+    apply invert_wf_and in Wf. destruct Wf as [Wf1 Wf2].
+    specialize (IH1 _ _ _ _ _ eq_refl Sb Gb2 Gb1 GbD Wf1 St).
+    specialize (IH2 _ _ _ _ _ eq_refl Sb Gb2 Gb1 Wf2 St).
+    destruct IH1 as [D1' [T1Has [Sd1 GbD1']]].
+    lets Eql1: (subdec_to_label_of_dec_eq Sd1).
+    destruct IH2 as [T2Hasnt | [D2 [Eql2 [T2Has GbD2]]]].
+    - exists D1'.
+      rewrite <- Eql1 in T2Hasnt.
+      split.
+      * apply (typ_and_has_1 T1Has T2Hasnt).
+      * apply (conj Sd1 GbD1').
+    - rewrite <- Eql2 in Eql1. destruct (intersect_dec_total _ _ Eql1) as [D12 Eq].
+      exists D12. repeat split.
+      * apply (typ_and_has_12 T1Has T2Has Eq).
+      * refine (subdec_trans _ Sd1).
+        lets WfD1: (typ_has_preserves_wf T1Has Wf1).
+        lets WfD2: (typ_has_preserves_wf T2Has Wf2).
+                   (********************)
+        apply (subdec_intersect_l Eq WfD1 WfD2).
+      * (* would need intersect_preserves_gb_dec, but that doesn't hold *)
+Abort.
+
+Axiom un_narrow_has_middle: forall G1 x S1 S2 G2 T D1,
+  typ_has (G1 & x ~ S1 & G2) T D1 ->
+  wf_typ  (G1 & x ~ S1 & G2) T ->
+  subtyp  (G1 & x ~ S1 & G2) S1 S2 ->
+  typ_hasnt (G1 & x ~ S2 & G2) T (label_of_dec D1) \/
+  exists D2,
+    typ_has (G1 & x ~ S2 & G2) T D2 /\
+    subdec  (G1 & x ~ S1 & G2) D1 D2.
+
+(* narrow_has together with good bounds for the dec *)
+
+Lemma narrow_typ_has_good_bounds_1: forall G1 x S1 S2 G2 T,
+  typ_has (G1 & x ~ S2 & G2) T (dec_typ L Lo2 Hi2) ->
+  sub
+  good_bounds     (G1 & x ~ S1 & G2) ->
+  stable_typ S1 ->
+  subtyp          (G1 & x ~ S1 & G2) S1 S2 ->
+  good_bounds_typ (G1 & x ~ S1 & G2) T.
+Proof.
+
+
+(* won't hold, and not sure if usable *)
+Lemma narrow_good_bounds_typ: forall G1 x S1 S2 G2 T,
+  good_bounds     (G1 & x ~ S1 & G2) ->
+  good_bounds_typ (G1 & x ~ S2 & G2) T ->
+  stable_typ S1 ->
+  subtyp          (G1 & x ~ S1 & G2) S1 S2 ->
+  good_bounds_typ (G1 & x ~ S1 & G2) T.
+Proof.
+  introv Gb GbT Sb StS. unfold good_bounds_typ in *.
+  split. admit. destruct GbT as [WfT GbT].
+  introv THas.
+  lets WfT': (narrow_wf_typ_middle WfT Sb StS).
+  (* need to un-narrow THas in order to feed it to GbT! *)
+  lets THas': (un_narrow_has_middle THas WfT' StS).
+  destruct THas' as [THasnt | [D2 [THas' Sd]]].
+  - (* screwed *) admit.
+  - (* screwed as well, because GbT specialized with D2 will only give suptyp for the
+       imprecise bounds of D2, but we need precise Lo<:Hi *)
+
+
+
+
+  lets THas': (narrow_has_middle THas WfT' StS).
+  destruct THas' as [D1 [THas' Sd]].
+  apply invert_subdec_typ_sync_left in Sd. destruct Sd as [Lo' [Hi' [Eq [StLo StHi]]]].
+  subst.
+
+Qed.
+
+
+
+
 (* TODO doesn't hold, but it should be possible to prove some big alpha-renaming lemma
    to replace this if L is big enough. *)
 Axiom cofinite_vars_eq: forall (L: fset var) (x y: var), x \notin L -> y \notin L -> x = y.
