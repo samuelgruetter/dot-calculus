@@ -3622,6 +3622,20 @@ Proof.
     apply subst_binds_0. apply (binds_push_neq_inv Biz). auto.
 Qed.
 
+Lemma subst_narrow_binds_end_only: forall G1 x S z Z y,
+  binds z Z (G1 & x ~ S) ->
+  ok (G1 & x ~ S) ->
+  binds y (subst_typ x y S) G1 ->
+  binds (subst_fvar x y z) (subst_typ x y Z) (subst_ctx x y G1).
+Proof.
+  introv Biz Ok Biy. unfold subst_fvar. case_if.
+  - (* case x = z *)
+    lets Eq: (binds_push_eq_inv Biz). subst.
+    lets P: (subst_binds_0 x y Biy). rewrite subst_typ_idempotent in P. exact P.
+  - (* case x <> z *)
+    apply subst_binds_0. apply (binds_push_neq_inv Biz). auto.
+Qed.
+
 Lemma subst_intersect_dec: forall x y D1 D2 D3,
   D1 && D2 == D3 ->
   subst_dec x y D1 && subst_dec x y D2 == subst_dec x y D3.
@@ -3970,36 +3984,209 @@ Qed.
 
 Hint Resolve subst_has_end subst_hasnt_end subst_wf_typ_end subst_wf_dec_end.
 
-Lemma subst_ty_end_only: forall y S,
-   (forall G t T, ty_trm G t T -> forall G1 x,
+(*
+
+Lemma subst_narrow_ty_end: forall y S,
+   (forall G t T, ty_trm G t T -> forall G' G1 x,
     G = G1 & x ~ S ->
     ok (G1 & x ~ S) ->
-    binds y (subst_typ x y S) G1 ->
-    ty_trm (subst_ctx x y G1) (subst_trm x y t) (subst_typ x y T))
-/\ (forall G d D, ty_def G d D -> forall G1 x,
+    subenv G' G ->
+    ty_trm G' (trm_var (avar_f y)) (subst_typ x y S) ->
+    ty_trm G' (subst_trm x y t) (subst_typ x y T))
+/\ (forall G d D, ty_def G d D -> forall G' G1 x,
     G = G1 & x ~ S ->
     ok (G1 & x ~ S) ->
-    binds y (subst_typ x y S) G1 ->
+    subenv G' G ->
+    ty_trm G' (trm_var (avar_f y)) (subst_typ x y S) ->
     ty_def (subst_ctx x y G1) (subst_def x y d) (subst_dec x y D))
-/\ (forall G ds T, ty_defs G ds T -> forall G1 x,
+/\ (forall G ds T, ty_defs G ds T -> forall G' G1 x,
     G = G1 & x ~ S ->
     ok (G1 & x ~ S) ->
-    binds y (subst_typ x y S) G1 ->
+    subenv G' G ->
+    ty_trm G' (trm_var (avar_f y)) (subst_typ x y S) ->
+    ty_defs (subst_ctx x y G1) (subst_defs x y ds) (subst_typ x y T)).
+*)
+
+Lemma subst_narrow_binds_end: forall G G' x y S1 S2 z Z2,
+  ok (G & x ~ S2) ->
+  subenv G' G ->
+  binds y S1 G' ->
+  subtyp G' S1 (subst_typ x y S2) ->
+  binds z Z2 (G & x ~ S2) ->
+  exists Z1, binds (subst_fvar x y z) Z1 G' /\ subtyp G' Z1 (subst_typ x y Z2).
+Admitted.
+
+(* On type level, we only need subst_narrow for stable types: *)
+Lemma subst_narrow_has_hasnt_stable_end: forall y S2,
+   (forall G T D, typ_has G T D -> forall G' G1 x S1,
+    G = G1 & x ~ S2 ->
+    ok (G1 & x ~ S2) ->
+    stable_typ T ->
+    subenv G' G1 ->
+    binds y S1 G' ->
+    subtyp G' S1 (subst_typ x y S2) ->
+    typ_has G' (subst_typ x y T) (subst_dec x y D))
+/\ (forall G T l, typ_hasnt G T l -> forall G' G1 x S1,
+    G = G1 & x ~ S2 ->
+    ok (G1 & x ~ S2) ->
+    stable_typ T ->
+    subenv G' G1 ->
+    binds y S1 G' ->
+    subtyp G' S1 (subst_typ x y S2) ->
+    typ_hasnt G' (subst_typ x y T) l).
+Proof.
+  intros y S. apply typ_has_mutind.
+  + (* case typ_bot_has *)
+    intros. subst.
+    lets P: (typ_bot_has G' l). destruct l; simpl; eauto.
+  + (* case typ_rcd_has *)
+    intros. subst. apply typ_rcd_has.
+  + (* case typ_sel_has *)
+    intros. inversions H3.
+  + (* case typ_and_has_1 *)
+    intros. subst. simpl. inversions H3. apply typ_and_has_1.
+    - eauto.
+    - rewrite <- subst_label_of_dec. eauto.
+  + (* case typ_and_has_2 *) eauto.
+    intros. subst. simpl. inversions H3. apply typ_and_has_2.
+    - rewrite <- subst_label_of_dec. eauto.
+    - eauto.
+  + (* case typ_and_has_12 *)
+    intros. subst. inversions H3. eapply typ_and_has_12; eauto.
+    apply subst_intersect_dec. assumption.
+  + (* case typ_or_has *)
+    intros. subst. inversions H3. eapply typ_or_has; eauto.
+    apply subst_union_dec. assumption.
+  + (* case typ_top_hasnt *)
+    eauto.
+  + (* case typ_rcd_hasnt *)
+    intros. subst. apply typ_rcd_hasnt.
+    rewrite <- subst_label_of_dec. assumption.
+  + (* case typ_sel_hasnt *)
+    intros. inversions H3.
+  + (* case typ_and_hasnt *)
+    intros. inversions H3. subst. apply typ_and_hasnt; eauto.
+  + (* case typ_or_hasnt_1 *)
+    intros. subst. inversions H3. rewrite (subst_label_of_dec x y D) in *.
+    apply typ_or_hasnt_1; eauto.
+  + (* case typ_or_hasnt_2 *)
+    intros. subst. inversions H3. rewrite (subst_label_of_dec x y D) in *.
+    apply typ_or_hasnt_2; eauto.
+  + (* case typ_or_hasnt_12 *)
+    intros. subst. inversions H3. apply typ_or_hasnt_12; eauto.
+Qed.
+
+Print Assumptions subst_narrow_has_hasnt_stable_end.
+
+(*
+Lemma subst_narrow_has_stable_end: forall T D G' G1 x y S1 S2,
+  typ_has (G1 & x ~ S2) T D ->
+  ok (G1 & x ~ S2) ->
+  stable_typ T ->
+  subenv G' G1 ->
+  binds y S1 G' ->
+  subtyp G' S1 (subst_typ x y S2) ->
+  typ_has G' (subst_typ x y T) (subst_dec x y D).
+
+Lemma subst_narrow_hasnt_stable_end
+/\ (forall G T l, typ_hasnt G T l -> forall G' G1 x S1,
+    G = G1 & x ~ S2 ->
+    ok (G1 & x ~ S2) ->
+    stable_typ T ->
+    subenv G' G1 ->
+    binds y S1 G' ->
+    subtyp G' S1 (subst_typ x y S2) ->
+    typ_hasnt G' (subst_typ x y T) l).
+Proof.
+*)
+
+(* On term level, we also need subst_narrow for non-stable types.
+   Since we already proved it for stable types, we now have subst_narrow_wf available
+   (which depends on subst_narrow_has_stable). *)   
+Lemma subst_narrow_has_hasnt_end: forall y S2,
+   (forall G T D2, typ_has G T D2 -> forall G' G1 x S1,
+    G = G1 & x ~ S2 ->
+    ok (G1 & x ~ S2) ->
+    subenv G' G1 ->
+    binds y S1 G' ->
+    subtyp G' S1 (subst_typ x y S2) ->
+    exists D1, typ_has G' (subst_typ x y T) D1 /\ subdec G' D1 (subst_dec x y D2))
+/\ (forall G T l, typ_hasnt G T l -> forall G' G1 x S1,
+    G = G1 & x ~ S2 ->
+    ok (G1 & x ~ S2) ->
+    subenv G' G1 ->
+    binds y S1 G' ->
+    subtyp G' S1 (subst_typ x y S2) ->
+    typ_hasnt G' (subst_typ x y T) l).
+Proof.
+  intros y S. apply typ_has_mutind.
+  + (* case typ_bot_has *)
+    intros. subst. exists (dec_bot l).
+    lets P: (typ_bot_has G' l). destruct l; simpl; eauto.
+  + (* case typ_rcd_has *)
+    intros. subst. exists (subst_dec x y D). split.
+    - apply typ_rcd_has.
+    - admit. (* wf-ness!!! *)
+  + (* case typ_sel_has *)
+    introv Bix THas IH1 HiHas IH2. introv Eq Ok Se Biy StS. subst. eq_specialize.
+    specialize (IH1 _ _ _ S1 eq_refl Ok Se Biy StS).
+    specialize (IH2 _ _ _ S1 eq_refl Ok Se Biy StS).
+    simpl. rewrite if_hoist.
+    lets Bix': (subst_narrow_binds_end Ok Se Biy StS Bix).
+    destruct Bix' as [T' [Bix' St]].
+(*
+    lets P: (swap_sub_and_typ_has St IH1). destruct P as [D1 [T'Has Sd]].
+    simpl in Sd. apply invert_subdec_typ_sync_left in Sd.
+    destruct Sd as [Lo' [Hi' [? [StLo StHi]]]]. subst D1.
+    apply (typ_sel_has Bix' T'Has). IH2). eauto.
+*)
+Admitted.
+
+Lemma subst_narrow_ty_end: forall y S2,
+   (forall G t T, ty_trm G t T -> forall G' G1 x S1,
+    G = G1 & x ~ S2 ->
+    ok (G1 & x ~ S2) ->
+    subenv G' G1 ->
+    binds y S1 G' ->
+    subtyp G' S1 (subst_typ x y S2) ->
+    ty_trm G' (subst_trm x y t) (subst_typ x y T))
+/\ (forall G d D, ty_def G d D -> forall G' G1 x S1,
+    G = G1 & x ~ S2 ->
+    ok (G1 & x ~ S2) ->
+    subenv G' G1 ->
+    binds y S1 G' ->
+    subtyp G' S1 (subst_typ x y S2) ->
+    ty_def (subst_ctx x y G1) (subst_def x y d) (subst_dec x y D))
+/\ (forall G ds T, ty_defs G ds T -> forall G' G1 x S1,
+    G = G1 & x ~ S2 ->
+    ok (G1 & x ~ S2) ->
+    subenv G' G1 ->
+    binds y S1 G' ->
+    subtyp G' S1 (subst_typ x y S2) ->
     ty_defs (subst_ctx x y G1) (subst_defs x y ds) (subst_typ x y T)).
 Proof.
-  intros y S. apply ty_mutind.
+  intros y S2. apply ty_mutind.
   + (* case ty_var *)
-    introv Bix WfT Eq Ok Biy. subst.
-    lets Bix': (subst_binds_end_only Bix Ok Biy).
+    introv Bix WfT Eq Ok Se Biy StS. subst.
     simpl. rewrite if_hoist.
+    lets Bix': (subst_narrow_binds_end Ok Se Biy StS Bix).
+    destruct Bix' as [T' [Bix' St]].
+    refine (ty_sbsm _ St).
     apply (ty_var Bix'). eauto.
   + (* case ty_call *)
-    introv Tyt IH1 THas Tyu IH2 WfV Eq Ok Biy. subst.
-    lets THas': (subst_has_end THas Ok Biy).
-    apply ty_call with (subst_typ x y T) (subst_typ x y U); eauto.
+    introv Tyt IH1 THas Tyu IH2. introv WfV Eq Ok Se Biy StS.
+    lets P: ((proj1 (subst_narrow_has_hasnt_end y S2)) _ _ _ THas _ _ _ _ Eq Ok Se Biy StS).
+    destruct P as [D1 [THas' Sd]]. simpl in Sd. apply invert_subdec_mtd_sync_left in Sd.
+    destruct Sd as [U' [V' [? [StU StV]]]]. subst. simpl.
+    refine (ty_sbsm _ StV).
+    apply ty_call with (subst_typ x y T) U'; eauto.
   + (* case ty_new *)
-    introv Tyds IH1 Tyu IH2 WfU Eq Ok Biy.
-Admitted. (*
+    introv Tyds IH1 Tyu IH2 WfU. introv Eq Ok Se Biy StS. subst.
+    destruct (env_case G2) as [Eq1 | [x' [S2' Eq1]]].
+    - subst. rewrite concat_empty_r in Eq. subst.
+      (* IH is useless!! *)
+Abort.
+ (*
  subst.
     apply_fresh ty_new as x'; fold subst_defs subst_trm.
     - assert (x'L: x' \notin L) by auto. clear IH2.
@@ -4063,6 +4250,7 @@ Admitted. (*
     lets Hasnt: (subst_defs_hasnt x y d0).
     rewrite (subst_label_of_def x y d) in Hasnt.
     apply ty_defs_cons; fold subst_defs subst_def; eauto.
+*)
 Qed.
 
 Lemma subst_ty: forall y S,
