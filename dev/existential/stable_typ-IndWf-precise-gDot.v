@@ -4007,12 +4007,12 @@ Lemma subst_narrow_ty_end: forall y S,
     ty_defs (subst_ctx x y G1) (subst_defs x y ds) (subst_typ x y T)).
 *)
 
-Lemma subst_narrow_binds_end: forall G G' x y S1 S2 z Z2,
-  ok (G & x ~ S2) ->
-  subenv G' G ->
+Lemma subst_narrow_binds: forall G1 G2 G' x y S1 S2 z Z2,
+  ok (G1 & x ~ S2 & G2) ->
+  subenv G' (G1 & (subst_ctx x y G2)) ->
   binds y S1 G' ->
   subtyp G' S1 (subst_typ x y S2) ->
-  binds z Z2 (G & x ~ S2) ->
+  binds z Z2 (G1 & x ~ S2 & G2) ->
   exists Z1, binds (subst_fvar x y z) Z1 G' /\ subtyp G' Z1 (subst_typ x y Z2).
 Admitted.
 
@@ -4102,19 +4102,19 @@ Proof.
 
 (* On term level, we also need subst_narrow for non-stable types.
    Since we already proved it for stable types, we now have subst_narrow_wf available
-   (which depends on subst_narrow_has_stable). *)   
-Lemma subst_narrow_has_hasnt_end: forall y S2,
-   (forall G T D2, typ_has G T D2 -> forall G' G1 x S1,
-    G = G1 & x ~ S2 ->
-    ok (G1 & x ~ S2) ->
-    subenv G' G1 ->
+   (which depends on subst_narrow_has_stable). *)
+Lemma subst_narrow_has_hasnt: forall y S2,
+   (forall G T D2, typ_has G T D2 -> forall G' G1 G2 x S1,
+    G = G1 & x ~ S2 & G2 ->
+    ok (G1 & x ~ S2 & G2) ->
+    subenv G' (G1 & (subst_ctx x y G2)) ->
     binds y S1 G' ->
     subtyp G' S1 (subst_typ x y S2) ->
     exists D1, typ_has G' (subst_typ x y T) D1 /\ subdec G' D1 (subst_dec x y D2))
-/\ (forall G T l, typ_hasnt G T l -> forall G' G1 x S1,
-    G = G1 & x ~ S2 ->
-    ok (G1 & x ~ S2) ->
-    subenv G' G1 ->
+/\ (forall G T l, typ_hasnt G T l -> forall G' G1 G2 x S1,
+    G = G1 & x ~ S2 & G2 ->
+    ok (G1 & x ~ S2 & G2) ->
+    subenv G' (G1 & (subst_ctx x y G2)) ->
     binds y S1 G' ->
     subtyp G' S1 (subst_typ x y S2) ->
     typ_hasnt G' (subst_typ x y T) l).
@@ -4129,10 +4129,10 @@ Proof.
     - admit. (* wf-ness!!! *)
   + (* case typ_sel_has *)
     introv Bix THas IH1 HiHas IH2. introv Eq Ok Se Biy StS. subst. eq_specialize.
-    specialize (IH1 _ _ _ S1 eq_refl Ok Se Biy StS).
-    specialize (IH2 _ _ _ S1 eq_refl Ok Se Biy StS).
+    specialize (IH1 _ _ _ _ S1 eq_refl Ok Se Biy StS).
+    specialize (IH2 _ _ _ _ S1 eq_refl Ok Se Biy StS).
     simpl. rewrite if_hoist.
-    lets Bix': (subst_narrow_binds_end Ok Se Biy StS Bix).
+    lets Bix': (subst_narrow_binds Ok Se Biy StS Bix).
     destruct Bix' as [T' [Bix' St]].
 (*
     lets P: (swap_sub_and_typ_has St IH1). destruct P as [D1 [T'Has Sd]].
@@ -4142,117 +4142,7 @@ Proof.
 *)
 Admitted.
 
-Lemma subst_narrow_ty_end: forall y S2,
-   (forall G t T, ty_trm G t T -> forall G' G1 x S1,
-    G = G1 & x ~ S2 ->
-    ok (G1 & x ~ S2) ->
-    subenv G' G1 ->
-    binds y S1 G' ->
-    subtyp G' S1 (subst_typ x y S2) ->
-    ty_trm G' (subst_trm x y t) (subst_typ x y T))
-/\ (forall G d D, ty_def G d D -> forall G' G1 x S1,
-    G = G1 & x ~ S2 ->
-    ok (G1 & x ~ S2) ->
-    subenv G' G1 ->
-    binds y S1 G' ->
-    subtyp G' S1 (subst_typ x y S2) ->
-    ty_def (subst_ctx x y G1) (subst_def x y d) (subst_dec x y D))
-/\ (forall G ds T, ty_defs G ds T -> forall G' G1 x S1,
-    G = G1 & x ~ S2 ->
-    ok (G1 & x ~ S2) ->
-    subenv G' G1 ->
-    binds y S1 G' ->
-    subtyp G' S1 (subst_typ x y S2) ->
-    ty_defs (subst_ctx x y G1) (subst_defs x y ds) (subst_typ x y T)).
-Proof.
-  intros y S2. apply ty_mutind.
-  + (* case ty_var *)
-    introv Bix WfT Eq Ok Se Biy StS. subst.
-    simpl. rewrite if_hoist.
-    lets Bix': (subst_narrow_binds_end Ok Se Biy StS Bix).
-    destruct Bix' as [T' [Bix' St]].
-    refine (ty_sbsm _ St).
-    apply (ty_var Bix'). eauto.
-  + (* case ty_call *)
-    introv Tyt IH1 THas Tyu IH2. introv WfV Eq Ok Se Biy StS.
-    lets P: ((proj1 (subst_narrow_has_hasnt_end y S2)) _ _ _ THas _ _ _ _ Eq Ok Se Biy StS).
-    destruct P as [D1 [THas' Sd]]. simpl in Sd. apply invert_subdec_mtd_sync_left in Sd.
-    destruct Sd as [U' [V' [? [StU StV]]]]. subst. simpl.
-    refine (ty_sbsm _ StV).
-    apply ty_call with (subst_typ x y T) U'; eauto.
-  + (* case ty_new *)
-    introv Tyds IH1 Tyu IH2 WfU. introv Eq Ok Se Biy StS. subst.
-    destruct (env_case G2) as [Eq1 | [x' [S2' Eq1]]].
-    - subst. rewrite concat_empty_r in Eq. subst.
-      (* IH is useless!! *)
-Abort.
- (*
- subst.
-    apply_fresh ty_new as x'; fold subst_defs subst_trm.
-    - assert (x'L: x' \notin L) by auto. clear IH2.
-      specialize (IH1 _ x'L G1 (G2 & x' ~ open_typ x' T) x).
-      repeat rewrite concat_assoc in IH1.
-      assert (Ok': ok (G1 & x ~ S & G2 & x' ~ open_typ x' T)) by auto.
-      specialize (IH1 eq_refl Ok').
-      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var* ).
-      unfold subst_ctx in IH1. rewrite map_push in IH1.
-      lets P: (@subst_open_commute_typ x y x' T). rewrite Eqz in P.
-      rewrite P in IH1. clear P.
-      lets P: (@subst_open_commute_defs x y x' ds). rewrite Eqz in P.
-      rewrite P in IH1. clear P.
-      apply IH1. apply (binds_push_neq _ Biy). auto.
-    - assert (x'L: x' \notin L) by auto. clear IH1.
-      specialize (IH2 _ x'L G1 (G2 & x' ~ open_typ x' T) x).
-      repeat rewrite concat_assoc in IH2.
-      assert (Ok': ok (G1 & x ~ S & G2 & x' ~ open_typ x' T)) by auto.
-      specialize (IH2 eq_refl Ok').
-      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var* ).
-      unfold subst_ctx in IH2. rewrite map_push in IH2.
-      lets P: (@subst_open_commute_typ x y x' T). rewrite Eqz in P.
-      rewrite P in IH2. clear P.
-      lets P: (@subst_open_commute_trm x y x' u). rewrite Eqz in P.
-      rewrite P in IH2. clear P.
-      apply IH2. apply (binds_push_neq _ Biy). auto.
-    - apply (subst_wf_typ WfU Ok Biy).
-  + (* case ty_hyp *)
-    introv WfT Ty IH Eq Ok Biy. subst.
-    apply ty_hyp; eauto.
-    introv Gb.
-    refine (IH _ _ _ _ eq_refl Ok Biy).
-    apply (undo_subst_good_bounds Ok Biy Gb).
-  + (* case ty_sbsm *)
-    introv Ty IH St Eq Ok Biy. subst.
-    lets St': (subst_subtyp St Ok Biy). apply ty_sbsm with (subst_typ x y T1); eauto.
-  + (* case ty_tdef *)
-    introv St Eq Ok Biy. subst.
-    lets St': (subst_subtyp St Ok Biy).
-    apply ty_tdef; eauto.
-  + (* case ty_mdef *)
-    introv WfT WfU2 Tyu IH Eq Ok Biy. subst.
-    apply_fresh ty_mdef as x'.
-    - eauto.
-    - eauto.
-    - fold subst_trm.
-      assert (x'L: x' \notin L) by auto.
-      specialize (IH x' x'L G1 (G2 & x' ~ T) x).
-      repeat rewrite concat_assoc in IH.
-      assert (Ok': ok (G1 & x ~ S & G2 & x' ~ T)) by auto.
-      specialize (IH eq_refl Ok').
-      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var* ).
-      unfold subst_ctx in IH. rewrite map_push in IH.
-      lets P: (@subst_open_commute_trm x y x' u). rewrite Eqz in P.
-      rewrite P in IH. clear P.
-      apply IH. apply (binds_push_neq _ Biy). auto.
-  + (* case ty_defs_nil *)
-    eauto.
-  + (* case ty_defs_cons *)
-    intros. subst.
-    lets Hasnt: (subst_defs_hasnt x y d0).
-    rewrite (subst_label_of_def x y d) in Hasnt.
-    apply ty_defs_cons; fold subst_defs subst_def; eauto.
-*)
-Qed.
-
+(*
 Lemma subst_ty: forall y S,
    (forall G t T, ty_trm G t T -> forall G1 G2 x,
     G = G1 & x ~ S & G2  ->
@@ -5728,6 +5618,202 @@ Qed.
 
 Print Assumptions narrow_ty.
 
+
+(* ###################################################################### *)
+(** ** Substitution and narrowing in one *)
+
+Lemma subst_ctx_concat: forall x y G1 G2,
+   subst_ctx x y (G1 & G2) = (subst_ctx x y G1) & (subst_ctx x y G2).
+Proof.
+  intros. unfold subst_ctx. apply map_concat.
+Qed.
+
+(* y \in (dom G1) is needed because ty_new/ty_mtd have their hypotheses in smaller envs,
+   so if    G = Ga & Gb                   (splitting of ty_new)
+   and also G = G1 & x ~ S2 & G2          (splitting of the lemma we're proving)
+   and Gb is a strict suffix of G2, we must ensure that the binding for y is not in Gb,
+   because that's not available in the hypotheses of ty_new.
+   But since we don't know the splitting of G into Ga & Gb, we choose a stronger
+   condition, namely y \in (dom G1), or, in other words, you can only substitute by
+   something which was defined earlier. *)
+Lemma subst_narrow_ty: forall y S2,
+   (forall G t T, ty_trm G t T -> forall G' G1 x S1 G2,
+    G = G1 & x ~ S2 & G2->
+    ok (G1 & x ~ S2 & G2) ->
+    subenv G' (G1 & (subst_ctx x y G2)) ->
+    binds y S1 G' ->
+    y \in (dom G1) ->
+    subtyp G' S1 (subst_typ x y S2) ->
+    ty_trm G' (subst_trm x y t) (subst_typ x y T))
+/\ (forall G d D, ty_def G d D -> forall G' G1 x S1 G2,
+    G = G1 & x ~ S2 & G2->
+    ok (G1 & x ~ S2 & G2) ->
+    subenv G' (G1 & (subst_ctx x y G2)) ->
+    binds y S1 G' ->
+    y \in (dom G1) ->
+    subtyp G' S1 (subst_typ x y S2) ->
+    ty_def (subst_ctx x y G1) (subst_def x y d) (subst_dec x y D))
+/\ (forall G ds T, ty_defs G ds T -> forall G' G1 x S1 G2,
+    G = G1 & x ~ S2 & G2->
+    ok (G1 & x ~ S2 & G2) ->
+    subenv G' (G1 & (subst_ctx x y G2)) ->
+    binds y S1 G' ->
+    y \in (dom G1) ->
+    subtyp G' S1 (subst_typ x y S2) ->
+    ty_defs (subst_ctx x y G1) (subst_defs x y ds) (subst_typ x y T)).
+Proof.
+  intros y S2. apply ty_mutind.
+  + (* case ty_var *)
+    introv Bix WfT Eq Ok Se Biy yG1 StS. subst.
+    simpl. rewrite if_hoist.
+    lets Bix': (subst_narrow_binds Ok Se Biy StS Bix).
+    destruct Bix' as [T' [Bix' St]].
+    refine (ty_sbsm _ St).
+    apply (ty_var Bix'). eauto.
+  + (* case ty_call *)
+    introv Tyt IH1 THas Tyu IH2. introv WfV Eq Ok Se Biy yG1 StS.
+    lets P: ((proj1 (subst_narrow_has_hasnt y S2)) _ _ _ THas _ _ _ _ _ Eq Ok Se Biy StS).
+    destruct P as [D1 [THas' Sd]]. simpl in Sd. apply invert_subdec_mtd_sync_left in Sd.
+    destruct Sd as [U' [V' [? [StU StV]]]]. subst. simpl.
+    refine (ty_sbsm _ StV).
+    apply ty_call with (subst_typ x y T) U'; eauto.
+  + (* case ty_new *)
+    introv Tyds IH1 Tyu IH2 WfU. introv Eq Ok Se Biy yG0 StS. subst.
+    assert (Eq': (exists G0b, G0 = G1 & G0b) \/ (exists G3a, G3 = G3a & G2)) by admit.
+    destruct Eq' as [[G0b Eq'] | [G3a Eq']].
+    - subst. assert (Eq'': G2 = G0b & x ~ S2 & G3) by admit. clear Eq. subst G2.
+      rewrite <- concat_assoc in Se.
+      destruct (subenv_concat_inv Se) as [Ga' [Gb' [? Se']]]. subst.
+      (* no need to do the subst because it happend to far to the right in env, so
+         we just invent a dummy binding to subst away.
+         But where to insert it?? --> So better use narrow_ty *)
+      clear IH1 IH2.
+      assert (Frx: x \notin (fv_typ U)) by admit. (* because x is too far to the right *)
+      rewrite ((proj1 (subst_fresh_typ_dec x y)) U Frx). clear Frx.
+      assert (Frx: x \notin (fv_trm (trm_new ds u))) by admit. (* because x is
+           too far to the right *)
+      rewrite ((proj31 (subst_fresh_trm_def_defs x y)) (trm_new ds u) Frx). clear Frx.
+      apply_fresh ty_new as z; try pick_fresh z;
+      assert (zL: z \notin L) by auto.
+      * specialize (Tyds z zL).
+        apply ((proj33 narrow_ty) _ _ _ Tyds _ (okadmit _) (subenv_push _ _ Se')).
+      * specialize (Tyu z zL).
+        apply ((proj31 narrow_ty) _ _ _ Tyu _ (okadmit _) (subenv_push _ _ Se')).
+      * admit. (* narrow WfU with Se'. *)
+    - subst. rewrite concat_assoc in Eq.
+      assert (Eq'': G1 = G0 & x ~ S2 & G3a) by admit. subst G1. clear Eq Tyu.
+      pick_fresh z; assert (zL: z \notin L) by auto.
+      specialize (Tyds z zL).
+      rewrite subst_ctx_concat, concat_assoc in *.
+      destruct (subenv_concat_inv Se) as [Ga' [Gb' [? Se']]]. subst.
+      specialize (IH1 z zL (Ga' & z ~ subst_typ x y (open_typ z T))
+                           G0 x S1 (G3a & z ~ open_typ z T)).
+      specialize (IH2 z zL (Ga' & z ~ subst_typ x y (open_typ z T))
+                           G0 x S1 (G3a & z ~ open_typ z T)).
+      repeat (rewrite subst_ctx_concat in * || rewrite concat_assoc in *).
+      assert (Eq: subst_ctx x y (z ~ open_typ z T) = (z ~ subst_typ x y (open_typ z T))). {
+        unfold subst_ctx. apply map_single.
+      }
+      rewrite Eq in *.
+      specialize (IH1 eq_refl (okadmit _) (subenv_push _ _ Se')).
+      specialize (IH2 eq_refl (okadmit _) (subenv_push _ _ Se')).
+      
+Lemma indom_concat_r: forall (T: Type) x (G1 G2: env T),
+  x \in (dom G1) ->
+  x \in (dom (G1 & G2)).
+Admitted.
+
+Lemma subenv_preserves_indom: forall x G1 G2,
+  subenv G1 G2 ->
+  x \in (dom G2) ->
+  x \in (dom G1).
+Admitted.
+
+Lemma shrink_binds: forall (A: Type) (G1 G2: env A) x T,
+  binds x T (G1 & G2) ->
+  ok (G1 & G2) ->
+  x \in (dom G1) ->
+  binds x T G1.
+Admitted.
+
+      assert (Biy': binds y S1 (Ga' & z ~ subst_typ x y (open_typ z T))). {
+        apply (binds_push_neq); [idtac | auto].
+        apply (shrink_binds Biy (okadmit _)).
+        apply (subenv_preserves_indom Se').
+        apply (indom_concat_r _ yG0).
+      }
+      (* specialize (IH1 Biy' yG0 StS).  need to shrink StS, or say in lemma that StS
+       is only on smaller env --> big env alignment party... 
+
+     btw do we need the whole subenv stuff here, or can we just have one StS here?
+*)
+
+ (*
+ subst.
+    apply_fresh ty_new as x'; fold subst_defs subst_trm.
+    - assert (x'L: x' \notin L) by auto. clear IH2.
+      specialize (IH1 _ x'L G1 (G2 & x' ~ open_typ x' T) x).
+      repeat rewrite concat_assoc in IH1.
+      assert (Ok': ok (G1 & x ~ S & G2 & x' ~ open_typ x' T)) by auto.
+      specialize (IH1 eq_refl Ok').
+      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var* ).
+      unfold subst_ctx in IH1. rewrite map_push in IH1.
+      lets P: (@subst_open_commute_typ x y x' T). rewrite Eqz in P.
+      rewrite P in IH1. clear P.
+      lets P: (@subst_open_commute_defs x y x' ds). rewrite Eqz in P.
+      rewrite P in IH1. clear P.
+      apply IH1. apply (binds_push_neq _ Biy). auto.
+    - assert (x'L: x' \notin L) by auto. clear IH1.
+      specialize (IH2 _ x'L G1 (G2 & x' ~ open_typ x' T) x).
+      repeat rewrite concat_assoc in IH2.
+      assert (Ok': ok (G1 & x ~ S & G2 & x' ~ open_typ x' T)) by auto.
+      specialize (IH2 eq_refl Ok').
+      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var* ).
+      unfold subst_ctx in IH2. rewrite map_push in IH2.
+      lets P: (@subst_open_commute_typ x y x' T). rewrite Eqz in P.
+      rewrite P in IH2. clear P.
+      lets P: (@subst_open_commute_trm x y x' u). rewrite Eqz in P.
+      rewrite P in IH2. clear P.
+      apply IH2. apply (binds_push_neq _ Biy). auto.
+    - apply (subst_wf_typ WfU Ok Biy).
+  + (* case ty_hyp *)
+    introv WfT Ty IH Eq Ok Biy. subst.
+    apply ty_hyp; eauto.
+    introv Gb.
+    refine (IH _ _ _ _ eq_refl Ok Biy).
+    apply (undo_subst_good_bounds Ok Biy Gb).
+  + (* case ty_sbsm *)
+    introv Ty IH St Eq Ok Biy. subst.
+    lets St': (subst_subtyp St Ok Biy). apply ty_sbsm with (subst_typ x y T1); eauto.
+  + (* case ty_tdef *)
+    introv St Eq Ok Biy. subst.
+    lets St': (subst_subtyp St Ok Biy).
+    apply ty_tdef; eauto.
+  + (* case ty_mdef *)
+    introv WfT WfU2 Tyu IH Eq Ok Biy. subst.
+    apply_fresh ty_mdef as x'.
+    - eauto.
+    - eauto.
+    - fold subst_trm.
+      assert (x'L: x' \notin L) by auto.
+      specialize (IH x' x'L G1 (G2 & x' ~ T) x).
+      repeat rewrite concat_assoc in IH.
+      assert (Ok': ok (G1 & x ~ S & G2 & x' ~ T)) by auto.
+      specialize (IH eq_refl Ok').
+      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var* ).
+      unfold subst_ctx in IH. rewrite map_push in IH.
+      lets P: (@subst_open_commute_trm x y x' u). rewrite Eqz in P.
+      rewrite P in IH. clear P.
+      apply IH. apply (binds_push_neq _ Biy). auto.
+  + (* case ty_defs_nil *)
+    eauto.
+  + (* case ty_defs_cons *)
+    intros. subst.
+    lets Hasnt: (subst_defs_hasnt x y d0).
+    rewrite (subst_label_of_def x y d) in Hasnt.
+    apply ty_defs_cons; fold subst_defs subst_def; eauto.
+*)
+Abort.
 
 (* ###################################################################### *)
 (** ** Helper *)
