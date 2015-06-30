@@ -534,14 +534,13 @@ Inductive ty_trm: ctx -> trm -> typ -> Prop :=
       ty_trm G u U -> (* <-- allows subsumption *)
       wf_typ G V ->
       ty_trm G (trm_call t m u) V
-  | ty_new: forall L G1 G2 ds T u U,
+  | ty_new: forall L G ds T u U,
       (forall x, x \notin L ->
-         ty_defs (G1 & x ~ (open_typ x T) (*& G2*)) (open_defs x ds) (open_typ x T)) ->
-   (* not & G2 because otherwise we'll have to strengthen good_bounds_typ *)
+         ty_defs (G & x ~ (open_typ x T)) (open_defs x ds) (open_typ x T)) ->
       (forall x, x \notin L ->
-         ty_trm (G1 & x ~ (open_typ x T) (*& G2*)) (open_trm x u) U) ->
-      wf_typ G1 U -> (* <-- even stronger than x \notin fv_typ U *)
-      ty_trm (G1 & G2) (trm_new ds u) U
+         ty_trm (G & x ~ (open_typ x T)) (open_trm x u) U) ->
+      wf_typ G U -> (* <-- even stronger than x \notin fv_typ U *)
+      ty_trm G (trm_new ds u) U
   (* If you want to suppose good bounds, you must prove the typing derivation not just
      for G, but for all subenvs of G, because otherwise narrowing needs un-narrowing *)
   | ty_hyp: forall G t T,
@@ -563,14 +562,14 @@ with ty_def: ctx -> def -> dec -> Prop :=
   | ty_tdef: forall G L T U,
       subtyp G T U -> (* <-- only allow realizable bounds *)
       ty_def G (def_typ L T U) (dec_typ L T U)
-  | ty_mdef: forall L m G1 G2 T U u,
+  | ty_mdef: forall L m G T U u,
       (* These wf checks ensure that x does not appear in T and U.
          But note that it is allowed to occur in the precise type of u. *)
-      wf_typ G1 T ->
-      wf_typ G1 U ->
+      wf_typ G T ->
+      wf_typ G U ->
       (forall x, x \notin L ->
-         ty_trm (G1 & x ~ T (*& G2*)) (open_trm x u) U) -> (* <-- allows subsumption *)
-      ty_def (G1 & G2) (def_mtd m T U u) (dec_mtd m T U)
+         ty_trm (G & x ~ T) (open_trm x u) U) -> (* <-- allows subsumption *)
+      ty_def G (def_mtd m T U u) (dec_mtd m T U)
 (*
   | ty_def_hyp: forall G d D,
       wf_dec G D ->
@@ -776,7 +775,6 @@ Proof.
     intro. inversions H. apply head_ne_tail. assumption.
   }
   unfold ex1.
-  rewrite <- (concat_empty_r empty).
   apply ty_new with \{} (typ_and (typ_and typ_top
     (typ_rcd (dec_typ E typ_top typ_top)))
     (typ_rcd (dec_typ Stream typ_bot (typ_and
@@ -791,7 +789,6 @@ Proof.
     { auto. }
     { apply ty_tdef. apply subtyp_bot.
       rewrite concat_empty_l in *.
-      (*rewrite concat_empty_r in *.*)
       rewrite EqTStream at 2.
       apply wf_and.
       { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
@@ -960,7 +957,7 @@ Proof.
   }
   { intros glob _. do_open. apply ty_new with \{ glob } typ_top.
     { intros unit N. split_ty_defs. }
-    { intros unit N. do_open. (*rewrite concat_empty_l, concat_empty_r.*) apply ty_var.
+    { intros unit N. do_open. apply ty_var.
       { prove_binds. }
       { apply wf_top. }
     }
@@ -1624,14 +1621,6 @@ Proof.
     end;
     eauto
   ].
-  (* case ty_new *)
-  introv Tyds IH1 Tyu IH2 Wf.
-  refine (weaken_wf_typ_end _ (okadmit _)).
-  assumption.
-  (* case ty_mtd *)
-  introv WfT WfU Tyu IH.
-  refine (weaken_wf_dec_end _ (okadmit _)).
-  auto.
   (* case ty_defs_cons *)
   introv Tyds WfT TyD WfD Hasnt.
   apply (wf_and WfT). apply wf_rcd. apply add_hyps_to_wf_dec; assumption.
