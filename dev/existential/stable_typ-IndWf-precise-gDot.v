@@ -2561,6 +2561,7 @@ Axiom subenv_concat_inv: forall F G1 G2,
   subenv F (G1 & G2) ->
   exists F1 F2, F = F1 & F2 /\ subenv F1 G1.
 
+(*
 Lemma weaken_ty_end_only:
    (forall G t T, ty_trm G t T -> forall G',
     ok (G & G') ->
@@ -2674,7 +2675,6 @@ Proof.
   introv Gb Ok Ty. destruct weaken_ty as [_ [P _]].
   specialize (P G1 _ _ Ty G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
 Qed.
-*)
 
 Lemma weaken_ty_defs_middle: forall G1 G2 G3 ds T,
   good_bounds (G1 & G3) ->
@@ -2729,6 +2729,9 @@ Proof.
   specialize (P G1 _ _ Ty G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
 Qed.
 *)
+*)
+*)
+
 
 (* ###################################################################### *)
 (** ** Well-formed context *)
@@ -2784,37 +2787,6 @@ Proof.
       exists s1 (s2 & x ~ ds). rewrite concat_assoc. auto.
 Qed.
 
-Lemma ctx_binds_to_sto_binds: forall s G x T,
-  wf_sto s G ->
-  binds x T G ->
-  exists ds, binds x ds s /\ ty_defs G ds T.
-Proof.
-  introv Wf Bi.
-  lets P: (ctx_binds_to_sto_binds_raw Wf Bi).
-  destruct P as [G1 [G2 [ds [Eq [Bis Tyds]]]]]. subst.
-  exists ds. apply (conj Bis). refine (weaken_ty_defs_end Tyds _).
-  (*
-  - apply invert_wf_sto_concat in Wf. destruct Wf as [s1 [s2 [Eq Wf]]]. subst.
-    apply (wf_sto_to_good_bounds Wf).
-  *)
-  - apply (wf_sto_to_ok_G Wf).
-Qed.
-
-Lemma sto_binds_to_ctx_binds: forall s G x ds,
-  wf_sto s G ->
-  binds x ds s ->
-  exists T, binds x T G /\ ty_defs G ds T.
-Proof.
-  introv Wf Bi. gen x Bi. induction Wf; intros.
-  + false* binds_empty_inv.
-  + unfolds binds. rewrite get_push in *. case_if.
-    - inversions Bi. exists T. auto.
-    - specialize (IHWf _ Bi). destruct IHWf as [U [Bi' Tyds]].
-      exists U. apply (conj Bi'). refine (weaken_ty_defs_end Tyds _).
-      (* apply (wf_sto_to_good_bounds Wf). *)
-      * apply wf_sto_to_ok_G in Wf. auto.
-Qed.
-
 Lemma sto_unbound_to_ctx_unbound: forall s G x,
   wf_sto s G ->
   x # s ->
@@ -2839,19 +2811,6 @@ Proof.
   + destruct (classicT (x0 = x)) as [Eq | Ne].
     - subst. false (fresh_push_eq_inv Ub). 
     - auto.
-Qed.
-
-Lemma typ_has_to_defs_has: forall G T D x ds s,
-  wf_sto s G ->
-  typ_has G T D ->
-  binds x ds s ->
-  binds x T G ->
-  exists d, defs_has ds d /\ ty_def G d D.
-Proof.
-  introv Wf THas Bis BiG.
-  lets P: (sto_binds_to_ctx_binds Wf Bis). destruct P as [T' [Bi' Tyds]].
-  apply (binds_func BiG) in Bi'. subst T'.
-  apply (invert_ty_defs Tyds THas).
 Qed.
 
 
@@ -4069,6 +4028,7 @@ Proof.
   - 
 *)
 
+(*
 Lemma narrow_ty:
    (forall G t T, ty_trm G t T -> forall G',
     ok G' ->
@@ -4171,6 +4131,7 @@ Proof.
 Qed.
 
 Print Assumptions narrow_ty_end.
+*)
 
 
 (* ###################################################################### *)
@@ -4466,7 +4427,7 @@ Qed.
 
 
 (* ###################################################################### *)
-(** ** Helper *)
+(** ** Helpers *)
 
 Lemma invert_ty_var: forall G x T,
   good_bounds G ->
@@ -4478,6 +4439,50 @@ Proof.
   - apply* H1. apply subenv_refl.
   - specialize (IHTy Gb eq_refl). destruct IHTy as [T0 [Bi St]].
     exists T0. apply (conj Bi). apply (subtyp_trans St H).
+Qed.
+
+Lemma ctx_binds_to_sto_binds: forall s G x T,
+  wf_sto s G ->
+  binds x T G ->
+  exists ds, binds x ds s /\ ty_defs G ds T.
+Proof.
+  introv Wf Bi.
+  lets P: (ctx_binds_to_sto_binds_raw Wf Bi).
+  destruct P as [G1 [G2 [ds [Eq [Bis Tyds]]]]]. subst.
+  exists ds. apply (conj Bis). refine (weaken_ty_defs_end Tyds _).
+  (*
+  - apply invert_wf_sto_concat in Wf. destruct Wf as [s1 [s2 [Eq Wf]]]. subst.
+    apply (wf_sto_to_good_bounds Wf).
+  *)
+  - apply (wf_sto_to_ok_G Wf).
+Qed.
+
+Lemma sto_binds_to_ctx_binds: forall s G x ds,
+  wf_sto s G ->
+  binds x ds s ->
+  exists T, binds x T G /\ ty_defs G ds T.
+Proof.
+  introv Wf Bi. gen x Bi. induction Wf; intros.
+  + false* binds_empty_inv.
+  + unfolds binds. rewrite get_push in *. case_if.
+    - inversions Bi. exists T. auto.
+    - specialize (IHWf _ Bi). destruct IHWf as [U [Bi' Tyds]].
+      exists U. apply (conj Bi'). refine (weaken_ty_defs_end Tyds _).
+      (* apply (wf_sto_to_good_bounds Wf). *)
+      * apply wf_sto_to_ok_G in Wf. auto.
+Qed.
+
+Lemma typ_has_to_defs_has: forall G T D x ds s,
+  wf_sto s G ->
+  typ_has G T D ->
+  binds x ds s ->
+  binds x T G ->
+  exists d, defs_has ds d /\ ty_def G d D.
+Proof.
+  introv Wf THas Bis BiG.
+  lets P: (sto_binds_to_ctx_binds Wf Bis). destruct P as [T' [Bi' Tyds]].
+  apply (binds_func BiG) in Bi'. subst T'.
+  apply (invert_ty_defs Tyds THas).
 Qed.
 
 
