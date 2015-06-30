@@ -5350,6 +5350,20 @@ Proof.
     intros. subst. apply* ty_defs_cons.
 Qed.
 
+Lemma narrow_ty_end: forall G x S1 S2 t T,
+  ty_trm (G & x ~ S2) t T ->
+  ok (G & x ~ S1) ->
+  stable_typ S1 ->
+  subtyp (G & x ~ S1) S1 S2 ->
+  ty_trm (G & x ~ S1) t T.
+Proof.
+  introv Ty Ok Sb St. destruct narrow_ty as [P _].
+  refine (P _ _ _ Ty (G & x ~ S1) Ok _).
+  apply (subenv_sub (subenv_refl G) Sb St).
+Qed.
+
+Print Assumptions narrow_ty.
+
 (* The good_bounds hyp is for the less precise S2, because if we want to get it for
    the more precise S1, we can just use the hyp rules.
 Lemma narrow_ty_OLD:
@@ -5561,7 +5575,6 @@ Proof.
   + (* case ty_defs_cons *)
     intros. subst. apply* ty_defs_cons.
 Qed.
-*)
 
 Lemma narrow_ty_end: forall G x S1 S2 t T,
   ty_trm (G & x ~ S2) t T ->
@@ -5577,7 +5590,7 @@ Proof.
 Qed.
 
 Print Assumptions narrow_ty.
-
+*)
 
 (* ###################################################################### *)
 (** ** Some stuff *)
@@ -6168,6 +6181,7 @@ Proof.
   simpl. rewrite union_comm. reflexivity.
 Qed.
 
+(*
 (* replaces super-fresh x by a not-so-fresh y *)
 Lemma ty_open_defs_change_var: forall y G S ds T,
   ok G ->
@@ -6186,14 +6200,11 @@ Proof.
     lets Ty': (weaken_ty_defs_middle Gb Okyx Ty).
     rewrite* (@subst_intro_defs x y ds).
     lets P: (@defs_subst_principle _ _ y _ _ _ Ty' Okyx).
-    assert (FrS: x \notin (fv_typ S)) by auto.
-    rewrite <- (@subst_intro_typ x y S FrS) in P.
     assert (FrT: x \notin (fv_typ T)) by auto.
     rewrite <- (@subst_intro_typ x y T FrT) in P.
     assert (Fr': (x \notin (fv_ctx_types (G & y ~ open_typ y S)))). {
       rewrite fv_ctx_types_push. rewrite notin_union. auto.
     }
-    rewrite (@subst_fresh_ctx x y _ Fr') in P.
     apply P. apply binds_push_eq.
 Qed.
 
@@ -6225,6 +6236,7 @@ Proof.
     rewrite (@subst_fresh_ctx x y _ Fr') in P.
     apply P. apply binds_push_eq.
 Qed.
+*)
 
 Lemma defs_have_stable_typ: forall G ds T,
   ty_defs G ds T -> stable_typ T.
@@ -6299,27 +6311,28 @@ Proof.
       refine (defs_has_unique _ dsHas' dsHas). reflexivity.
     }
     inversions Eq. clear dsHas'.
+    rename U2''' into U1.
     pick_fresh y'.
     assert (y'L: y' \notin L) by auto.
     specialize (Tybody y' y'L).
     lets Ok: (wf_sto_to_ok_G Wf).
     (* Before we can apply the substitution principle, we must narrow 
        y' ~ U2 to y' ~ U1 in Tybody.
-       But narrowing requires good_bounds: *)
+       But narrowing requires good_bounds:
     assert (Gb': good_bounds (G1 & y' ~ U2)). {
-      (*
       lets GbU1: ((good_bounds_to_old Gb) _ _ BiGy).
       lets GbU2: (supertyp_has_good_bounds StU GbU1).
       assert (Oky': ok (G1 & G2 & y' ~ U2)) by auto.
-      apply (good_bounds_push Gb).*)
+      apply (good_bounds_push Gb).
       admit. (*!!*)
-    }
-    rename U2''' into U1.
+    }*)
     assert (Oky': ok (G1 & G2 & y' ~ U1)) by auto.
     destruct (ctx_binds_to_sto_binds Wf BiGy) as [dsy [Bisy Tydsy]].
     lets SbU1: (defs_have_stable_typ Tydsy).
-    lets Tybody': (narrow_ty_end Tybody _ SbU1 Gb' (subtyp_trans StU StU')).
+    lets Tybody': (narrow_ty_end Tybody _ SbU1 (subtyp_trans StU StU')).
                   (*****************)
+    (* need to weaken_ty_trm_middle !*)
+
     lets P: (@trm_subst_principle_imp G y' y _ U1 V2 Tybody' Oky').
              (*******************)
     assert (y'U1: y' \notin (fv_typ U1)) by auto.
