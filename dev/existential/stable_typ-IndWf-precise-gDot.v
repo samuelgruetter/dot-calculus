@@ -511,41 +511,6 @@ Inductive good_bounds: ctx -> Prop :=
       good_bounds_typ (G & x ~ T) T ->
       good_bounds (G & x ~ T).
 
-(** 
-Can we avoid shrink_good_bounds?
-Or defer it until we have a wf_sto and only shrink to a prefix?
-
-ty_hyp hyp can pick any subenv --> weakening should work
- --> but inversion lemmas need to shrink good env before giving it to hyp of ty_hyp 
-but since ty_hyp has a subenv hyp, we and
-  subenv G1 G2 /\ good_bounds G2 -> good_bounds G1
-we're fine there.
-But if we have this, we can also leave things as is and just apply this implication in
-weakening.
-
-Because really, this one:
-  subenv G1 G2 /\ good_bounds G2 -> good_bounds G1
-is the hard part --> approx the same as shrink_good_bounds:
-
-  ok (G1 & G2 & G3) ->
-  (forall x X, binds x X (G1 & G3) -> wf_typ (G1 & G3) X) ->
-  good_bounds (G1 & G2 & G3) ->
-  good_bounds (G1 &      G3).
-
-Q: What kinds of env shrinking are allowed?
-Only at the end --> can shrink wf_sto in inversion lemmas
-
-Instead of encoding the dependency structure in the subenv judgment (or good_bounds),
-already encode it in the env itself
-==--> unique destruction of the env into smaller, consistent sub-envs
-==   (which is a desirable property)
-
------
-
-closed_env which can insert in the middle, and good_bounds, and subenv following
- the same structure?
-
-*)
 
 (* ###################################################################### *)
 (** ** Closed *)
@@ -589,56 +554,6 @@ Inductive closed_env: ctx -> Prop :=
       closed_typ (G1 & x ~ T) T ->
       closed_env (G1 & x ~ T & G2).
 
-(*
-Goal: all valid weakening steps (defined by a subenv relation)
-must be such that going from good_bounds on the bigger env
-to good_bounds on the smaller env is easy.
-
-------
-
-weakening axiom (rule)?
-
---> inversion lemmas will "push-back" weakening axiom (for ty_trm/def/defs judgments they
-return) or apply the weakening lemmas before returning (for has/subtyp judgments).
-BUT in order to apply their IH, they'll have to shrink the good_bounds hyp!
-
--------
-
-weakening / ty_mdef will suppose good bounds for 
- G1 & G2 & G3 & x ~ T
-(because of T which might have bad bounds now)
-
-but IH wants good bounds on (if good_bounds is a hyp of weakening)
-G1 & G3 & x ~ T
-
--------
-
-
-Prove permutation lemmas (should be easy),
-then only prove weakening for appending at the end,
-and ty_hyp supposes good_bounds on a closed prefix of env.
-Weakening on ty_hyp will still be easy, because if
-G1 is a closed prefix of G2, it's also a closed prefix of (G2 & G3).
-In the inversion lemmas, we'll have to provide a good_bounds hyp to ty_hyp, but
-we can get that for all prefixes of G because wf_sto is defined "step-by-step".
-
-BUT how will the permutation lemma deal with ty_hyp? "being prefix" is not preserved
-by permutation!
-
------
-
-Next try:
-
-Prove permutation lemmas (should be easy),
-then only prove weakening for appending at the end,
-and ty_hyp supposes good_bounds on a the same of env as in its conclusion.
-Weakening on ty_hyp will need to shrink good_bounds (G1 & G2) to good_bounds G1,
-which is also hard. Except if we define good_bounds step-wise, but then the
-permutation lemma won't work any more, because it would have to permute good_bounds.
-
-
-
-*)
 (*
 Inductive subenv: ctx -> ctx -> Prop :=
 (*| subenv_refl: forall G,
