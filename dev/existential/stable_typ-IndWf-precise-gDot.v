@@ -4472,45 +4472,6 @@ Proof.
   apply (P eq_refl Ok Biy).
 Qed.
 
-(*
-Moreover, let's check manually the case ty_hyp:
-
-Let's look at it supposing we don't have a subenv judgment here, but just one StS.
-
-i.e. we want to prove subst_ty:
-
-G1, x: S, G2 |- t : T
-(y: S) in G1
-------------------------------
-G1, [y/x]G2 |- [y/x]t : [y/x]T 
-
-In the case ty_hyp, we have
-
-Tyt: (forall G', G' <: G1, x: S, G2 -> good_bounds G' -> G' |- t: T)
-
-and need to show
-
-G1, [y/x]G2 |- [y/x]t : [y/x]T 
-
-and the only way to do so is by first applying ty_hyp, so we have to show
-
-(forall G', G' <: G1, [y/x]G2 -> good_bounds G' -> G' |- [y/x]t : [y/x]T)
-
-intros.
-
-Se:         G' <: G1, [y/x]G2
-Gb:         good_bounds G'
-to show:    G' |- [y/x]t : [y/x]T
-
-But even before we can apply the IH, we have to specialize Tyt with (G'1, x: S, G'2),
-so we'll have to show good_bounds for this env, but how can we know/suppose that S
-has good bounds, no matter how much more precise G'1 is? --> We can't!
-
-Does it help to include weakening in the subenv judgment?
-No, that "goes the wrong way round".
-
-*)
-
 
 (* ###################################################################### *)
 (** ** Helper *)
