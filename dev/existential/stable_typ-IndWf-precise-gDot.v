@@ -2825,18 +2825,13 @@ Admitted.
 *)
 
 (* Note: Takes good_bound hyp, which is quite strong, but thanks to this, we don't
-   need any shrink_good_bounds and strengthen_subtyp stuff
+   need any shrink_good_bounds and strengthen_subtyp stuff *)
 Lemma weaken_ty:
    (forall G t T, ty_trm G t T -> forall G1 G2 G3,
     G = G1 & G3 ->
     good_bounds (G1 & G3) ->
     ok (G1 & G2 & G3) ->
     ty_trm (G1 & G2 & G3) t T)
-/\ (forall G t T, ty_imp G t T -> forall G1 G2 G3,
-    G = G1 & G3 ->
-    good_bounds (G1 & G3) ->
-    ok (G1 & G2 & G3) ->
-    ty_imp (G1 & G2 & G3) t T)
 /\ (forall G d D, ty_def G d D -> forall G1 G2 G3,
     G = G1 & G3 ->
     good_bounds (G1 & G3) ->
@@ -2863,6 +2858,7 @@ Proof.
     - apply* IH2.
     - eauto.
   + (* case ty_new *)
+    admit. (*
     introv Tyds IH1 Tyu IH2 WfU Eq Gb Ok. subst.
     apply_fresh ty_new as x'; try assert (x'L: x' \notin L) by auto.
     - specialize (IH1 x' x'L G1 G2 (G3 & x' ~ open_typ x' T)).
@@ -2878,13 +2874,32 @@ Proof.
       lets Gb2: (good_bounds_push_ty_defs Gb Tyds Ok').
       apply* IH2.
     - eauto.
+  *)
+  + (* case ty_hyp *)
+    introv WfT Ty IH Eq Gb Ok. subst.
+    (* don't apply ty_hyp, just use the IH and the given Gb *)
+    apply (IH (G1 & G3) (subenv_refl _) Gb _ _ _ eq_refl Gb Ok).
+(*
   + (* case ty_hyp *)
     introv WfT Ty IH Eq Gb Ok. subst.
     apply (ty_hyp (weaken_wf_typ_middle WfT Ok)).
-    intro Gb'. apply (IH Gb _ _ _ eq_refl Gb Ok).
+    intros G' Se Gb'.
+    (* in order to use the IH here, subenv should also include weakening! *)
+    apply (IH Gb _ _ _ eq_refl Gb Ok).
+*)
   + (* case ty_sbsm *)
     introv Ty IH St Eq Gb Ok. apply* ty_sbsm.
   + (* case ty_tdef *) eauto.
+  + (* case ty_mdef *)
+    introv WfT WfU2 Tyu IH Eq Gb Ok. subst.
+    apply_fresh ty_mdef as x'; [admit | admit | idtac].
+    assert (x'L: x' \notin L) by auto.
+    specialize (IH x' x'L G1 G2 (G3 & x' ~ T)).
+    repeat rewrite concat_assoc in IH.
+    apply ty_hyp. (* in order to get good_bounds_typ for T *)
+    - admit. (*refine (weaken_wf_typ_end _ Ok'). apply (weaken_wf_typ_middle WfU2 Ok).*)
+    - introv Se Gb'. (* doesn't work... *)
+      admit. (*!! 
   + (* case ty_mdef *)
     introv WfT WfU2 Tyu IH Eq Gb Ok. subst.
     apply_fresh ty_mdef as x'; [eauto | eauto | idtac].
@@ -2902,12 +2917,12 @@ Proof.
       apply binds_push_inv in Bi. destruct Bi as [[Eq1 Eq2] | [Ne Bi]].
       * subst. exact WfT.
       * specialize (Gb _ _ Bi). apply (proj1 Gb).
+*)
   + (* case ty_defs_nil *) eauto.
   + (* case ty_defs_cons *) eauto.
 Qed.
 
 Print Assumptions weaken_ty.
-*)
 
 (* Note: this is only so simple because good_bounds is defined "step-wise" from left to
    the right. *)
@@ -6318,14 +6333,14 @@ Proof.
     lets Ok: (wf_sto_to_ok_G Wf).
     (* Before we can apply the substitution principle, we must narrow 
        y' ~ U2 to y' ~ U1 in Tybody.
-       But narrowing requires good_bounds:
-    assert (Gb': good_bounds (G1 & y' ~ U2)). {
+       But narrowing requires good_bounds: *)
+    assert (Gb': good_bounds (G1 & G2 & y' ~ U2)). {
       lets GbU1: ((good_bounds_to_old Gb) _ _ BiGy).
-      lets GbU2: (supertyp_has_good_bounds StU GbU1).
+      lets GbU2: (supertyp_has_good_bounds (subtyp_trans StU StU') GbU1).
       assert (Oky': ok (G1 & G2 & y' ~ U2)) by auto.
       apply (good_bounds_push Gb).
-      admit. (*!!*)
-    }*)
+      apply (weaken_good_bounds_typ_end Oky' GbU2).
+    }
     assert (Oky': ok (G1 & G2 & y' ~ U1)) by auto.
     destruct (ctx_binds_to_sto_binds Wf BiGy) as [dsy [Bisy Tydsy]].
     lets SbU1: (defs_have_stable_typ Tydsy).
