@@ -509,18 +509,26 @@ Inductive subenv: ctx -> ctx -> Prop :=
       subenv G1 G3.
 *)
 
+(* encodes any number of weakening and narrowing steps *)
 Inductive subenv: ctx -> ctx -> Prop :=
+  (* base case: *)
   | subenv_empty:
       subenv empty empty
+  (* narrowing: *)
   | subenv_sub: forall G1 G2 x T1 T2,
       subenv G1 G2 ->
       stable_typ T1 ->
       subtyp (G1 & x ~ T1) T1 T2 ->
       subenv (G1 & x ~ T1) (G2 & x ~ T2)
+  (* not changing anything: *)
   | subenv_push: forall G1 G2 x T,
       (* here we don't require T to be stable *)
       subenv G1 G2 ->
-      subenv (G1 & x ~ T) (G2 & x ~ T).
+      subenv (G1 & x ~ T) (G2 & x ~ T)
+  (* weakening: *)
+  | subenv_skip: forall G1 G2 x T,
+      subenv G1 G2 ->
+      subenv (G1 & x ~ T) G2.
 
 (* typing on term level is always imprecise (can use subsumption) *)
 Inductive ty_trm: ctx -> trm -> typ -> Prop :=
@@ -542,17 +550,12 @@ Inductive ty_trm: ctx -> trm -> typ -> Prop :=
       wf_typ G U -> (* <-- even stronger than x \notin fv_typ U *)
       ty_trm G (trm_new ds u) U
   (* If you want to suppose good bounds, you must prove the typing derivation not just
-     for G, but for all subenvs of G, because otherwise narrowing needs un-narrowing *)
+     for G, but for all subenvs of G, because otherwise narrowing needs un-narrowing
+     and weakening needs strengthening. *)
   | ty_hyp: forall G t T,
       wf_typ G T ->
       (forall G', subenv G' G -> good_bounds G' -> ty_trm G' t T) ->
       ty_trm G t T
-  (* Ideally, this rule would already be in subtyp, but it can't be there because
-      of Coq's strict positivity restriction.
-  | ty_hyp: forall G t T,
-      wf_typ G T ->
-      (good_bounds G -> ty_trm G t T) ->
-      ty_trm G t T *)
 (* imprecise typing: subsumption allowed *)
   | ty_sbsm: forall G t T1 T2,
       ty_trm G t T1 ->
