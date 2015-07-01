@@ -3611,7 +3611,7 @@ Proof.
   - lets Eq: (binds_func Bi1' Bi1). subst. assumption.
 Qed.
 
-Lemma narrow_has_stable:
+Lemma narrow_has_hasnt_stable:
    (forall G T D, typ_has G T D -> forall G',
     stable_typ T ->
     subenv G' G ->
@@ -3627,6 +3627,9 @@ Proof.
   end;
   eauto.
 Qed.
+
+Definition narrow_has_stable := proj1 narrow_has_hasnt_stable.
+Definition narrow_hasnt_stable := proj2 narrow_has_hasnt_stable.
 
 Lemma narrow_has:
    (forall G T D2, typ_has G T D2 -> forall G',
@@ -3855,7 +3858,7 @@ Proof.
   + (* case wf_rcd *) eauto.
   + (* case wf_sel *)
     introv Bix SbX XHas WfX IHX WfT IHT WfU IHU. introv Se. subst.
-    lets XHas': ((proj1 narrow_has_stable) _ _ _ XHas _ SbX Se).
+    lets XHas': (narrow_has_stable XHas SbX Se).
     specialize (IHX _ Se).
     specialize (IHT _ Se).
     specialize (IHU _ Se).
@@ -3880,6 +3883,9 @@ Qed.
 
 Print Assumptions narrow_wf.
 
+Definition narrow_wf_typ := proj1 narrow_wf.
+Definition narrow_wf_dec := proj2 narrow_wf.
+
 Lemma good_bounds_to_old: forall G,
   good_bounds G ->
   good_bounds_old G.
@@ -3892,18 +3898,14 @@ Proof.
 Qed.
 
 Lemma narrow_subtyp_subdec:
-   (forall G T1 T2, subtyp G T1 T2 -> forall G1 x S1 S2 G2,
-    G = G1 & x ~ S2 & G2 ->
-    stable_typ S1 ->
-    good_bounds (G1 & x ~ S1 & G2) ->
-    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
-    subtyp (G1 & x ~ S1 & G2) T1 T2)
-/\ (forall G D1 D2, subdec G D1 D2 -> forall G1 x S1 S2 G2,
-    G = G1 & x ~ S2 & G2 ->
-    stable_typ S1 ->
-    good_bounds (G1 & x ~ S1 & G2) ->
-    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
-    subdec (G1 & x ~ S1 & G2) D1 D2).
+   (forall G T1 T2, subtyp G T1 T2 -> forall G',
+    good_bounds G' ->
+    subenv G' G ->
+    subtyp G' T1 T2)
+/\ (forall G D1 D2, subdec G D1 D2 -> forall G',
+    good_bounds G' ->
+    subenv G' G ->
+    subdec G' D1 D2).
 Proof.
   apply subtyp_mutind.
   + (* case subtyp_refl *)
@@ -3915,37 +3917,43 @@ Proof.
   + (* case subtyp_rcd *)
     eauto.
   + (* case subtyp_sel_l *)
-    introv Bi2 WfX SbX XHas St IHSt Eq SbS1 Gb StS. subst.
-    lets WfX': (narrow_wf_typ_middle WfX SbS1 StS).
-    specialize (IHSt _ _ _ _ _ eq_refl SbS1 Gb StS).
-    lets XHas': ((proj1 narrow_has_stable) _ _ _ XHas _ _ _ _ _ eq_refl SbX StS).
-    lets P: (narrow_binds_raw Bi2 StS). destruct P as [Bi1 | [Eq1 [Eq2 Bi1]]].
-    - apply (subtyp_sel_l Bi1 WfX' SbX XHas' IHSt).
-    - subst.
-      lets P: (swap_sub_and_typ_has StS XHas'). destruct P as [D [S1Has Sd]].
+    introv Bi2 WfX SbX XHas St IHSt. introv Gb' Se.
+    lets WfX': (narrow_wf_typ WfX Se).
+    specialize (IHSt _ Gb' Se).
+    lets XHas': (narrow_has_stable XHas SbX Se).
+    lets P: (narrow_binds_3 Se (okadmit _) Bi2).
+    destruct P as [Bi1 | [X' [Bi1 [StX SbX']]]].
+    - (* case "type of x remained unchanged" *)
+      apply (subtyp_sel_l Bi1 WfX' SbX XHas' IHSt).
+    - (* case "type of x changed from X to X'" *)
+      lets P: (swap_sub_and_typ_has StX XHas'). destruct P as [D1 [X'Has Sd]].
+              (********************)
       apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT StU]]]].
-      subst D.
+      subst D1.
       refine (subtyp_trans _ StU).
-      apply (subtyp_sel_l Bi1 (proj1 (subtyp_regular StS)) SbS1 S1Has).
-      apply good_bounds_to_old in Gb.
-      unfold good_bounds_old, good_bounds_typ in Gb.
-      specialize (Gb _ _ Bi1). destruct Gb as [_ Gb]. apply (Gb _ _ _ S1Has).
+      apply (subtyp_sel_l Bi1 (proj1 (subtyp_regular StX)) SbX' X'Has).
+      apply good_bounds_to_old in Gb'.
+      unfold good_bounds_old, good_bounds_typ in Gb'.
+      specialize (Gb' _ _ Bi1). destruct Gb' as [_ Gb']. apply (Gb' _ _ _ X'Has).
   + (* case subtyp_sel_r *)
-    introv Bi2 WfX SbX XHas St IHSt Eq SbS1 Gb StS. subst.
-    lets WfX': (narrow_wf_typ_middle WfX SbS1 StS).
-    specialize (IHSt _ _ _ _ _ eq_refl SbS1 Gb StS).
-    lets XHas': ((proj1 narrow_has_stable) _ _ _ XHas _ _ _ _ _ eq_refl SbX StS).
-    lets P: (narrow_binds_raw Bi2 StS). destruct P as [Bi1 | [Eq1 [Eq2 Bi1]]].
-    - apply (subtyp_sel_r Bi1 WfX' SbX XHas' IHSt).
-    - subst.
-      lets P: (swap_sub_and_typ_has StS XHas'). destruct P as [D [S1Has Sd]].
+    introv Bi2 WfX SbX XHas St IHSt. introv Gb' Se.
+    lets WfX': (narrow_wf_typ WfX Se).
+    specialize (IHSt _ Gb' Se).
+    lets XHas': (narrow_has_stable XHas SbX Se).
+    lets P: (narrow_binds_3 Se (okadmit _) Bi2).
+    destruct P as [Bi1 | [X' [Bi1 [StX SbX']]]].
+    - (* case "type of x remained unchanged" *)
+      apply (subtyp_sel_r Bi1 WfX' SbX XHas' IHSt).
+    - (* case "type of x changed from X to X'" *)
+      lets P: (swap_sub_and_typ_has StX XHas'). destruct P as [D1 [X'Has Sd]].
+              (********************)
       apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT StU]]]].
-      subst D.
+      subst D1.
       refine (subtyp_trans StT _).
-      apply (subtyp_sel_r Bi1 (proj1 (subtyp_regular StS)) SbS1 S1Has).
-      apply good_bounds_to_old in Gb.
-      unfold good_bounds_old, good_bounds_typ in Gb.
-      specialize (Gb _ _ Bi1). destruct Gb as [_ Gb]. apply (Gb _ _ _ S1Has).
+      apply (subtyp_sel_r Bi1 (proj1 (subtyp_regular StX)) SbX' X'Has).
+      apply good_bounds_to_old in Gb'.
+      unfold good_bounds_old, good_bounds_typ in Gb'.
+      specialize (Gb' _ _ Bi1). destruct Gb' as [_ Gb']. apply (Gb' _ _ _ X'Has).
   + (* case subtyp_and *) eauto.
   + (* case subtyp_and_l *)
     intros. subst. apply subtyp_and_l; apply* narrow_wf.
@@ -3957,36 +3965,15 @@ Proof.
   + (* case subtyp_or_r *)
     intros. subst. apply subtyp_or_r; apply* narrow_wf.
   + (* case subtyp_trans *)
-    intros. subst.
-    specialize (H _ _ _ _ _ eq_refl H2 H3 H4).
-    specialize (H0 _ _ _ _ _ eq_refl H2 H3 H4).
-    apply subtyp_trans with T2; eauto.
+    intros. apply subtyp_trans with T2; eauto.
   + (* case subdec_typ *) eauto.
   + (* case subdec_mtd *) eauto.
 Qed.
 
 Print Assumptions narrow_subtyp_subdec.
 
-Lemma narrow_subtyp_middle: forall G1 x S1 S2 G2 T1 T2,
-  subtyp (G1 & x ~ S2 & G2) T1 T2 ->
-  stable_typ S1 ->
-  good_bounds (G1 & x ~ S1 & G2) ->
-  subtyp (G1 & x ~ S1 & G2) S1 S2 ->
-  subtyp (G1 & x ~ S1 & G2) T1 T2.
-Proof.
-  introv St StS. apply* narrow_subtyp_subdec.
-Qed.
-
-Lemma narrow_subtyp_end: forall G x S1 S2 T1 T2,
-  subtyp (G & x ~ S2) T1 T2 ->
-  stable_typ S1 ->
-  good_bounds (G & x ~ S1) ->
-  subtyp (G & x ~ S1) S1 S2 ->
-  subtyp (G & x ~ S1) T1 T2.
-Proof.
-  introv St StS. destruct narrow_subtyp_subdec as [P _].
-  specialize (P _ _ _ St G x S1 S2 empty). repeat rewrite concat_empty_r in P. eauto.
-Qed.
+Definition narrow_subtyp := proj1 narrow_subtyp_subdec.
+Definition narrow_subdec := proj2 narrow_subtyp_subdec.
 
 (* Doesn't hold as a lemma because ty_tdef needs subtyp directly without going through
    a ty_trm. TODO add a rule for it, but with a flag whether it's allowed, because
