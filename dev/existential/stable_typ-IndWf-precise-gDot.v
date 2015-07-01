@@ -3714,13 +3714,13 @@ Qed.
 Lemma subst_binds: forall G1 x S G2 z Z y,
   binds z Z (G1 & x ~ S & G2) ->
   ok (G1 & x ~ S & G2) ->
-  binds y (subst_typ x y S) (G1 & G2) ->
+  binds y S (G1 & G2) ->
   binds (subst_fvar x y z) (subst_typ x y Z) (subst_ctx x y (G1 & G2)).
 Proof.
   introv Biz Ok Biy. unfold subst_fvar. case_if.
   - (* case x = z *)
     lets Eq: (binds_middle_eq_inv Biz Ok). subst.
-    lets P: (subst_binds_0 x y Biy). rewrite subst_typ_idempotent in P. exact P.
+    apply (subst_binds_0 x y Biy).
   - (* case x <> z *)
     apply subst_binds_0. apply (binds_subst Biz). auto.
 Qed.
@@ -3762,12 +3762,12 @@ Lemma subst_has_hasnt: forall y S,
    (forall G T D, typ_has G T D -> forall G1 G2 x,
     G = G1 & x ~ S & G2  ->
     ok (G1 & x ~ S & G2) ->
-    binds y (subst_typ x y S) (G1 & G2) ->
+    binds y S (G1 & G2) ->
     typ_has (subst_ctx x y (G1 & G2)) (subst_typ x y T) (subst_dec x y D))
 /\ (forall G T l, typ_hasnt G T l -> forall G1 G2 x,
     G = G1 & x ~ S & G2  ->
     ok (G1 & x ~ S & G2) ->
-    binds y (subst_typ x y S) (G1 & G2) ->
+    binds y S (G1 & G2) ->
     typ_hasnt (subst_ctx x y (G1 & G2)) (subst_typ x y T) l).
 Proof.
   intros y S. apply typ_has_mutind.
@@ -3824,7 +3824,7 @@ Print Assumptions subst_has_hasnt.
 Lemma subst_has: forall G1 x y S G2 T D,
   typ_has (G1 & x ~ S & G2) T D ->
   ok (G1 & x ~ S & G2) ->
-  binds y (subst_typ x y S) (G1 & G2) ->
+  binds y S (G1 & G2) ->
   typ_has (subst_ctx x y (G1 & G2)) (subst_typ x y T) (subst_dec x y D).
 Proof.
   intros. apply* subst_has_hasnt.
@@ -3833,7 +3833,7 @@ Qed.
 Lemma subst_hasnt: forall G1 x y S G2 T l,
   typ_hasnt (G1 & x ~ S & G2) T l ->
   ok (G1 & x ~ S & G2) ->
-  binds y (subst_typ x y S) (G1 & G2) ->
+  binds y S (G1 & G2) ->
   typ_hasnt (subst_ctx x y (G1 & G2)) (subst_typ x y T) l.
 Proof.
   intros. apply* subst_has_hasnt.
@@ -3847,13 +3847,13 @@ Lemma subst_wf: forall y S,
    (forall G A1 T, wf_typ_impl G A1 T -> forall G1 G2 x A2,
     G = G1 & x ~ S & G2  ->
     ok (G1 & x ~ S & G2) ->
-    binds y (subst_typ x y S) (G1 & G2) ->
+    binds y S (G1 & G2) ->
     subst_assumptions x y A1 A2 ->
     wf_typ_impl (subst_ctx x y (G1 & G2)) A2 (subst_typ x y T))
 /\ (forall G A1 D, wf_dec_impl G A1 D -> forall G1 G2 x A2,
     G = G1 & x ~ S & G2  ->
     ok (G1 & x ~ S & G2) ->
-    binds y (subst_typ x y S) (G1 & G2) ->
+    binds y S (G1 & G2) ->
     subst_assumptions x y A1 A2 ->
     wf_dec_impl (subst_ctx x y (G1 & G2)) A2 (subst_dec x y D)).
 Proof.
@@ -3904,7 +3904,7 @@ Qed.
 Lemma subst_wf_typ: forall G1 x y S G2 T,
   wf_typ (G1 & x ~ S & G2) T ->
   ok (G1 & x ~ S & G2) ->
-  binds y (subst_typ x y S) (G1 & G2) ->
+  binds y S (G1 & G2) ->
   wf_typ (subst_ctx x y (G1 & G2)) (subst_typ x y T).
 Proof.
   introv Wf Ok Biy. destruct (subst_wf y S) as [P _].
@@ -3915,7 +3915,7 @@ Qed.
 Lemma subst_wf_dec: forall G1 x y S G2 D,
   wf_dec (G1 & x ~ S & G2) D ->
   ok (G1 & x ~ S & G2) ->
-  binds y (subst_typ x y S) (G1 & G2) ->
+  binds y S (G1 & G2) ->
   wf_dec (subst_ctx x y (G1 & G2)) (subst_dec x y D).
 Proof.
   introv Wf Ok Biy. destruct (subst_wf y S) as [_ P].
@@ -3929,12 +3929,12 @@ Lemma subst_subtyp_subdec: forall y S,
    (forall G T1 T2, subtyp G T1 T2 -> forall G1 G2 x,
     G = G1 & x ~ S & G2  ->
     ok (G1 & x ~ S & G2) ->
-    binds y (subst_typ x y S) (G1 & G2) ->
+    binds y S (G1 & G2) ->
     subtyp (subst_ctx x y (G1 & G2)) (subst_typ x y T1) (subst_typ x y T2))
 /\ (forall G D1 D2, subdec G D1 D2 -> forall G1 G2 x,
     G = G1 & x ~ S & G2  ->
     ok (G1 & x ~ S & G2) ->
-    binds y (subst_typ x y S) (G1 & G2) ->
+    binds y S (G1 & G2) ->
     subdec (subst_ctx x y (G1 & G2)) (subst_dec x y D1) (subst_dec x y D2)).
 Proof.
   intros y S. apply subtyp_mutind.
@@ -3999,7 +3999,7 @@ Print Assumptions subst_subtyp_subdec.
 Lemma subst_subtyp: forall G1 x y S G2 T1 T2,
   subtyp (G1 & x ~ S & G2) T1 T2 ->
   ok (G1 & x ~ S & G2) ->
-  binds y (subst_typ x y S) (G1 & G2) ->
+  binds y S (G1 & G2) ->
   subtyp (subst_ctx x y (G1 & G2)) (subst_typ x y T1) (subst_typ x y T2).
 Proof.
   intros. apply* subst_subtyp_subdec.
@@ -4008,7 +4008,7 @@ Qed.
 Lemma subtyp_subst_principle: forall G x y S T1 T2,
   subtyp (G & x ~ S) T1 T2 ->
   ok (G & x ~ S) ->
-  binds y (subst_typ x y S) G ->
+  binds y S G ->
   subtyp (subst_ctx x y G) (subst_typ x y T1) (subst_typ x y T2).
 Proof.
   introv St Ok Biy.
@@ -4020,7 +4020,7 @@ Qed.
 (* undo what the substitution lemma did: *)
 Lemma undo_subst_good_bounds: forall G1 x S G2 y,
   ok (G1 & x ~ S & G2) ->
-  binds y (subst_typ x y S) (G1 & G2) ->
+  binds y S (G1 & G2) ->
   good_bounds (subst_ctx x y (G1 & G2)) ->
   good_bounds (G1 & x ~ S & G2).
 Abort.
@@ -4123,8 +4123,6 @@ Lemma subst_ty:
     ty_defs (subst_ctx x y (G1 & G2)) (subst_defs x y ds) (subst_typ x y T)).
 Proof.
   apply ty_mutind.
-  admit. admit. admit.
-  (*
   + (* case ty_var *)
     introv Bix WfT Eq Ok Biy. subst.
     lets Bix': (subst_binds Bix Ok Biy).
@@ -4164,7 +4162,6 @@ Proof.
       rewrite P in IH2. clear P.
       apply IH2. apply (binds_push_neq _ Biy). auto.
     - apply (subst_wf_typ WfU Ok Biy).
-*)
   + (* case ty_hyp *)
     introv WfT Ty IH Eq Ok Biy. subst.
     apply ty_hyp.
