@@ -3611,6 +3611,18 @@ Proof.
   - lets Eq: (binds_func Bi1' Bi1). subst. assumption.
 Qed.
 
+Lemma narrow_binds_5: forall G1 G2 x T2,
+  wf_typ G1 T2 ->
+  binds x T2 G2 ->
+  subenv G1 G2 ->
+  exists T1, binds x T1 G1 /\ subtyp G1 T1 T2.
+Proof.
+  introv WfT2 Bi2 Se.
+  lets P: (narrow_binds_3 Se (okadmit _) Bi2). destruct P as [Bi1' | [T0 [Bi1' [St Sb]]]].
+  - exists T2. auto.
+  - exists T0. auto.
+Qed.
+
 Lemma narrow_has_hasnt_stable:
    (forall G T D, typ_has G T D -> forall G',
     stable_typ T ->
@@ -3631,7 +3643,7 @@ Qed.
 Definition narrow_has_stable := proj1 narrow_has_hasnt_stable.
 Definition narrow_hasnt_stable := proj2 narrow_has_hasnt_stable.
 
-Lemma narrow_has:
+Lemma narrow_has_hasnt:
    (forall G T D2, typ_has G T D2 -> forall G',
     subenv G' G ->
     wf_typ G' T -> (* G' !! *)
@@ -3841,7 +3853,10 @@ Proof.
       * apply (typ_or_has T1Has T2Has EqD).
 Qed.
 
-Print Assumptions narrow_has.
+Print Assumptions narrow_has_hasnt.
+
+Definition narrow_has := proj1 narrow_has_hasnt.
+Definition narrow_hasnt := proj2 narrow_has_hasnt.
 
 Lemma narrow_wf:
    (forall G A T, wf_typ_impl G A T -> forall G',
@@ -4009,35 +4024,31 @@ Proof.
   apply ty_mutind.
   + (* case ty_var *)
     introv Bi2 WfT Ok Se. subst.
-    (*lets WfT': (narrow_wf_typ_middle WfT Se).*)
-    assert (WfT': wf_typ G' T) by admit.
-    (*lets P: (narrow_binds WfT' Bi2 Se). destruct P as [T1 [Bi1 St]].
+    lets WfT': (narrow_wf_typ WfT Se).
+    lets P: (narrow_binds_5 WfT' Bi2 Se). destruct P as [T1 [Bi1 St]].
     lets WfT1: (proj1 (subtyp_regular St)).
-    apply ty_sbsm with T1; eauto.*)
-    admit.
+    apply ty_sbsm with T1; eauto.
   + (* case ty_call *)
     introv Tyt IH1 T2Has Tyu IH2 WfV2. introv Ok Se.
     subst. rename T into T2, V into V2.
     specialize (IH1 _ Ok Se).
     specialize (IH2 _ Ok Se).
-    admit. (*
-    lets P: (narrow_has_middle T2Has (ty_trm_regular Tyt') StS).
+    lets P: (narrow_has T2Has Se (ty_trm_regular IH1)).
     destruct P as [D [T2Has' Sd]]. apply invert_subdec_mtd_sync_left in Sd.
     destruct Sd as [U2' [V2' [Eq [StU2 StV2]]]]. subst D.
     refine (ty_sbsm _ StV2).
-    apply (ty_call Tyt' T2Has').
+    apply (ty_call IH1 T2Has').
     - apply (ty_sbsm IH2 StU2).
     - apply (proj1 (subtyp_regular StV2)).
-    *)
   + (* case ty_new *)
     introv Tyds IH1 Tyu IH2 WfU Ok1 Se. subst.
     apply_fresh ty_new as y; try assert (yL: y \notin L) by auto.
     - apply (IH1 y yL (G' & y ~ open_typ y T) (okadmit _) (subenv_push _ _ Se)).
     - apply (IH2 y yL (G' & y ~ open_typ y T) (okadmit _) (subenv_push _ _ Se)).
-    - admit. (* narrow_wf *)
+    - apply* narrow_wf_typ.
   + (* case ty_hyp *)
     introv WfT Ty IH Ok Se. subst.
-    assert (WfT': wf_typ G' T) by admit.
+    assert (WfT': wf_typ G' T) by apply* narrow_wf_typ.
     apply (ty_hyp WfT').
     intros G'' Se' Gb''.
     (* Note that we do not have to un-narrow Gb'' to Gb', because ty_hyp now is stronger *)
@@ -4047,22 +4058,22 @@ Proof.
   + (* case ty_sbsm *)
     introv Ty IH St Ok Se. subst.
     apply ty_hyp.
-    - lets WfT: (proj2 (subtyp_regular St)). admit. (* narrow WfT *)
+    - lets WfT: (proj2 (subtyp_regular St)). apply* narrow_wf_typ.
     - intros G'' Se' Gb. lets Se2: (subenv_trans Se' Se).
       apply ty_sbsm with T1.
       * apply* IH. apply okadmit.
-      * admit. (* narrowing with St with Se2 *)
+      * apply* narrow_subtyp.
   + (* case ty_tdef *)
     introv St Ok Se. subst.
     apply ty_def_hyp.
-    - (*refine (narrow_wf_dec_middle _ Sb StS'). destruct (subtyp_regular St) as [WfT WfU].
-      apply (wf_tmem _ WfT WfU). *) admit.
-    - intros G'' Se' Gb. apply ty_tdef. admit. (* subtyp narrowing *)
+    - refine (narrow_wf_dec _ Se). destruct (subtyp_regular St) as [WfT WfU].
+      apply (wf_tmem _ WfT WfU).
+    - intros G'' Se' Gb. apply ty_tdef. apply* narrow_subtyp. apply (subenv_trans Se' Se).
   + (* case ty_mdef *)
     introv WfT WfU Tyu IH Ok Se. subst.
     apply_fresh ty_mdef as y.
-    - admit. (* narrow_wf *)
-    - admit. (* narrow_wf *)
+    - apply* narrow_wf_typ.
+    - apply* narrow_wf_typ.
     - assert (yL: y \notin L) by auto.
       (* Note: No more need for un-narrowing (because good_bounds is no longer a hyp,
          but it's not just moved to ty_hyp *)
