@@ -3842,14 +3842,6 @@ Proof.
   apply (P eq_refl Ok Biy).
 Qed.
 
-(* undo what the substitution lemma did: *)
-Lemma undo_subst_good_bounds: forall G1 x S G2 y,
-  ok (G1 & x ~ S & G2) ->
-  binds y S (G1 & G2) ->
-  good_bounds (subst_ctx x y (G1 & G2)) ->
-  good_bounds (G1 & x ~ S & G2).
-Abort.
-
 Lemma subenv_binds: forall G1 G2 x S2,
   subenv G1 G2 ->
   binds x S2 G2 ->
@@ -3870,20 +3862,14 @@ Axiom subenv_concat_inv: forall F G1 G2,
   subenv F (G1 & G2) ->
   exists F1 F2, F = F1 & F2 /\ subenv F1 G1.
 
+Axiom closed_env_stuff: forall (P: Prop), P.
+
 Lemma subenv_undo_subst: forall G1' G2' G1 x y S' S G2,
   binds y S' (G1' & G2') ->
   binds y (subst_typ x y S) (subst_ctx x y G1 & subst_ctx x y G2) ->
   subenv G1' (subst_ctx x y G1) ->
   subenv (G1' & G2') (subst_ctx x y G1 & subst_ctx x y G2) ->
   subenv (subst_ctx y x G1' & x ~ subst_typ y x S' & subst_ctx y x G2') (G1 & x ~ S & G2).
-Admitted.
-
-Lemma good_bounds_undo_subst: forall G1 x y S G2,
-  binds y S (G1 & G2) ->
-  good_bounds (G1 & G2) ->
-  x # G1 ->
-  x # G2 ->
-  good_bounds ((subst_ctx y x G1) & x ~ (subst_typ y x S) & (subst_ctx y x G2)).
 Admitted.
 
 Lemma map_compose: forall (A B C: Type) (E: env A) (f: A -> B) (g: B -> C),
@@ -3917,6 +3903,85 @@ Proof.
   intros. unfold subst_ctx. apply map_concat.
 Qed.
 
+(* TODO do these hold?? *)
+Lemma wf_typ_swap: forall G x y S T,
+  binds x S G ->
+  binds y S G ->
+  wf_typ G (subst_typ x y T) ->
+  wf_typ (subst_ctx y x G) T.
+Admitted.
+
+Lemma typ_has_swap: forall G x y S T D,
+  binds x S G ->
+  binds y S G ->
+  typ_has (subst_ctx y x G) T D ->
+  typ_has G (subst_typ x y T) (subst_dec x y D).
+Admitted.
+
+Lemma subtyp_swap: forall G x y S T1 T2,
+  binds x S G ->
+  binds y S G ->
+  subtyp G (subst_typ x y T1) (subst_typ x y T2) ->
+  subtyp (subst_ctx y x G) T1 T2.
+Admitted.
+
+Lemma good_bounds_swap: forall G x y S,
+  binds x S G ->
+  binds y S G ->
+  good_bounds G ->
+  good_bounds (subst_ctx y x G).
+Proof.
+  introv Bix Biy Gb. unfold good_bounds in *.
+  intros z Z Biz.
+  apply (subst_binds_0 x y) in Biz.
+  assert (xG: x \notin fv_ctx_types G) by admit.
+  rewrite (subst_ctx_undo _ _ xG) in Biz.
+  specialize (Gb _ _ Biz).
+  unfold good_bounds_typ in *.
+  split.
+  - destruct Gb as [Wf _].
+    apply (wf_typ_swap _ Bix Biy Wf).
+  - destruct Gb as [_ Gb].
+    introv THas. apply (typ_has_swap Bix Biy) in THas. simpl in THas.
+    specialize (Gb _ _ _ THas).
+    apply (subtyp_swap _ _ Bix Biy Gb).
+Qed.
+
+Lemma good_bounds_insert: forall G1 x S G2,
+  good_bounds (G1 & G2) ->
+  good_bounds_typ (G1 & G2) S ->
+  good_bounds (G1 & x ~ S & G2).
+Proof.
+  introv Gb GbS. unfold good_bounds in *. intros z Z Biz.
+  apply binds_middle_inv in Biz. destruct Biz as [Biz | [[zG2 [? ?]] | [zG2 [Ne Biz]]]].
+  - apply (weaken_good_bounds_typ_middle (okadmit _)).
+    apply (Gb _ _ (binds_concat_right _ Biz)).
+  - subst. apply (weaken_good_bounds_typ_middle (okadmit _)). exact GbS.
+  - apply (weaken_good_bounds_typ_middle (okadmit _)).
+    apply (Gb _ _ (binds_concat_left Biz zG2)).
+Qed.
+
+Lemma good_bounds_undo_subst: forall G1 x y S G2,
+  binds y S (G1 & G2) ->
+  good_bounds (G1 & G2) ->
+  x # G1 ->
+  x # G2 ->
+  good_bounds ((subst_ctx y x G1) & x ~ (subst_typ y x S) & (subst_ctx y x G2)).
+Proof.
+  introv Biy Gb xG1 xG2.
+  assert (Eq: subst_ctx y x G1 & x ~ subst_typ y x S & subst_ctx y x G2
+            = subst_ctx y x (G1 & x ~ S & G2)). {
+    do 2 rewrite subst_ctx_concat. unfold subst_ctx at 4.
+    rewrite map_single. reflexivity.
+  }
+  rewrite Eq.
+  refine (good_bounds_swap _ _ _).
+  - apply binds_middle_eq. assumption.
+  - apply (binds_weaken Biy). apply okadmit.
+  - lets GbS: (Gb _ _ Biy).
+    apply (good_bounds_insert Gb GbS).
+Qed.
+
 Lemma subst_binds_2: forall G1 x S G2 z Z y,
   binds z Z (G1 & x ~ S & G2) ->
   ok (G1 & x ~ S & G2) ->
@@ -3934,8 +3999,6 @@ Proof.
     assert (Eq: (subst_typ x y Z) = Z) by admit. (* because x not in G1 *)
     rewrite Eq. exact Biz.
 Qed.
-
-Axiom closed_env_stuff: forall (P: Prop), P.
 
 Lemma subst_ty:
    (forall G t T, ty_trm G t T -> forall G1 x y S G2,
