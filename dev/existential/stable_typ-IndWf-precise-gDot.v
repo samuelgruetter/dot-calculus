@@ -3567,17 +3567,62 @@ Proof.
     auto.
 Qed.
 
+Lemma narrow_binds_3: forall G1 G2 x T1 T2,
+  subenv G1 G2 ->
+  binds x T2 G2 ->
+  binds x T1 G1 ->
+  subtyp G1 T1 T2 \/ T1 = T2.
+Proof.
+  introv Se. gen x T1 T2. induction Se; introv Bi2 Bi1.
+  + (* case subenv_empty *)
+    exfalso. apply (binds_empty_inv Bi2).
+  + (* case subenv_sub *)
+    apply binds_push_inv in Bi2. apply binds_push_inv in Bi1.
+    destruct Bi2 as [[? ?] | [Ne2 Bi2]]; destruct Bi1 as [[? ?] | [Ne1 Bi1]]; subst;
+    try solve [exfalso; auto].
+    - left. assumption.
+    - specialize (IHSe _ _ _ Bi2 Bi1). destruct IHSe as [St | Eq].
+      * left. apply (weaken_subtyp_end (okadmit _) St).
+      * right. assumption.
+  + (* case subenv_push *)
+    apply binds_push_inv in Bi2. apply binds_push_inv in Bi1.
+    destruct Bi2 as [[? ?] | [Ne2 Bi2]]; destruct Bi1 as [[? ?] | [Ne1 Bi1]]; subst;
+    try solve [exfalso; auto].
+    - right. reflexivity.
+    - specialize (IHSe _ _ _ Bi2 Bi1). destruct IHSe as [St | Eq].
+      * left. apply (weaken_subtyp_end (okadmit _) St).
+      * right. assumption.
+  + (* case subenv_skip *)
+    assert (xG1: x # G1) by admit. (* needs ok *)
+    apply binds_push_inv in Bi1. destruct Bi1 as [[? ?] | [Ne1 Bi1]]; subst.
+    - admit. (* xG1, Se, Bi2 are a contradiction *)
+    - specialize (IHSe _ _ _ Bi2 Bi1). destruct IHSe as [St | Eq].
+      * left. apply (weaken_subtyp_end (okadmit _) St).
+      * right. assumption.
+Qed.
+
+Lemma narrow_binds_4: forall G1 G2 x T1 T2,
+  wf_typ G1 T1 ->
+  binds x T2 G2 ->
+  binds x T1 G1 ->
+  subenv G1 G2 ->
+  subtyp G1 T1 T2.
+Proof.
+  introv WfT1 Bi2 Bi1 Se.
+  lets P: (narrow_binds_3 Se Bi2 Bi1). destruct P as [St | Eq].
+  - assumption.
+  - subst. apply (subtyp_refl WfT1).
+Qed.
+
 Lemma narrow_has_stable:
-   (forall G T D, typ_has G T D -> forall G1 x S1 S2 G2,
-    G = G1 & x ~ S2 & G2 ->
+   (forall G T D, typ_has G T D -> forall G',
     stable_typ T ->
-    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
-    typ_has (G1 & x ~ S1 & G2) T D)
-/\ (forall G T l, typ_hasnt G T l -> forall G1 x S1 S2 G2,
-    G = G1 & x ~ S2 & G2 ->
+    subenv G' G ->
+    typ_has G' T D)
+/\ (forall G T l, typ_hasnt G T l -> forall G',
     stable_typ T ->
-    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
-    typ_hasnt (G1 & x ~ S1 & G2) T l).
+    subenv G' G ->
+    typ_hasnt G' T l).
 Proof.
   apply typ_has_mutind; intros; subst;
   match goal with
@@ -3587,19 +3632,17 @@ Proof.
 Qed.
 
 Lemma narrow_has:
-   (forall G T D2, typ_has G T D2 -> forall G1 x S1 S2 G2,
-    G = G1 & x ~ S2 & G2 ->
-    wf_typ (G1 & x ~ S1 & G2) T ->  (* <-- S1! *)
-    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
+   (forall G T D2, typ_has G T D2 -> forall G',
+    subenv G' G ->
+    wf_typ G' T -> (* G' !! *)
     exists D1,
-      typ_has (G1 & x ~ S1 & G2) T D1 /\
-      subdec (G1 & x ~ S1 & G2) D1 D2)
-/\ (forall G T l, typ_hasnt G T l -> forall G1 x S1 S2 G2,
-    G = G1 & x ~ S2 & G2 ->
-    wf_typ (G1 & x ~ S1 & G2) T ->  (* <-- S1! *)
-    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
-    typ_hasnt (G1 & x ~ S1 & G2) T l 
-    \/ exists D, label_of_dec D = l /\ typ_has (G1 & x ~ S1 & G2) T D).
+      typ_has G' T D1 /\
+      subdec G' D1 D2)
+/\ (forall G T l, typ_hasnt G T l -> forall G',
+    subenv G' G ->
+    wf_typ G' T -> (* G' !! *)
+    typ_hasnt G' T l 
+    \/ exists D, label_of_dec D = l /\ typ_has G' T D).
 Proof.
   apply typ_has_mutind.
   + (* case typ_bot_has *)
@@ -3607,15 +3650,15 @@ Proof.
   + (* case typ_rcd_has *)
     intros. subst. apply invert_wf_rcd in H0. exists D. eauto.
   + (* case typ_sel_has *)
-    intros G x X2 L Lo2 Hi2 D2 Bix2 _ IH1 _ IH2 G1 x0 S1 S2 G2 Eq Wf St. subst.
+    intros G x X2 L Lo2 Hi2 D2 Bix2 _ IH1 _ IH2 G' Se Wf. subst.
     apply invert_wf_sel in Wf. destruct Wf as [X1 [T [U [Bix1 [X1Has [WfX1 [WfT WfU]]]]]]].
-    lets StX: (narrow_binds_2 WfX1 Bix2 Bix1 St).
+    lets StX: (narrow_binds_4 WfX1 Bix2 Bix1 Se).
     lets WfX2: (proj2 (subtyp_regular StX)).
-    specialize (IH1 _ _ _ _ _ eq_refl WfX2 St). destruct IH1 as [D0 [X2Has Sd0]].
+    specialize (IH1 _ Se WfX2). destruct IH1 as [D0 [X2Has Sd0]].
     apply invert_subdec_typ_sync_left in Sd0.
     destruct Sd0 as [Lo1 [Hi1 [Eq [StLo12 StHi12]]]]. subst D0.
     lets WfHi2: (proj2 (subtyp_regular StHi12)).
-    specialize (IH2 _ _ _ _ _ eq_refl WfHi2 St). destruct IH2 as [D1 [Hi2Has Sd12]].
+    specialize (IH2 _ Se WfHi2). destruct IH2 as [D1 [Hi2Has Sd12]].
     lets P: (swap_sub_and_typ_has StX X2Has).
             (********************)
     destruct P as [D0 [X1Has' Sd0]].
@@ -3630,10 +3673,10 @@ Proof.
     - apply (typ_sel_has Bix1 X1Has' Hi0Has).
     - apply (subdec_trans Sd01 Sd12).
   + (* case typ_and_has_1 *)
-    introv _ IH1 _ IH2 Eq Wf St. subst. rename D into D1.
+    introv _ IH1 _ IH2. introv Se Wf. rename D into D1.
     apply invert_wf_and in Wf. destruct Wf as [Wf1 Wf2].
-    specialize (IH1 _ _ _ _ _ eq_refl Wf1 St).
-    specialize (IH2 _ _ _ _ _ eq_refl Wf2 St).
+    specialize (IH1 _ Se Wf1).
+    specialize (IH2 _ Se Wf2).
     destruct IH1 as [D1' [T1Has Sd1]].
     lets Eql1: (subdec_to_label_of_dec_eq Sd1).
     destruct IH2 as [T2Hasnt | [D2 [Eql2 T2Has]]].
@@ -3651,10 +3694,10 @@ Proof.
                    (********************)
         apply (subdec_intersect_l Eq WfD1 WfD2).
   + (* case typ_and_has_2 *)
-    introv _ IH1 _ IH2 Eq Wf St. subst. rename D into D1.
+    introv _ IH1 _ IH2. introv Se Wf. rename D into D1.
     apply invert_wf_and in Wf. destruct Wf as [Wf1 Wf2].
-    specialize (IH1 _ _ _ _ _ eq_refl Wf1 St).
-    specialize (IH2 _ _ _ _ _ eq_refl Wf2 St).
+    specialize (IH1 _ Se Wf1).
+    specialize (IH2 _ Se Wf2).
     destruct IH2 as [D2 [T2Has Sd2]].
     lets Eql1: (subdec_to_label_of_dec_eq Sd2).
     destruct IH1 as [T1Hasnt | [D1' [Eql2 T1Has]]].
@@ -3673,10 +3716,10 @@ Proof.
                    (********************)
         apply (subdec_intersect_r Eq WfD1 WfD2).
   + (* case typ_and_has_12 *)
-    introv _ IH1 _ IH2 Eq Eq2 Wf St. subst.
+    introv _ IH1 _ IH2 Eq. introv Se Wf. subst.
     apply invert_wf_and in Wf. destruct Wf as [Wf1 Wf2].
-    specialize (IH1 _ _ _ _ _ eq_refl Wf1 St).
-    specialize (IH2 _ _ _ _ _ eq_refl Wf2 St).
+    specialize (IH1 _ Se Wf1).
+    specialize (IH2 _ Se Wf2).
     destruct IH1 as [D1' [T1Has Sd1]].
     destruct IH2 as [D2' [T2Has Sd2]].
     lets Eql1: (subdec_to_label_of_dec_eq Sd1).
@@ -3692,10 +3735,10 @@ Proof.
       * refine (subdec_trans _ Sd1). apply (subdec_intersect_l Eq' WfD1' WfD2').
       * refine (subdec_trans _ Sd2). apply (subdec_intersect_r Eq' WfD1' WfD2').
   + (* case typ_or_has *)
-    introv _ IH1 _ IH2 Eq Eq2 Wf St. subst.
+    introv _ IH1 _ IH2 Eq. introv Se Wf. subst.
     apply invert_wf_or in Wf. destruct Wf as [Wf1 Wf2].
-    specialize (IH1 _ _ _ _ _ eq_refl Wf1 St).
-    specialize (IH2 _ _ _ _ _ eq_refl Wf2 St).
+    specialize (IH1 _ Se Wf1).
+    specialize (IH2 _ Se Wf2).
     destruct IH1 as [D1' [T1Has Sd1]].
     destruct IH2 as [D2' [T2Has Sd2]].
     lets Eql1: (subdec_to_label_of_dec_eq Sd1).
@@ -3715,12 +3758,11 @@ Proof.
   + (* case typ_rcd_hasnt *)
     eauto.
   + (* case typ_sel_hasnt *)
-    intros G x X2 L Lo2 Hi2 l Bix2 X2Has' IH1 Hi2Hasnt' IH2 G1 x0 S1 S2 G2 Eq Wf St.
-    subst.
+    intros G x X2 L Lo2 Hi2 l Bix2 X2Has' IH1 Hi2Hasnt' IH2. introv Se Wf.
     apply invert_wf_sel in Wf. destruct Wf as [X1 [T [U [Bix1 [X1Has [WfX1 [WfT WfU]]]]]]].
-    lets StX: (narrow_binds_2 WfX1 Bix2 Bix1 St).
+    lets StX: (narrow_binds_4 WfX1 Bix2 Bix1 Se).
     lets WfX2: (proj2 (subtyp_regular StX)).
-    specialize (IH1 _ _ _ _ _ eq_refl WfX2 St). destruct IH1 as [D0 [X2Has Sd0]].
+    specialize (IH1 _ Se WfX2). destruct IH1 as [D0 [X2Has Sd0]].
     apply invert_subdec_typ_sync_left in Sd0.
     destruct Sd0 as [Lo1 [Hi1 [Eq [StLo12 StHi12]]]]. subst D0.
     lets P: (swap_sub_and_typ_has StX X2Has).
@@ -3736,10 +3778,10 @@ Proof.
     - left. apply (typ_sel_hasnt Bix1 X1Has' Hasnt).
     - right. destruct Has as [D [Eq Has]]. exists D. eauto.
   + (* case typ_and_hasnt *)
-    introv _ IH1 _ IH2 Eq Wf St. subst G.
+    introv _ IH1 _ IH2. introv Se Wf.
     apply invert_wf_and in Wf. destruct Wf as [Wf1 Wf2].
-    specialize (IH1 _ _ _ _ _ eq_refl Wf1 St).
-    specialize (IH2 _ _ _ _ _ eq_refl Wf2 St).
+    specialize (IH1 _ Se Wf1).
+    specialize (IH2 _ Se Wf2).
     destruct IH1 as [T1Hasnt | [D1 [Eq1 T1Has]]];
     destruct IH2 as [T2Hasnt | [D2 [Eq2 T2Has]]]; subst.
     - eauto.
@@ -3751,10 +3793,10 @@ Proof.
         symmetry. assumption.
       * apply (typ_and_has_12 T1Has T2Has Eq).
   + (* case typ_or_hasnt_1 *)
-    introv Hasnt1 IH1 Has2 IH2 Eq Wf St. subst.
+    introv Hasnt1 IH1 Has2 IH2. introv Se Wf.
     apply invert_wf_or in Wf. destruct Wf as [Wf1 Wf2].
-    specialize (IH1 _ _ _ _ _ eq_refl Wf1 St).
-    specialize (IH2 _ _ _ _ _ eq_refl Wf2 St).
+    specialize (IH1 _ Se Wf1).
+    specialize (IH2 _ Se Wf2).
     destruct IH2 as [D2 [T2Has Sd]].
     lets Eq: (subdec_to_label_of_dec_eq Sd).
     destruct IH1 as [T1Hasnt | [D1 [Eq1 T1Has]]].
@@ -3767,10 +3809,10 @@ Proof.
       * rewrite <- Eql3. apply Eq.
       * apply (typ_or_has T1Has T2Has EqD).
   + (* case typ_or_hasnt_2 *)
-    introv Has1 IH1 Hasnt2 IH2 Eq Wf St. subst.
+    introv Has1 IH1 Hasnt2 IH2. introv Se Wf. subst.
     apply invert_wf_or in Wf. destruct Wf as [Wf1 Wf2].
-    specialize (IH1 _ _ _ _ _ eq_refl Wf1 St).
-    specialize (IH2 _ _ _ _ _ eq_refl Wf2 St).
+    specialize (IH1 _ Se Wf1).
+    specialize (IH2 _ Se Wf2).
     destruct IH1 as [D1 [T1Has Sd]].
     lets Eq: (subdec_to_label_of_dec_eq Sd).
     destruct IH2 as [T2Hasnt | [D2 [Eq2 T2Has]]].
@@ -3783,10 +3825,10 @@ Proof.
       * rewrite <- Eql2. rewrite Eq. apply Eq2.
       * apply (typ_or_has T1Has T2Has EqD).
   + (* case typ_or_hasnt_12 *)
-    introv _ IH1 _ IH2 Eq Wf St. subst.
+    introv _ IH1 _ IH2 Se Wf. subst.
     apply invert_wf_or in Wf. destruct Wf as [Wf1 Wf2].
-    specialize (IH1 _ _ _ _ _ eq_refl Wf1 St).
-    specialize (IH2 _ _ _ _ _ eq_refl Wf2 St).
+    specialize (IH1 _ Se Wf1).
+    specialize (IH2 _ Se Wf2).
     destruct IH1 as [T1Hasnt | [D1 [Eq1 T1Has]]];
     destruct IH2 as [T2Hasnt | [D2 [Eq2 T2Has]]].
     - eauto.
@@ -3800,32 +3842,6 @@ Proof.
 Qed.
 
 Print Assumptions narrow_has.
-
-Lemma narrow_has_middle: forall G1 x S1 S2 G2 T D2,
-  typ_has (G1 & x ~ S2 & G2) T D2 ->
-  wf_typ  (G1 & x ~ S1 & G2) T ->  (* <-- quite strong *)
-  subtyp  (G1 & x ~ S1 & G2) S1 S2 ->
-  exists D1,
-    typ_has (G1 & x ~ S1 & G2) T D1 /\
-    subdec  (G1 & x ~ S1 & G2) D1 D2.
-Proof.
-  introv Has Wf St. apply* narrow_has.
-Qed.
-
-Lemma narrow_has_end: forall G1 x S1 S2 T D2,
-  typ_has (G1 & x ~ S2) T D2 ->
-  wf_typ  (G1 & x ~ S1) T ->  (* <-- quite strong *)
-  subtyp  (G1 & x ~ S1) S1 S2 ->
-  exists D1,
-    typ_has (G1 & x ~ S1) T D1 /\
-    subdec  (G1 & x ~ S1) D1 D2.
-Proof.
-  introv Has Wf St.
-  rewrite <- (concat_empty_r (G1 & x ~ S2)) in Has.
-  rewrite <- (concat_empty_r (G1 & x ~ S1)) in St, Wf.
-  rewrite <- (concat_empty_r (G1 & x ~ S1)).
-  apply* narrow_has_middle.
-Qed.
 
 Lemma narrow_wf:
    (forall G A T, wf_typ_impl G A T -> forall G1 x S1 S2 G2,
