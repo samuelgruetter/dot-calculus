@@ -3567,38 +3567,35 @@ Proof.
     auto.
 Qed.
 
-Lemma narrow_binds_3: forall G1 G2 x T1 T2,
+Lemma narrow_binds_3: forall G1 G2 x T2,
   subenv G1 G2 ->
+  ok G1 ->
   binds x T2 G2 ->
-  binds x T1 G1 ->
-  subtyp G1 T1 T2 \/ T1 = T2.
+  binds x T2 G1 \/ exists T1, binds x T1 G1 /\ subtyp G1 T1 T2 /\ stable_typ T1.
 Proof.
-  introv Se. gen x T1 T2. induction Se; introv Bi2 Bi1.
+  introv Se. gen x T2. induction Se; introv Ok Bi2.
   + (* case subenv_empty *)
     exfalso. apply (binds_empty_inv Bi2).
   + (* case subenv_sub *)
-    apply binds_push_inv in Bi2. apply binds_push_inv in Bi1.
-    destruct Bi2 as [[? ?] | [Ne2 Bi2]]; destruct Bi1 as [[? ?] | [Ne1 Bi1]]; subst;
-    try solve [exfalso; auto].
-    - left. assumption.
-    - specialize (IHSe _ _ _ Bi2 Bi1). destruct IHSe as [St | Eq].
-      * left. apply (weaken_subtyp_end (okadmit _) St).
-      * right. assumption.
+    apply binds_push_inv in Bi2. destruct Bi2 as [[? ?] | [Ne2 Bi2]].
+    - subst. right. exists T1. auto.
+    - specialize (IHSe _ _ (okadmit _) Bi2). destruct IHSe as [Bi1 | [T00 [Bi1 [St Sb]]]].
+      * left. auto.
+      * right. exists T00. repeat split; auto.
+        apply (weaken_subtyp_end (okadmit _) St).
   + (* case subenv_push *)
-    apply binds_push_inv in Bi2. apply binds_push_inv in Bi1.
-    destruct Bi2 as [[? ?] | [Ne2 Bi2]]; destruct Bi1 as [[? ?] | [Ne1 Bi1]]; subst;
-    try solve [exfalso; auto].
-    - right. reflexivity.
-    - specialize (IHSe _ _ _ Bi2 Bi1). destruct IHSe as [St | Eq].
-      * left. apply (weaken_subtyp_end (okadmit _) St).
-      * right. assumption.
+    apply binds_push_inv in Bi2. destruct Bi2 as [[? ?] | [Ne2 Bi2]].
+    - subst. left. auto.
+    - specialize (IHSe _ _ (okadmit _) Bi2). destruct IHSe as [Bi1 | [T00 [Bi1 [St Sb]]]].
+      * left. auto.
+      * right. exists T00. repeat split; auto.
+        apply (weaken_subtyp_end (okadmit _) St).
   + (* case subenv_skip *)
-    assert (xG1: x # G1) by admit. (* needs ok *)
-    apply binds_push_inv in Bi1. destruct Bi1 as [[? ?] | [Ne1 Bi1]]; subst.
-    - admit. (* xG1, Se, Bi2 are a contradiction *)
-    - specialize (IHSe _ _ _ Bi2 Bi1). destruct IHSe as [St | Eq].
-      * left. apply (weaken_subtyp_end (okadmit _) St).
-      * right. assumption.
+    assert (Ne: x0 <> x) by admit. (* from Ok, Bi2, Se *)
+    specialize (IHSe _ _ (okadmit _ ) Bi2). destruct IHSe as [Bi1 | [T00 [Bi1 [St Sb]]]].
+    * left. auto.
+    * right. exists T00. repeat split; auto.
+      apply (weaken_subtyp_end (okadmit _) St).
 Qed.
 
 Lemma narrow_binds_4: forall G1 G2 x T1 T2,
@@ -3609,9 +3606,9 @@ Lemma narrow_binds_4: forall G1 G2 x T1 T2,
   subtyp G1 T1 T2.
 Proof.
   introv WfT1 Bi2 Bi1 Se.
-  lets P: (narrow_binds_3 Se Bi2 Bi1). destruct P as [St | Eq].
-  - assumption.
-  - subst. apply (subtyp_refl WfT1).
+  lets P: (narrow_binds_3 Se (okadmit _) Bi2). destruct P as [Bi1' | [T0 [Bi1' [St Sb]]]].
+  - rewrite (binds_func Bi1' Bi1). apply (subtyp_refl WfT1).
+  - lets Eq: (binds_func Bi1' Bi1). subst. assumption.
 Qed.
 
 Lemma narrow_has_stable:
@@ -3844,16 +3841,12 @@ Qed.
 Print Assumptions narrow_has.
 
 Lemma narrow_wf:
-   (forall G A T, wf_typ_impl G A T -> forall G1 x S1 S2 G2,
-    G = G1 & x ~ S2 & G2 ->
-    stable_typ S1 ->
-    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
-    wf_typ_impl (G1 & x ~ S1 & G2) A T)
-/\ (forall G A D, wf_dec_impl G A D -> forall G1 x S1 S2 G2,
-    G = G1 & x ~ S2 & G2 ->
-    stable_typ S1 ->
-    subtyp (G1 & x ~ S1 & G2) S1 S2 ->
-    wf_dec_impl (G1 & x ~ S1 & G2) A D).
+   (forall G A T, wf_typ_impl G A T -> forall G',
+    subenv G' G ->
+    wf_typ_impl G' A T)
+/\ (forall G A D, wf_dec_impl G A D -> forall G',
+    subenv G' G ->
+    wf_dec_impl G' A D).
 Proof.
   apply wf_mutind.
   + (* case wf_top *) eauto.
@@ -3861,21 +3854,20 @@ Proof.
   + (* case wf_hyp *) eauto.
   + (* case wf_rcd *) eauto.
   + (* case wf_sel *)
-    introv Bix SbX XHas WfX IHX WfT IHT WfU IHU. introv Eq SbS1 St. subst.
-    lets XHas': ((proj1 narrow_has_stable) _ _ _ XHas _ _ _ _ _ eq_refl SbX St).
-    specialize (IHX _ _ _ _ _ eq_refl SbS1 St).
-    specialize (IHT _ _ _ _ _ eq_refl SbS1 St).
-    specialize (IHU _ _ _ _ _ eq_refl SbS1 St).
-    destruct (narrow_binds_raw Bix St) as [Bix' | [Eq1 [Eq2 Bix']]].
+    introv Bix SbX XHas WfX IHX WfT IHT WfU IHU. introv Se. subst.
+    lets XHas': ((proj1 narrow_has_stable) _ _ _ XHas _ SbX Se).
+    specialize (IHX _ Se).
+    specialize (IHT _ Se).
+    specialize (IHU _ Se).
+    destruct (narrow_binds_3 Se (okadmit _) Bix) as [Bix' | [X' [Bix' [St SbX']]]].
     - (* case "type of x remained unchanged" *)
       apply (wf_sel Bix' SbX XHas' IHX IHT IHU).
-    - (* case "x = x0, so type of x changed from S2 to S1" *)
-      subst.
+    - (* case "type of x changed from X to X'" *)
       lets P: (swap_sub_and_typ_has St XHas'). destruct P as [D1 [S1Has Sd]].
               (********************)
       apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT2 StU2]]]].
       subst D1.
-      apply (wf_sel Bix' SbS1 S1Has);
+      apply (wf_sel Bix' SbX' S1Has);
       rewrite <- (union_empty_l A); apply add_hyps_to_wf_typ.
       * apply (proj1 (subtyp_regular St)).
       * apply (proj2 (subtyp_regular StT2)).
@@ -3887,37 +3879,6 @@ Proof.
 Qed.
 
 Print Assumptions narrow_wf.
-
-Lemma narrow_wf_typ_middle: forall G1 x S1 S2 G2 T,
-  wf_typ (G1 & x ~ S2 & G2) T ->
-  stable_typ S1 ->
-  subtyp (G1 & x ~ S1 & G2) S1 S2 ->
-  wf_typ (G1 & x ~ S1 & G2) T.
-Proof.
-  introv WfT St. apply* narrow_wf.
-Qed.
-
-Lemma narrow_wf_typ_end: forall G1 x S1 S2 T,
-  wf_typ (G1 & x ~ S2) T ->
-  stable_typ S1 ->
-  subtyp (G1 & x ~ S1) S1 S2 ->
-  wf_typ (G1 & x ~ S1) T.
-Proof.
-  introv WfT Sb St.
-  rewrite <- (concat_empty_r (G1 & x ~ S2)) in WfT.
-  rewrite <- (concat_empty_r (G1 & x ~ S1)) in St.
-  rewrite <- (concat_empty_r (G1 & x ~ S1)).
-  apply* narrow_wf.
-Qed.
-
-Lemma narrow_wf_dec_middle: forall G1 x S1 S2 G2 D,
-  wf_dec (G1 & x ~ S2 & G2) D ->
-  stable_typ S1 ->
-  subtyp (G1 & x ~ S1 & G2) S1 S2 ->
-  wf_dec (G1 & x ~ S1 & G2) D.
-Proof.
-  introv WfT St. apply* narrow_wf.
-Qed.
 
 Lemma good_bounds_to_old: forall G,
   good_bounds G ->
