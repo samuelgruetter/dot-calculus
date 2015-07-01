@@ -4231,20 +4231,22 @@ Lemma subst_ty:
    (forall G t T, ty_trm G t T -> forall G1 x y S G2,
     G = G1 & x ~ S & G2  ->
     ok (G1 & x ~ S & G2) ->
-    binds y (subst_typ x y S) (G1 & G2) ->
+    binds y S (G1 & G2) ->
     ty_trm (subst_ctx x y (G1 & G2)) (subst_trm x y t) (subst_typ x y T))
 /\ (forall G d D, ty_def G d D -> forall G1 x y S G2,
     G = G1 & x ~ S & G2  ->
     ok (G1 & x ~ S & G2) ->
-    binds y (subst_typ x y S) (G1 & G2) ->
+    binds y S (G1 & G2) ->
     ty_def (subst_ctx x y (G1 & G2)) (subst_def x y d) (subst_dec x y D))
 /\ (forall G ds T, ty_defs G ds T -> forall G1 x y S G2,
     G = G1 & x ~ S & G2  ->
     ok (G1 & x ~ S & G2) ->
-    binds y (subst_typ x y S) (G1 & G2) ->
+    binds y S (G1 & G2) ->
     ty_defs (subst_ctx x y (G1 & G2)) (subst_defs x y ds) (subst_typ x y T)).
 Proof.
   apply ty_mutind.
+  admit. admit. admit.
+  (*
   + (* case ty_var *)
     introv Bix WfT Eq Ok Biy. subst.
     lets Bix': (subst_binds Bix Ok Biy).
@@ -4264,7 +4266,7 @@ Proof.
       repeat rewrite concat_assoc in IH1.
       assert (Ok': ok (G1 & x ~ S & G2 & x' ~ open_typ x' T)) by auto.
       specialize (IH1 eq_refl Ok').
-      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var*).
+      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var* ).
       unfold subst_ctx in IH1. rewrite map_push in IH1.
       lets P: (@subst_open_commute_typ x y x' T). rewrite Eqz in P.
       rewrite P in IH1. clear P.
@@ -4276,7 +4278,7 @@ Proof.
       repeat rewrite concat_assoc in IH2.
       assert (Ok': ok (G1 & x ~ S & G2 & x' ~ open_typ x' T)) by auto.
       specialize (IH2 eq_refl Ok').
-      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var*).
+      assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var* ).
       unfold subst_ctx in IH2. rewrite map_push in IH2.
       lets P: (@subst_open_commute_typ x y x' T). rewrite Eqz in P.
       rewrite P in IH2. clear P.
@@ -4284,12 +4286,13 @@ Proof.
       rewrite P in IH2. clear P.
       apply IH2. apply (binds_push_neq _ Biy). auto.
     - apply (subst_wf_typ WfU Ok Biy).
+*)
   + (* case ty_hyp *)
     introv WfT Ty IH Eq Ok Biy. subst.
     apply ty_hyp.
-    - apply* subst_wf_typ.
+    - admit. (*apply* subst_wf_typ.*)
     - intros G' Se Gb.
-      lets Biy': (subst_binds_0 x y Biy). rewrite subst_typ_idempotent in Biy'.
+      lets Biy': (subst_binds_0 x y Biy).
       rewrite subst_ctx_concat in *.
       destruct (subenv_concat_inv Se) as [G1' [G2' [? Se']]]. subst.
       destruct (subenv_binds Se Biy') as [S' [Biy'' StS]].
@@ -4308,8 +4311,8 @@ Proof.
         apply (good_bounds_undo_subst Biy'' Gb xG1'' xG2'').
       * assert (xS': x \notin fv_typ S') by admit.
         (* because in StS, S' is wf without any x being bound in the env *)
-        rewrite (subst_typ_undo y S' xS').
-        admit. (* !!!! doesnt' hold *)
+        rewrite <- subst_ctx_concat.
+        apply (subst_binds_0 _ _ Biy'').
   + (* case ty_sbsm *)
     introv Ty IH St Eq Ok Biy. subst.
     lets St': (subst_subtyp St Ok Biy). apply ty_sbsm with (subst_typ x y T1); eauto.
