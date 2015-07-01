@@ -4220,35 +4220,73 @@ Proof.
     apply ty_defs_cons; fold subst_defs subst_def; eauto.
 Qed.
 
-(*
 Lemma trm_subst_principle: forall G x y t S T,
   ty_trm (G & x ~ S) t T ->
   ok (G & x ~ S) ->
+  x \notin fv_ctx_types G ->
   binds y S G ->
   ty_trm G (subst_trm x y t) (subst_typ x y T).
 Proof.
-  introv Ty Ok Biy.
+  introv Ty Ok Fr Biy.
   destruct subst_ty as [P _].
   specialize (P _ _ _ Ty G x y S empty).
-  unfold subst_ctx in P. rewrite map_empty in P.
   repeat rewrite concat_empty_r in P.
-  apply (P eq_refl Ok Biy).
+  specialize (P eq_refl Ok Biy).
+  rewrite (subst_fresh_ctx _ _ Fr) in P.
+  exact P.
 Qed.
 
 Lemma defs_subst_principle: forall G x y ds S T,
   ty_defs (G & x ~ S) ds T ->
   ok (G & x ~ S) ->
+  x \notin fv_ctx_types G ->
   binds y S G ->
   ty_defs G (subst_defs x y ds) (subst_typ x y T).
 Proof.
-  introv Ty Ok Biy.
+  introv Ty Ok Fr Biy.
   destruct subst_ty as [_ [_ P]].
   specialize (P _ _ _ Ty G x y S empty).
-  unfold subst_ctx in P. rewrite map_empty in P.
   repeat rewrite concat_empty_r in P.
-  apply (P eq_refl Ok Biy).
+  specialize (P eq_refl Ok Biy).
+  rewrite (subst_fresh_ctx _ _ Fr) in P.
+  exact P.
 Qed.
-*)
+
+
+(* ###################################################################### *)
+(** ** Weakening corollaries of the general narrowing+weakening *)
+
+Lemma subenv_concat: forall G1 G2,
+  subenv (G1 & G2) G1.
+Proof.
+  intro G1. apply env_ind.
+  - rewrite concat_empty_r. apply subenv_refl.
+  - intros G2 x T Se. rewrite concat_assoc. apply (subenv_skip _ _ Se).
+Qed.
+
+Lemma weaken_ty_defs_end: forall G1 G2 ds T,
+  ok (G1 & G2) -> ty_defs G1 ds T -> ty_defs (G1 & G2) ds T.
+Proof.
+  introv Ok Ty. lets Se: (subenv_concat G1 G2).
+  apply ((proj33 narrow_ty) _ _ _ Ty _ Ok Se).
+Qed.
+
+Print Assumptions weaken_ty_defs_end.
+
+Lemma subenv_weaken_middle: forall G1 G2 G3,
+  subenv (G1 & G2 & G3) (G1 & G3).
+Proof.
+  intros G1 G2 G3. gen G3. apply env_ind.
+  - do 2 rewrite concat_empty_r. apply subenv_concat.
+  - intros G3 x T Se. repeat rewrite concat_assoc. apply (subenv_push _ _ Se).
+Qed.
+
+Lemma weaken_ty_defs_middle: forall G1 G2 G3 ds T,
+  ok (G1 & G2 & G3) -> ty_defs (G1 & G3) ds T -> ty_defs (G1 & G2 & G3) ds T.
+Proof.
+  introv Ok Ty. lets Se: (subenv_weaken_middle G1 G2 G3).
+  apply ((proj33 narrow_ty) _ _ _ Ty _ Ok Se).
+Qed.
 
 
 (* ###################################################################### *)
@@ -4274,7 +4312,7 @@ Proof.
   introv Wf Bi.
   lets P: (ctx_binds_to_sto_binds_raw Wf Bi).
   destruct P as [G1 [G2 [ds [Eq [Bis Tyds]]]]]. subst.
-  exists ds. apply (conj Bis). refine (weaken_ty_defs_end Tyds _).
+  exists ds. apply (conj Bis). refine (weaken_ty_defs_end _ Tyds).
   (*
   - apply invert_wf_sto_concat in Wf. destruct Wf as [s1 [s2 [Eq Wf]]]. subst.
     apply (wf_sto_to_good_bounds Wf).
@@ -4292,7 +4330,7 @@ Proof.
   + unfolds binds. rewrite get_push in *. case_if.
     - inversions Bi. exists T. auto.
     - specialize (IHWf _ Bi). destruct IHWf as [U [Bi' Tyds]].
-      exists U. apply (conj Bi'). refine (weaken_ty_defs_end Tyds _).
+      exists U. apply (conj Bi'). refine (weaken_ty_defs_end _ Tyds).
       (* apply (wf_sto_to_good_bounds Wf). *)
       * apply wf_sto_to_ok_G in Wf. auto.
 Qed.
@@ -4398,7 +4436,7 @@ Proof.
   + subst. assumption.
   + assert (xG: x # G) by auto.
     assert (Okyx: ok (G & y ~ open_typ y S & x ~ open_typ x S)) by auto.
-    lets Ty': (weaken_ty_defs_middle Gb Okyx Ty).
+    lets Ty': (weaken_ty_defs_middle Okyx Ty).
     rewrite* (@subst_intro_defs x y ds).
     lets P: (@defs_subst_principle _ _ y _ _ _ Ty' Okyx).
     assert (FrT: x \notin (fv_typ T)) by auto.
@@ -4448,26 +4486,22 @@ Qed.
 Lemma invert_ty_new: forall G ds u U,
   good_bounds G ->
   ty_trm G (trm_new ds u) U ->
-  exists L T U' G1 G2,
-     (G = G1 & G2)
+  exists L T,
+     (forall x, x \notin L ->
+        ty_defs (G & x ~ open_typ x T) (open_defs x ds) (open_typ x T))
   /\ (forall x, x \notin L ->
-        ty_defs (G1 & x ~ open_typ x T) (open_defs x ds) (open_typ x T))
-  /\ (forall x, x \notin L ->
-        ty_trm (G1 & x ~ open_typ x T) (open_trm x u) U')
-  /\ (wf_typ G1 U')
-  /\ (subtyp G U' U).
+        ty_trm (G & x ~ open_typ x T) (open_trm x u) U)
+  /\ (wf_typ G U).
 Proof.
   introv Gb Ty. gen_eq t: (trm_new ds u). induction Ty; intro Eq; inversions Eq.
-  - exists L T U G1 G2. lets WfU: (@weaken_wf_typ_end G1 G2 U H2 (okadmit _)).
-    eauto 10.
+  - eauto.
   - apply* H1. apply subenv_refl.
   - specialize (IHTy Gb eq_refl).
-    destruct IHTy as [L [T0 [U' [G1 [G2 [Eq [Tyds [Tyu [Wf St]]]]]]]]].
-    subst. exists L T0 U' G1 G2. repeat split.
+    destruct IHTy as [L [T0 [Tyds [Tyu Wf]]]].
+    subst. exists L T0. repeat split.
     * apply Tyds.
-    * intros x xL. apply (Tyu x xL).
-    * exact Wf.
-    * apply (subtyp_trans St H).
+    * intros x xL. apply (ty_sbsm (Tyu x xL)). apply (weaken_subtyp_end (okadmit _) H).
+    * apply (proj2 (subtyp_regular H)).
 Qed.
 
 Lemma invert_ty_call: forall G t m V2 u,
