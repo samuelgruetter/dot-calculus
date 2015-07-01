@@ -4264,6 +4264,15 @@ Proof.
   - intros G2 x T Se. rewrite concat_assoc. apply (subenv_skip _ _ Se).
 Qed.
 
+Lemma weaken_ty_trm_end: forall G1 G2 t T,
+  ok (G1 & G2) -> 
+  ty_trm G1        t T ->
+  ty_trm (G1 & G2) t T.
+Proof.
+  introv Ok Ty. lets Se: (subenv_concat G1 G2).
+  apply ((proj31 narrow_ty) _ _ _ Ty _ Ok Se).
+Qed.
+
 Lemma weaken_ty_defs_end: forall G1 G2 ds T,
   ok (G1 & G2) -> ty_defs G1 ds T -> ty_defs (G1 & G2) ds T.
 Proof.
@@ -4420,7 +4429,6 @@ Proof.
   simpl. rewrite union_comm. reflexivity.
 Qed.
 
-(*
 (* replaces super-fresh x by a not-so-fresh y *)
 Lemma ty_open_defs_change_var: forall y G S ds T,
   ok G ->
@@ -4430,6 +4438,8 @@ Lemma ty_open_defs_change_var: forall y G S ds T,
   ty_defs (G & x ~ open_typ x S) (open_defs x ds) (open_typ x T) ->
   ty_defs (G & y ~ open_typ y S) (open_defs y ds) (open_typ y T).
 Proof.
+Admitted.
+(*
   introv Ok yG. let L := gather_vars in exists (L \u fv_typ (open_typ y S)).
   intros x Fr Gb Ty.
   destruct (classicT (x = y)) as [Eq | Ne].
@@ -4444,8 +4454,11 @@ Proof.
     assert (Fr': (x \notin (fv_ctx_types (G & y ~ open_typ y S)))). {
       rewrite fv_ctx_types_push. rewrite notin_union. auto.
     }
-    apply P. apply binds_push_eq.
+    apply P.
+    - auto.
+    - apply binds_push_eq.
 Qed.
+*)
 
 (* replaces super-fresh x by a not-so-fresh y *)
 Lemma ty_open_trm_change_var: forall y G S t T,
@@ -4456,6 +4469,8 @@ Lemma ty_open_trm_change_var: forall y G S t T,
   ty_trm (G & x ~ open_typ x S) (open_trm x t) T ->
   ty_trm (G & y ~ open_typ y S) (open_trm y t) T.
 Proof.
+Admitted.
+(*
   introv Ok yG. let L := gather_vars in exists (L \u fv_typ (open_typ y S)).
   intros x Fr Gb Ty.
   destruct (classicT (x = y)) as [Eq | Ne].
@@ -4520,6 +4535,18 @@ Proof.
     exists T U V. repeat split; auto. apply (subtyp_trans St H).
 Qed.
 
+Lemma good_bounds_push_ty_defs: forall G y ds T,
+  good_bounds G ->
+  ty_defs (G & y ~ T) ds T ->
+  ok (G & y ~ T) ->
+  good_bounds (G & y ~ T).
+Proof.
+  introv Gb Tyds Ok.
+  apply (good_bounds_push Gb). apply (ty_defs_to_good_bounds_typ Tyds).
+Qed.
+
+Print Assumptions good_bounds_push_ty_defs.
+
 
 (* ###################################################################### *)
 (** ** Preservation *)
@@ -4535,9 +4562,9 @@ Proof.
     apply (invert_ty_call Gb) in TyCall.
     destruct TyCall as [T [U2'' [V2'' [Tyx [THas [Tyy StV]]]]]].
     apply (invert_ty_var Gb) in Tyx. destruct Tyx as [T' [BiGx StT]].
-    apply (invert_ty_var Gb) in Tyy. destruct Tyy as [U2''' [BiGy StU]].
+    apply (invert_ty_var Gb) in Tyy. destruct Tyy as [U2''' [BiGy StU2]].
     lets P: (swap_sub_and_typ_has StT THas). destruct P as [D1 [T'Has Sd]].
-    apply invert_subdec_mtd_sync_left in Sd. destruct Sd as [U1 [V1 [Eq [StU' StV']]]].
+    apply invert_subdec_mtd_sync_left in Sd. destruct Sd as [U1 [V1 [Eq [StU1 StV']]]].
     subst D1.
     lets P: (typ_has_to_defs_has Wf T'Has Bis BiGx). destruct P as [d [dsHas' Tyd]].
     inversions Tyd.
@@ -4547,6 +4574,7 @@ Proof.
     }
     inversions Eq. clear dsHas'.
     rename U2''' into U1.
+    lets StU: (subtyp_trans StU2 StU1).
     pick_fresh y'.
     assert (y'L: y' \notin L) by auto.
     specialize (Tybody y' y'L).
@@ -4554,42 +4582,37 @@ Proof.
     (* Before we can apply the substitution principle, we must narrow 
        y' ~ U2 to y' ~ U1 in Tybody.
        But narrowing requires good_bounds: *)
-    assert (Gb': good_bounds (G1 & G2 & y' ~ U2)). {
+    assert (Gb': good_bounds (G & y' ~ U2)). {
       lets GbU1: ((good_bounds_to_old Gb) _ _ BiGy).
-      lets GbU2: (supertyp_has_good_bounds (subtyp_trans StU StU') GbU1).
-      assert (Oky': ok (G1 & G2 & y' ~ U2)) by auto.
+      lets GbU2: (supertyp_has_good_bounds StU GbU1).
+      assert (Oky': ok (G & y' ~ U2)) by auto.
       apply (good_bounds_push Gb).
       apply (weaken_good_bounds_typ_end Oky' GbU2).
     }
-    assert (Oky': ok (G1 & G2 & y' ~ U1)) by auto.
+    assert (Oky': ok (G & y' ~ U1)) by auto.
+    apply (weaken_subtyp_end Oky') in StU.
     destruct (ctx_binds_to_sto_binds Wf BiGy) as [dsy [Bisy Tydsy]].
     lets SbU1: (defs_have_stable_typ Tydsy).
-    lets Tybody': (narrow_ty_end Tybody _ SbU1 (subtyp_trans StU StU')).
+    lets Tybody': (narrow_ty_end Tybody Oky' SbU1 StU).
                   (*****************)
-    (* need to weaken_ty_trm_middle !*)
-
-    lets P: (@trm_subst_principle_imp G y' y _ U1 V2 Tybody' Oky').
-             (*******************)
-    assert (y'U1: y' \notin (fv_typ U1)) by auto.
-    rewrite (@subst_fresh_typ y' y U1 y'U1) in P.
+    assert (y'G: y' \notin fv_ctx_types G) by auto.
+    lets P: (@trm_subst_principle G y' y _ U1 V2 Tybody' Oky' y'G BiGy).
     assert (y'body: y' \notin (fv_trm body)) by auto.
     rewrite <- (@subst_intro_trm y' y body y'body) in P.
-    assert (EqG: (subst_ctx y' y G) = G). { refine (@subst_fresh_ctx y' y _ _). auto. }
-    rewrite EqG in P.
-    apply (ty_imp_sbsm (P BiGy)).
+    apply (ty_sbsm P).
     assert (EqV2: (subst_typ y' y V2) = V2). { refine (@subst_fresh_typ y' y _ _). auto. }
-    rewrite EqV2. exact StV.
+    rewrite EqV2. apply (subtyp_trans StV' StV).
   + (* red_new *)
-    introv Wf Ty. inversions Ty. rename H1 into StT.
+    introv Wf Ty.
     lets Gb: (wf_sto_to_good_bounds Wf).
-    apply (invert_ty_new Gb) in H0.
-    destruct H0 as [L [Tds [Tyds [Tyt WfT]]]].
+    apply (invert_ty_new Gb) in Ty.
+    destruct Ty as [L [Tds [Tyds [Tyt WfT]]]].
     exists (x ~ (open_typ x Tds)).
     assert (xG: x # G) by apply* sto_unbound_to_ctx_unbound.
     lets Ok: (wf_sto_to_ok_G Wf).
     assert (Okx: forall X, ok (G & x ~ X)) by auto.
     lets C1: (@ty_open_defs_change_var x G Tds ds Tds Ok xG). destruct C1 as [L1 C1].
-    lets C2: (@ty_open_trm_change_var  x G Tds t  T1  Ok xG). destruct C2 as [L2 C2].
+    lets C2: (@ty_open_trm_change_var  x G Tds t  T   Ok xG). destruct C2 as [L2 C2].
     pick_fresh x'.
     assert (x'L: x' \notin L) by auto.
     assert (x'L1: x' \notin L1) by auto.
@@ -4598,37 +4621,32 @@ Proof.
     split.
     - refine (wf_sto_push Wf H xG _). apply* C1.
       apply (good_bounds_push_ty_defs Gb Tyds). auto.
-    - refine (ty_sbsm _ (weaken_subtyp_end (Okx _) StT)). apply* C2.
+    - apply* C2.
       apply (good_bounds_push_ty_defs Gb Tyds). auto.
   + (* red_call1 *)
     intros G Tr2 Wf TyCall.
     lets Gb: (wf_sto_to_good_bounds Wf).
-    apply (invert_ty_imp_call Gb) in TyCall.
+    apply (invert_ty_call Gb) in TyCall.
     destruct TyCall as [To2 [Ta [Tr1 [Tyo [Has [Tya Str]]]]]].
-    specialize (IHRed _ _ Wf (ty_trm_to_ty_imp Tyo)). destruct IHRed as [G' [Wf' Tyo']].
-    inversions Tyo'. rename T1 into To1, H into Tyo', H0 into Sto.
+    specialize (IHRed _ _ Wf Tyo). destruct IHRed as [G' [Wf' Tyo']].
     exists G'. apply (conj Wf').
     lets Ok': (wf_sto_to_ok_G Wf').
     apply (weaken_subtyp_end Ok') in Str.
     lets Has': (weaken_typ_has_end Ok' Has).
-    lets P: (swap_sub_and_typ_has Sto Has'). destruct P as [D [Has'' Sd]].
-            (********************)
-    apply invert_subdec_mtd_sync_left in Sd.
-    destruct Sd as [Ta1' [Tr1' [Eq [Sta Str']]]]. subst.
-    refine (ty_sbsm _ (subtyp_trans Str' Str)).
-    refine (ty_call Tyo' Has'' _ _).
-    - refine (ty_imp_sbsm _ Sta). apply (weaken_ty_imp_end Ok' Gb Tya).
-    - apply (proj1 (subtyp_regular Str')).
+    refine (ty_sbsm _ Str).
+    refine (ty_call Tyo' Has' _ _).
+    - apply (weaken_ty_trm_end Ok' Tya).
+    - apply (proj1 (subtyp_regular Str)).
   + (* red_call2 *)
     intros G Tr2 Wf TyCall.
     lets Gb: (wf_sto_to_good_bounds Wf).
-    apply (invert_ty_imp_call Gb) in TyCall.
+    apply (invert_ty_call Gb) in TyCall.
     destruct TyCall as [To2 [Ta [Tr1 [Tyo [Has [Tya Str]]]]]].
     specialize (IHRed _ _ Wf Tya). destruct IHRed as [G' [Wf' Tya']].
     lets Ok': (wf_sto_to_ok_G Wf').
     lets Has': (weaken_typ_has_end Ok' Has).
     exists G'.
-    lets Tyo': (weaken_ty_trm_end Ok' Gb Tyo).
+    lets Tyo': (weaken_ty_trm_end Ok' Tyo).
     lets WfD: (typ_has_preserves_wf Has' (ty_trm_regular Tyo')). inversions WfD.
     rename H3 into WfTa2, H5 into WfTr2.
     apply (conj Wf').
