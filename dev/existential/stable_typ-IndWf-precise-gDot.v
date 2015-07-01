@@ -2249,7 +2249,13 @@ Qed.
 
 Lemma subenv_refl: forall G,
   subenv G G.
-Admitted.
+Proof.
+  apply env_ind.
+  - apply subenv_empty.
+  - intros G x T Se. apply (subenv_push _ _ Se).
+Qed.
+
+Hint Constructors subenv.
 
 Lemma subenv_trans: forall G1 G2 G3,
   subenv G1 G2 -> subenv G2 G3 -> subenv G1 G3.
@@ -4031,7 +4037,7 @@ Lemma subenv_binds: forall G1 G2 x S2,
   exists S1, binds x S1 G1 /\ subtyp G1 S1 S2. (* could even give a smaller env than G1 *)
 Admitted.
 
-(* duplicate the existing entry (y ~ S), inserting it between G1 and G2 *)
+(* duplicate the existing entry (y ~ S), inserting it between G1 and G2
 Lemma good_bounds_duplicate_entry: forall G1 G2 x y S,
   good_bounds (G1 & G2) ->
   binds y S G1 ->
@@ -4039,6 +4045,7 @@ Lemma good_bounds_duplicate_entry: forall G1 G2 x y S,
   x # G2 ->
   good_bounds (G1 & x ~ S & G2).
 Admitted.
+*)
 
 Lemma subenv_undo_subst: forall G1' G2' G1 x y S' S G2,
   binds y S' (G1' & G2') ->
@@ -4105,6 +4112,8 @@ Proof.
     rewrite Eq. exact Biz.
 Qed.
 
+Axiom closed_env_stuff: forall (P: Prop), P.
+
 Lemma subst_ty:
    (forall G t T, ty_trm G t T -> forall G1 x y S G2,
     G = G1 & x ~ S & G2  ->
@@ -4165,14 +4174,14 @@ Proof.
   + (* case ty_hyp *)
     introv WfT Ty IH Eq Ok Biy. subst.
     apply ty_hyp.
-    - admit. (*apply* subst_wf_typ.*)
+    - apply* subst_wf_typ.
     - intros G' Se Gb.
       lets Biy': (subst_binds_0 x y Biy).
       rewrite subst_ctx_concat in *.
       destruct (subenv_concat_inv Se) as [G1' [G2' [? Se']]]. subst.
       destruct (subenv_binds Se Biy') as [S' [Biy'' StS]].
-      assert (xG1': x \notin fv_ctx_types G1') by admit.
-      assert (xG2': x \notin fv_ctx_types G2') by admit.
+      assert (xG1': x \notin fv_ctx_types G1') by apply closed_env_stuff.
+      assert (xG2': x \notin fv_ctx_types G2') by apply closed_env_stuff.
       (* should hold, because x is not in dom (G1' & G2'), and (G1' & G2') is closed *)
       rewrite <- (subst_ctx_undo y G1' xG1').
       rewrite <- (subst_ctx_undo y G2' xG2').
@@ -4182,9 +4191,10 @@ Proof.
           (subst_ctx y x G1') x y (subst_typ y x S') (subst_ctx y x G2')
           eq_refl (okadmit _) _); clear IH.
       * apply (subenv_undo_subst _ Biy'' Biy' Se' Se).
-      * assert (xG1'': x # G1') by admit. assert (xG2'': x # G2') by admit.
+      * assert (xG1'': x # G1') by apply closed_env_stuff.
+        assert (xG2'': x # G2') by apply closed_env_stuff.
         apply (good_bounds_undo_subst Biy'' Gb xG1'' xG2'').
-      * assert (xS': x \notin fv_typ S') by admit.
+      * assert (xS': x \notin fv_typ S') by apply closed_env_stuff.
         (* because in StS, S' is wf without any x being bound in the env *)
         rewrite <- subst_ctx_concat.
         apply (subst_binds_0 _ _ Biy'').
