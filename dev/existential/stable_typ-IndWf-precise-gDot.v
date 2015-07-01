@@ -4028,7 +4028,6 @@ Proof.
   - 
 *)
 
-(*
 Lemma narrow_ty:
    (forall G t T, ty_trm G t T -> forall G',
     ok G' ->
@@ -4056,7 +4055,6 @@ Proof.
     introv Tyt IH1 T2Has Tyu IH2 WfV2. introv Ok Se.
     subst. rename T into T2, V into V2.
     specialize (IH1 _ Ok Se).
-    rename IH1 into Tyt'.
     specialize (IH2 _ Ok Se).
     admit. (*
     lets P: (narrow_has_middle T2Has (ty_trm_regular Tyt') StS).
@@ -4069,17 +4067,10 @@ Proof.
     *)
   + (* case ty_new *)
     introv Tyds IH1 Tyu IH2 WfU Ok1 Se. subst.
-    pick_fresh y; assert (yL: y \notin L) by auto.
-    specialize (Tyds y yL).
-    lets P: (subenv_concat_inv Se). destruct P as [G1' [G2' [Eq Se1]]]. subst.
-    specialize (IH1 y yL (G1' & y ~ open_typ y T) (okadmit _) (subenv_push _ _ Se1)).
-    specialize (IH2 y yL (G1' & y ~ open_typ y T) (okadmit _) (subenv_push _ _ Se1)).
-    apply_fresh ty_new as y'; try (assert (Eq: y' = y) by admit; subst y').
-                              (******************************** cofinite vars stuff! *)
-    * apply IH1.
-    * (* Note: typing u imprecisely solves the fv-restriction problem we had before *)
-      apply IH2.
-    * admit. (* narrow WfU refine (narrow_wf_typ_middle WfU Sb (weaken_subtyp_end _ St))*)
+    apply_fresh ty_new as y; try assert (yL: y \notin L) by auto.
+    - apply (IH1 y yL (G' & y ~ open_typ y T) (okadmit _) (subenv_push _ _ Se)).
+    - apply (IH2 y yL (G' & y ~ open_typ y T) (okadmit _) (subenv_push _ _ Se)).
+    - admit. (* narrow_wf *)
   + (* case ty_hyp *)
     introv WfT Ty IH Ok Se. subst.
     assert (WfT': wf_typ G' T) by admit.
@@ -4105,14 +4096,13 @@ Proof.
     - intros G'' Se' Gb. apply ty_tdef. admit. (* subtyp narrowing *)
   + (* case ty_mdef *)
     introv WfT WfU Tyu IH Ok Se. subst.
-    lets P: (subenv_concat_inv Se). destruct P as [G1' [G2' [Eq Se1]]]. subst.
     apply_fresh ty_mdef as y.
     - admit. (* narrow_wf *)
     - admit. (* narrow_wf *)
     - assert (yL: y \notin L) by auto.
       (* Note: No more need for un-narrowing (because good_bounds is no longer a hyp,
          but it's not just moved to ty_hyp *)
-      apply (IH y yL (G1' & y ~ T) (okadmit _) (subenv_push _ _ Se1)).
+      apply (IH y yL (G' & y ~ T) (okadmit _) (subenv_push _ _ Se)).
   + (* case ty_defs_nil *) eauto.
   + (* case ty_defs_cons *)
     intros. subst. apply* ty_defs_cons.
@@ -4131,7 +4121,6 @@ Proof.
 Qed.
 
 Print Assumptions narrow_ty_end.
-*)
 
 
 (* ###################################################################### *)
