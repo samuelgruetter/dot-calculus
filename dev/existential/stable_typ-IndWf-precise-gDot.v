@@ -3921,14 +3921,167 @@ Qed.
 
 Definition notin_ctx(x: var)(G: ctx) := x \notin (dom G) /\ x \notin (fv_ctx_types G).
 
+Lemma typ_bot_has_dec_typ: forall G L,
+  typ_has G typ_bot (dec_typ L typ_top typ_bot).
+Proof.
+  intros.
+  assert (Eq: (dec_bot (label_typ L)) = (dec_typ L typ_top typ_bot)) by reflexivity.
+  rewrite <- Eq. apply typ_bot_has.
+Qed.
+
+Lemma typ_bot_has_dec_mtd: forall G m,
+  typ_has G typ_bot (dec_mtd m typ_top typ_bot).
+Proof.
+  intros.
+  assert (Eq: (dec_bot (label_mtd m)) = (dec_mtd m typ_top typ_bot)) by reflexivity.
+  rewrite <- Eq. apply typ_bot_has.
+Qed.
+
+Lemma subst_avar_injective: forall a1 a2 x y,
+  y \notin fv_avar a1 ->
+  y \notin fv_avar a2 ->
+  subst_avar x y a1 = subst_avar x y a2 ->
+  a1 = a2.
+Proof.
+  intros.
+  destruct a1; destruct a2; simpl in *;
+  repeat rewrite if_hoist in H1; inversions* H1.
+  f_equal. apply notin_singleton in H. apply notin_singleton in H0.
+  do 2 case_var*.
+Qed.
+
+Hint Resolve subst_avar_injective.
+
+Lemma subst_typ_dec_injective:
+   (forall T1 T2 x y, y \notin fv_typ T1 -> y \notin fv_typ T2 ->
+                      subst_typ x y T1 = subst_typ x y T2 -> T1 = T2)
+/\ (forall D1 D2 x y, y \notin fv_dec D1 -> y \notin fv_dec D2 ->
+                      subst_dec x y D1 = subst_dec x y D2 -> D1 = D2).
+Proof.
+  apply typ_mutind; intros; (destruct T2 || destruct D2);
+  match goal with
+  | H: subst_typ _ _ _ = subst_typ _ _ _ |- _ => inversions H
+  | H: subst_dec _ _ _ = subst_dec _ _ _ |- _ => inversions H
+  end;
+  simpl in *; f_equal;
+  repeat match goal with
+  | H: _ \notin (_ \u _) |- _ => rewrite notin_union in H; destruct H
+  end;
+  eauto.
+Qed.
+
+Definition subst_typ_injective := proj1 subst_typ_dec_injective.
+Definition subst_dec_injective := proj2 subst_typ_dec_injective.
+
+Lemma subst_typ_notin: forall x y T, x <> y -> x \notin fv_typ (subst_typ x y T).
+Admitted.
+
+Lemma undo_subst_binds: forall G1 x y S G2 z T,
+  y \notin fv_typ T ->
+  binds y S (G1 & G2) ->
+  notin_ctx x (G1 & G2) ->
+  binds (subst_fvar x y z) (subst_typ x y T) (G1 & G2) ->
+  binds z T (subst_ctx y x (G1 & x ~ S & G2)).
+Proof.
+  introv yT Biy xG Biz.
+  unfold subst_fvar in Biz. case_var.
+  - lets Eq: (binds_func Biy Biz). subst.
+    do 2 rewrite subst_ctx_concat. unfold subst_ctx at 2. rewrite map_single.
+    rewrite (subst_typ_undo x _ yT).
+    assert (xG2: x # subst_ctx y x G2) by apply closed_env_stuff.
+    apply (binds_middle_eq _ _ xG2).
+  - rewrite <- (subst_typ_undo x _ yT). apply subst_binds_0.
+    apply (binds_weaken Biz (okadmit _)).
+Qed.
+
+Print Assumptions undo_subst_binds.
+
+Lemma undo_subst_typ_has_hasnt:
+   (forall G0 T0 D0, typ_has G0 T0 D0 -> forall G1 x y S G2 T D,
+    G0 = G1 & G2 ->
+    T0 = subst_typ x y T ->
+    D0 = subst_dec x y D ->
+    y \notin fv_typ T ->
+    y \notin fv_dec D ->
+    binds y S (G1 & G2) ->
+    notin_ctx x (G1 & G2) ->
+    typ_has (subst_ctx y x (G1 & x ~ S & G2)) T D)
+/\ (forall G0 T0 l, typ_hasnt G0 T0 l -> forall G1 x y S G2 T,
+    G0 = G1 & G2 ->
+    T0 = subst_typ x y T ->
+    y \notin fv_typ T ->
+    binds y S (G1 & G2) ->
+    notin_ctx x (G1 & G2) ->
+    typ_hasnt (subst_ctx y x (G1 & x ~ S & G2)) T l).
+Proof.
+  apply typ_has_mutind.
+  + (* case typ_bot_has *)
+    introv Eq1 Eq2 Eq3 yT yD Biy xG.
+    destruct T; inversions Eq2.
+    destruct l; destruct D; inversions Eq3;
+    match goal with
+    | H: typ_top = subst_typ _ _ ?T |- _ => destruct T; inversions H
+    end;
+    match goal with
+    | H: typ_bot = subst_typ _ _ ?T |- _ => destruct T; inversions H
+    end;
+    [apply typ_bot_has_dec_typ | apply typ_bot_has_dec_mtd].
+  + (* case typ_rcd_has *)
+    introv Eq1 Eq2 Eq3 yT yD Biy xG.
+    destruct T; inversions Eq2. simpl in *.
+    apply (subst_dec_injective _ _ _ yD yT) in H0. subst.
+    apply typ_rcd_has.
+  + (* case typ_sel_has *)
+    introv Bix THas IH1 HiHas IH2. introv Eq1 Eq2 Eq3 yT yD Biy xG. subst.
+    destruct T0; inversions Eq2.
+    destruct a; inversions H0.
+    rewrite if_hoist in H1. inversions H1.
+    simpl in *.
+    assert (Eq: subst_fvar x0 y v = (If v = x0 then y else v)) by reflexivity.
+    rewrite <- Eq in Bix.
+    assert (x0T: x0 \notin fv_typ T) by apply closed_env_stuff.
+      (* because x0 is not in (G1 & G2), but T is bound in (G1 & G2) *)
+    lets EqT: (subst_typ_undo y _ x0T).
+    assert (x0Lo: x0 \notin fv_typ Lo) by apply closed_env_stuff.
+    lets EqLo: (subst_typ_undo y _ x0Lo).
+    assert (x0Hi: x0 \notin fv_typ Hi) by apply closed_env_stuff.
+    lets EqHi: (subst_typ_undo y _ x0Hi).
+    rewrite <- EqLo in *. rewrite <- EqHi in *.
+    rewrite <- EqT in Bix.
+    assert (Ne: y <> x0) by apply closed_env_stuff.
+    (* because x0 is not in (G1 & G2), but y is *)
+    assert (yFr: y \notin fv_typ (subst_typ y x0 T)) by apply (subst_typ_notin _ Ne).
+    lets P: (undo_subst_binds _ _ yFr Biy xG Bix).
+    eapply (typ_sel_has P).
+    - apply* IH1. simpl. apply notin_union. split; apply (subst_typ_notin _ Ne).
+    - apply* IH2. apply (subst_typ_notin _ Ne).
+  + (* case typ_and_has_1 *) admit.
+  + (* case typ_and_has_2 *) admit.
+  + (* case typ_and_has_12 *) admit.
+  + (* case typ_or_has *) admit.
+  + (* case typ_top_hasnt *) admit.
+  + (* case typ_rcd_hasnt *) admit.
+  + (* case typ_sel_hasnt *) admit.
+  + (* case typ_and_hasnt *) admit.
+  + (* case typ_or_hasnt_1 *) admit.
+  + (* case typ_or_hasnt_2 *) admit.
+  + (* case typ_or_hasnt_12 *) admit.
+Qed.
+
 Lemma undo_subst_typ_has: forall G1 x y S G2 T D,
+  y \notin fv_typ T ->
+  y \notin fv_dec D ->
   binds y S (G1 & G2) ->
   notin_ctx x (G1 & G2) ->
   typ_has (G1 & G2) (subst_typ x y T) (subst_dec x y D) ->
   typ_has (subst_ctx y x (G1 & x ~ S & G2)) T D.
-Admitted.
+Proof.
+  intros. destruct undo_subst_typ_has_hasnt as [P _].
+  apply (P _ _ _ H3 _ _ _ _ _ _ _ eq_refl eq_refl eq_refl H H0 H1 H2).
+Qed.
 
 Lemma undo_subst_wf_typ: forall G1 x y S G2 T,
+  y \notin fv_typ T ->
   binds y S (G1 & G2) ->
   notin_ctx x (G1 & G2) ->
   wf_typ (G1 & G2) (subst_typ x y T) ->
@@ -3936,6 +4089,10 @@ Lemma undo_subst_wf_typ: forall G1 x y S G2 T,
 Admitted.
 
 Lemma undo_subst_subtyp: forall G1 x y S G2 T1 T2,
+(*
+  y \notin fv_typ T1 ->
+  y \notin fv_typ T2 ->
+???*)
   binds y S (G1 & G2) ->
   notin_ctx x (G1 & G2) ->
   subtyp (G1 & G2) (subst_typ x y T1) (subst_typ x y T2) ->
@@ -3943,16 +4100,17 @@ Lemma undo_subst_subtyp: forall G1 x y S G2 T1 T2,
 Admitted.
 
 Lemma undo_subst_good_bounds_typ:  forall G1 x y S G2 T,
+  y \notin fv_typ T ->
   binds y S (G1 & G2) ->
   notin_ctx x (G1 & G2) ->
   good_bounds_typ (G1 & G2) (subst_typ x y T) ->
   good_bounds_typ (subst_ctx y x (G1 & x ~ S & G2)) T.
 Proof.
-  introv Biy xG Gb.
+  introv yT Biy xG Gb.
   unfold good_bounds_typ in *.
   split.
   - destruct Gb as [Wf _].
-    apply (undo_subst_wf_typ _ Biy xG Wf).
+    apply (undo_subst_wf_typ _ yT Biy xG Wf).
   - destruct Gb as [_ Gb].
     introv THas.
     do 2 rewrite subst_ctx_concat in THas. unfold subst_ctx in THas at 2.
@@ -3964,7 +4122,10 @@ Proof.
     rewrite <- subst_ctx_concat in THas'.
     rewrite (undo_subst_ctx _ _ (proj2 xG)) in THas'. simpl in THas'.
     specialize (Gb _ _ _ THas').
-    apply (undo_subst_subtyp _ _ Biy xG Gb).
+    (*
+    refine (undo_subst_subtyp _ _ _ _ Biy xG Gb).
+    admit. admit. *)
+    refine (undo_subst_subtyp _ _ Biy xG Gb).
 Qed.
 
 Lemma invert_binds_middle: forall (A: Type) (S T: A) (G1 G2: env A) (x y: var),
@@ -3993,9 +4154,9 @@ Proof.
   rewrite (undo_subst_ctx _ _ xG') in Biz.
   apply (invert_binds_middle (okadmit _)) in Biz. destruct Biz as [Biz | [? ?]].
   + specialize (Gb _ _ Biz).
-    apply (undo_subst_good_bounds_typ _ Biy xG Gb).
+    refine (undo_subst_good_bounds_typ _ _ Biy xG Gb). admit. (*???*)
   + subst. specialize (Gb _ _ Biy).
-    apply (undo_subst_good_bounds_typ _ Biy xG Gb).
+    refine (undo_subst_good_bounds_typ _ _ Biy xG Gb). admit. (*???*)
 Qed.
 
 Lemma subst_binds_2: forall G1 x S G2 z Z y,
