@@ -3887,7 +3887,7 @@ Lemma invert_fv_ctx: forall G y z Z,
   y \notin fv_typ Z.
 Admitted.
 
-Lemma subst_ctx_undo: forall x y G,
+Lemma undo_subst_ctx: forall x y G,
   y \notin fv_ctx_types G -> subst_ctx y x (subst_ctx x y G) = G.
 Proof.
   intros. unfold subst_ctx.
@@ -3903,50 +3903,7 @@ Proof.
   intros. unfold subst_ctx. apply map_concat.
 Qed.
 
-(* TODO do these hold?? *)
-Lemma wf_typ_swap: forall G x y S T,
-  binds x S G ->
-  binds y S G ->
-  wf_typ G (subst_typ x y T) ->
-  wf_typ (subst_ctx y x G) T.
-Admitted.
-
-Lemma typ_has_swap: forall G x y S T D,
-  binds x S G ->
-  binds y S G ->
-  typ_has (subst_ctx y x G) T D ->
-  typ_has G (subst_typ x y T) (subst_dec x y D).
-Admitted.
-
-Lemma subtyp_swap: forall G x y S T1 T2,
-  binds x S G ->
-  binds y S G ->
-  subtyp G (subst_typ x y T1) (subst_typ x y T2) ->
-  subtyp (subst_ctx y x G) T1 T2.
-Admitted.
-
-Lemma good_bounds_swap: forall G x y S,
-  binds x S G ->
-  binds y S G ->
-  good_bounds G ->
-  good_bounds (subst_ctx y x G).
-Proof.
-  introv Bix Biy Gb. unfold good_bounds in *.
-  intros z Z Biz.
-  apply (subst_binds_0 x y) in Biz.
-  assert (xG: x \notin fv_ctx_types G) by admit.
-  rewrite (subst_ctx_undo _ _ xG) in Biz.
-  specialize (Gb _ _ Biz).
-  unfold good_bounds_typ in *.
-  split.
-  - destruct Gb as [Wf _].
-    apply (wf_typ_swap _ Bix Biy Wf).
-  - destruct Gb as [_ Gb].
-    introv THas. apply (typ_has_swap Bix Biy) in THas. simpl in THas.
-    specialize (Gb _ _ _ THas).
-    apply (subtyp_swap _ _ Bix Biy Gb).
-Qed.
-
+(*
 Lemma good_bounds_insert: forall G1 x S G2,
   good_bounds (G1 & G2) ->
   good_bounds_typ (G1 & G2) S ->
@@ -3960,26 +3917,85 @@ Proof.
   - apply (weaken_good_bounds_typ_middle (okadmit _)).
     apply (Gb _ _ (binds_concat_left Biz zG2)).
 Qed.
+*)
 
-Lemma good_bounds_undo_subst: forall G1 x y S G2,
+Definition notin_ctx(x: var)(G: ctx) := x \notin (dom G) /\ x \notin (fv_ctx_types G).
+
+Lemma undo_subst_typ_has: forall G1 x y S G2 T D,
   binds y S (G1 & G2) ->
-  good_bounds (G1 & G2) ->
-  x # G1 ->
-  x # G2 ->
-  good_bounds ((subst_ctx y x G1) & x ~ (subst_typ y x S) & (subst_ctx y x G2)).
+  notin_ctx x (G1 & G2) ->
+  typ_has (G1 & G2) (subst_typ x y T) (subst_dec x y D) ->
+  typ_has (subst_ctx y x (G1 & x ~ S & G2)) T D.
+Admitted.
+
+Lemma undo_subst_wf_typ: forall G1 x y S G2 T,
+  binds y S (G1 & G2) ->
+  notin_ctx x (G1 & G2) ->
+  wf_typ (G1 & G2) (subst_typ x y T) ->
+  wf_typ (subst_ctx y x (G1 & x ~ S & G2)) T.
+Admitted.
+
+Lemma undo_subst_subtyp: forall G1 x y S G2 T1 T2,
+  binds y S (G1 & G2) ->
+  notin_ctx x (G1 & G2) ->
+  subtyp (G1 & G2) (subst_typ x y T1) (subst_typ x y T2) ->
+  subtyp (subst_ctx y x (G1 & x ~ S & G2)) T1 T2.
+Admitted.
+
+Lemma undo_subst_good_bounds_typ:  forall G1 x y S G2 T,
+  binds y S (G1 & G2) ->
+  notin_ctx x (G1 & G2) ->
+  good_bounds_typ (G1 & G2) (subst_typ x y T) ->
+  good_bounds_typ (subst_ctx y x (G1 & x ~ S & G2)) T.
 Proof.
-  introv Biy Gb xG1 xG2.
-  assert (Eq: subst_ctx y x G1 & x ~ subst_typ y x S & subst_ctx y x G2
-            = subst_ctx y x (G1 & x ~ S & G2)). {
-    do 2 rewrite subst_ctx_concat. unfold subst_ctx at 4.
-    rewrite map_single. reflexivity.
-  }
-  rewrite Eq.
-  refine (good_bounds_swap _ _ _).
-  - apply binds_middle_eq. assumption.
-  - apply (binds_weaken Biy). apply okadmit.
-  - lets GbS: (Gb _ _ Biy).
-    apply (good_bounds_insert Gb GbS).
+  introv Biy xG Gb.
+  unfold good_bounds_typ in *.
+  split.
+  - destruct Gb as [Wf _].
+    apply (undo_subst_wf_typ _ Biy xG Wf).
+  - destruct Gb as [_ Gb].
+    introv THas.
+    do 2 rewrite subst_ctx_concat in THas. unfold subst_ctx in THas at 2.
+    rewrite map_single in THas.
+    lets Biy': (subst_binds_0 y x Biy). rewrite subst_ctx_concat in Biy'.
+    (* Note: THas comes from a negative position, so here we don't need to undo_subst,
+       but to subst: *)
+    lets THas': (subst_has THas (okadmit _) Biy').
+    rewrite <- subst_ctx_concat in THas'.
+    rewrite (undo_subst_ctx _ _ (proj2 xG)) in THas'. simpl in THas'.
+    specialize (Gb _ _ _ THas').
+    apply (undo_subst_subtyp _ _ Biy xG Gb).
+Qed.
+
+Lemma invert_binds_middle: forall (A: Type) (S T: A) (G1 G2: env A) (x y: var),
+  ok (G1 & x ~ S & G2) ->
+  binds y T (G1 & x ~ S & G2) ->
+  binds y T (G1 & G2) \/ y = x /\ T = S.
+Proof.
+  introv Ok Bi.
+  apply binds_middle_inv in Bi. destruct Bi as [Bi | [[yG2 [? ?]] | [yG2 [Ne Bi]]]].
+  - left. apply (binds_concat_right _ Bi).
+  - subst. right. auto.
+  - left. apply (binds_concat_left Bi yG2). 
+Qed.
+
+Lemma undo_subst_good_bounds: forall G1 x y S G2,
+  binds y S (G1 & G2) ->
+  notin_ctx x (G1 & G2) ->
+  good_bounds (G1 & G2) ->
+  good_bounds (subst_ctx y x (G1 & x ~ S & G2)).
+Proof.
+  introv Biy xG Gb.
+  unfold good_bounds in *.
+  intros z Z Biz.
+  apply (subst_binds_0 x y) in Biz.
+  assert (xG': x \notin fv_ctx_types (G1 & x ~ S & G2)) by apply closed_env_stuff.
+  rewrite (undo_subst_ctx _ _ xG') in Biz.
+  apply (invert_binds_middle (okadmit _)) in Biz. destruct Biz as [Biz | [? ?]].
+  + specialize (Gb _ _ Biz).
+    apply (undo_subst_good_bounds_typ _ Biy xG Gb).
+  + subst. specialize (Gb _ _ Biy).
+    apply (undo_subst_good_bounds_typ _ Biy xG Gb).
 Qed.
 
 Lemma subst_binds_2: forall G1 x S G2 z Z y,
@@ -4069,17 +4085,18 @@ Proof.
       assert (xG1': x \notin fv_ctx_types G1') by apply closed_env_stuff.
       assert (xG2': x \notin fv_ctx_types G2') by apply closed_env_stuff.
       (* should hold, because x is not in dom (G1' & G2'), and (G1' & G2') is closed *)
-      rewrite <- (subst_ctx_undo y G1' xG1').
-      rewrite <- (subst_ctx_undo y G2' xG2').
+      rewrite <- (undo_subst_ctx y G1' xG1').
+      rewrite <- (undo_subst_ctx y G2' xG2').
       rewrite <- subst_ctx_concat.
       specialize (IH (subst_ctx y x G1' & x ~ subst_typ y x S' & subst_ctx y x G2')).
       refine (IH _ _ 
           (subst_ctx y x G1') x y (subst_typ y x S') (subst_ctx y x G2')
           eq_refl (okadmit _) _); clear IH.
       * apply (subenv_undo_subst _ Biy'' Biy' Se' Se).
-      * assert (xG1'': x # G1') by apply closed_env_stuff.
-        assert (xG2'': x # G2') by apply closed_env_stuff.
-        apply (good_bounds_undo_subst Biy'' Gb xG1'' xG2'').
+      * assert (xG': notin_ctx x (G1' & G2')) by apply closed_env_stuff.
+        lets P: (undo_subst_good_bounds Biy'' xG' Gb).
+        do 2 rewrite subst_ctx_concat in P. unfold subst_ctx in P at 2.
+        rewrite map_single in P. exact P.
       * assert (xS': x \notin fv_typ S') by apply closed_env_stuff.
         (* because in StS, S' is wf without any x being bound in the env *)
         rewrite <- subst_ctx_concat.
