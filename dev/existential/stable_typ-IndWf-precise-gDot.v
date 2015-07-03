@@ -4142,6 +4142,28 @@ Proof.
   - left. apply (binds_concat_left Bi yG2). 
 Qed.
 
+Lemma undo_subst_good_bounds: forall G1 G1' x y S S' G2 G2' ,
+  binds y S (G1 & G2) ->
+  notin_ctx x (G1 & G2) ->
+  good_bounds (G1 & G2) ->
+  subst_ctx x y G1' = G1 ->
+  subst_typ x y S'  = S  ->
+  subst_ctx x y G2' = G2 ->
+  good_bounds (G1' & x ~ S' & G2').
+Admitted.
+
+(*
+Lemma undo_subst_good_bounds: forall G1 x y S G2,
+  binds y S (G1 & G2) ->
+  notin_ctx x (G1 & G2) ->
+  good_bounds (G1 & G2) ->
+  exists G1' S' G2',
+    subst_ctx x y G1' = G1 /\
+    subst_typ x y S'  = S  /\
+    subst_ctx x y G2' = G2 /\
+    good_bounds (G1' & x ~ S' & G2').
+Admitted.
+
 Lemma undo_subst_good_bounds: forall G1 x y S G2,
   binds y S (G1 & G2) ->
   notin_ctx x (G1 & G2) ->
@@ -4160,7 +4182,9 @@ Proof.
   + subst. specialize (Gb _ _ Biy).
     refine (undo_subst_good_bounds_typ _ _ Biy xG Gb). admit. (*???*)
 Qed.
+*)
 
+(*
 Lemma subst_binds_2: forall G1 x S G2 z Z y,
   binds z Z (G1 & x ~ S & G2) ->
   ok (G1 & x ~ S & G2) ->
@@ -4178,6 +4202,7 @@ Proof.
     assert (Eq: (subst_typ x y Z) = Z) by admit. (* because x not in G1 *)
     rewrite Eq. exact Biz.
 Qed.
+*)
 
 Lemma subst_ty:
    (forall G t T, ty_trm G t T -> forall G1 x y S G2,
@@ -4248,21 +4273,21 @@ Proof.
       assert (xG1': x \notin fv_ctx_types G1') by apply closed_env_stuff.
       assert (xG2': x \notin fv_ctx_types G2') by apply closed_env_stuff.
       (* should hold, because x is not in dom (G1' & G2'), and (G1' & G2') is closed *)
+      assert (xG': notin_ctx x (G1' & G2')) by apply closed_env_stuff.
+      assert (xS': x \notin fv_typ S') by apply closed_env_stuff.
+      (* because in StS, S' is wf without any x being bound in the env *)
+      lets P: (undo_subst_good_bounds Biy'' xG' Gb 
+         (undo_subst_ctx y G1' xG1')
+         (subst_typ_undo y S' xS')
+         (undo_subst_ctx y G2' xG2')).
       rewrite <- (undo_subst_ctx y G1' xG1').
       rewrite <- (undo_subst_ctx y G2' xG2').
       rewrite <- subst_ctx_concat.
-      specialize (IH (subst_ctx y x G1' & x ~ subst_typ y x S' & subst_ctx y x G2')).
-      refine (IH _ _ 
+      refine (IH _ _ P
           (subst_ctx y x G1') x y (subst_typ y x S') (subst_ctx y x G2')
           eq_refl (okadmit _) _); clear IH.
       * apply (subenv_undo_subst _ Biy'' Biy' Se' Se).
-      * assert (xG': notin_ctx x (G1' & G2')) by apply closed_env_stuff.
-        lets P: (undo_subst_good_bounds Biy'' xG' Gb).
-        do 2 rewrite subst_ctx_concat in P. unfold subst_ctx in P at 2.
-        rewrite map_single in P. exact P.
-      * assert (xS': x \notin fv_typ S') by apply closed_env_stuff.
-        (* because in StS, S' is wf without any x being bound in the env *)
-        rewrite <- subst_ctx_concat.
+      * rewrite <- subst_ctx_concat.
         apply (subst_binds_0 _ _ Biy'').
   + (* case ty_sbsm *)
     introv Ty IH St Eq Ok Biy. subst.
