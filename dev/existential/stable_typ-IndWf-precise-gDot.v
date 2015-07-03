@@ -511,7 +511,7 @@ Inductive subenv: ctx -> ctx -> Prop :=
       subenv G1 G3.
 *)
 
-(* encodes any number of weakening and narrowing steps *)
+(* encodes any number of weakening and narrowing steps
 Inductive subenv: ctx -> ctx -> Prop :=
   (* base case: *)
   | subenv_empty:
@@ -531,6 +531,12 @@ Inductive subenv: ctx -> ctx -> Prop :=
   | subenv_skip: forall G1 G2 x T,
       subenv G1 G2 ->
       subenv (G1 & x ~ T) G2.
+*)
+
+Definition subenv(G1 G2: ctx) :=
+  forall x T2, binds x T2 G2 -> 
+    binds x T2 G1 \/
+    exists T1, binds x T1 G1 /\ subtyp G1 T1 T2 /\ stable_typ T1.
 
 (* typing on term level is always imprecise (can use subsumption) *)
 Inductive ty_trm: ctx -> trm -> typ -> Prop :=
@@ -2247,24 +2253,6 @@ Qed.
 
 
 (* ###################################################################### *)
-(** ** subenv *)
-
-Lemma subenv_refl: forall G,
-  subenv G G.
-Proof.
-  apply env_ind.
-  - apply subenv_empty.
-  - intros G x T Se. apply (subenv_push _ _ Se).
-Qed.
-
-Hint Constructors subenv.
-
-Lemma subenv_trans: forall G1 G2 G3,
-  subenv G1 G2 -> subenv G2 G3 -> subenv G1 G3.
-Admitted.
-
-
-(* ###################################################################### *)
 (** ** Strengthening typ_has (needed to weaken good_bounds) *)
 
 Lemma ty_defs_to_good_bounds_typ: forall G ds T,
@@ -2887,7 +2875,7 @@ Print Assumptions supertyp_has_good_bounds.
 
 
 (* ###################################################################### *)
-(** ** Narrowing *)
+(** ** Narrowing on type level *)
 
 Lemma narrow_binds_raw: forall G1 x0 S1 S2 G2 x T2,
   binds x T2 (G1 & x0 ~ S2 & G2) ->
@@ -2979,6 +2967,16 @@ Lemma narrow_binds_3: forall G1 G2 x T2,
   binds x T2 G2 ->
   binds x T2 G1 \/ exists T1, binds x T1 G1 /\ subtyp G1 T1 T2 /\ stable_typ T1.
 Proof.
+  introv Se Ok Bi. unfold subenv in Se. apply (Se _ _ Bi).
+Qed.
+
+(*
+Lemma narrow_binds_3: forall G1 G2 x T2,
+  subenv G1 G2 ->
+  ok G1 ->
+  binds x T2 G2 ->
+  binds x T2 G1 \/ exists T1, binds x T1 G1 /\ subtyp G1 T1 T2 /\ stable_typ T1.
+Proof.
   introv Se. gen x T2. induction Se; introv Ok Bi2.
   + (* case subenv_empty *)
     exfalso. apply (binds_empty_inv Bi2).
@@ -3003,6 +3001,7 @@ Proof.
     * right. exists T00. repeat split; auto.
       apply (weaken_subtyp_end (okadmit _) St).
 Qed.
+*)
 
 Lemma narrow_binds_4: forall G1 G2 x T1 T2,
   wf_typ G1 T1 ->
@@ -3396,6 +3395,90 @@ Print Assumptions narrow_subtyp_subdec.
 Definition narrow_subtyp := proj1 narrow_subtyp_subdec.
 Definition narrow_subdec := proj2 narrow_subtyp_subdec.
 
+
+(* ###################################################################### *)
+(** ** subenv *)
+
+(*
+Lemma subenv_refl: forall G,
+  subenv G G.
+Proof.
+  apply env_ind.
+  - apply subenv_empty.
+  - intros G x T Se. apply (subenv_push _ _ Se).
+Qed.
+*)
+
+Lemma subenv_refl: forall G,
+  subenv G G.
+Proof.
+  intro G. unfold subenv. intros. left. assumption.
+Qed.
+
+Lemma subenv_trans: forall G1 G2 G3,
+  good_bounds G1 ->
+  subenv G1 G2 ->
+  subenv G2 G3 ->
+  subenv G1 G3.
+Proof.
+  introv Gb Se12 Se23. intros x T3 Bi3.
+  destruct (Se23 _ _ Bi3) as [Bi2 | [T2 [Bi2 [St23 Sb2]]]];
+  destruct (Se12 _ _ Bi2) as [Bi1 | [T1 [Bi1 [St12 Sb1]]]].
+  + left. exact Bi1.
+  + right. exists T1. auto.
+  + right. exists T2. repeat split; try assumption.
+    apply (narrow_subtyp St23 Gb Se12).
+          (*************)    (**)
+  + right. exists T1. repeat split; try assumption.
+    refine (subtyp_trans St12 _).
+    apply (narrow_subtyp St23 Gb Se12).
+          (*************)    (**)
+Qed.
+
+Lemma subenv_sub: forall G1 G2 x T1 T2,
+  subenv G1 G2 ->
+  stable_typ T1 ->
+  subtyp (G1 & x ~ T1) T1 T2 ->
+  subenv (G1 & x ~ T1) (G2 & x ~ T2).
+Proof.
+  introv Se Sb St. unfold subenv in *. intros v V Bi.
+  apply binds_push_inv in Bi. destruct Bi as [[? ?] | [Ne Bi]].
+  - subst. right. exists T1. auto.
+  - specialize (Se _ _ Bi). destruct Se as [Bi' | Se].
+    * left. auto.
+    * right. destruct Se as [V' [Bi' [StV Sb']]]. exists V'.
+      repeat split; auto. apply (weaken_subtyp_end (okadmit _) StV).
+Qed.
+
+Lemma subenv_push: forall G1 G2 x T,
+  subenv G1 G2 ->
+  subenv (G1 & x ~ T) (G2 & x ~ T).
+Proof.
+  unfold subenv. introv Se. intros v V Bi.
+  apply binds_push_inv in Bi. destruct Bi as [[? ?] | [Ne Bi]].
+  - subst. auto.
+  - specialize (Se _ _ Bi). destruct Se as [Bi' | Se].
+    * left. auto.
+    * right. destruct Se as [V' [Bi' [StV Sb']]]. exists V'.
+      repeat split; auto. apply (weaken_subtyp_end (okadmit _) StV).
+Qed.
+
+Lemma subenv_skip: forall G1 G2 x T,
+  subenv G1 G2 ->
+  subenv (G1 & x ~ T) G2.
+Proof.
+  introv Se. unfold subenv in *. intros v V Bi.
+  assert (Ne: v <> x) by admit.
+  specialize (Se _ _ Bi). destruct Se as [Bi' | Se].
+  * left. apply* binds_push_neq.
+  * right. destruct Se as [V' [Bi' [StV Sb']]]. exists V'.
+    repeat split; auto. apply (weaken_subtyp_end (okadmit _) StV).
+Qed.
+
+
+(* ###################################################################### *)
+(** ** Narrowing on term level *)
+
 (* Doesn't hold as a lemma because ty_tdef needs subtyp directly without going through
    a ty_trm. TODO add a rule for it, but with a flag whether it's allowed, because
    we don't want to allow it in wf_sto! *) 
@@ -3449,8 +3532,8 @@ Proof.
   + (* case ty_new *)
     introv Tyds IH1 Tyu IH2 WfU Ok1 Se. subst.
     apply_fresh ty_new as y; try assert (yL: y \notin L) by auto.
-    - apply (IH1 y yL (G' & y ~ open_typ y T) (okadmit _) (subenv_push _ _ Se)).
-    - apply (IH2 y yL (G' & y ~ open_typ y T) (okadmit _) (subenv_push _ _ Se)).
+    - apply (IH1 y yL (G' & y ~ open_typ y T) (okadmit _) (subenv_push Se)).
+    - apply (IH2 y yL (G' & y ~ open_typ y T) (okadmit _) (subenv_push Se)).
     - apply* narrow_wf_typ.
   + (* case ty_hyp *)
     introv WfT Ty IH Ok Se. subst.
@@ -3459,13 +3542,13 @@ Proof.
     intros G'' Se' Gb''.
     (* Note that we do not have to un-narrow Gb'' to Gb', because ty_hyp now is stronger *)
     refine (IH G'' _ Gb'' G'' (okadmit _) _).
-    - apply (subenv_trans Se' Se).
+    - apply (subenv_trans Gb'' Se' Se).
     - apply subenv_refl.
   + (* case ty_sbsm *)
     introv Ty IH St Ok Se. subst.
     apply ty_hyp.
     - lets WfT: (proj2 (subtyp_regular St)). apply* narrow_wf_typ.
-    - intros G'' Se' Gb. lets Se2: (subenv_trans Se' Se).
+    - intros G'' Se' Gb. lets Se2: (subenv_trans Gb Se' Se).
       apply ty_sbsm with T1.
       * apply* IH. apply okadmit.
       * apply* narrow_subtyp.
@@ -3474,7 +3557,8 @@ Proof.
     apply ty_def_hyp.
     - refine (narrow_wf_dec _ Se). destruct (subtyp_regular St) as [WfT WfU].
       apply (wf_tmem _ WfT WfU).
-    - intros G'' Se' Gb. apply ty_tdef. apply* narrow_subtyp. apply (subenv_trans Se' Se).
+    - intros G'' Se' Gb. apply ty_tdef. apply* narrow_subtyp.
+      apply (subenv_trans Gb Se' Se).
   + (* case ty_mdef *)
     introv WfT WfU Tyu IH Ok Se. subst.
     apply_fresh ty_mdef as y.
@@ -3483,7 +3567,7 @@ Proof.
     - assert (yL: y \notin L) by auto.
       (* Note: No more need for un-narrowing (because good_bounds is no longer a hyp,
          but it's not just moved to ty_hyp *)
-      apply (IH y yL (G' & y ~ T) (okadmit _) (subenv_push _ _ Se)).
+      apply (IH y yL (G' & y ~ T) (okadmit _) (subenv_push Se)).
   + (* case ty_defs_nil *) eauto.
   + (* case ty_defs_cons *)
     intros. subst. apply* ty_defs_cons.
@@ -3498,7 +3582,7 @@ Lemma narrow_ty_end: forall G x S1 S2 t T,
 Proof.
   introv Ty Ok Sb St. destruct narrow_ty as [P _].
   refine (P _ _ _ Ty (G & x ~ S1) Ok _).
-  apply (subenv_sub (subenv_refl G) Sb St).
+  apply (subenv_sub (@subenv_refl G) Sb St).
 Qed.
 
 Print Assumptions narrow_ty_end.
@@ -4370,14 +4454,14 @@ Lemma weaken_ty_trm_end: forall G1 G2 t T,
   ty_trm G1        t T ->
   ty_trm (G1 & G2) t T.
 Proof.
-  introv Ok Ty. lets Se: (subenv_concat G1 G2).
+  introv Ok Ty. lets Se: (@subenv_concat G1 G2).
   apply ((proj31 narrow_ty) _ _ _ Ty _ Ok Se).
 Qed.
 
 Lemma weaken_ty_defs_end: forall G1 G2 ds T,
   ok (G1 & G2) -> ty_defs G1 ds T -> ty_defs (G1 & G2) ds T.
 Proof.
-  introv Ok Ty. lets Se: (subenv_concat G1 G2).
+  introv Ok Ty. lets Se: (@subenv_concat G1 G2).
   apply ((proj33 narrow_ty) _ _ _ Ty _ Ok Se).
 Qed.
 
@@ -4388,13 +4472,13 @@ Lemma subenv_weaken_middle: forall G1 G2 G3,
 Proof.
   intros G1 G2 G3. gen G3. apply env_ind.
   - do 2 rewrite concat_empty_r. apply subenv_concat.
-  - intros G3 x T Se. repeat rewrite concat_assoc. apply (subenv_push _ _ Se).
+  - intros G3 x T Se. repeat rewrite concat_assoc. apply (subenv_push Se).
 Qed.
 
 Lemma weaken_ty_defs_middle: forall G1 G2 G3 ds T,
   ok (G1 & G2 & G3) -> ty_defs (G1 & G3) ds T -> ty_defs (G1 & G2 & G3) ds T.
 Proof.
-  introv Ok Ty. lets Se: (subenv_weaken_middle G1 G2 G3).
+  introv Ok Ty. lets Se: (@subenv_weaken_middle G1 G2 G3).
   apply ((proj33 narrow_ty) _ _ _ Ty _ Ok Se).
 Qed.
 
@@ -4631,7 +4715,7 @@ Lemma invert_ty_call: forall G t m V2 u,
 Proof.
   introv Gb Ty. gen_eq t0: (trm_call t m u). induction Ty; intro Eq; inversions Eq.
   - do 3 eexists. eauto.
-  - apply (H1 _ (subenv_refl _) Gb Gb eq_refl).
+  - apply (H1 _ (@subenv_refl _) Gb Gb eq_refl).
   - specialize (IHTy Gb eq_refl). destruct IHTy as [T [U [V [Tyt [THas [Tyu St]]]]]].
     exists T U V. repeat split; auto. apply (subtyp_trans St H).
 Qed.
