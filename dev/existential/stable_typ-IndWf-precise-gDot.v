@@ -3982,6 +3982,8 @@ Lemma undo_subst_binds: forall G1 x y S G2 z T,
   notin_ctx x (G1 & G2) ->
   binds (subst_fvar x y z) (subst_typ x y T) (G1 & G2) ->
   binds z T (subst_ctx y x (G1 & x ~ S & G2)).
+(* Does not hold if T contains some ys, (that's why we need the first condition),
+   because (subst_ctx y x ...) removes all ys in the env! *)
 Proof.
   introv yT Biy xG Biz.
   unfold subst_fvar in Biz. case_var.
