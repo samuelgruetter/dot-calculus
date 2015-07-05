@@ -762,8 +762,8 @@ Axiom head_ne_tail: head <> tail.
 
 Definition ex1: trm :=
 trm_new (defs_cons (defs_cons defs_nil
-  (def_typ E typ_top typ_top))
-  (def_typ Stream typ_bot (typ_and
+  (def_typ E typ_top))
+  (def_typ Stream (typ_and
        (typ_rcd (dec_mtd head typ_top (typ_sel (avar_b 0) E)))
        (typ_rcd (dec_mtd tail typ_top (typ_sel (avar_b 0) Stream)))))
 )
@@ -779,11 +779,15 @@ Proof.
     intro. inversions H. apply head_ne_tail. assumption.
   }
   unfold ex1.
-  apply ty_new with \{} (typ_and (typ_and typ_top
+  eapply ty_new with \{} (typ_and (typ_and typ_top
     (typ_rcd (dec_typ E typ_top typ_top)))
-    (typ_rcd (dec_typ Stream typ_bot (typ_and
-       (typ_rcd (dec_mtd head typ_top (typ_sel (avar_b 0) E)))
-       (typ_rcd (dec_mtd tail typ_top (typ_sel (avar_b 0) Stream))))))).
+    (typ_rcd (dec_typ Stream
+       (typ_and
+          (typ_rcd (dec_mtd head typ_top (typ_sel (avar_b 0) E)))
+          (typ_rcd (dec_mtd tail typ_top (typ_sel (avar_b 0) Stream))))
+       (typ_and
+          (typ_rcd (dec_mtd head typ_top (typ_sel (avar_b 0) E)))
+          (typ_rcd (dec_mtd tail typ_top (typ_sel (avar_b 0) Stream))))))).
   { intros glob _. do_open.
     remember (typ_and
                (typ_rcd (dec_mtd head typ_top (typ_sel (avar_f glob) E)))
@@ -791,9 +795,9 @@ Proof.
     as TStream eqn: EqTStream.
     split_ty_defs.
     { auto. }
-    { apply ty_tdef. apply subtyp_bot.
+    { apply ty_tdef.
       rewrite concat_empty_l in *.
-      rewrite EqTStream at 2.
+      rewrite EqTStream at 3.
       apply wf_and.
       { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
         eapply (wf_sel ((binds_single_eq _ _))).
@@ -803,8 +807,7 @@ Proof.
           { apply wf_top. }
           { auto. }
           { apply wf_rcd. apply wf_tmem.
-            { apply wf_bot. }
-            { rewrite EqTStream at 3.
+            { rewrite EqTStream at 5.
               apply wf_and.
               { apply wf_hyp. prove_in_fset. }
               { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
@@ -815,16 +818,59 @@ Proof.
                   { apply wf_top. }
                   { auto. }
                   { apply wf_rcd. apply wf_tmem.
-                    { apply wf_bot. }
-                    { rewrite EqTStream at 4.
+                    { rewrite EqTStream at 7.
+                      apply wf_and.
+                      { apply wf_hyp. prove_in_fset. }
+                      { apply wf_hyp. prove_in_fset. }
+                    }
+                    { rewrite EqTStream at 7.
                       apply wf_and.
                       { apply wf_hyp. prove_in_fset. }
                       { apply wf_hyp. prove_in_fset. }
                     }
                   }
                 }
-                { apply wf_bot. }
-                { rewrite EqTStream at 3.
+                { rewrite EqTStream at 5.
+                  apply wf_and.
+                  { apply wf_hyp. prove_in_fset. }
+                  { apply wf_hyp. prove_in_fset. }
+                }
+                { rewrite EqTStream at 5.
+                  apply wf_and.
+                  { apply wf_hyp. prove_in_fset. }
+                  { apply wf_hyp. prove_in_fset. }
+                }
+              }
+            }
+            { rewrite EqTStream at 5.
+              apply wf_and.
+              { apply wf_hyp. prove_in_fset. }
+              { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                eapply (wf_sel ((binds_single_eq _ _))).
+                { eauto. }
+                { eauto. }
+                { repeat apply wf_and.
+                  { apply wf_top. }
+                  { auto. }
+                  { apply wf_rcd. apply wf_tmem.
+                    { rewrite EqTStream at 7.
+                      apply wf_and.
+                      { apply wf_hyp. prove_in_fset. }
+                      { apply wf_hyp. prove_in_fset. }
+                    }
+                    { rewrite EqTStream at 7.
+                      apply wf_and.
+                      { apply wf_hyp. prove_in_fset. }
+                      { apply wf_hyp. prove_in_fset. }
+                    }
+                  }
+                }
+                { rewrite EqTStream at 5.
+                  apply wf_and.
+                  { apply wf_hyp. prove_in_fset. }
+                  { apply wf_hyp. prove_in_fset. }
+                }
+                { rewrite EqTStream at 5.
                   apply wf_and.
                   { apply wf_hyp. prove_in_fset. }
                   { apply wf_hyp. prove_in_fset. }
@@ -844,8 +890,7 @@ Proof.
           { apply wf_top. }
           { auto. }
           { apply wf_rcd. apply wf_tmem.
-            { apply wf_bot. }
-            { rewrite EqTStream at 3.
+            { rewrite EqTStream at 5.
               apply wf_and.
               { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
                 eapply (wf_sel ((binds_single_eq _ _))).
@@ -855,8 +900,7 @@ Proof.
                   { apply wf_top. }
                   { auto. }
                   { apply wf_rcd. apply wf_tmem.
-                    { apply wf_bot. }
-                    { rewrite EqTStream at 4.
+                    { rewrite EqTStream at 7.
                       apply wf_and.
                       { apply wf_hyp. prove_in_fset. }
                       { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
@@ -867,16 +911,146 @@ Proof.
                           { apply wf_top. }
                           { auto. }
                           { apply wf_rcd. apply wf_tmem.
-                            { apply wf_bot. }
-                            { rewrite EqTStream at 5.
+                            { rewrite EqTStream at 9.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                            { rewrite EqTStream at 9.
                               apply wf_and.
                               { apply wf_hyp. prove_in_fset. }
                               { apply wf_hyp. prove_in_fset. }
                             }
                           }
                         }
-                        { apply wf_bot. }
-                        { rewrite EqTStream at 4.
+                        { rewrite EqTStream at 7.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_hyp. prove_in_fset. }
+                        }
+                        { rewrite EqTStream at 7.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_hyp. prove_in_fset. }
+                        }
+                      }
+                    }
+                    { rewrite EqTStream at 7.
+                      apply wf_and.
+                      { apply wf_hyp. prove_in_fset. }
+                      { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                        eapply (wf_sel ((binds_single_eq _ _))).
+                        { eauto. }
+                        { eauto. }
+                        { repeat apply wf_and.
+                          { apply wf_top. }
+                          { auto. }
+                          { apply wf_rcd. apply wf_tmem.
+                            { rewrite EqTStream at 9.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                            { rewrite EqTStream at 9.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                          }
+                        }
+                        { rewrite EqTStream at 7.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_hyp. prove_in_fset. }
+                        }
+                        { rewrite EqTStream at 7.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_hyp. prove_in_fset. }
+                        }
+                      }
+                    }
+                  }
+                }
+                { apply wf_top. }
+                { apply wf_top. }
+              }
+              { apply wf_hyp. prove_in_fset. }
+            }
+            { rewrite EqTStream at 5.
+              apply wf_and.
+              { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                eapply (wf_sel ((binds_single_eq _ _))).
+                { eauto. }
+                { eauto. }
+                { repeat apply wf_and.
+                  { apply wf_top. }
+                  { auto. }
+                  { apply wf_rcd. apply wf_tmem.
+                    { rewrite EqTStream at 7.
+                      apply wf_and.
+                      { apply wf_hyp. prove_in_fset. }
+                      { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                        eapply (wf_sel ((binds_single_eq _ _))).
+                        { eauto. }
+                        { eauto. }
+                        { repeat apply wf_and.
+                          { apply wf_top. }
+                          { auto. }
+                          { apply wf_rcd. apply wf_tmem.
+                            { rewrite EqTStream at 9.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                            { rewrite EqTStream at 9.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                          }
+                        }
+                        { rewrite EqTStream at 7.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_hyp. prove_in_fset. }
+                        }
+                        { rewrite EqTStream at 7.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_hyp. prove_in_fset. }
+                        }
+                      }
+                    }
+                    { rewrite EqTStream at 7.
+                      apply wf_and.
+                      { apply wf_hyp. prove_in_fset. }
+                      { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                        eapply (wf_sel ((binds_single_eq _ _))).
+                        { eauto. }
+                        { eauto. }
+                        { repeat apply wf_and.
+                          { apply wf_top. }
+                          { auto. }
+                          { apply wf_rcd. apply wf_tmem.
+                            { rewrite EqTStream at 9.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                            { rewrite EqTStream at 9.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                          }
+                        }
+                        { rewrite EqTStream at 7.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_hyp. prove_in_fset. }
+                        }
+                        { rewrite EqTStream at 7.
                           apply wf_and.
                           { apply wf_hyp. prove_in_fset. }
                           { apply wf_hyp. prove_in_fset. }
@@ -892,8 +1066,7 @@ Proof.
             }
           }
         }
-        { apply wf_bot. }
-        { rewrite EqTStream at 2.
+        { rewrite EqTStream at 3.
           apply wf_and.
           { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
             eapply (wf_sel ((binds_single_eq _ _))).
@@ -903,8 +1076,7 @@ Proof.
               { apply wf_top. }
               { auto. }
               { apply wf_rcd. apply wf_tmem.
-                { apply wf_bot. }
-                { rewrite EqTStream at 3.
+                { rewrite EqTStream at 5.
                   apply wf_and.
                   { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
                     eapply (wf_sel ((binds_single_eq _ _))).
@@ -914,8 +1086,7 @@ Proof.
                       { apply wf_top. }
                       { auto. }
                       { apply wf_rcd. apply wf_tmem.
-                        { apply wf_bot. }
-                        { rewrite EqTStream at 4.
+                        { rewrite EqTStream at 7.
                           apply wf_and.
                           { apply wf_hyp. prove_in_fset. }
                           { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
@@ -926,16 +1097,337 @@ Proof.
                               { apply wf_top. }
                               { auto. }
                               { apply wf_rcd. apply wf_tmem.
-                                { apply wf_bot. }
-                                { rewrite EqTStream at 5.
+                                { rewrite EqTStream at 9.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                                { rewrite EqTStream at 9.
                                   apply wf_and.
                                   { apply wf_hyp. prove_in_fset. }
                                   { apply wf_hyp. prove_in_fset. }
                                 }
                               }
                             }
-                            { apply wf_bot. }
-                            { rewrite EqTStream at 4.
+                            { rewrite EqTStream at 7.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                            { rewrite EqTStream at 7.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                          }
+                        }
+                        { rewrite EqTStream at 7.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                            eapply (wf_sel ((binds_single_eq _ _))).
+                            { eauto. }
+                            { eauto. }
+                            { repeat apply wf_and.
+                              { apply wf_top. }
+                              { auto. }
+                              { apply wf_rcd. apply wf_tmem.
+                                { rewrite EqTStream at 9.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                                { rewrite EqTStream at 9.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                              }
+                            }
+                            { rewrite EqTStream at 7.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                            { rewrite EqTStream at 7.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    { apply wf_top. }
+                    { apply wf_top. }
+                  }
+                  { apply wf_hyp. prove_in_fset. }
+                }
+                { rewrite EqTStream at 5.
+                  apply wf_and.
+                  { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                    eapply (wf_sel ((binds_single_eq _ _))).
+                    { eauto. }
+                    { eauto. }
+                    { repeat apply wf_and.
+                      { apply wf_top. }
+                      { auto. }
+                      { apply wf_rcd. apply wf_tmem.
+                        { rewrite EqTStream at 7.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                            eapply (wf_sel ((binds_single_eq _ _))).
+                            { eauto. }
+                            { eauto. }
+                            { repeat apply wf_and.
+                              { apply wf_top. }
+                              { auto. }
+                              { apply wf_rcd. apply wf_tmem.
+                                { rewrite EqTStream at 9.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                                { rewrite EqTStream at 9.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                              }
+                            }
+                            { rewrite EqTStream at 7.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                            { rewrite EqTStream at 7.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                          }
+                        }
+                        { rewrite EqTStream at 7.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                            eapply (wf_sel ((binds_single_eq _ _))).
+                            { eauto. }
+                            { eauto. }
+                            { repeat apply wf_and.
+                              { apply wf_top. }
+                              { auto. }
+                              { apply wf_rcd. apply wf_tmem.
+                                { rewrite EqTStream at 9.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                                { rewrite EqTStream at 9.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                              }
+                            }
+                            { rewrite EqTStream at 7.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                            { rewrite EqTStream at 7.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    { apply wf_top. }
+                    { apply wf_top. }
+                  }
+                  { apply wf_hyp. prove_in_fset. }
+                }
+              }
+            }
+            { apply wf_top. }
+            { apply wf_top. }
+          }
+          { apply wf_hyp. prove_in_fset. }
+        }
+        { rewrite EqTStream at 3.
+          apply wf_and.
+          { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+            eapply (wf_sel ((binds_single_eq _ _))).
+            { eauto. }
+            { eauto. }
+            { repeat apply wf_and.
+              { apply wf_top. }
+              { auto. }
+              { apply wf_rcd. apply wf_tmem.
+                { rewrite EqTStream at 5.
+                  apply wf_and.
+                  { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                    eapply (wf_sel ((binds_single_eq _ _))).
+                    { eauto. }
+                    { eauto. }
+                    { repeat apply wf_and.
+                      { apply wf_top. }
+                      { auto. }
+                      { apply wf_rcd. apply wf_tmem.
+                        { rewrite EqTStream at 7.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                            eapply (wf_sel ((binds_single_eq _ _))).
+                            { eauto. }
+                            { eauto. }
+                            { repeat apply wf_and.
+                              { apply wf_top. }
+                              { auto. }
+                              { apply wf_rcd. apply wf_tmem.
+                                { rewrite EqTStream at 9.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                                { rewrite EqTStream at 9.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                              }
+                            }
+                            { rewrite EqTStream at 7.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                            { rewrite EqTStream at 7.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                          }
+                        }
+                        { rewrite EqTStream at 7.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                            eapply (wf_sel ((binds_single_eq _ _))).
+                            { eauto. }
+                            { eauto. }
+                            { repeat apply wf_and.
+                              { apply wf_top. }
+                              { auto. }
+                              { apply wf_rcd. apply wf_tmem.
+                                { rewrite EqTStream at 9.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                                { rewrite EqTStream at 9.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                              }
+                            }
+                            { rewrite EqTStream at 7.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                            { rewrite EqTStream at 7.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    { apply wf_top. }
+                    { apply wf_top. }
+                  }
+                  { apply wf_hyp. prove_in_fset. }
+                }
+                { rewrite EqTStream at 5.
+                  apply wf_and.
+                  { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                    eapply (wf_sel ((binds_single_eq _ _))).
+                    { eauto. }
+                    { eauto. }
+                    { repeat apply wf_and.
+                      { apply wf_top. }
+                      { auto. }
+                      { apply wf_rcd. apply wf_tmem.
+                        { rewrite EqTStream at 7.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                            eapply (wf_sel ((binds_single_eq _ _))).
+                            { eauto. }
+                            { eauto. }
+                            { repeat apply wf_and.
+                              { apply wf_top. }
+                              { auto. }
+                              { apply wf_rcd. apply wf_tmem.
+                                { rewrite EqTStream at 9.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                                { rewrite EqTStream at 9.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                              }
+                            }
+                            { rewrite EqTStream at 7.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                            { rewrite EqTStream at 7.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                          }
+                        }
+                        { rewrite EqTStream at 7.
+                          apply wf_and.
+                          { apply wf_hyp. prove_in_fset. }
+                          { apply wf_rcd. apply (wf_mtd _ (wf_top _ _)).
+                            eapply (wf_sel ((binds_single_eq _ _))).
+                            { eauto. }
+                            { eauto. }
+                            { repeat apply wf_and.
+                              { apply wf_top. }
+                              { auto. }
+                              { apply wf_rcd. apply wf_tmem.
+                                { rewrite EqTStream at 9.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                                { rewrite EqTStream at 9.
+                                  apply wf_and.
+                                  { apply wf_hyp. prove_in_fset. }
+                                  { apply wf_hyp. prove_in_fset. }
+                                }
+                              }
+                            }
+                            { rewrite EqTStream at 7.
+                              apply wf_and.
+                              { apply wf_hyp. prove_in_fset. }
+                              { apply wf_hyp. prove_in_fset. }
+                            }
+                            { rewrite EqTStream at 7.
                               apply wf_and.
                               { apply wf_hyp. prove_in_fset. }
                               { apply wf_hyp. prove_in_fset. }
