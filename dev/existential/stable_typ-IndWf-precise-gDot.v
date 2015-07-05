@@ -4870,8 +4870,9 @@ Lemma undo_subst_good_bounds: forall G1 x y S G2 ,
   good_bounds (G1 & x ~ S & G2).
 *)
 
-(* This one looks nice by itself, but it will be applied with
-   G1 := (subst_typ y x G1'), so we're again replacing too many ys, which is bad 
+(* This one looks nice by itself, but if it's applied with
+   G1 := (subst_typ y x G1'), so we're again replacing too many ys, which is bad.
+   But if we apply if with G1 := G1', where G1' is chosen smartly, it might be good. *)
 Lemma undo_subst_good_bounds: forall G1 x y S G2 ,
   binds y S (subst_ctx x y G1 & subst_ctx x y G2) ->
   x # (G1 & G2) ->
@@ -4892,7 +4893,6 @@ Proof.
     rewrite (subst_fresh_typ _ _ xS) in H0. subst.
     refine (undo_subst_good_bounds_typ _ Biy xG Gb).
 Qed.
-*)
 
 (*
 Lemma undo_subst_good_bounds: forall G1 x y S G2,
@@ -4967,13 +4967,56 @@ Admitted.
 
 Lemma undo_subst_subenv: forall G' G1 x y S G2,
   binds y S (G1 & G2) ->
-  x # (G1 & G2) ->
+  x # G' ->
   subenv G' (subst_ctx x y G1 & subst_ctx x y G2) ->
   exists G1' S' G2',
     subst_ctx x y G1' & subst_ctx x y G2' = G' /\
-    subtyp (G1' & x ~ S' & G2') S' S /\
+    binds y S' (G1' & G2') /\
     subenv (G1' & x ~ S' & G2') (G1 & x ~ S & G2).
-Admitted.
+Proof.
+  introv Biy xG' Se.
+  lets Biy': (subst_binds_0 x y Biy). rewrite subst_ctx_concat in Biy'.
+  assert (xS: x \notin fv_typ S) by apply closed_env_stuff.
+  rewrite (subst_fresh_typ _ _ xS) in Biy'.
+  lets P: (Se _ _ Biy'). destruct P as [Biy'' | [S' [Biy'' [St Sb]]]].
+  + exists G' S (@empty typ). unfold subst_ctx at 2. rewrite map_empty.
+    repeat rewrite concat_empty_r.
+    assert (xG'': x \notin fv_ctx_types G') by apply closed_env_stuff.
+      (* from xG' and closed env *)
+    refine (conj (subst_fresh_ctx _ _ xG'') (conj Biy'' _)).
+    unfold subenv in *.
+    intros v V Biv. apply (invert_binds_middle (okadmit _)) in Biv.
+    destruct Biv as [Biv | [? ?]].
+    - lets Biv': (subst_binds_0 x y Biv). rewrite subst_ctx_concat in Biv'.
+      assert (xV: x \notin fv_typ V) by apply closed_env_stuff.
+      rewrite (subst_fresh_typ _ _ xV) in Biv'.
+      assert (x <> v) by apply closed_env_stuff. (* x is not in G' but v is *)
+      specialize (Se _ _ Biv'). destruct Se as [Biv'' | [V' [Biv'' [StV SbV]]]].
+      * left. auto.
+      * right.
+        exists V'. repeat split; auto. apply (weaken_subtyp_end (okadmit _) StV).
+    - subst. left. auto.
+  + exists G' S' (@empty typ). unfold subst_ctx at 2. rewrite map_empty.
+    repeat rewrite concat_empty_r.
+    assert (xG'': x \notin fv_ctx_types G') by apply closed_env_stuff.
+      (* from xG' and closed env *)
+    refine (conj (subst_fresh_ctx _ _ xG'') (conj Biy'' _)).
+    unfold subenv in *.
+    intros v V Biv. apply (invert_binds_middle (okadmit _)) in Biv.
+    destruct Biv as [Biv | [? ?]].
+    - lets Biv': (subst_binds_0 x y Biv). rewrite subst_ctx_concat in Biv'.
+      assert (xV: x \notin fv_typ V) by apply closed_env_stuff.
+      rewrite (subst_fresh_typ _ _ xV) in Biv'.
+      assert (x <> v) by apply closed_env_stuff. (* x is not in G' but v is *)
+      specialize (Se _ _ Biv'). destruct Se as [Biv'' | [V' [Biv'' [StV SbV]]]].
+      * left. auto.
+      * right.
+        exists V'. repeat split; auto. apply (weaken_subtyp_end (okadmit _) StV).
+    - subst. right.
+      exists S'. repeat split; auto. apply (weaken_subtyp_end (okadmit _) St).
+Qed.
+
+Print Assumptions undo_subst_subenv.
 
 Lemma subst_ty:
    (forall G t T, ty_trm G t T -> forall G1 x y S G2,
@@ -5037,18 +5080,20 @@ Proof.
     apply ty_hyp.
     - apply* subst_wf_typ.
     - intros G' Se Gb.
-      lets Biy': (subst_binds_0 x y Biy).
       rewrite subst_ctx_concat in *.
       assert (xG: x # (G1 & G2)) by apply closed_env_stuff.
-      lets P: (undo_subst_subenv Biy xG Se).
-      destruct P as [G1' [S' [G2' [? [St Se'']]]]]. subst.
+      assert (xG': x # G') by admit. (* !!!! not sure because of weakening !!!! *)
+      lets P: (undo_subst_subenv Biy xG' Se).
+      destruct P as [G1' [S' [G2' [? [Biy' Se']]]]]. subst.
       rewrite <- subst_ctx_concat.
-      refine (IH _ Se'' _
-          _ x y _ _
-          eq_refl (okadmit _) _); clear IH.
-      * admit.
-      * admit.
-
+      refine (IH _ Se' _ _ x y _ _ eq_refl (okadmit _) Biy').
+      assert (xG'': x # G1' & G2') by apply closed_env_stuff.
+      refine (undo_subst_good_bounds _ xG'' Gb).
+      apply (subst_binds_0 x y) in Biy'.
+      assert (xS': x \notin fv_typ S') by apply closed_env_stuff.
+      rewrite (subst_fresh_typ _ _ xS') in Biy'.
+      rewrite subst_ctx_concat in Biy'.
+      exact Biy'.
       (*
       assert (E: exists G1'' S'' G2'', G'' = G1'' & x ~ S'' & G2'') by admit.
       destruct E as [G1'' [S'' [G2'' E]]]. subst.
