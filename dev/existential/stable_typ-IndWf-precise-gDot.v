@@ -4581,6 +4581,11 @@ Proof.
       exists v'. auto.
 Qed.
 
+Lemma undo_map: forall (A B: Type) (E: env B) (f: A -> B),
+  exists E', map f E' = E.
+Abort.
+(* Only holds if f is surjective. *)
+
 Lemma undo_subst_binds: forall G1 x y S G2 z T,
   binds y S (subst_ctx x y G1 & subst_ctx x y G2) ->
   x # (G1 & G2) ->
@@ -4967,14 +4972,14 @@ Admitted.
 
 Lemma undo_subst_subenv: forall G' G1 x y S G2,
   binds y S (G1 & G2) ->
-  x # G' ->
   subenv G' (subst_ctx x y G1 & subst_ctx x y G2) ->
   exists G1' S' G2',
     subst_ctx x y G1' & subst_ctx x y G2' = G' /\
     binds y S' (G1' & G2') /\
     subenv (G1' & x ~ S' & G2') (G1 & x ~ S & G2).
 Proof.
-  introv Biy xG' Se.
+introv Biy Se. destruct (classicT (x # G')) as [xG' | xG'].
+{
   lets Biy': (subst_binds_0 x y Biy). rewrite subst_ctx_concat in Biy'.
   assert (xS: x \notin fv_typ S) by apply closed_env_stuff.
   rewrite (subst_fresh_typ _ _ xS) in Biy'.
@@ -5014,9 +5019,27 @@ Proof.
         exists V'. repeat split; auto. apply (weaken_subtyp_end (okadmit _) StV).
     - subst. right.
       exists S'. repeat split; auto. apply (weaken_subtyp_end (okadmit _) St).
-Qed.
+} {
+  unfold notin in xG'. apply not_not_elim in xG'. (* classical logic we don't really need,
+    but it's just handy here ^^ *)
+  apply get_some in xG'. destruct xG' as [S' Bix].
+  eexists. exists S' (@empty typ). unfold subst_ctx at 2. rewrite map_empty.
+  repeat rewrite concat_empty_r.
+(*
+Problem: Given a context G', which contains a binding for x, give a context G such that
+(subst_ctx x y G) = G'.
 
-Print Assumptions undo_subst_subenv.
+But how can this work? Note that (subst_typ x y) is not surjective:
+There are some types T (those which contain x) which have no preimage under
+(subst_typ x y).
+
+Or in other words: (subst_ctx x y ?269922) contains no xs at all in its types,
+but G' might contain some, so the equality "subst_ctx x y ?269922 = G'" cannot hold!
+*)
+Admitted. (* !!!
+}
+Qed.
+*)
 
 Lemma subst_ty:
    (forall G t T, ty_trm G t T -> forall G1 x y S G2,
@@ -5082,8 +5105,7 @@ Proof.
     - intros G' Se Gb.
       rewrite subst_ctx_concat in *.
       assert (xG: x # (G1 & G2)) by apply closed_env_stuff.
-      assert (xG': x # G') by admit. (* !!!! not sure because of weakening !!!! *)
-      lets P: (undo_subst_subenv Biy xG' Se).
+      lets P: (undo_subst_subenv Biy Se).
       destruct P as [G1' [S' [G2' [? [Biy' Se']]]]]. subst.
       rewrite <- subst_ctx_concat.
       refine (IH _ Se' _ _ x y _ _ eq_refl (okadmit _) Biy').
