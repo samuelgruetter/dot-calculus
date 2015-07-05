@@ -39,7 +39,7 @@ Inductive trm: Set :=
   | trm_new : defs -> trm -> trm (* val x = new {...} in t *)
   | trm_call: trm -> mtd_label -> trm -> trm (* t1.m(t2) *)
 with def : Set :=
-  | def_typ : typ_label -> typ -> typ -> def (* same as dec_typ *)
+  | def_typ : typ_label -> typ -> def (* only type aliases allowed here *)
   | def_mtd : mtd_label -> typ -> typ -> trm -> def (* one nameless argument *)
 with defs : Set :=
   | defs_nil : defs
@@ -58,7 +58,7 @@ Definition sto := env defs.
 (** ** Definition list membership *)
 
 Definition label_of_def(d: def): label := match d with
-| def_typ L _ _ => label_typ L
+| def_typ L _ => label_typ L
 | def_mtd m _ _ _ => label_mtd m
 end.
 
@@ -113,7 +113,7 @@ Fixpoint open_rec_trm (k: nat) (u: var) (t: trm): trm :=
   end
 with open_rec_def (k: nat) (u: var) (d: def): def :=
   match d with
-  | def_typ L Lo Hi => def_typ L (open_rec_typ k u Lo) (open_rec_typ k u Hi)
+  | def_typ L T => def_typ L (open_rec_typ k u T)
   | def_mtd m T1 T2 e => def_mtd m (open_rec_typ k u T1) (open_rec_typ k u T2)
                          (open_rec_trm (S k) u e)
   end
@@ -165,7 +165,7 @@ Fixpoint fv_trm (t: trm) : vars :=
   end
 with fv_def (d: def) : vars :=
   match d with
-  | def_typ _ T U   => (fv_typ T) \u (fv_typ U)
+  | def_typ _ T     => (fv_typ T)
   | def_mtd _ T U u => (fv_typ T) \u (fv_typ U) \u (fv_trm u)
   end
 with fv_defs(ds: defs) : vars :=
@@ -570,9 +570,9 @@ Inductive ty_trm: ctx -> trm -> typ -> Prop :=
       subtyp G T1 T2 ->
       ty_trm G t T2
 with ty_def: ctx -> def -> dec -> Prop :=
-  | ty_tdef: forall G L T U,
-      subtyp G T U -> (* <-- only allow realizable bounds *)
-      ty_def G (def_typ L T U) (dec_typ L T U)
+  | ty_tdef: forall G L T,
+      wf_typ G T ->
+      ty_def G (def_typ L T) (dec_typ L T T)
   | ty_mdef: forall L m G T U u,
       (* These wf checks ensure that x does not appear in T and U.
          But note that it is allowed to occur in the precise type of u. *)
@@ -581,13 +581,6 @@ with ty_def: ctx -> def -> dec -> Prop :=
       (forall x, x \notin L ->
          ty_trm (G & x ~ T) (open_trm x u) U) -> (* <-- allows subsumption *)
       ty_def G (def_mtd m T U u) (dec_mtd m T U)
-(*
-  | ty_def_hyp: forall G d D,
-      wf_dec G D ->
-      label_of_def d = label_of_dec D ->
-      (forall G', subenv G' G -> good_bounds G' -> ty_def G' d D) ->
-      ty_def G d D
-*)
 with ty_defs: ctx -> defs -> typ -> Prop :=
   | ty_defs_nil: forall G,
       ty_defs G defs_nil typ_top
@@ -1020,7 +1013,7 @@ Fixpoint subst_trm (z: var) (u: var) (t: trm) : trm :=
   end
 with subst_def (z: var) (u: var) (d: def) : def :=
   match d with
-  | def_typ L T1 T2   => def_typ L (subst_typ z u T1) (subst_typ z u T2)
+  | def_typ L T => def_typ L (subst_typ z u T)
   | def_mtd m T1 T2 b => def_mtd m (subst_typ z u T1) (subst_typ z u T2) (subst_trm z u b)
   end
 with subst_defs (z: var) (u: var) (ds: defs) : defs :=
@@ -2262,7 +2255,7 @@ Proof.
   unfold good_bounds_typ. introv Tyds. split; [eauto | idtac].
   introv THas.
   destruct (invert_ty_defs Tyds THas) as [d [dsHas Tyd]].
-  inversions Tyd. assumption.
+  inversions Tyd. eauto.
 Qed.
 
 (*
