@@ -538,12 +538,6 @@ Definition subenv(G1 G2: ctx) :=
     binds x T2 G1 \/
     exists T1, binds x T1 G1 /\ subtyp G1 T1 T2 /\ stable_typ T1.
 
-(* Whether the hyp rule is allowed at top-level.
-   Not needed for ty_trm, because it's no problem to allow it always,
-   but we need it for ty_def/ty_defs, because we don't want to allow it
-   in wf_sto. *)
-Inductive hmode := okhyp | nohyp.
-
 (* typing on term level is always imprecise (can use subsumption) *)
 Inductive ty_trm: ctx -> trm -> typ -> Prop :=
   | ty_var: forall G x T,
@@ -558,7 +552,7 @@ Inductive ty_trm: ctx -> trm -> typ -> Prop :=
       ty_trm G (trm_call t m u) V
   | ty_new: forall L G ds T u U,
       (forall x, x \notin L ->
-         ty_defs okhyp (G & x ~ (open_typ x T)) (open_defs x ds) (open_typ x T)) ->
+         ty_defs (G & x ~ (open_typ x T)) (open_defs x ds) (open_typ x T)) ->
       (forall x, x \notin L ->
          ty_trm (G & x ~ (open_typ x T)) (open_trm x u) U) ->
       wf_typ G U -> (* <-- even stronger than x \notin fv_typ U *)
@@ -575,31 +569,33 @@ Inductive ty_trm: ctx -> trm -> typ -> Prop :=
       ty_trm G t T1 ->
       subtyp G T1 T2 ->
       ty_trm G t T2
-with ty_def: hmode -> ctx -> def -> dec -> Prop :=
-  | ty_tdef: forall hm G L T U,
+with ty_def: ctx -> def -> dec -> Prop :=
+  | ty_tdef: forall G L T U,
       subtyp G T U -> (* <-- only allow realizable bounds *)
-      ty_def hm G (def_typ L T U) (dec_typ L T U)
-  | ty_mdef: forall L hm m G T U u,
+      ty_def G (def_typ L T U) (dec_typ L T U)
+  | ty_mdef: forall L m G T U u,
       (* These wf checks ensure that x does not appear in T and U.
          But note that it is allowed to occur in the precise type of u. *)
       wf_typ G T ->
       wf_typ G U ->
       (forall x, x \notin L ->
          ty_trm (G & x ~ T) (open_trm x u) U) -> (* <-- allows subsumption *)
-      ty_def hm G (def_mtd m T U u) (dec_mtd m T U)
+      ty_def G (def_mtd m T U u) (dec_mtd m T U)
+(*
   | ty_def_hyp: forall G d D,
       wf_dec G D ->
       label_of_def d = label_of_dec D ->
-      (forall G', subenv G' G -> good_bounds G' -> ty_def okhyp G' d D) ->
-      ty_def okhyp G d D
-with ty_defs: hmode -> ctx -> defs -> typ -> Prop :=
-  | ty_defs_nil: forall hm G,
-      ty_defs hm G defs_nil typ_top
-  | ty_defs_cons: forall hm G ds d T D,
-      ty_defs hm G ds T ->
-      ty_def hm G d D ->
+      (forall G', subenv G' G -> good_bounds G' -> ty_def G' d D) ->
+      ty_def G d D
+*)
+with ty_defs: ctx -> defs -> typ -> Prop :=
+  | ty_defs_nil: forall G,
+      ty_defs G defs_nil typ_top
+  | ty_defs_cons: forall G ds d T D,
+      ty_defs G ds T ->
+      ty_def G d D ->
       defs_hasnt ds (label_of_def d) -> (* <-- no duplicates *)
-      ty_defs hm G (defs_cons ds d) (typ_and T (typ_rcd D)).
+      ty_defs G (defs_cons ds d) (typ_and T (typ_rcd D)).
 
 (** *** Well-formed store *)
 Inductive wf_sto: sto -> ctx -> Prop :=
@@ -609,7 +605,7 @@ Inductive wf_sto: sto -> ctx -> Prop :=
       x # s ->
       x # G ->
       (* Note that ds and T were already opened with x. *)
-      ty_defs nohyp (G & x ~ T) ds T ->
+      ty_defs (G & x ~ T) ds T ->
       wf_sto (s & x ~ ds) (G & x ~ T).
 
 
@@ -1624,9 +1620,9 @@ Hint Resolve subtyp_regular_1 subtyp_regular_2 subdec_regular_1 subdec_regular_2
 Lemma typing_regular:
    (forall G t T, ty_trm G t T ->
       wf_typ G T)
-/\ (forall hm G d D, ty_def hm G d D ->
+/\ (forall G d D, ty_def G d D ->
       wf_dec G D)
-/\ (forall hm G ds T, ty_defs hm G ds T ->
+/\ (forall G ds T, ty_defs G ds T ->
       wf_typ G T).
 Proof.
   apply ty_mutind;
@@ -2143,8 +2139,8 @@ Proof.
   intros. inversions H; eauto 10.
 Qed.
 
-Lemma ty_def_to_label_eq: forall hm G d D,
-  ty_def hm G d D ->
+Lemma ty_def_to_label_eq: forall G d D,
+  ty_def G d D ->
   label_of_def d = label_of_dec D.
 Proof.
   intros. inversions H; simpl; auto.
@@ -2158,10 +2154,10 @@ Proof.
   - introv dsHas dsHasnt. inversions dsHas; inversions dsHasnt. case_if.
 Qed.
 
-Lemma invert_ty_defs: forall hm G ds T D,
-  ty_defs hm G ds T ->
+Lemma invert_ty_defs: forall G ds T D,
+  ty_defs G ds T ->
   typ_has G T D ->
-  exists d, defs_has ds d /\ ty_def hm G d D.
+  exists d, defs_has ds d /\ ty_def G d D.
 Proof.
   introv Tyds. gen D. induction Tyds.
   + introv THas. inversions THas.
@@ -2260,7 +2256,7 @@ Qed.
 (** ** Strengthening typ_has (needed to weaken good_bounds) *)
 
 Lemma ty_defs_to_good_bounds_typ: forall G ds T,
-  ty_defs nohyp G ds T ->
+  ty_defs G ds T ->
   good_bounds_typ G T.
 Proof.
   unfold good_bounds_typ. introv Tyds. split; [eauto | idtac].
@@ -2563,7 +2559,7 @@ Hint Resolve wf_sto_to_ok_s wf_sto_to_ok_G.
 Lemma ctx_binds_to_sto_binds_raw: forall s G x T,
   wf_sto s G ->
   binds x T G ->
-  exists G1 G2 ds, G = G1 & G2 /\ binds x ds s /\ ty_defs nohyp G1 ds T.
+  exists G1 G2 ds, G = G1 & G2 /\ binds x ds s /\ ty_defs G1 ds T.
 Proof.
   introv Wf Bi. gen x T Bi. induction Wf; intros.
   + false* binds_empty_inv.
@@ -3483,21 +3479,36 @@ Qed.
 (* ###################################################################### *)
 (** ** Narrowing on term level *)
 
+(* Doesn't hold as a lemma because ty_tdef needs subtyp directly without going through
+   a ty_trm. TODO add a rule for it, but with a flag whether it's allowed, because
+   we don't want to allow it in wf_sto! *) 
+Lemma ty_def_hyp: forall G d D,
+  wf_dec G D ->
+  (forall G' : ctx, subenv G' G -> good_bounds G' -> ty_def G' d D) ->
+  ty_def G d D.
+Admitted.
+(*
+Proof.
+  introv Wf Ty.
+  destruct d as [L Lo Hi | m U V u]; destruct D as [L' Lo' Hi'| m' U' V'].
+  - assert (Tyd: ty_def G (def_typ L Lo Hi) (dec_typ L Lo Hi)). {
+      constructor.
+  - 
+*)
+
 Lemma narrow_ty:
    (forall G t T, ty_trm G t T -> forall G',
     ok G' ->
     subenv G' G ->
     ty_trm G' t T)
-/\ (forall hm G d D, ty_def hm G d D -> forall G',
-    hm = okhyp ->
+/\ (forall G d D, ty_def G d D -> forall G',
     ok G' ->
     subenv G' G ->
-    ty_def okhyp G' d D)
-/\ (forall hm G ds T, ty_defs hm G ds T -> forall G',
-    hm = okhyp ->
+    ty_def G' d D)
+/\ (forall G ds T, ty_defs G ds T -> forall G',
     ok G' ->
     subenv G' G ->
-    ty_defs okhyp G' ds T).
+    ty_defs G' ds T).
 Proof.
   apply ty_mutind.
   + (* case ty_var *)
@@ -3521,7 +3532,7 @@ Proof.
   + (* case ty_new *)
     introv Tyds IH1 Tyu IH2 WfU Ok1 Se. subst.
     apply_fresh ty_new as y; try assert (yL: y \notin L) by auto.
-    - apply (IH1 y yL (G' & y ~ open_typ y T) eq_refl (okadmit _) (subenv_push Se)).
+    - apply (IH1 y yL (G' & y ~ open_typ y T) (okadmit _) (subenv_push Se)).
     - apply (IH2 y yL (G' & y ~ open_typ y T) (okadmit _) (subenv_push Se)).
     - apply* narrow_wf_typ.
   + (* case ty_hyp *)
@@ -3542,15 +3553,14 @@ Proof.
       * apply* IH. apply okadmit.
       * apply* narrow_subtyp.
   + (* case ty_tdef *)
-    introv St Eq Ok Se. subst.
+    introv St Ok Se. subst.
     apply ty_def_hyp.
     - refine (narrow_wf_dec _ Se). destruct (subtyp_regular St) as [WfT WfU].
       apply (wf_tmem _ WfT WfU).
-    - reflexivity.
     - intros G'' Se' Gb. apply ty_tdef. apply* narrow_subtyp.
       apply (subenv_trans Gb Se' Se).
   + (* case ty_mdef *)
-    introv WfT WfU Tyu IH Eq Ok Se. subst.
+    introv WfT WfU Tyu IH Ok Se. subst.
     apply_fresh ty_mdef as y.
     - apply* narrow_wf_typ.
     - apply* narrow_wf_typ.
@@ -3558,15 +3568,6 @@ Proof.
       (* Note: No more need for un-narrowing (because good_bounds is no longer a hyp,
          but it's not just moved to ty_hyp *)
       apply (IH y yL (G' & y ~ T) (okadmit _) (subenv_push Se)).
-  + (* case ty_def_hyp *)
-    introv WfD Eq1 Ty IH _ Ok Se.
-    assert (WfD': wf_dec G' D) by apply* narrow_wf_dec.
-    apply (ty_def_hyp WfD' Eq1).
-    intros G'' Se' Gb''.
-    (* Note that we do not have to un-narrow Gb'' to Gb', because ty_hyp now is stronger *)
-    refine (IH G'' _ Gb'' G'' eq_refl (okadmit _) _).
-    - apply (subenv_trans Gb'' Se' Se).
-    - apply subenv_refl.
   + (* case ty_defs_nil *) eauto.
   + (* case ty_defs_cons *)
     intros. subst. apply* ty_defs_cons.
@@ -4516,18 +4517,16 @@ Lemma subst_ty:
     ok (G1 & x ~ S & G2) ->
     binds y S (G1 & G2) ->
     ty_trm (subst_ctx x y (G1 & G2)) (subst_trm x y t) (subst_typ x y T))
-/\ (forall hm G d D, ty_def hm G d D -> forall G1 x y S G2,
-    hm = okhyp ->
+/\ (forall G d D, ty_def G d D -> forall G1 x y S G2,
     G = G1 & x ~ S & G2  ->
     ok (G1 & x ~ S & G2) ->
     binds y S (G1 & G2) ->
-    ty_def okhyp (subst_ctx x y (G1 & G2)) (subst_def x y d) (subst_dec x y D))
-/\ (forall hm G ds T, ty_defs hm G ds T -> forall G1 x y S G2,
-    hm = okhyp ->
+    ty_def (subst_ctx x y (G1 & G2)) (subst_def x y d) (subst_dec x y D))
+/\ (forall G ds T, ty_defs G ds T -> forall G1 x y S G2,
     G = G1 & x ~ S & G2  ->
     ok (G1 & x ~ S & G2) ->
     binds y S (G1 & G2) ->
-    ty_defs okhyp (subst_ctx x y (G1 & G2)) (subst_defs x y ds) (subst_typ x y T)).
+    ty_defs (subst_ctx x y (G1 & G2)) (subst_defs x y ds) (subst_typ x y T)).
 Proof.
   apply ty_mutind.
   + (* case ty_var *)
@@ -4548,7 +4547,7 @@ Proof.
       specialize (IH1 _ x'L G1 x y S (G2 & x' ~ open_typ x' T)).
       repeat rewrite concat_assoc in IH1.
       assert (Ok': ok (G1 & x ~ S & G2 & x' ~ open_typ x' T)) by auto.
-      specialize (IH1 eq_refl eq_refl Ok').
+      specialize (IH1 eq_refl Ok').
       assert (Eqz: subst_fvar x y x' = x') by (unfold subst_fvar; case_var* ).
       unfold subst_ctx in IH1. rewrite map_push in IH1.
       lets P: (@subst_open_commute_typ x y x' T). rewrite Eqz in P.
@@ -4647,11 +4646,11 @@ Proof.
     introv Ty IH St Eq Ok Biy. subst.
     lets St': (subst_subtyp St Ok Biy). apply ty_sbsm with (subst_typ x y T1); eauto.
   + (* case ty_tdef *)
-    introv St Eq1 Eq2 Ok Biy. subst.
+    introv St Eq Ok Biy. subst.
     lets St': (subst_subtyp St Ok Biy).
     apply ty_tdef; eauto.
   + (* case ty_mdef *)
-    introv WfT WfU2 Tyu IH Eq1 Eq2 Ok Biy. subst.
+    introv WfT WfU2 Tyu IH Eq Ok Biy. subst.
     apply_fresh ty_mdef as x'.
     - eauto.
     - eauto.
@@ -4666,8 +4665,6 @@ Proof.
       lets P: (@subst_open_commute_trm x y x' u). rewrite Eqz in P.
       rewrite P in IH. clear P.
       apply IH. apply (binds_push_neq _ Biy). auto.
-  + (* case ty_def_hyp *)
-    admit. (* hopefully the same as case ty_hyp *)
   + (* case ty_defs_nil *)
     eauto.
   + (* case ty_defs_cons *)
@@ -4694,17 +4691,17 @@ Proof.
 Qed.
 
 Lemma defs_subst_principle: forall G x y ds S T,
-  ty_defs okhyp (G & x ~ S) ds T ->
+  ty_defs (G & x ~ S) ds T ->
   ok (G & x ~ S) ->
   x \notin fv_ctx_types G ->
   binds y S G ->
-  ty_defs okhyp G (subst_defs x y ds) (subst_typ x y T).
+  ty_defs G (subst_defs x y ds) (subst_typ x y T).
 Proof.
   introv Ty Ok Fr Biy.
   destruct subst_ty as [_ [_ P]].
-  specialize (P _ _ _ _ Ty G x y S empty).
+  specialize (P _ _ _ Ty G x y S empty).
   repeat rewrite concat_empty_r in P.
-  specialize (P eq_refl eq_refl Ok Biy).
+  specialize (P eq_refl Ok Biy).
   rewrite (subst_fresh_ctx _ _ Fr) in P.
   exact P.
 Qed.
@@ -4731,10 +4728,10 @@ Proof.
 Qed.
 
 Lemma weaken_ty_defs_end: forall G1 G2 ds T,
-  ok (G1 & G2) -> ty_defs okhyp G1 ds T -> ty_defs okhyp (G1 & G2) ds T.
+  ok (G1 & G2) -> ty_defs G1 ds T -> ty_defs (G1 & G2) ds T.
 Proof.
   introv Ok Ty. lets Se: (@subenv_concat G1 G2).
-  apply ((proj33 narrow_ty) _ _ _ _ Ty _ eq_refl Ok Se).
+  apply ((proj33 narrow_ty) _ _ _ Ty _ Ok Se).
 Qed.
 
 Print Assumptions weaken_ty_defs_end.
@@ -4748,10 +4745,10 @@ Proof.
 Qed.
 
 Lemma weaken_ty_defs_middle: forall G1 G2 G3 ds T,
-  ok (G1 & G2 & G3) -> ty_defs okhyp (G1 & G3) ds T -> ty_defs okhyp (G1 & G2 & G3) ds T.
+  ok (G1 & G2 & G3) -> ty_defs (G1 & G3) ds T -> ty_defs (G1 & G2 & G3) ds T.
 Proof.
   introv Ok Ty. lets Se: (@subenv_weaken_middle G1 G2 G3).
-  apply ((proj33 narrow_ty) _ _ _ _ Ty _ eq_refl Ok Se).
+  apply ((proj33 narrow_ty) _ _ _ Ty _ Ok Se).
 Qed.
 
 
@@ -4770,71 +4767,35 @@ Proof.
     exists T0. apply (conj Bi). apply (subtyp_trans St H).
 Qed.
 
-Lemma ty_def_nohyp_to_okhyp: forall G d D,
-  ty_def nohyp G d D ->
-  ty_def okhyp G d D.
-Proof.
-  introv Ty. inversions Ty; eauto.
-Qed.
-
-Lemma ty_defs_nohyp_to_okhyp: forall G ds T,
-  ty_defs nohyp G ds T ->
-  ty_defs okhyp G ds T.
-Proof.
-  introv Ty. gen_eq hm: nohyp. induction Ty; intro Eq; subst.
-  - apply ty_defs_nil.
-  - apply ty_def_nohyp_to_okhyp in H. eauto.
-Qed.
-
-Lemma ty_def_okhyp_to_nohyp: forall G d D,
-  good_bounds G ->
-  ty_def okhyp G d D ->
-  ty_def nohyp G d D.
-Proof.
-  introv Gb Ty. gen_eq hm: okhyp. induction Ty; intro Eq; subst.
-  - eauto.
-  - eauto.
-  - apply (H2 _ (@subenv_refl _) Gb Gb eq_refl).
-Qed.
-
-Lemma ty_defs_okhyp_to_nohyp: forall G ds T,
-  good_bounds G ->
-  ty_defs okhyp G ds T ->
-  ty_defs nohyp G ds T.
-Proof.
-  introv Gb Ty. gen_eq hm: okhyp. induction Ty; intro Eq; subst.
-  - apply ty_defs_nil.
-  - apply (ty_def_okhyp_to_nohyp Gb) in H. eauto.
-Qed.
-
 Lemma ctx_binds_to_sto_binds: forall s G x T,
   wf_sto s G ->
   binds x T G ->
-  exists ds, binds x ds s /\ ty_defs nohyp G ds T.
+  exists ds, binds x ds s /\ ty_defs G ds T.
 Proof.
   introv Wf Bi.
   lets P: (ctx_binds_to_sto_binds_raw Wf Bi).
   destruct P as [G1 [G2 [ds [Eq [Bis Tyds]]]]]. subst.
-  exists ds. apply (conj Bis). apply (ty_defs_okhyp_to_nohyp (wf_sto_to_good_bounds Wf)).
-  refine (weaken_ty_defs_end _ (ty_defs_nohyp_to_okhyp Tyds)).
-  apply (wf_sto_to_ok_G Wf).
+  exists ds. apply (conj Bis). refine (weaken_ty_defs_end _ Tyds).
+  (*
+  - apply invert_wf_sto_concat in Wf. destruct Wf as [s1 [s2 [Eq Wf]]]. subst.
+    apply (wf_sto_to_good_bounds Wf).
+  *)
+  - apply (wf_sto_to_ok_G Wf).
 Qed.
 
 Lemma sto_binds_to_ctx_binds: forall s G x ds,
   wf_sto s G ->
   binds x ds s ->
-  exists T, binds x T G /\ ty_defs nohyp G ds T.
+  exists T, binds x T G /\ ty_defs G ds T.
 Proof.
   introv Wf Bi. gen x Bi. induction Wf; intros.
   + false* binds_empty_inv.
   + unfolds binds. rewrite get_push in *. case_if.
     - inversions Bi. exists T. auto.
     - specialize (IHWf _ Bi). destruct IHWf as [U [Bi' Tyds]].
-      exists U. apply (conj Bi').
-      lets Wf': (wf_sto_push Wf H H0 H1).
-      apply (ty_defs_okhyp_to_nohyp (wf_sto_to_good_bounds Wf')).
-      refine (weaken_ty_defs_end _ (ty_defs_nohyp_to_okhyp Tyds)).
-      apply (wf_sto_to_ok_G Wf').
+      exists U. apply (conj Bi'). refine (weaken_ty_defs_end _ Tyds).
+      (* apply (wf_sto_to_good_bounds Wf). *)
+      * apply wf_sto_to_ok_G in Wf. auto.
 Qed.
 
 Lemma typ_has_to_defs_has: forall G T D x ds s,
@@ -4842,7 +4803,7 @@ Lemma typ_has_to_defs_has: forall G T D x ds s,
   typ_has G T D ->
   binds x ds s ->
   binds x T G ->
-  exists d, defs_has ds d /\ ty_def nohyp G d D.
+  exists d, defs_has ds d /\ ty_def G d D.
 Proof.
   introv Wf THas Bis BiG.
   lets P: (sto_binds_to_ctx_binds Wf Bis). destruct P as [T' [Bi' Tyds]].
@@ -4885,7 +4846,7 @@ Proof.
         subst.
         lets P: (typ_has_to_defs_has Wfs T'Has Bis BiG).
         destruct P as [d [dsHas Tyd]].
-        inversions Tyd. rename H5 into WfU', H6 into WfV', H7 into Tybody.
+        inversions Tyd. rename H4 into WfU', H5 into WfV', H6 into Tybody.
         exists (open_trm y u) s.
         apply (red_call y Bis dsHas).
   + (* case ty_new *)
@@ -4923,13 +4884,13 @@ Proof.
 Qed.
 
 (* replaces super-fresh x by a not-so-fresh y *)
-Lemma ty_open_defs_change_var: forall hm y G S ds T,
+Lemma ty_open_defs_change_var: forall y G S ds T,
   ok G ->
   y # G ->
   exists L, forall x, x \notin L ->
   good_bounds (G & x ~ open_typ x S) ->
-  ty_defs hm (G & x ~ open_typ x S) (open_defs x ds) (open_typ x T) ->
-  ty_defs hm (G & y ~ open_typ y S) (open_defs y ds) (open_typ y T).
+  ty_defs (G & x ~ open_typ x S) (open_defs x ds) (open_typ x T) ->
+  ty_defs (G & y ~ open_typ y S) (open_defs y ds) (open_typ y T).
 Proof.
 Admitted.
 (*
@@ -4985,8 +4946,8 @@ Admitted.
 Qed.
 *)
 
-Lemma defs_have_stable_typ: forall hm G ds T,
-  ty_defs hm G ds T -> stable_typ T.
+Lemma defs_have_stable_typ: forall G ds T,
+  ty_defs G ds T -> stable_typ T.
 Proof.
   introv Tyds. induction Tyds; eauto.
 Qed.
@@ -4996,7 +4957,7 @@ Lemma invert_ty_new: forall G ds u U,
   ty_trm G (trm_new ds u) U ->
   exists L T,
      (forall x, x \notin L ->
-        ty_defs okhyp (G & x ~ open_typ x T) (open_defs x ds) (open_typ x T))
+        ty_defs (G & x ~ open_typ x T) (open_defs x ds) (open_typ x T))
   /\ (forall x, x \notin L ->
         ty_trm (G & x ~ open_typ x T) (open_trm x u) U)
   /\ (wf_typ G U).
@@ -5048,7 +5009,7 @@ Qed.
 
 Lemma good_bounds_push_ty_defs: forall G y ds T,
   good_bounds G ->
-  ty_defs nohyp (G & y ~ T) ds T ->
+  ty_defs (G & y ~ T) ds T ->
   ok (G & y ~ T) ->
   good_bounds (G & y ~ T).
 Proof.
@@ -5096,7 +5057,7 @@ Proof.
     subst D1.
     lets P: (typ_has_to_defs_has Wf T'Has Bis BiGx). destruct P as [d [dsHas' Tyd]].
     inversions Tyd.
-    clear H5. rename H6 into WfV, H7 into Tybody, u into body'.
+    clear H4. rename H5 into WfV, H6 into Tybody, u into body'.
     assert (Eq: def_mtd m U1 V1 body' = def_mtd m U2 V2 body). {
       refine (defs_has_unique _ dsHas' dsHas). reflexivity.
     }
@@ -5140,8 +5101,8 @@ Proof.
     assert (xG: x # G) by apply* sto_unbound_to_ctx_unbound.
     lets Ok: (wf_sto_to_ok_G Wf).
     assert (Okx: forall X, ok (G & x ~ X)) by auto.
-    lets C1: (@ty_open_defs_change_var okhyp x G Tds ds Tds Ok xG). destruct C1 as [L1 C1].
-    lets C2: (@ty_open_trm_change_var        x G Tds t  T   Ok xG). destruct C2 as [L2 C2].
+    lets C1: (@ty_open_defs_change_var x G Tds ds Tds Ok xG). destruct C1 as [L1 C1].
+    lets C2: (@ty_open_trm_change_var  x G Tds t  T   Ok xG). destruct C2 as [L2 C2].
     pick_fresh x'.
     assert (x'L: x' \notin L) by auto.
     assert (x'L1: x' \notin L1) by auto.
