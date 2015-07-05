@@ -3964,23 +3964,6 @@ Qed.
 (* ###################################################################### *)
 (** ** Narrowing on term level *)
 
-(* Doesn't hold as a lemma because ty_tdef needs subtyp directly without going through
-   a ty_trm. TODO add a rule for it, but with a flag whether it's allowed, because
-   we don't want to allow it in wf_sto! *) 
-Lemma ty_def_hyp: forall G d D,
-  wf_dec G D ->
-  (forall G' : ctx, subenv G' G -> good_bounds G' -> ty_def G' d D) ->
-  ty_def G d D.
-Admitted.
-(*
-Proof.
-  introv Wf Ty.
-  destruct d as [L Lo Hi | m U V u]; destruct D as [L' Lo' Hi'| m' U' V'].
-  - assert (Tyd: ty_def G (def_typ L Lo Hi) (dec_typ L Lo Hi)). {
-      constructor.
-  - 
-*)
-
 Lemma narrow_ty:
    (forall G t T, ty_trm G t T -> forall G',
     ok G' ->
@@ -4039,11 +4022,7 @@ Proof.
       * apply* narrow_subtyp.
   + (* case ty_tdef *)
     introv St Ok Se. subst.
-    apply ty_def_hyp.
-    - refine (narrow_wf_dec _ Se). destruct (subtyp_regular St) as [WfT WfU].
-      apply (wf_tmem _ WfT WfU).
-    - intros G'' Se' Gb. apply ty_tdef. apply* narrow_subtyp.
-      apply (subenv_trans Gb Se' Se).
+    apply ty_tdef. apply* narrow_wf.
   + (* case ty_mdef *)
     introv WfT WfU Tyu IH Ok Se. subst.
     apply_fresh ty_mdef as y.
@@ -5132,7 +5111,6 @@ Proof.
     lets St': (subst_subtyp St Ok Biy). apply ty_sbsm with (subst_typ x y T1); eauto.
   + (* case ty_tdef *)
     introv St Eq Ok Biy. subst.
-    lets St': (subst_subtyp St Ok Biy).
     apply ty_tdef; eauto.
   + (* case ty_mdef *)
     introv WfT WfU2 Tyu IH Eq Ok Biy. subst.
@@ -5503,7 +5481,7 @@ Proof.
   - subst. unfold good_bounds_typ. split.
     * apply (ty_defs_regular Tyds).
     * introv THas. destruct (invert_ty_defs Tyds THas) as [d [dsHas Tyd]].
-      inversions Tyd. assumption.
+      inversions Tyd. eauto.
   - specialize (Gb x X Bix). apply (weaken_good_bounds_typ_end Ok Gb).
 Qed.
 
