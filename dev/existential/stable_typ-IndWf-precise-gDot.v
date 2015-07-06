@@ -1545,6 +1545,10 @@ Proof.
     (apply* subst_fresh_avar || apply* subst_fresh_typ_dec).
 Qed.
 
+Definition subst_fresh_trm (x y: var) := proj31 (subst_fresh_trm_def_defs x y).
+Definition subst_fresh_def (x y: var) := proj32 (subst_fresh_trm_def_defs x y).
+Definition subst_fresh_defs(x y: var) := proj33 (subst_fresh_trm_def_defs x y).
+
 Lemma invert_fv_ctx_types_push: forall x z T G,
   x \notin fv_ctx_types (G & z ~ T) -> x \notin fv_typ T /\ x \notin (fv_ctx_types G).
 Proof.
@@ -4972,14 +4976,15 @@ Admitted.
 
 Lemma undo_subst_subenv: forall G' G1 x y S G2,
   binds y S (G1 & G2) ->
+  x # G' ->
   subenv G' (subst_ctx x y G1 & subst_ctx x y G2) ->
   exists G1' S' G2',
-    subst_ctx x y G1' & subst_ctx x y G2' = G' /\
+    subst_ctx x y G1' & subst_ctx x y G2' = G' /\ (* impossible if G' already contains x! *)
     binds y S' (G1' & G2') /\
     subenv (G1' & x ~ S' & G2') (G1 & x ~ S & G2).
 Proof.
-introv Biy Se. destruct (classicT (x # G')) as [xG' | xG'].
-{
+  introv Biy xG' Se. (*destruct (classicT (x # G')) as [xG' | xG'].
+{*)
   lets Biy': (subst_binds_0 x y Biy). rewrite subst_ctx_concat in Biy'.
   assert (xS: x \notin fv_typ S) by apply closed_env_stuff.
   rewrite (subst_fresh_typ _ _ xS) in Biy'.
@@ -5019,6 +5024,7 @@ introv Biy Se. destruct (classicT (x # G')) as [xG' | xG'].
         exists V'. repeat split; auto. apply (weaken_subtyp_end (okadmit _) StV).
     - subst. right.
       exists S'. repeat split; auto. apply (weaken_subtyp_end (okadmit _) St).
+(*
 } {
   unfold notin in xG'. apply not_not_elim in xG'. (* classical logic we don't really need,
     but it's just handy here ^^ *)
@@ -5036,10 +5042,45 @@ There are some types T (those which contain x) which have no preimage under
 Or in other words: (subst_ctx x y ?269922) contains no xs at all in its types,
 but G' might contain some, so the equality "subst_ctx x y ?269922 = G'" cannot hold!
 *)
-Admitted. (* !!!
 }
-Qed.
 *)
+Qed.
+
+Lemma decide_binds: forall (A: Type) (x: var) (E: env A),
+  x # E \/ exists v, binds x v E.
+Admitted.
+
+Lemma expose_binds: forall (A: Type) (x: var) (v: A) (E: env A),
+  binds x v E ->
+  exists E1 E2, E = E1 & x ~ v & E2.
+Admitted.
+
+Lemma rename_subenv: forall G1' x y T G2' G,
+  x # G ->
+  y # (G1' & x ~ T & G2') ->
+  subenv (G1' & x ~ T & G2') G ->
+  subenv ((subst_ctx x y G1') & y ~ (subst_typ x y T) & (subst_ctx x y G2')) G.
+Admitted.
+
+Lemma rename_good_bounds: forall G1 x y T G2,
+  y # (G1 & x ~ T & G2) ->
+  good_bounds (G1 & x ~ T & G2) ->
+  good_bounds ((subst_ctx x y G1) & y ~ (subst_typ x y T) & (subst_ctx x y G2)).
+Admitted.
+
+Lemma rename_ty_trm: forall G1 x y T G2 u U,
+  y # (G1 & x ~ T & G2) ->
+  ty_trm (G1 & x ~ T & G2) u U ->
+  ty_trm ((subst_ctx x y G1) & y ~ (subst_typ x y T) & (subst_ctx x y G2))
+         (subst_trm x y u)
+         (subst_typ x y U).
+Admitted.
+
+Lemma swap_subst_ctx: forall x1 y1 x2 y2 G,
+  x1 <> y2 ->
+  x2 <> y1 ->
+  (subst_ctx x1 y1 (subst_ctx x2 y2 G)) = (subst_ctx x2 y2 (subst_ctx x1 y1 G)).
+Abort.
 
 Lemma subst_ty:
    (forall G t T, ty_trm G t T -> forall G1 x y S G2,
@@ -5105,6 +5146,101 @@ Proof.
     - intros G' Se Gb.
       rewrite subst_ctx_concat in *.
       assert (xG: x # (G1 & G2)) by apply closed_env_stuff.
+      destruct (decide_binds x G') as [xG' | [X Bix]].
+      { lets P: (undo_subst_subenv Biy xG' Se).
+        destruct P as [G1' [S' [G2' [? [Biy' Se']]]]]. subst.
+        rewrite <- subst_ctx_concat.
+        refine (IH _ Se' _ _ x y _ _ eq_refl (okadmit _) Biy').
+        assert (xG'': x # G1' & G2') by apply closed_env_stuff. (* from xG' *)
+        refine (undo_subst_good_bounds _ xG'' Gb).
+        apply (subst_binds_0 x y) in Biy'.
+        assert (xS': x \notin fv_typ S') by apply closed_env_stuff.
+        rewrite (subst_fresh_typ _ _ xS') in Biy'.
+        rewrite subst_ctx_concat in Biy'.
+        exact Biy'. }
+      { (* Note: G' is a subenv of  (subst_ctx x y G1 & subst_ctx x y G2), i.e. an env
+           which does not bind x, so X can be anything completely unrelated to S. 
+           --> Idea: replace x by a completely fresh x'. *)
+        destruct (expose_binds Bix) as [G1' [G2' ?]]. subst.
+        pick_fresh x'.
+
+        (* also need to do (subst x' x ...) at the end (i.e. on the goal) *)
+        (* replace x by x' in the goal (note that (subst_trm x y t) and (subst_typ x y T)
+           remain unchanged because they don't refer to x) *)
+        assert (E: x' \notin fv_ctx_types G1') by auto.
+        rewrite <- (subst_fresh_ctx x _ E). clear E.
+        assert (E: x' \notin fv_ctx_types G2') by auto.
+        rewrite <- (subst_fresh_ctx x _ E). clear E.
+        assert (E: x' \notin fv_typ X) by auto.
+        rewrite <- (subst_fresh_typ x _ E). clear E.
+        assert (E: x' \notin fv_trm (subst_trm x y t)) by apply closed_env_stuff.
+        rewrite <- (subst_fresh_trm x _ E). clear E.
+        assert (E: x' \notin fv_typ (subst_typ x y T)) by apply closed_env_stuff.
+        rewrite <- (subst_fresh_typ x _ E). clear E.
+        assert (xG5: x # G1' & x' ~ X & G2') by apply closed_env_stuff.
+        apply (rename_ty_trm xG5).
+
+        assert (xG': x # (subst_ctx x x' G1' & x' ~ subst_typ x x' X & subst_ctx x x' G2'))
+          by apply closed_env_stuff.
+        assert (x'G': x' # (G1' & x ~ X & G2')) by auto.
+        assert (xG2: x # (subst_ctx x y G1 & subst_ctx x y G2)) by apply closed_env_stuff.
+        lets Se': (rename_subenv xG2 x'G' Se).
+        lets P: (undo_subst_subenv Biy xG' Se').
+        destruct P as [G1'' [S'' [G2'' [Eq [Biy'' Se'']]]]].
+        specialize (IH _ Se'').
+
+        (* We need a goal of the form "ty_trm (subst_ctx x y ...) ... ..." to apply IH,
+           and Eq should help us to achieve this... *)
+        assert (Eq': subst_ctx x' x (subst_ctx x y G1'' & subst_ctx x y G2'')
+                   = G1' & x' ~ X & G2'). {
+          lets Eq': (f_equal (subst_ctx x' x) Eq).
+          assert (Eq2: subst_ctx x' x
+                        (subst_ctx x x' G1' & x' ~ subst_typ x x' X & subst_ctx x x' G2')
+                   = G1' & x' ~ X & G2'). {
+            do 2 rewrite subst_ctx_concat. unfold subst_ctx at 3. rewrite map_single.
+            assert (E: x' \notin fv_ctx_types G1') by auto.
+            rewrite (undo_subst_ctx x _ E). clear E.
+            assert (E: x' \notin fv_ctx_types G2') by auto.
+            rewrite (undo_subst_ctx x _ E). clear E.
+            assert (E: x' \notin fv_typ X) by auto.
+            rewrite (subst_typ_undo x _ E). clear E.
+            reflexivity.
+          }
+          rewrite Eq2 in Eq'.
+          (*rewrite <- subst_ctx_concat in Eq'.*)
+          exact Eq'.
+        }
+        rewrite <- Eq'.
+        (* Now we would like to swap the order of the two substitutions in the goal,
+           but that's not the same, because
+           (subst_ctx x y (subst_ctx x' x ...)) == (subst_ctx x' y)
+        *)
+        admit.
+
+(* notin: either use x # (subst x x' ...), or use x' # ...  *)
+      }
+
+(*
+  + (* case ty_hyp *)
+    introv WfT Ty IH Eq Ok Biy. subst.
+    apply ty_hyp.
+    - apply* subst_wf_typ.
+    - intros G' Se Gb.
+      rewrite subst_ctx_concat in *.
+      (*
+In IH, we must set x0:=x, y0:=y 
+in order to get (subst_trm x y t) (subst_typ x y T) in the conclusion.
+
+     
+         so the conclusion of the IH has no x in the env
+         
+        G' might contain an arbitary type for x, completely unrelated to S
+      rename that x into a fresh x'? --> x not in G' any more
+
+
+     what if we apply the undo lemma on the goal? wrong direction
+*)
+      assert (xG: x # (G1 & G2)) by apply closed_env_stuff.
       lets P: (undo_subst_subenv Biy Se).
       destruct P as [G1' [S' [G2' [? [Biy' Se']]]]]. subst.
       rewrite <- subst_ctx_concat.
@@ -5116,7 +5252,6 @@ Proof.
       rewrite (subst_fresh_typ _ _ xS') in Biy'.
       rewrite subst_ctx_concat in Biy'.
       exact Biy'.
-      (*
       assert (E: exists G1'' S'' G2'', G'' = G1'' & x ~ S'' & G2'') by admit.
       destruct E as [G1'' [S'' [G2'' E]]]. subst.
 
