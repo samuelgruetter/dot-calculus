@@ -30,6 +30,9 @@ Inductive typ : Set :=
   | typ_sel  : avar -> typ_label -> typ (* x.L *)
   | typ_and  : typ -> typ -> typ
   | typ_or   : typ -> typ -> typ
+  | typ_self : avar -> typ (* x.type *)
+  | typ_ex   : typ -> typ -> typ (* ex(x: T)U
+                                    both T and U can refer to the locally nameless x *)
 with dec : Set :=
   | dec_typ  : typ_label -> typ -> typ -> dec (* L: S..U *)
   | dec_mtd  : mtd_label -> typ -> typ -> dec (* m: S->U *).
@@ -97,6 +100,8 @@ Fixpoint open_rec_typ (k: nat) (u: var) (T: typ): typ :=
   | typ_sel x L    => typ_sel (open_rec_avar k u x) L
   | typ_and T1 T2  => typ_and (open_rec_typ k u T1) (open_rec_typ k u T2)
   | typ_or  T1 T2  => typ_or  (open_rec_typ k u T1) (open_rec_typ k u T2)
+  | typ_self x     => typ_self (open_rec_avar k u x)
+  | typ_ex T U     => typ_ex (open_rec_typ (S k) u T) (open_rec_typ (S k) u U)
   end
 with open_rec_dec (k: nat) (u: var) (D: dec): dec :=
   match D with
@@ -148,6 +153,8 @@ Fixpoint fv_typ (T: typ) : vars :=
   | typ_sel x L    => (fv_avar x)
   | typ_and T U    => (fv_typ T) \u (fv_typ U)
   | typ_or  T U    => (fv_typ T) \u (fv_typ U)
+  | typ_self x     => (fv_avar x)
+  | typ_ex T U     => (fv_typ T) \u (fv_typ U)
   end
 with fv_dec (D: dec) : vars :=
   match D with
@@ -1385,6 +1392,8 @@ Fixpoint subst_typ (z: var) (u: var) (T: typ) { struct T } : typ :=
   | typ_sel x L    => typ_sel (subst_avar z u x) L
   | typ_and T1 T2  => typ_and (subst_typ z u T1) (subst_typ z u T2)
   | typ_or  T1 T2  => typ_or  (subst_typ z u T1) (subst_typ z u T2)
+  | typ_self x     => typ_self (subst_avar z u x)
+  | typ_ex T U     => typ_ex (subst_typ z u T) (subst_typ z u U)
   end
 with subst_dec (z: var) (u: var) (D: dec) { struct D } : dec :=
   match D with
@@ -1425,7 +1434,7 @@ Lemma subst_fresh_typ_dec: forall x y,
   (forall T : typ , x \notin fv_typ  T  -> subst_typ  x y T  = T ) /\
   (forall D : dec , x \notin fv_dec  D  -> subst_dec  x y D  = D ).
 Proof.
-  intros x y. apply typ_mutind; intros; simpls; f_equal*. apply* subst_fresh_avar.
+  intros x y. apply typ_mutind; intros; simpls; f_equal*; apply* subst_fresh_avar.
 Qed.
 
 Definition subst_fresh_typ(x y: var) := proj1 (subst_fresh_typ_dec x y).
@@ -1493,7 +1502,7 @@ Lemma subst_open_commute_typ_dec: forall x y u,
      subst_dec x y (open_rec_dec n u D)
      = open_rec_dec n (subst_fvar x y u) (subst_dec x y D)).
 Proof.
-  intros. apply typ_mutind; intros; simpl; f_equal*. apply subst_open_commute_avar.
+  intros. apply typ_mutind; intros; simpl; f_equal*; apply subst_open_commute_avar.
 Qed.
 
 Lemma subst_open_commute_typ: forall x y u T,
@@ -1583,7 +1592,7 @@ Lemma subst_undo_typ_dec: forall x y,
 /\ (forall D , y \notin fv_dec  D  -> (subst_dec  y x (subst_dec  x y D )) = D ).
 Proof.
   intros.
-  apply typ_mutind; intros; simpl; unfold fv_typ, fv_dec in *; f_equal*.
+  apply typ_mutind; intros; simpl; unfold fv_typ, fv_dec in *; f_equal*;
   apply* subst_undo_avar.
 Qed.
 
@@ -1622,7 +1631,7 @@ Lemma subst_idempotent_typ_dec: forall x y,
 /\ (forall D, subst_dec x y (subst_dec x y D) = subst_dec x y D).
 Proof.
   intros.
-  apply typ_mutind; intros; simpl; unfold fv_typ, fv_dec in *; f_equal*.
+  apply typ_mutind; intros; simpl; unfold fv_typ, fv_dec in *; f_equal*;
   apply* subst_idempotent_avar.
 Qed.
 
