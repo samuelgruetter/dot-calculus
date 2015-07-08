@@ -249,6 +249,10 @@ Definition dec_bot(l: label): dec := match l with
   | label_mtd m => dec_mtd m typ_top typ_bot
 end.
 
+(* Note: There are no typ_has/hasnt rules for existential types, but you first have to
+   apply the skolemization rule.
+   This also means that typ_has/hasnt is total only if the type is not an existential
+   and the ctx contains no existentials. *)
 Inductive typ_has: ctx -> typ -> dec -> Prop :=
 (*| typ_top_has: typ_top has nothing *)
   | typ_bot_has: forall G l,
@@ -278,6 +282,10 @@ Inductive typ_has: ctx -> typ -> dec -> Prop :=
       typ_has G T2 D2 ->
       D1 || D2 == D3 ->
       typ_has G (typ_or T1 T2) D3
+  | typ_self_has: forall G x T D,
+      binds x T G ->
+      typ_has G T D ->
+      typ_has G (typ_self (avar_f x)) D
 with typ_hasnt: ctx -> typ -> label -> Prop :=
   | typ_top_hasnt: forall G l,
       typ_hasnt G typ_top l
@@ -307,17 +315,43 @@ with typ_hasnt: ctx -> typ -> label -> Prop :=
   | typ_or_hasnt_12: forall G T1 T2 l,
       typ_hasnt G T1 l ->
       typ_hasnt G T2 l ->
-      typ_hasnt G (typ_or T1 T2) l.
- 
+      typ_hasnt G (typ_or T1 T2) l
+  | typ_self_hasnt: forall G x T l,
+      binds x T G ->
+      typ_hasnt G T l ->
+      typ_hasnt G (typ_self (avar_f x)) l.
+
+
 (* [stable_typ T] means that T's members don't change under narrowing.
    TODO this can be extended to include "class types", and aliases to stable types. *)
 Inductive stable_typ: typ -> Prop :=
 | stable_top: stable_typ typ_top
 | stable_bot: stable_typ typ_bot
 | stable_rcd: forall D, stable_typ (typ_rcd D)
-(* Note: typ_sel is not stable (that's the whole point) *)
 | stable_and: forall T1 T2, stable_typ T1 -> stable_typ T2 -> stable_typ (typ_and T1 T2)
 | stable_or : forall T1 T2, stable_typ T1 -> stable_typ T2 -> stable_typ (typ_or  T1 T2).
+(* Note: typ_sel and typ_self are not stable, and typ_ex could be considered stable
+   with the following rule:
+   
+   forall T U, stable_typ U -> stable_typ (typ_ex T U)
+
+   But since there's no typ_ex_has rules, there's no point in doing this.
+*)
+
+(*
+Inductive stable_typ: ctx -> typ -> Prop :=
+  | stable_top: forall G,
+      stable_typ G typ_top
+  | stable_bot: forall G,
+      stable_typ G typ_bot
+  | stable_rcd: forall G D,
+      stable_typ G (typ_rcd D)
+(*| stable_sel: typ_sel is not stable (that's the whole point) *)
+  | stable_and: forall G T1 T2,
+      stable_typ G T1 -> stable_typ G T2 -> stable_typ G (typ_and T1 T2)
+  | stable_or: forall G T1 T2,
+      stable_typ G T1 -> stable_typ G T2 -> stable_typ G (typ_or T1 T2).
+*)
 
 (* wf means "well-formed", not "well-founded" ;-)
    G; A |- T wf       G: context
@@ -359,6 +393,19 @@ Inductive wf_typ_impl: ctx -> fset typ -> typ -> Prop :=
       wf_typ_impl G A T1 ->
       wf_typ_impl G A T2 ->
       wf_typ_impl G A (typ_or T1 T2)
+  | wf_self: forall G A x X,
+      binds x X G ->
+      wf_typ_impl G A X ->
+      wf_typ_impl G A (typ_self (avar_f x))
+  | wf_ex: forall L G A T U,
+      (forall x, x \notin L -> wf_typ_impl (G & x ~ (open_typ x T)) A (open_typ x T)) ->
+      (forall x, x \notin L -> wf_typ_impl (G & x ~ (open_typ x T)) A (open_typ x U)) ->
+      wf_typ_impl G A (typ_ex T U)
+  | wf_skolem: forall L G1 G2 x A S T U,
+      (forall y, y \notin L ->
+         wf_typ_impl (G1 & x ~ (open_typ y U) & y ~ (open_typ y S) & G2) A T) ->
+      fv_typ T \c (dom (G1 & x ~ typ_ex S U & G2)) -> (* instead of "y \notin fv_typ T" *)
+      wf_typ_impl (G1 & x ~ typ_ex S U & G2) A T
 with wf_dec_impl: ctx -> fset typ -> dec -> Prop :=
   | wf_tmem: forall G A L Lo Hi,
       wf_typ_impl G A Lo ->
@@ -425,6 +472,25 @@ Inductive subtyp: hmode -> ctx -> typ -> typ -> Prop :=
       wf_typ G T1 ->
       wf_typ G T2 ->
       subtyp hm G T2 (typ_or T1 T2)
+  | subtyp_self_l: forall hm G x T,
+      binds x T G ->
+      wf_typ G T ->
+      subtyp hm G (typ_self (avar_f x)) T
+  | subtyp_self_r: forall hm x y G,
+      binds x (typ_self (avar_f y)) G ->
+      wf_typ G (typ_self (avar_f y)) ->
+      wf_typ G (typ_self (avar_f x)) ->
+      subtyp hm G (typ_self (avar_f y)) (typ_self (avar_f x))
+  | subtyp_ex_l: forall L hm G S T U,
+      (forall x, x \notin L -> wf_typ (G & x ~ (open_typ x S)) (open_typ x S)) ->
+      (forall x, x \notin L -> subtyp hm (G & x ~ (open_typ x S)) (open_typ x T) U) ->
+      wf_typ G U ->
+      subtyp hm G (typ_ex S T) U
+  | subtyp_ex_r: forall hm G x S' S T U,
+      binds x S' G ->
+      subtyp hm G S' (open_typ x S) -> (* <-- explicit subsumption *)
+      subtyp hm G T (open_typ x U) ->
+      subtyp hm G T (typ_ex S U)
   | subtyp_trans: forall hm G T1 T2 T3,
       subtyp hm G T1 T2 ->
       subtyp hm G T2 T3 ->
@@ -447,6 +513,16 @@ with subdec: hmode -> ctx -> dec -> dec -> Prop :=
       subtyp hm G T1 T2 ->
       subdec hm G (dec_mtd m S1 T1) (dec_mtd m S2 T2).
 
+(* TODO do we also need these? (from papers/dot/exdot/simple-rules.txt)
+
+                G |- x.type <: y.type    G |- x.M <: T
+                --------------------------------------
+                            G |- y.M <: T
+
+                G |- x.type <: y.type    G |- T <: x.M
+                --------------------------------------
+                            G |- T <: y.M
+*)
 
 (* typing on term level is always imprecise (can use subsumption) *)
 Inductive ty_trm: ctx -> trm -> typ -> Prop :=
@@ -472,6 +548,11 @@ Inductive ty_trm: ctx -> trm -> typ -> Prop :=
       (forall x, x \notin L -> ty_trm (G & x ~ T1) (open_trm x t2) T2) ->
       wf_typ G T2 -> (* <-- even stronger than x \notin fv_typ T2 *)
       ty_trm G (trm_let t1 t2) T2
+  | ty_skolem: forall L G1 G2 x t S T U,
+      (forall y, y \notin L ->
+         ty_trm (G1 & x ~ (open_typ y U) & y ~ (open_typ y S) & G2) t T) ->
+      wf_typ (G1 & x ~ typ_ex S U & G2) T ->
+      ty_trm (G1 & x ~ typ_ex S U & G2) t T
 (* imprecise typing: subsumption allowed *)
   | ty_sbsm: forall G t T1 T2,
       ty_trm G t T1 ->
