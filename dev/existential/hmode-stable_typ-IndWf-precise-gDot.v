@@ -440,48 +440,6 @@ with subdec: hmode -> ctx -> dec -> dec -> Prop :=
       subdec hm G (dec_mtd m S1 T1) (dec_mtd m S2 T2).
 
 
-(* ###################################################################### *)
-(** ** Closed *)
-
-Inductive closed_typ: ctx -> typ -> Prop :=
-  | closed_top: forall G,
-      closed_typ G typ_top
-  | closed_bot: forall G,
-      closed_typ G typ_bot
-  | closed_rcd: forall G D,
-      closed_dec G D ->
-      closed_typ G (typ_rcd D)
-  | closed_sel: forall G x X L,
-      binds x X G ->
-      closed_typ G (typ_sel (avar_f x) L)
-  | closed_and: forall G T1 T2,
-      closed_typ G T1 ->
-      closed_typ G T2 ->
-      closed_typ G (typ_and T1 T2)
-  | closed_or: forall G T1 T2,
-      closed_typ G T1 ->
-      closed_typ G T2 ->
-      closed_typ G (typ_or T1 T2)
-with closed_dec: ctx -> dec -> Prop :=
-  | closed_tmem: forall G L Lo Hi,
-      closed_typ G Lo ->
-      closed_typ G Hi ->
-      closed_dec G (dec_typ L Lo Hi)
-  | closed_mtd: forall G m U V,
-      closed_typ G U ->
-      closed_typ G V ->
-      closed_dec G (dec_mtd m U V).
-
-Inductive closed_env: ctx -> Prop :=
-  | closed_empty: closed_env empty
-  | closed_insert: forall G1 G2 x T,
-      closed_env G1 ->
-      closed_env G2 ->
-      x # G1 ->
-      x # G2 ->
-      closed_typ (G1 & x ~ T) T ->
-      closed_env (G1 & x ~ T & G2).
-
 (* typing on term level is always imprecise (can use subsumption) *)
 Inductive ty_trm: ctx -> trm -> typ -> Prop :=
   | ty_var: forall G x T,
@@ -2630,49 +2588,15 @@ Qed.
 (* ###################################################################### *)
 (** ** More definitions (not part of spec) *)
 
-(*
-Fixpoint power_subtyp(n0: nat)(G: ctx)(T1 T2: typ): Prop := match n0 with
-| 0 => subtyp G T1 T2
-| S n => (forall D2, typ_has G T2 D2 ->
-                     exists D1, typ_has G T1 D1 /\ power_subdec n G D1 D2)
-      /\ (power_subtyp n G T1 T2)
-end
-with power_subdec(n0: nat)(G: ctx)(D1 D2: dec): Prop :=  match n0 with
-| 0 => subdec G D1 D2
-| S n => match D1, D2 with
-  | dec_typ _ S1 U1, dec_typ _ S2 U2 => power_subtyp n G S2 S1 /\ power_subtyp n G U1 U2
-  | dec_mtd _ S1 U1, dec_mtd _ S2 U2 => power_subtyp n G S2 S1 /\ power_subtyp n G U1 U2
-  | _, _ => False
-  end
-end.
-
-(* Eval cbv in (power_subtyp 4 empty typ_bot typ_top). *)
-
-Definition memberwise_subtyp := power_subtyp 1.
-*)
-
-Definition memberwise_subtyp(G: ctx)(T1 T2: typ) := 
-  (forall D2, typ_has G T2 D2 -> exists D1, typ_has G T1 D1 /\ subdec nohyp G D1 D2)
-  /\ wf_typ G T1 /\ wf_typ G T2.
-
-(*
-Definition very_good_bounds_typ(G: ctx)(T: typ) :=
-  wf_typ G T /\
- (forall L Lo Hi, typ_has G T (dec_typ L Lo Hi) ->
-      (* subtyp G Lo Hi /\ *) memberwise_subtyp G Lo Hi).
-
-Definition very_good_bounds(G: ctx) :=
-  forall x X, binds x X G -> very_good_bounds_typ G X.
-*)
-
-(* also power_good_bounds? *)
-
 Definition subenv(G1 G2: ctx) :=
   forall x T2, binds x T2 G2 -> 
     binds x T2 G1 \/
     exists T1,
-(*    binds x T1 G1 /\ power_subtyp 2 G1 T1 T2 /\ stable_typ T1. *)
-      binds x T1 G1 /\ subtyp nohyp G1 T1 T2 /\ memberwise_subtyp G1 T1 T2 /\ stable_typ T1.
+      binds x T1 G1 /\ subtyp nohyp G1 T1 T2 /\ stable_typ T1.
+
+Definition memberwise_subtyp(G: ctx)(T1 T2: typ) := 
+  (forall D2, typ_has G T2 D2 -> exists D1, typ_has G T1 D1 /\ subdec nohyp G D1 D2)
+  /\ wf_typ G T1 /\ wf_typ G T2.
 
 
 (* ###################################################################### *)
@@ -2928,22 +2852,6 @@ Proof.
   apply (strengthen_has_end Ok Wf Has).
 Qed.
 
-(*
-Lemma weaken_memberwise_subtyp_end: forall G1 G2 S U,
-  ok (G1 & G2) -> 
-  memberwise_subtyp G1        S U ->
-  memberwise_subtyp (G1 & G2) S U.
-Proof.
-  unfold memberwise_subtyp. introv Ok MSt. simpl in *. destruct MSt as [MSt St]. split.
-  - introv UHas.
-    specialize (MSt _ (strengthen_has_end Ok (proj2 (subtyp_regular St)) UHas)).
-    destruct MSt as [D1 [SHas Sd]]. exists D1. split.
-    * apply (weaken_typ_has_end Ok SHas).
-    * apply (weaken_subdec_end Ok Sd).
-  - apply (weaken_subtyp_end Ok St).
-Qed.
-*)
-
 Lemma weaken_memberwise_subtyp_end: forall G1 G2 S U,
   ok (G1 & G2) -> 
   memberwise_subtyp G1        S U ->
@@ -2960,11 +2868,8 @@ Qed.
 
 
 (* ###################################################################### *)
-(** ** Well-formed context *)
+(** ** Well-formed store *)
 
-(* Note that T may contain variables defined anywhere in G, not just those
-   defined before. 
-Definition wf_ctx(G: ctx) := ok G /\ forall x T, binds x T G -> wf_typ G T. *)
 
 Lemma wf_sto_to_ok_s: forall s G,
   wf_sto s G -> ok s.
@@ -3307,144 +3212,17 @@ Definition subdec_to_okhyp := proj2 anyhyp_to_okhyp.
 (* ###################################################################### *)
 (** ** Narrowing on type level *)
 
-(*
-Definition subenv(G1 G2: ctx) :=
-  forall x T2, binds x T2 G2 -> 
-    binds x T2 G1 \/
-    exists T1,
-      binds x T1 G1 /\ subtyp G1 T1 T2 /\ memberwise_subtyp G1 T1 T2 /\ stable_typ T1.
-*)
-
-(*
-Lemma narrow_binds_raw: forall G1 x0 S1 S2 G2 x T2,
-  binds x T2 (G1 & x0 ~ S2 & G2) ->
-  subtyp (G1 & x0 ~ S1 & G2) S1 S2 ->
-  binds x T2 (G1 & x0 ~ S1 & G2) \/ x0 = x /\ T2 = S2 /\ binds x S1 (G1 & x ~ S1 & G2).
-Proof.
-  introv Bi StS.
-  apply binds_middle_inv in Bi.
-  destruct Bi as [Bi | [[xG2 [Eq1 Eq2]]|[xG2 [Ne Bi]]]].
-  - (* case x in G2 *)
-    apply (binds_concat_right (G1 & x0 ~ S1)) in Bi.
-    auto.
-  - (* case x = x0 *)
-    auto.
-  - (* case x in G1 *)
-    auto.
-Qed.
-
-Lemma narrow_binds: forall G1 x0 S1 S2 G2 x T2,
-  wf_typ (G1 & x0 ~ S1 & G2) T2 ->
-  binds x T2 (G1 & x0 ~ S2 & G2) ->
-  subtyp (G1 & x0 ~ S1 & G2) S1 S2 ->
-  exists T1,
-    binds x T1 (G1 & x0 ~ S1 & G2) /\
-    subtyp (G1 & x0 ~ S1 & G2) T1 T2.
-Proof.
-  introv Wf Bi StS.
-  apply binds_middle_inv in Bi.
-  destruct Bi as [Bi | [[xG2 [Eq1 Eq2]]|[xG2 [Ne Bi]]]].
-  - (* case x in G2 *)
-    apply (binds_concat_right (G1 & x0 ~ S1)) in Bi.
-    exists T2. auto.
-  - (* case x = x0 *)
-    subst x0 T2. exists S1.
-    apply (conj (binds_middle_eq _ _ xG2)).
-    apply StS.
-  - (* case x in G1 *)
-    assert (xx0: x # (x0 ~ S1)) by auto.
-    lets Bi': (binds_concat_left (binds_concat_left Bi xx0) xG2).
-    exists T2. apply (conj Bi'). auto.
-Qed.
-
-Print Assumptions narrow_binds.
-
-Lemma narrow_binds_end: forall G1 x0 S1 S2 x T2,
-  wf_typ (G1 & x0 ~ S1) T2 ->
-  binds x T2 (G1 & x0 ~ S2) ->
-  subtyp (G1 & x0 ~ S1) S1 S2 ->
-  exists T1,
-    binds x T1 (G1 & x0 ~ S1) /\
-    subtyp (G1 & x0 ~ S1) T1 T2.
-Proof.
-  introv Wf Bi StS.
-  rewrite <- (concat_empty_r (G1 & x0 ~ S1)).
-  rewrite <- (concat_empty_r (G1 & x0 ~ S1)) in Wf, StS.
-  rewrite <- (concat_empty_r (G1 & x0 ~ S2)) in Bi.
-  apply* narrow_binds.
-Qed.
-
-Lemma narrow_binds_2: forall G1 x0 S1 S2 G2 x T1 T2,
-  wf_typ (G1 & x0 ~ S1 & G2) T1 ->
-  binds x T2 (G1 & x0 ~ S2 & G2) ->
-  binds x T1 (G1 & x0 ~ S1 & G2) ->
-  subtyp (G1 & x0 ~ S1 & G2) S1 S2 ->
-  subtyp (G1 & x0 ~ S1 & G2) T1 T2.
-Proof.
-  introv Wf Bi2 Bi1 StS.
-  apply binds_middle_inv in Bi2.
-  destruct Bi2 as [Bi2 | [[xG2 [Eq1 Eq2]]|[xG2 [Ne Bi2]]]].
-  - (* case x in G2 *)
-    lets Bi1': (binds_concat_right (G1 & x0 ~ S1) Bi2).
-    lets Eq: (binds_func Bi1' Bi1). subst T2.
-    auto.
-  - (* case x = x0 *)
-    subst x0 T2.
-    lets Bi1': (binds_concat_left_inv Bi1 xG2).
-    lets Eq: (binds_push_eq_inv Bi1'). subst T1.
-    exact StS.
-  - (* case x in G1 *)
-    assert (xx0: x # (x0 ~ S1)) by auto.
-    lets Bi1': (binds_concat_left (binds_concat_left Bi2 xx0) xG2).
-    lets Eq: (binds_func Bi1' Bi1). subst T2.
-    auto.
-Qed.
-*)
-
 Lemma narrow_binds_3: forall G1 G2 x T2,
   subenv G1 G2 ->
   ok G1 ->
   binds x T2 G2 ->
   binds x T2 G1
   \/ exists T1, 
-     binds x T1 G1 /\ subtyp nohyp G1 T1 T2 /\ memberwise_subtyp G1 T1 T2 /\ stable_typ T1.
+  binds x T1 G1 /\ subtyp nohyp G1 T1 T2 (*/\ memberwise_subtyp G1 T1 T2*) /\ stable_typ T1.
 (*   binds x T1 G1 /\ power_subtyp 2 G1 T1 T2 /\ stable_typ T1. *)
 Proof.
   introv Se Ok Bi. unfold subenv in Se. apply (Se _ _ Bi).
 Qed.
-
-(*
-Lemma narrow_binds_3: forall G1 G2 x T2,
-  subenv G1 G2 ->
-  ok G1 ->
-  binds x T2 G2 ->
-  binds x T2 G1 \/ exists T1, binds x T1 G1 /\ subtyp G1 T1 T2 /\ stable_typ T1.
-Proof.
-  introv Se. gen x T2. induction Se; introv Ok Bi2.
-  + (* case subenv_empty *)
-    exfalso. apply (binds_empty_inv Bi2).
-  + (* case subenv_sub *)
-    apply binds_push_inv in Bi2. destruct Bi2 as [[? ?] | [Ne2 Bi2]].
-    - subst. right. exists T1. auto.
-    - specialize (IHSe _ _ (okadmit _) Bi2). destruct IHSe as [Bi1 | [T00 [Bi1 [St Sb]]]].
-      * left. auto.
-      * right. exists T00. repeat split; auto.
-        apply (weaken_subtyp_end (okadmit _) St).
-  + (* case subenv_push *)
-    apply binds_push_inv in Bi2. destruct Bi2 as [[? ?] | [Ne2 Bi2]].
-    - subst. left. auto.
-    - specialize (IHSe _ _ (okadmit _) Bi2). destruct IHSe as [Bi1 | [T00 [Bi1 [St Sb]]]].
-      * left. auto.
-      * right. exists T00. repeat split; auto.
-        apply (weaken_subtyp_end (okadmit _) St).
-  + (* case subenv_skip *)
-    assert (Ne: x0 <> x) by admit. (* from Ok, Bi2, Se *)
-    specialize (IHSe _ _ (okadmit _ ) Bi2). destruct IHSe as [Bi1 | [T00 [Bi1 [St Sb]]]].
-    * left. auto.
-    * right. exists T00. repeat split; auto.
-      apply (weaken_subtyp_end (okadmit _) St).
-Qed.
-*)
 
 Lemma memberwise_subtyp_refl: forall G T,
   wf_typ G T ->
@@ -3456,52 +3234,18 @@ Proof.
   apply (typ_has_preserves_wf Has Wf).
 Qed.
 
-(*
-Lemma power_sub_refl: forall n,
-   (forall G T, wf_typ G T -> power_subtyp n G T T)
-/\ (forall G D, wf_dec G D -> power_subdec n G D D).
-Proof.
-  intro n. induction n; split; introv Wf; simpl.
-  + apply (subtyp_refl Wf).
-  + apply (subdec_refl Wf).
-  + destruct IHn as [IH1 IH2]. refine (conj _ (IH1 _ _ Wf)).
-    introv Has. exists D2. apply (conj Has). apply IH2.
-    apply (typ_has_preserves_wf Has Wf).
-  + destruct IHn as [IH1 IH2]. inversions Wf; split; apply* IH1. 
-Qed.
-
-Definition power_subtyp_refl(n: nat) := proj1 (power_sub_refl n).
-Definition power_subdec_refl(n: nat) := proj2 (power_sub_refl n).
-
 Lemma narrow_binds_4: forall G1 G2 x T1 T2,
   wf_typ G1 T1 ->
   binds x T2 G2 ->
   binds x T1 G1 ->
   subenv G1 G2 ->
-  power_subtyp 2 G1 T1 T2.
+  subtyp nohyp G1 T1 T2.
 Proof.
   introv WfT1 Bi2 Bi1 Se.
   lets P: (narrow_binds_3 Se (okadmit _) Bi2). 
-  destruct P as [Bi1' | [T0 [Bi1' [MSt Sb]]]].
-  - rewrite (binds_func Bi1' Bi1). apply (power_subtyp_refl _ WfT1).
+  destruct P as [Bi1' | [T0 [Bi1' [St Sb]]]].
+  - rewrite (binds_func Bi1' Bi1). apply (subtyp_refl _ WfT1).
   - lets Eq: (binds_func Bi1' Bi1). subst. assumption.
-Qed.
-*)
-
-Lemma narrow_binds_4: forall G1 G2 x T1 T2,
-  wf_typ G1 T1 ->
-  binds x T2 G2 ->
-  binds x T1 G1 ->
-  subenv G1 G2 ->
-  subtyp nohyp G1 T1 T2 /\ memberwise_subtyp G1 T1 T2.
-Proof.
-  introv WfT1 Bi2 Bi1 Se.
-  lets P: (narrow_binds_3 Se (okadmit _) Bi2). 
-  destruct P as [Bi1' | [T0 [Bi1' [St [MSt Sb]]]]].
-  - rewrite (binds_func Bi1' Bi1). split.
-    * apply (subtyp_refl _ WfT1).
-    * apply (memberwise_subtyp_refl WfT1).
-  - lets Eq: (binds_func Bi1' Bi1). subst. split; assumption.
 Qed.
 
 Lemma narrow_binds_5: forall G1 G2 x T2,
@@ -3574,7 +3318,7 @@ Proof.
   + (* case typ_sel_has *)
     intros G x X2 L Lo2 Hi2 D2 Bix2 _ IH1 _ IH2 G' Se Wf. subst.
     apply invert_wf_sel in Wf. destruct Wf as [X1 [T [U [Bix1 [X1Has [WfX1 [WfT WfU]]]]]]].
-    destruct (narrow_binds_4 WfX1 Bix2 Bix1 Se) as [StX MStX].
+    lets StX: (narrow_binds_4 WfX1 Bix2 Bix1 Se).
     lets WfX2: (proj2 (subtyp_regular StX)).
     specialize (IH1 _ Se WfX2). destruct IH1 as [D0 [X2Has Sd0]].
     apply invert_subdec_typ_sync_left in Sd0.
@@ -3594,111 +3338,6 @@ Proof.
     exists D0. split.
     - apply (typ_sel_has Bix1 X1Has' Hi0Has).
     - apply (subdec_trans Sd01 Sd12).
-(*
-  + (* case typ_sel_has *)
-    intros G x X2 L Lo2 Hi2 D2 Bix2 _ IH1 _ IH2 G' Se Wf. subst.
-    apply invert_wf_sel in Wf. destruct Wf as [X1 [T [U [Bix1 [X1Has [WfX1 [WfT WfU]]]]]]].
-    lets N: (narrow_binds_4 WfX1 Bix2 Bix1 Se). clear N.
-    assert (P: power_subtyp 3 G' X1 X2) by admit.
-    destruct P as [P3 [P2 [P1 P0]]]. simpl in P0, P1.
-    lets WfX2: (proj2 (subtyp_regular P0)).
-    specialize (IH1 _ Se WfX2). destruct IH1 as [D0 [X2Has Sd0]].
-    apply invert_subdec_typ_sync_left in Sd0.
-    destruct Sd0 as [Lo1 [Hi1 [Eq [StLo12 StHi12]]]]. subst D0.
-    specialize (P3 _ X2Has).
-    destruct P3 as [D0 [X1Has' Sd]].
-    destruct D0 as [L' Lo0 Hi0 | ]; [idtac | (exfalso; assumption)].
-    unfold power_subdec in Sd.
-    destruct Sd as [_ [Q StHi01]].
-    lets WfHi2: (proj2 (subtyp_regular StHi12)).
-    specialize (IH2 _ Se WfHi2). destruct IH2 as [D1 [Hi2Has Sd12]].
-    (* in G', Hi2 isn't the upper bound of anything, so we cannot use Hi2Has in Q *)
-
-    specialize (P2 _ X2Has). destruct P2 as [D0 
-
-
-
-  + (* case typ_sel_has *)
-    intros G x X2 L Lo2 Hi2 D2 Bix2 _ IH1 _ IH2 G' Se Wf. subst.
-    apply invert_wf_sel in Wf. destruct Wf as [X1 [T [U [Bix1 [X1Has [WfX1 [WfT WfU]]]]]]].
-    lets N: (narrow_binds_4 WfX1 Bix2 Bix1 Se). clear N.
-    assert (P: power_subtyp 4 G' X1 X2) by admit.
-    destruct P as [P4 [P3 [P2 [P1 P0]]]]. simpl in P0, P1.
-    lets WfX2: (proj2 (subtyp_regular P0)).
-    specialize (IH1 _ Se WfX2). destruct IH1 as [D0 [X2Has Sd0]].
-    apply invert_subdec_typ_sync_left in Sd0.
-    destruct Sd0 as [Lo1 [Hi1 [Eq [StLo12 StHi12]]]]. subst D0.
-    specialize (P4 _ X2Has).
-    destruct P4 as [D0 [X1Has' Sd]].
-    destruct D0 as [L' Lo0 Hi0 | ]; [idtac | (exfalso; assumption)].
-    unfold power_subdec in Sd.
-    destruct Sd as [Q3 [Q2 [Q1 Q0]]].
-
- fold power_subdec in Sd.
- simpl in Sd.
-    
-    destruct Sd as [StLo01 StHi01].
-
-
-
-    (*
-    lets WfHi2: (proj2 (subtyp_regular StHi12)).
-    specialize (IH2 _ Se WfHi2). destruct IH2 as [D1 [Hi2Has Sd12]].
-    *)
-    specialize (MStX2 _ X2Has). destruct MStX2 as [D0 [X1Has' Sd]]. simpl in Sd.
-    destruct D0 as [L' Lo0 Hi0 | ]; [idtac | (exfalso; assumption)].
-    destruct Sd as [StLo01 StHi01].
-    specialize (MStX1 _+ 
-
-
-  + (* case typ_sel_has *)
-    intros G x X2 L Lo2 Hi2 D2 Bix2 _ IH1 _ IH2 G' Se Wf. subst.
-    apply invert_wf_sel in Wf. destruct Wf as [X1 [T [U [Bix1 [X1Has [WfX1 [WfT WfU]]]]]]].
-    destruct (narrow_binds_4 WfX1 Bix2 Bix1 Se) as [MStX2 [MStX1 StX]].
-    simpl in MStX1, StX.
-    lets WfX2: (proj2 (subtyp_regular StX)).
-    specialize (IH1 _ Se WfX2). destruct IH1 as [D0 [X2Has Sd0]].
-    apply invert_subdec_typ_sync_left in Sd0.
-    destruct Sd0 as [Lo1 [Hi1 [Eq [StLo12 StHi12]]]]. subst D0.
-    (*
-    lets WfHi2: (proj2 (subtyp_regular StHi12)).
-    specialize (IH2 _ Se WfHi2). destruct IH2 as [D1 [Hi2Has Sd12]].
-    *)
-    specialize (MStX2 _ X2Has). destruct MStX2 as [D0 [X1Has' Sd]]. simpl in Sd.
-    destruct D0 as [L' Lo0 Hi0 | ]; [idtac | (exfalso; assumption)].
-    destruct Sd as [StLo01 StHi01].
-    specialize (MStX1 _+ 
-
-power_subtyp
-
-  + (* case typ_sel_has *)
-    intros G x X2 L Lo2 Hi2 D2 Bix2 _ IH1 _ IH2 G' Se Wf. subst.
-    apply invert_wf_sel in Wf. destruct Wf as [X1 [T [U [Bix1 [X1Has [WfX1 [WfT WfU]]]]]]].
-    destruct (narrow_binds_4 WfX1 Bix2 Bix1 Se) as [MStX2 [MStX1 StX]].
-    simpl in MStX1, StX.
-    lets WfX2: (proj2 (subtyp_regular StX)).
-    specialize (IH1 _ Se WfX2). destruct IH1 as [D0 [X2Has Sd0]].
-    apply invert_subdec_typ_sync_left in Sd0.
-    destruct Sd0 as [Lo1 [Hi1 [Eq [StLo12 StHi12]]]]. subst D0.
-    lets WfHi2: (proj2 (subtyp_regular StHi12)).
-    specialize (IH2 _ Se WfHi2). destruct IH2 as [D1 [Hi2Has Sd12]].
-    lets P: (MStX1 _ X2Has).
-            (*****)
-    destruct P as [D0 [X1Has' Sd0]].
-    apply invert_subdec_typ_sync_left in Sd0.
-    destruct Sd0 as [Lo0 [Hi0 [Eq [StLo01 StHi01]]]]. subst D0.
-    lets StLo: (subtyp_trans StLo12 StLo01).
-    lets StHi: (subtyp_trans StHi01 StHi12).
-    lets P: (MStX2 _ X2Has).
-
-
-    lets P: (MStX2 StHi Hi2Has).
-            (********************)
-    destruct P as [D0 [Hi0Has Sd01]].
-    exists D0. split.
-    - apply (typ_sel_has Bix1 X1Has' Hi0Has).
-    - apply (subdec_trans Sd01 Sd12).
-*)
   + (* case typ_and_has_1 *)
     introv _ IH1 _ IH2. introv Se Wf. rename D into D1.
     apply invert_wf_and in Wf. destruct Wf as [Wf1 Wf2].
@@ -3787,7 +3426,7 @@ power_subtyp
   + (* case typ_sel_hasnt *)
     intros G x X2 L Lo2 Hi2 l Bix2 X2Has' IH1 Hi2Hasnt' IH2. introv Se Wf.
     apply invert_wf_sel in Wf. destruct Wf as [X1 [T [U [Bix1 [X1Has [WfX1 [WfT WfU]]]]]]].
-    destruct (narrow_binds_4 WfX1 Bix2 Bix1 Se) as [StX MStX].
+    lets StX: (narrow_binds_4 WfX1 Bix2 Bix1 Se).
     lets WfX2: (proj2 (subtyp_regular StX)).
     specialize (IH1 _ Se WfX2). destruct IH1 as [D0 [X2Has Sd0]].
     apply invert_subdec_typ_sync_left in Sd0.
@@ -3893,12 +3532,13 @@ Proof.
     specialize (IHX _ Se).
     specialize (IHT _ Se).
     specialize (IHU _ Se).
-    destruct (narrow_binds_3 Se (okadmit _) Bix) as [Bix' | [X' [Bix' [St [MSt SbX']]]]].
+    destruct (narrow_binds_3 Se (okadmit _) Bix) as [Bix' | [X' [Bix' [St SbX']]]].
     - (* case "type of x remained unchanged" *)
       apply (wf_sel Bix' SbX XHas' IHX IHT IHU).
     - (* case "type of x changed from X to X'" *)
-      lets P: ((proj1 MSt) _ XHas'). destruct P as [D1 [S1Has Sd]].
-                     (***)
+      lets P: (subtyp_to_memberwise St). destruct P as [P _]. specialize (P _ XHas').
+              (********************)
+      destruct P as [D1 [S1Has Sd]].
       apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT2 StU2]]]].
       subst D1.
       apply (wf_sel Bix' SbX' S1Has);
@@ -3916,19 +3556,6 @@ Print Assumptions narrow_wf.
 
 Definition narrow_wf_typ := proj1 narrow_wf.
 Definition narrow_wf_dec := proj2 narrow_wf.
-
-(*
-Lemma good_bounds_to_old: forall G,
-  good_bounds G ->
-  good_bounds_old G.
-Proof.
-  introv Gb. unfold good_bounds_old. induction Gb; introv Bi.
-  - exfalso. apply (binds_empty_inv Bi).
-  - apply binds_push_inv in Bi. destruct Bi as [[Eq1 Eq2] | [Ne Bi]].
-    * subst. exact H.
-    * apply (weaken_good_bounds_typ_end (okadmit _)). apply (IHGb _ _ Bi).
-Qed.
-*)
 
 Lemma narrow_subtyp_subdec:
    (forall hm G T1 T2, subtyp hm G T1 T2 -> forall G',
@@ -3953,12 +3580,13 @@ Proof.
     specialize (IHSt _ Se).
     lets XHas': (narrow_has_stable XHas SbX Se).
     lets P: (narrow_binds_3 Se (okadmit _) Bi2).
-    destruct P as [Bi1 | [X' [Bi1 [StX [MStX SbX']]]]].
+    destruct P as [Bi1 | [X' [Bi1 [StX SbX']]]].
     - (* case "type of x remained unchanged" *)
       apply (subtyp_sel_l Bi1 WfX' SbX XHas' IHSt).
     - (* case "type of x changed from X to X'" *)
-      lets P: ((proj1 MStX) _ XHas'). destruct P as [D1 [X'Has Sd]].
-                     (****)
+      lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ XHas').
+              (********************)
+      destruct P as [D1 [X'Has Sd]].
       apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT StU]]]].
       subst D1.
       refine (subtyp_trans _ (subtyp_to_okhyp StU)).
@@ -3972,12 +3600,13 @@ Proof.
     specialize (IHSt _ Se).
     lets XHas': (narrow_has_stable XHas SbX Se).
     lets P: (narrow_binds_3 Se (okadmit _) Bi2).
-    destruct P as [Bi1 | [X' [Bi1 [StX [MStX SbX']]]]].
+    destruct P as [Bi1 | [X' [Bi1 [StX SbX']]]].
     - (* case "type of x remained unchanged" *)
       apply (subtyp_sel_r Bi1 WfX' SbX XHas' IHSt).
     - (* case "type of x changed from X to X'" *)
-      lets P: ((proj1 MStX) _ XHas'). destruct P as [D1 [X'Has Sd]].
-                     (****)
+      lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ XHas').
+              (********************)
+      destruct P as [D1 [X'Has Sd]].
       apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT StU]]]].
       subst D1.
       refine (subtyp_trans (subtyp_to_okhyp StT) _).
@@ -4002,12 +3631,13 @@ Proof.
     lets WfX': (narrow_wf_typ WfX Se).
     lets XHas': (narrow_has_stable XHas SbX Se).
     lets P: (narrow_binds_3 Se (okadmit _) Bi2).
-    destruct P as [Bi1 | [X' [Bi1 [StX [MStX SbX']]]]].
+    destruct P as [Bi1 | [X' [Bi1 [StX SbX']]]].
     - (* case "type of x remained unchanged" *)
       apply (subtyp_hyp Bi1 XHas' SbX WfX' (narrow_wf_typ WfLo Se) (narrow_wf_typ WfHi Se)).
     - (* case "type of x changed from X to X'" *)
-      lets P: ((proj1 MStX) _ XHas'). destruct P as [D1 [X'Has Sd]].
-                     (****)
+      lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ XHas').
+              (********************)
+      destruct P as [D1 [X'Has Sd]].
       apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT StU]]]].
       subst D1.
       refine (subtyp_trans (subtyp_to_okhyp StT) _).
@@ -4039,16 +3669,6 @@ Abort.
 
 (* ###################################################################### *)
 (** ** subenv *)
-
-(*
-Lemma subenv_refl: forall G,
-  subenv G G.
-Proof.
-  apply env_ind.
-  - apply subenv_empty.
-  - intros G x T Se. apply (subenv_push _ _ Se).
-Qed.
-*)
 
 Lemma subenv_refl: forall G,
   subenv G G.
@@ -4090,11 +3710,10 @@ Proof.
   - subst. right. exists T1. auto.
   - specialize (Se _ _ Bi). destruct Se as [Bi' | Se].
     * left. auto.
-    * right. destruct Se as [V' [Bi' [StV [MStV Sb']]]]. exists V'.
-      refine (conj _ (conj _ (conj _ Sb'))).
+    * right. destruct Se as [V' [Bi' [StV Sb']]]. exists V'.
+      refine (conj _ (conj _ Sb')).
       + auto.
       + apply (weaken_subtyp_end (okadmit _) StV).
-      + apply (weaken_memberwise_subtyp_end (okadmit _) MStV).
 Qed.
 
 Lemma subenv_push: forall G1 G2 x T,
@@ -4106,11 +3725,10 @@ Proof.
   - subst. auto.
   - specialize (Se _ _ Bi). destruct Se as [Bi' | Se].
     * left. auto.
-    * right. destruct Se as [V' [Bi' [StV [MStV Sb']]]]. exists V'.
-      refine (conj _ (conj _ (conj _ Sb'))).
+    * right. destruct Se as [V' [Bi' [StV Sb']]]. exists V'.
+      refine (conj _ (conj _ Sb')).
       + auto.
       + apply (weaken_subtyp_end (okadmit _) StV).
-      + apply (weaken_memberwise_subtyp_end (okadmit _) MStV).
 Qed.
 
 Lemma subenv_skip: forall G1 G2 x T,
@@ -4121,11 +3739,10 @@ Proof.
   assert (Ne: v <> x) by admit.
   specialize (Se _ _ Bi). destruct Se as [Bi' | Se].
   * left. apply* binds_push_neq.
-  * right. destruct Se as [V' [Bi' [StV [MStV Sb']]]]. exists V'.
-    refine (conj _ (conj _ (conj _ Sb'))).
+  * right. destruct Se as [V' [Bi' [StV Sb']]]. exists V'.
+    refine (conj _ (conj _ Sb')).
     + auto.
     + apply (weaken_subtyp_end (okadmit _) StV).
-    + apply (weaken_memberwise_subtyp_end (okadmit _) MStV).
 Qed.
 
 
