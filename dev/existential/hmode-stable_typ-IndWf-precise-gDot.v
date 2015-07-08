@@ -2679,54 +2679,26 @@ Qed.
 (* ###################################################################### *)
 (** ** Strengthening typ_has (needed to weaken good_bounds and memberwise_subtyp) *)
 
-(* omg...
-
-Lemma ok_binds_concat_inv: forall (T: Type) G1 G2 x (X: T),
+Lemma ok_concat_indom: forall (A: Type) (G1 G2: env A) (x: var),
   ok (G1 & G2) ->
-  binds x X (G1 & G2) ->
-  binds x X G1 /\ x # G2 \/ binds x X G2 /\ x # G1.
-Proof.
-  introv Ok. gen G2 x X. apply (env_ind (fun G2 =>
-    ok (G1 & G2) ->
-    forall (x : var) (X : T),
-    binds x X (G1 & G2) -> binds x X G1 /\ x # G2 \/ binds x X G2 /\ x # G1)).
-  - introv Ok Bi. rewrite concat_empty_r in Bi. left. auto.
-  - introv IH Ok Bi. rewrite concat_assoc in *. apply binds_push_inv in Bi.
-    + destruct Bi as [[Eq1 Eq2] | [Ne Bi2]].
-      * subst. right. split; auto. intro H. apply get_some in H.
-        destruct H as [X Bi]. apply ok_concat_inv_l in Ok.
-        specialize (IH Ok x X). unfold binds in IH at 1. rewrite get_concat in IH.
-        destruct (get x E) as [X' | ] eqn: Eq.
-get
-        binds _concat_l
-
-Qed.
-
-Lemma ok_concat_both_inv: forall (T: Type) G1 G2 x (X1 X2: T),
-  ok (G1 & G2) ->
-  binds x X1 G1 ->
-  binds x X2 G2 ->
+  x \in dom G1 ->
+  x \in dom G2 ->
   False.
 Proof.
-  introv Ok Bi1 Bi2.
-  apply get_some_inv in Bi1.
-  apply get_some_inv in Bi2.
-binds_concat_inv'
-binds_concat_inv':
-  forall (A : Type) (x : var) (v : A) (E1 E2 : env A),
-  binds x v (E1 & E2) -> x # E2 /\ binds x v E1 \/ binds x v E2
-binds
-dom
-
-  introv Ok. gen G2 x X1 X2. apply (env_ind (fun G2 =>
-    ok (G1 & G2) ->
-    forall (x : var) (X1 X2 : T), binds x X1 G1 -> binds x X2 G2 -> False)).
-  - introv Ok Bi1 Bi2. apply (binds_empty_inv Bi2).
-  - introv IH Ok Bi1 Bi2. apply binds_push_inv in Bi2.
-    + destruct Bi2 as [[Eq1 Eq2] | [Ne Bi2]].
-      * subst. get
+  introv Ok. gen x. gen_eq G: (G1 & G2). gen G1 G2. induction Ok; introv Eq xG1 xG2; subst.
+  - apply empty_concat_inv in Eq. destruct Eq. subst. rewrite dom_empty in xG1.
+    in_empty_contradiction.
+  - destruct (env_case G2) as [? | [x' [v' [G2' ?]]]].
+    * subst. rewrite concat_empty_r in *.
+      rewrite dom_empty in xG2. in_empty_contradiction.
+    * subst. rewrite concat_assoc in Eq.
+      apply eq_push_inv in Eq. destruct Eq as [? [? Eq]]. symmetry in H0, H1. subst.
+      rewrite dom_push in xG2. rewrite in_union in xG2. destruct xG2 as [Eq | xG2].
+      + rewrite in_singleton in Eq. subst.
+        rewrite dom_concat in H. unfold notin in H. apply H. rewrite in_union.
+        left. exact xG1.
+      + apply (IHOk _ _ eq_refl _ xG1 xG2).
 Qed.
-*)
 
 Lemma strengthened_binds_unique: forall (T: Type) G1 G2 G3 x (X X': T),
   ok (G1 & G2 & G3) ->
@@ -2734,31 +2706,13 @@ Lemma strengthened_binds_unique: forall (T: Type) G1 G2 G3 x (X X': T),
   binds x X' (G1 & G3) ->
   X = X'.
 Proof.
-(*
-  introv Ok Bi Bi'.
-  destruct (binds_concat_inv Bi) as [Bi3 | [xG3 Bi12]].
-  - destruct (binds_concat_inv Bi') as [Bi3' | [xG3 Bi1]].
-    * apply (binds_func Bi3 Bi3').
-    * exfalso. apply (binds_fresh_inv Bi3 xG3).
-  - destruct (binds_concat_inv Bi') as [Bi3' | [xG3' Bi1]].
-    * exfalso. apply (binds_fresh_inv Bi3' xG3).
-    * destruct (binds_concat_inv Bi12) as [Bi2 | [xG2 Bi1']].
-      + apply ok_concat_inv_l in Ok. ok
-assert (x \in (dom G2)) by auto.
-
-  - destruct (binds_concat_inv Bi') as [Bi3' | [xG3' Bi1]].
-    * exfalso. apply (binds_fresh_inv Bi3' xG3).
-    * 
-
- apply (binds_func Bi3 Bi3').
-    * exfalso. apply (binds_fresh_inv Bi3 xG3).
-
-*)
   introv Ok Bi Bi'.
   assert (xG2: x # G2). {
-    destruct (binds_concat_inv Bi) as [Bi3 | [xG3 Bi12]].
-    - admit.
-    - admit.
+    apply get_some_inv in Bi'. rewrite dom_concat in Bi'. rewrite in_union in Bi'.
+    unfold notin. intro xG2.
+    destruct Bi' as [xG1 | xG3].
+    - refine (ok_concat_indom _ xG1 xG2). auto.
+    - refine (ok_concat_indom _ xG2 xG3). rewrite <- concat_assoc in Ok. auto.
   }
   lets Bi'': (binds_remove Bi xG2).
   apply (binds_func Bi'' Bi').
