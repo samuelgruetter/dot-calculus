@@ -1751,7 +1751,153 @@ Admitted.
 
 
 (* ###################################################################### *)
+(** ** Weakening for typ_has and wf *)
+
+Lemma weaken_has:
+   (forall G T D, typ_has G T D -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    typ_has (G1 & G2 & G3) T D)
+/\ (forall G T l, typ_hasnt G T l -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    typ_hasnt (G1 & G2 & G3) T l).
+Proof.
+  apply typ_has_mutind.
+  + (* case typ_bot_has *) eauto.
+  + (* case typ_rcd_has *) eauto.
+  + (* case typ_sel_has *)
+    introv Bi THas IH1 HiHas IH2 Eq Ok. subst. lets Bi': (binds_weaken Bi Ok). eauto.
+  + (* case typ_and_has_1 *) eauto.
+  + (* case typ_and_has_2 *) eauto.
+  + (* case typ_and_has_12 *) eauto.
+  + (* case typ_or_has *) eauto.
+  + (* case typ_self_has *)
+    introv Bi Has IH Eq Ok. subst. lets Bi': (binds_weaken Bi Ok). eauto.
+  + (* case typ_top_hasnt *) eauto.
+  + (* case typ_rcd_hasnt *) eauto.
+  + (* case typ_sel_hasnt *)
+    introv Bi THas IH1 HiHasnt IH2 Eq Ok. subst. lets Bi': (binds_weaken Bi Ok). eauto.
+  + (* case typ_and_hasnt *) eauto.
+  + (* case typ_or_hasnt_1 *) eauto.
+  + (* case typ_or_hasnt_2 *) eauto.
+  + (* case typ_or_hasnt_12 *) eauto.
+  + (* case typ_self_hasnt *)
+    introv Bi Has IH Eq Ok. subst. lets Bi': (binds_weaken Bi Ok). eauto.
+Qed.
+
+Lemma weaken_has_middle: forall G1 G2 G3 T D,
+  typ_has (G1 & G3) T D ->
+  ok (G1 & G2 & G3) ->
+  typ_has (G1 & G2 & G3) T D.
+Proof.
+  introv Has Ok. eapply (proj1 weaken_has); eauto.
+Qed.
+
+Lemma weaken_typ_has_end: forall G1 G2 T D,
+  ok (G1 & G2) -> typ_has G1 T D -> typ_has (G1 & G2) T D.
+Proof.
+  introv Ok Has. destruct weaken_has as [P _].
+  specialize (P G1 _ _ Has G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
+Qed.
+
+Lemma weaken_hasnt_middle: forall G1 G2 G3 T l,
+  typ_hasnt (G1 & G3) T l ->
+  ok (G1 & G2 & G3) ->
+  typ_hasnt (G1 & G2 & G3) T l.
+Proof.
+  introv Hasnt Ok. eapply (proj2 weaken_has); eauto.
+Qed.
+
+Lemma weaken_wf:
+   (forall G A T, wf_typ_impl G A T -> forall G1 G2 G3,
+      G = G1 & G3 ->
+      ok (G1 & G2 & G3) ->
+      wf_typ_impl (G1 & G2 & G3) A T)
+/\ (forall G A D, wf_dec_impl G A D -> forall G1 G2 G3,
+      G = G1 & G3 ->
+      ok (G1 & G2 & G3) ->
+      wf_dec_impl (G1 & G2 & G3) A D).
+Proof.
+  apply wf_mutind; eauto.
+  + (* case wf_sel *)
+    introv Bi Sb XHas WfX IHX WfT IHT WFU IHU. introv Eq Ok. subst G.
+    lets Bi': (binds_weaken Bi Ok).
+    lets XHas': ((proj1 weaken_has) _ _ _ XHas _ _ _ eq_refl Ok).
+    repeat split; repeat eexists; eauto.
+  + (* case wf_self *)
+    introv Bi Wf IH Eq Ok. subst.
+    lets Bi': (binds_weaken Bi Ok). eauto.
+  + (* case wf_ex *)
+    introv WfT IH1 WfU IH2 Eq Ok. subst.
+    apply_fresh wf_ex as x; assert (xL: x \notin L) by auto.
+    - specialize (IH1 x xL G1 G2 (G3 & x ~ open_typ x T)).
+      repeat rewrite concat_assoc in IH1. apply* IH1.
+    - specialize (IH2 x xL G1 G2 (G3 & x ~ open_typ x T)).
+      repeat rewrite concat_assoc in IH2. apply* IH2.
+  + (* case wf_skolem *)
+    introv Wf IH F Eq Ok.
+    (* omg that's gonna be a cool env alignment party *)
+    admit.
+Qed.
+
+Lemma weaken_wf_typ_middle: forall G1 G2 G3 T,
+  wf_typ (G1 & G3) T ->
+  ok (G1 & G2 & G3) ->
+  wf_typ (G1 & G2 & G3) T.
+Proof.
+  introv Wf Ok. eapply (proj1 weaken_wf); eauto.
+Qed.
+
+Print Assumptions weaken_wf_typ_middle.
+
+Lemma weaken_wf_typ_end: forall G1 G2 T,
+  wf_typ G1 T ->
+  ok (G1 & G2) ->
+  wf_typ (G1 & G2) T.
+Proof.
+  intros.
+  assert (Eq1: G1 & G2 = G1 & G2 & empty) by (rewrite concat_empty_r; reflexivity).
+  assert (Eq2: G1 = G1 & empty) by (rewrite concat_empty_r; reflexivity).
+  rewrite Eq1 in *. rewrite Eq2 in H.
+  apply* weaken_wf_typ_middle.
+Qed.
+
+Lemma weaken_wf_typ_impl_end: forall G1 G2 A T,
+  wf_typ_impl G1 A T ->
+  ok (G1 & G2) ->
+  wf_typ_impl (G1 & G2) A T.
+Proof.
+  intros.
+  assert (Eq1: G1 & G2 = G1 & G2 & empty) by (rewrite concat_empty_r; reflexivity).
+  assert (Eq2: G1 = G1 & empty) by (rewrite concat_empty_r; reflexivity).
+  rewrite Eq1 in *. rewrite Eq2 in H.
+  apply* (proj1 weaken_wf).
+Qed.
+
+Lemma weaken_wf_dec_middle: forall G1 G2 G3 D,
+  wf_dec (G1 & G3) D ->
+  ok (G1 & G2 & G3) ->
+  wf_dec (G1 & G2 & G3) D.
+Proof.
+  introv Wf Ok. eapply (proj2 weaken_wf); eauto.
+Qed.
+
+Lemma weaken_wf_dec_end: forall G1 G2 D,
+  wf_dec G1 D ->
+  ok (G1 & G2) ->
+  wf_dec (G1 & G2) D.
+Proof.
+  introv Wf Ok.
+  lets P: (@weaken_wf_dec_middle G1 G2 empty). repeat rewrite concat_empty_r in P.
+  apply* P.
+Qed.
+
+
+(* ###################################################################### *)
 (** ** Growing and shrinking the assumptions of wf *)
+
+Axiom okadmit: forall G: ctx, ok G.
 
 Lemma add_hyps_to_wf: forall A2,
    (forall G A1 T, wf_typ_impl G A1 T -> wf_typ_impl G (A1 \u A2) T) 
@@ -1771,21 +1917,25 @@ Qed.
 Definition add_hyps_to_wf_typ(G: ctx)(A1 A2: fset typ) := (proj1 (add_hyps_to_wf A2)) G A1.
 Definition add_hyps_to_wf_dec(G: ctx)(A1 A2: fset typ) := (proj2 (add_hyps_to_wf A2)) G A1.
 
-Lemma remove_hyp_from_wf: forall G A0 U, wf_typ_impl G A0 U ->
-   (forall G' A T, wf_typ_impl G' A T -> G' = G -> wf_typ_impl G (A0 \u (A \- \{ U })) T) 
-/\ (forall G' A D, wf_dec_impl G' A D -> G' = G -> wf_dec_impl G (A0 \u (A \- \{ U })) D).
+Lemma remove_hyp_from_wf: forall G1 A0 U, wf_typ_impl G1 A0 U ->
+   (forall G' A T, wf_typ_impl G' A T -> forall G2, G' = G1 & G2 ->
+                   wf_typ_impl G' (A0 \u (A \- \{ U })) T)
+/\ (forall G' A D, wf_dec_impl G' A D -> forall G2, G' = G1 & G2 ->
+                   wf_dec_impl G' (A0 \u (A \- \{ U })) D).
 Proof.
   introv WfU. apply wf_mutind; eauto.
   + (* case wf_hyp *)
-    introv In Eq. subst G0.
+    introv In Eq. subst.
     destruct (classicT (T = U)) as [Eq | Ne].
-    - subst T. rewrite <- (union_empty_l (A \- \{ U })). apply add_hyps_to_wf. exact WfU.
+    - subst T. rewrite <- (union_empty_l (A \- \{ U })). apply add_hyps_to_wf.
+      apply (weaken_wf_typ_impl_end WfU (okadmit _)).
     - apply wf_hyp. rewrite in_union. right. rewrite in_remove.
       apply (conj In). rewrite notin_singleton. exact Ne.
   + (* case wf_rcd *)
-    introv WfD IH Eq. subst G0. eq_specialize.
+    introv WfD IH Eq. subst. eq_specialize.
     destruct (classicT (typ_rcd D = U)) as [Eq | Ne].
-    - rewrite <- (union_empty_l (A \- \{ U })). subst U. apply add_hyps_to_wf. exact WfU.
+    - rewrite <- (union_empty_l (A \- \{ U })). subst U. apply add_hyps_to_wf.
+      apply (weaken_wf_typ_impl_end WfU (okadmit _)).
     - assert (Eq: (A \u \{ typ_rcd D }) \- \{ U} = (A \- \{ U } \u \{ typ_rcd D})). {
         apply fset_extens; unfold subset; intros X H;
         repeat (rewrite in_remove in * || rewrite in_union in * ).
@@ -1799,8 +1949,16 @@ Proof.
       rewrite Eq in IH.
       rewrite union_assoc in IH.
       apply (wf_rcd IH).
-  + (* case wf_sel *)
-    intros G0 A x X L Lo Hi Bi Sb XHas WfX IHX WfLo IHLo WfHi IHHi Eq. subst G0. eauto.
+  + (* case wf_ex *)
+    introv WfT IH1 WfU0 IH2 Eq. subst.
+    apply_fresh wf_ex as x; assert (xL: x \notin L) by auto.
+    - specialize (IH1 x xL (G2 & x ~ open_typ x T)).
+      repeat rewrite concat_assoc in IH1. apply* IH1.
+    - specialize (IH2 x xL (G2 & x ~ open_typ x T)).
+      repeat rewrite concat_assoc in IH2. apply* IH2.
+  + (* case wf_skolem *)
+    introv Wf IH F Eq.
+    (* more env alignment stuff *) admit.
 Qed.
 
 Print Assumptions remove_hyp_from_wf.
@@ -1852,11 +2010,10 @@ Proof.
   rewrite Eq in Wf1.
   lets Wf2: (wf_rcd Wf1).
   lets P: (proj2 (remove_hyp_from_wf Wf2)).
-  specialize (P _ _ _ Wf1 eq_refl).
+  specialize (P _ _ _ Wf1 empty). rewrite concat_empty_r in P.
   rewrite <- union_remove in P. rewrite <- Eq in P. rewrite union_assoc in P.
   rewrite union_same in P. rewrite union_remove in P. rewrite singleton_remove in P.
-  rewrite union_empty_r in P.
-  exact P.
+  rewrite union_empty_r in P. auto.
 Qed.
 
 Print Assumptions remove_own_hyp_from_wf_dec.
@@ -1891,6 +2048,7 @@ Proof.
   - in_empty_contradiction.
   - lets P: (remove_own_hyp_from_wf_dec H2). rewrite union_empty_l in *.
     rewrite empty_remove in P. exact P.
+  - (* TODO induction *) admit.
 Qed.
 
 Lemma invert_wf_and: forall G T1 T2,
@@ -1900,6 +2058,7 @@ Proof.
   introv Wf. inversions Wf.
   - in_empty_contradiction.
   - eauto.
+  - (* TODO induction *) admit.
 Qed.
 
 Lemma invert_wf_or: forall G T1 T2,
@@ -1909,6 +2068,7 @@ Proof.
   introv Wf. inversions Wf.
   - in_empty_contradiction.
   - eauto.
+  - (* TODO induction *) admit.
 Qed.
 
 Lemma invert_wf_sel: forall G x L,
@@ -1923,6 +2083,7 @@ Proof.
   intros. inversions H.
   - in_empty_contradiction.
   - exists X T U. eauto.
+  - (* TODO induction *) admit.
 Qed.
 
 Lemma invert_wf_sel_2: forall G a L,
@@ -1938,6 +2099,19 @@ Proof.
   intros. inversions H.
   - in_empty_contradiction.
   - exists x X T U. eauto 10.
+  - (* TODO induction *) admit.
+Qed.
+
+Lemma invert_wf_ex: forall G T U,
+  wf_typ G (typ_ex T U) ->
+  exists L,
+    (forall x, x \notin L -> wf_typ (G & x ~ open_typ x T) (open_typ x T)) /\
+    (forall x, x \notin L -> wf_typ (G & x ~ open_typ x T) (open_typ x U)).
+Proof.
+  intros. inversions H.
+  - in_empty_contradiction.
+  - exists L. eauto.
+  - (* TODO induction *) admit.
 Qed.
 
 Ltac destruct_wf :=
@@ -1949,123 +2123,10 @@ Ltac destruct_wf :=
                                                 destruct W as [? [? [? [? [? [? [? ?]]]]]]]
   | W: wf_typ _ (typ_and _ _)           |- _ => apply invert_wf_and in W
   | W: wf_typ _ (typ_or _ _)            |- _ => apply invert_wf_or in W
+  | W: wf_typ _ (typ_ex _ _)            |- _ => apply invert_wf_ex in W
   | H: wf_typ _ _ /\ wf_typ _ _         |- _ => destruct H
   | H: wf_dec _ _ /\ wf_dec _ _         |- _ => destruct H
   end.
-
-
-(* ###################################################################### *)
-(** ** Weakening for typ_has and wf *)
-
-Lemma weaken_has:
-   (forall G T D, typ_has G T D -> forall G1 G2 G3,
-    G = G1 & G3 ->
-    ok (G1 & G2 & G3) ->
-    typ_has (G1 & G2 & G3) T D)
-/\ (forall G T l, typ_hasnt G T l -> forall G1 G2 G3,
-    G = G1 & G3 ->
-    ok (G1 & G2 & G3) ->
-    typ_hasnt (G1 & G2 & G3) T l).
-Proof.
-  apply typ_has_mutind.
-  + (* case typ_bot_has *) eauto.
-  + (* case typ_rcd_has *) eauto.
-  + (* case typ_sel_has *)
-    introv Bi THas IH1 HiHas IH2 Eq Ok. subst. lets Bi': (binds_weaken Bi Ok). eauto.
-  + (* case typ_and_has_1 *) eauto.
-  + (* case typ_and_has_2 *) eauto.
-  + (* case typ_and_has_12 *) eauto.
-  + (* case typ_or_has *) eauto.
-  + (* case typ_top_hasnt *) eauto.
-  + (* case typ_rcd_hasnt *) eauto.
-  + (* case typ_sel_hasnt *)
-    introv Bi THas IH1 HiHasnt IH2 Eq Ok. subst. lets Bi': (binds_weaken Bi Ok). eauto.
-  + (* case typ_and_hasnt *) eauto.
-  + (* case typ_or_hasnt_1 *) eauto.
-  + (* case typ_or_hasnt_2 *) eauto.
-  + (* case typ_or_hasnt_12 *) eauto.
-Qed.
-
-Lemma weaken_has_middle: forall G1 G2 G3 T D,
-  typ_has (G1 & G3) T D ->
-  ok (G1 & G2 & G3) ->
-  typ_has (G1 & G2 & G3) T D.
-Proof.
-  introv Has Ok. eapply (proj1 weaken_has); eauto.
-Qed.
-
-Lemma weaken_typ_has_end: forall G1 G2 T D,
-  ok (G1 & G2) -> typ_has G1 T D -> typ_has (G1 & G2) T D.
-Proof.
-  introv Ok Has. destruct weaken_has as [P _].
-  specialize (P G1 _ _ Has G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
-Qed.
-
-Lemma weaken_hasnt_middle: forall G1 G2 G3 T l,
-  typ_hasnt (G1 & G3) T l ->
-  ok (G1 & G2 & G3) ->
-  typ_hasnt (G1 & G2 & G3) T l.
-Proof.
-  introv Hasnt Ok. eapply (proj2 weaken_has); eauto.
-Qed.
-
-Lemma weaken_wf:
-   (forall G A T, wf_typ_impl G A T -> forall G1 G2 G3,
-      G = G1 & G3 ->
-      ok (G1 & G2 & G3) ->
-      wf_typ_impl (G1 & G2 & G3) A T)
-/\ (forall G A D, wf_dec_impl G A D -> forall G1 G2 G3,
-      G = G1 & G3 ->
-      ok (G1 & G2 & G3) ->
-      wf_dec_impl (G1 & G2 & G3) A D).
-Proof.
-  apply wf_mutind; eauto.
-  (* case wf_sel *)
-  introv Bi Sb XHas WfX IHX WfT IHT WFU IHU. introv Eq Ok. subst G.
-  lets Bi': (binds_weaken Bi Ok).
-  lets XHas': ((proj1 weaken_has) _ _ _ XHas _ _ _ eq_refl Ok).
-  repeat split; repeat eexists; eauto.
-Qed.
-
-Lemma weaken_wf_typ_middle: forall G1 G2 G3 T,
-  wf_typ (G1 & G3) T ->
-  ok (G1 & G2 & G3) ->
-  wf_typ (G1 & G2 & G3) T.
-Proof.
-  introv Wf Ok. eapply (proj1 weaken_wf); eauto.
-Qed.
-
-Print Assumptions weaken_wf_typ_middle.
-
-Lemma weaken_wf_typ_end: forall G1 G2 T,
-  wf_typ G1 T ->
-  ok (G1 & G2) ->
-  wf_typ (G1 & G2) T.
-Proof.
-  intros.
-  assert (Eq1: G1 & G2 = G1 & G2 & empty) by (rewrite concat_empty_r; reflexivity).
-  assert (Eq2: G1 = G1 & empty) by (rewrite concat_empty_r; reflexivity).
-  rewrite Eq1 in *. rewrite Eq2 in H.
-  apply* weaken_wf_typ_middle.
-Qed.
-
-Lemma weaken_wf_dec_middle: forall G1 G2 G3 D,
-  wf_dec (G1 & G3) D ->
-  ok (G1 & G2 & G3) ->
-  wf_dec (G1 & G2 & G3) D.
-Proof.
-  introv Wf Ok. eapply (proj2 weaken_wf); eauto.
-Qed.
-
-Lemma weaken_wf_dec_end: forall G1 G2 D,
-  wf_dec G1 D ->
-  ok (G1 & G2) ->
-  wf_dec (G1 & G2) D.
-Proof.
-  introv Wf Ok.
-  lets P: (@weaken_wf_dec_middle G1 G2 empty). repeat rewrite concat_empty_r in P.
-  apply* P.
-Qed.
 
 
 (* ###################################################################### *)
@@ -2077,9 +2138,19 @@ Lemma subtyping_regular:
 /\ (forall hm G D1 D2, subdec hm G D1 D2 -> wf_dec G D1 /\ wf_dec G D2).
 Proof.
   apply subtyp_mutind; try solve [intros; split; subst; destruct_wf; eauto].
-  (* case subtyp_rcd *)
-  introv Sd Wf. destruct Wf as [Wf1 Wf2].
-  split; apply wf_rcd; apply add_hyps_to_wf_dec; assumption.
+  + (* case subtyp_rcd *)
+    introv Sd Wf. destruct Wf as [Wf1 Wf2].
+    split; apply wf_rcd; apply add_hyps_to_wf_dec; assumption.
+  + (* case subtyp_ex_l *)
+    introv WfS St IH WfU. refine (conj _ WfU).
+    apply_fresh wf_ex as x; assert (xL: x \notin L) by auto.
+    - apply* WfS.
+    - specialize (IH x xL). destruct IH as [IH1 IH2]. exact IH1.
+  + (* case subtyp_ex_r *)
+    introv Bi StS IH1 St IH2. destruct_wf. apply (conj H).
+    apply_fresh wf_ex as y.
+    (* TODO x <> y but how can this work with cofinite quantification style?? *)
+    admit. admit.
 Qed.
 
 Definition subtyp_regular := proj1 subtyping_regular.
