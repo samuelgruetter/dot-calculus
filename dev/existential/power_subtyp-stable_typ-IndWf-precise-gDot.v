@@ -2630,15 +2630,14 @@ Qed.
 (* ###################################################################### *)
 (** ** More definitions (not part of spec) *)
 
-(*
 Fixpoint power_subtyp(n0: nat)(G: ctx)(T1 T2: typ): Prop := match n0 with
-| 0 => subtyp G T1 T2
+| 0 => subtyp nohyp G T1 T2
 | S n => (forall D2, typ_has G T2 D2 ->
                      exists D1, typ_has G T1 D1 /\ power_subdec n G D1 D2)
       /\ (power_subtyp n G T1 T2)
 end
 with power_subdec(n0: nat)(G: ctx)(D1 D2: dec): Prop :=  match n0 with
-| 0 => subdec G D1 D2
+| 0 => subdec nohyp G D1 D2
 | S n => match D1, D2 with
   | dec_typ _ S1 U1, dec_typ _ S2 U2 => power_subtyp n G S2 S1 /\ power_subtyp n G U1 U2
   | dec_mtd _ S1 U1, dec_mtd _ S2 U2 => power_subtyp n G S2 S1 /\ power_subtyp n G U1 U2
@@ -2649,11 +2648,12 @@ end.
 (* Eval cbv in (power_subtyp 4 empty typ_bot typ_top). *)
 
 Definition memberwise_subtyp := power_subtyp 1.
-*)
 
+(*
 Definition memberwise_subtyp(G: ctx)(T1 T2: typ) := 
   (forall D2, typ_has G T2 D2 -> exists D1, typ_has G T1 D1 /\ subdec nohyp G D1 D2)
   /\ wf_typ G T1 /\ wf_typ G T2.
+*)
 
 (*
 Definition very_good_bounds_typ(G: ctx)(T: typ) :=
@@ -2671,8 +2671,8 @@ Definition subenv(G1 G2: ctx) :=
   forall x T2, binds x T2 G2 -> 
     binds x T2 G1 \/
     exists T1,
-(*    binds x T1 G1 /\ power_subtyp 2 G1 T1 T2 /\ stable_typ T1. *)
-      binds x T1 G1 /\ subtyp nohyp G1 T1 T2 /\ memberwise_subtyp G1 T1 T2 /\ stable_typ T1.
+      binds x T1 G1 /\ power_subtyp 2 G1 T1 T2 /\ stable_typ T1.
+(* binds x T1 G1 /\ subtyp nohyp G1 T1 T2 /\ memberwise_subtyp G1 T1 T2 /\ stable_typ T1.*)
 
 
 (* ###################################################################### *)
@@ -2928,7 +2928,6 @@ Proof.
   apply (strengthen_has_end Ok Wf Has).
 Qed.
 
-(*
 Lemma weaken_memberwise_subtyp_end: forall G1 G2 S U,
   ok (G1 & G2) -> 
   memberwise_subtyp G1        S U ->
@@ -2941,21 +2940,6 @@ Proof.
     * apply (weaken_typ_has_end Ok SHas).
     * apply (weaken_subdec_end Ok Sd).
   - apply (weaken_subtyp_end Ok St).
-Qed.
-*)
-
-Lemma weaken_memberwise_subtyp_end: forall G1 G2 S U,
-  ok (G1 & G2) -> 
-  memberwise_subtyp G1        S U ->
-  memberwise_subtyp (G1 & G2) S U.
-Proof.
-  unfold memberwise_subtyp. introv Ok MSt. destruct MSt as [MSt [WfS WfU]]. repeat split.
-  - introv UHas. specialize (MSt _ (strengthen_has_end Ok WfU UHas)).
-    destruct MSt as [D1 [SHas Sd]]. exists D1. split.
-    * apply (weaken_typ_has_end Ok SHas).
-    * apply (weaken_subdec_end Ok Sd).
-  - apply (weaken_wf_typ_end WfS Ok).
-  - apply (weaken_wf_typ_end WfU Ok).
 Qed.
 
 
@@ -3050,8 +3034,8 @@ Lemma subtyp_to_memberwise: forall G T1 T2,
   memberwise_subtyp G T1 T2.
 Proof.
   introv St. unfold memberwise_subtyp.
-  destruct (subtyp_regular St) as [Wf1 Wf2].
-  refine (conj _ (conj Wf1 Wf2)). clear Wf1 Wf2.
+  destruct (subtyp_regular St) as [Wf1 Wf2]. simpl.
+  refine (conj _ St). clear Wf1 Wf2.
   gen_eq hm: nohyp.
   induction St; unfold memberwise_subtyp in *; introv Eq T2Has; subst.
   + (* case subtyp_refl *)
@@ -3307,163 +3291,35 @@ Definition subdec_to_okhyp := proj2 anyhyp_to_okhyp.
 (* ###################################################################### *)
 (** ** Narrowing on type level *)
 
-(*
-Definition subenv(G1 G2: ctx) :=
-  forall x T2, binds x T2 G2 -> 
-    binds x T2 G1 \/
-    exists T1,
-      binds x T1 G1 /\ subtyp G1 T1 T2 /\ memberwise_subtyp G1 T1 T2 /\ stable_typ T1.
-*)
-
-(*
-Lemma narrow_binds_raw: forall G1 x0 S1 S2 G2 x T2,
-  binds x T2 (G1 & x0 ~ S2 & G2) ->
-  subtyp (G1 & x0 ~ S1 & G2) S1 S2 ->
-  binds x T2 (G1 & x0 ~ S1 & G2) \/ x0 = x /\ T2 = S2 /\ binds x S1 (G1 & x ~ S1 & G2).
-Proof.
-  introv Bi StS.
-  apply binds_middle_inv in Bi.
-  destruct Bi as [Bi | [[xG2 [Eq1 Eq2]]|[xG2 [Ne Bi]]]].
-  - (* case x in G2 *)
-    apply (binds_concat_right (G1 & x0 ~ S1)) in Bi.
-    auto.
-  - (* case x = x0 *)
-    auto.
-  - (* case x in G1 *)
-    auto.
-Qed.
-
-Lemma narrow_binds: forall G1 x0 S1 S2 G2 x T2,
-  wf_typ (G1 & x0 ~ S1 & G2) T2 ->
-  binds x T2 (G1 & x0 ~ S2 & G2) ->
-  subtyp (G1 & x0 ~ S1 & G2) S1 S2 ->
-  exists T1,
-    binds x T1 (G1 & x0 ~ S1 & G2) /\
-    subtyp (G1 & x0 ~ S1 & G2) T1 T2.
-Proof.
-  introv Wf Bi StS.
-  apply binds_middle_inv in Bi.
-  destruct Bi as [Bi | [[xG2 [Eq1 Eq2]]|[xG2 [Ne Bi]]]].
-  - (* case x in G2 *)
-    apply (binds_concat_right (G1 & x0 ~ S1)) in Bi.
-    exists T2. auto.
-  - (* case x = x0 *)
-    subst x0 T2. exists S1.
-    apply (conj (binds_middle_eq _ _ xG2)).
-    apply StS.
-  - (* case x in G1 *)
-    assert (xx0: x # (x0 ~ S1)) by auto.
-    lets Bi': (binds_concat_left (binds_concat_left Bi xx0) xG2).
-    exists T2. apply (conj Bi'). auto.
-Qed.
-
-Print Assumptions narrow_binds.
-
-Lemma narrow_binds_end: forall G1 x0 S1 S2 x T2,
-  wf_typ (G1 & x0 ~ S1) T2 ->
-  binds x T2 (G1 & x0 ~ S2) ->
-  subtyp (G1 & x0 ~ S1) S1 S2 ->
-  exists T1,
-    binds x T1 (G1 & x0 ~ S1) /\
-    subtyp (G1 & x0 ~ S1) T1 T2.
-Proof.
-  introv Wf Bi StS.
-  rewrite <- (concat_empty_r (G1 & x0 ~ S1)).
-  rewrite <- (concat_empty_r (G1 & x0 ~ S1)) in Wf, StS.
-  rewrite <- (concat_empty_r (G1 & x0 ~ S2)) in Bi.
-  apply* narrow_binds.
-Qed.
-
-Lemma narrow_binds_2: forall G1 x0 S1 S2 G2 x T1 T2,
-  wf_typ (G1 & x0 ~ S1 & G2) T1 ->
-  binds x T2 (G1 & x0 ~ S2 & G2) ->
-  binds x T1 (G1 & x0 ~ S1 & G2) ->
-  subtyp (G1 & x0 ~ S1 & G2) S1 S2 ->
-  subtyp (G1 & x0 ~ S1 & G2) T1 T2.
-Proof.
-  introv Wf Bi2 Bi1 StS.
-  apply binds_middle_inv in Bi2.
-  destruct Bi2 as [Bi2 | [[xG2 [Eq1 Eq2]]|[xG2 [Ne Bi2]]]].
-  - (* case x in G2 *)
-    lets Bi1': (binds_concat_right (G1 & x0 ~ S1) Bi2).
-    lets Eq: (binds_func Bi1' Bi1). subst T2.
-    auto.
-  - (* case x = x0 *)
-    subst x0 T2.
-    lets Bi1': (binds_concat_left_inv Bi1 xG2).
-    lets Eq: (binds_push_eq_inv Bi1'). subst T1.
-    exact StS.
-  - (* case x in G1 *)
-    assert (xx0: x # (x0 ~ S1)) by auto.
-    lets Bi1': (binds_concat_left (binds_concat_left Bi2 xx0) xG2).
-    lets Eq: (binds_func Bi1' Bi1). subst T2.
-    auto.
-Qed.
-*)
-
 Lemma narrow_binds_3: forall G1 G2 x T2,
   subenv G1 G2 ->
   ok G1 ->
   binds x T2 G2 ->
   binds x T2 G1
   \/ exists T1, 
-     binds x T1 G1 /\ subtyp nohyp G1 T1 T2 /\ memberwise_subtyp G1 T1 T2 /\ stable_typ T1.
-(*   binds x T1 G1 /\ power_subtyp 2 G1 T1 T2 /\ stable_typ T1. *)
+(*binds x T1 G1 /\ subtyp nohyp G1 T1 T2 /\ memberwise_subtyp G1 T1 T2 /\ stable_typ T1.*)
+    binds x T1 G1 /\ power_subtyp 2 G1 T1 T2 /\ stable_typ T1.
 Proof.
   introv Se Ok Bi. unfold subenv in Se. apply (Se _ _ Bi).
 Qed.
-
-(*
-Lemma narrow_binds_3: forall G1 G2 x T2,
-  subenv G1 G2 ->
-  ok G1 ->
-  binds x T2 G2 ->
-  binds x T2 G1 \/ exists T1, binds x T1 G1 /\ subtyp G1 T1 T2 /\ stable_typ T1.
-Proof.
-  introv Se. gen x T2. induction Se; introv Ok Bi2.
-  + (* case subenv_empty *)
-    exfalso. apply (binds_empty_inv Bi2).
-  + (* case subenv_sub *)
-    apply binds_push_inv in Bi2. destruct Bi2 as [[? ?] | [Ne2 Bi2]].
-    - subst. right. exists T1. auto.
-    - specialize (IHSe _ _ (okadmit _) Bi2). destruct IHSe as [Bi1 | [T00 [Bi1 [St Sb]]]].
-      * left. auto.
-      * right. exists T00. repeat split; auto.
-        apply (weaken_subtyp_end (okadmit _) St).
-  + (* case subenv_push *)
-    apply binds_push_inv in Bi2. destruct Bi2 as [[? ?] | [Ne2 Bi2]].
-    - subst. left. auto.
-    - specialize (IHSe _ _ (okadmit _) Bi2). destruct IHSe as [Bi1 | [T00 [Bi1 [St Sb]]]].
-      * left. auto.
-      * right. exists T00. repeat split; auto.
-        apply (weaken_subtyp_end (okadmit _) St).
-  + (* case subenv_skip *)
-    assert (Ne: x0 <> x) by admit. (* from Ok, Bi2, Se *)
-    specialize (IHSe _ _ (okadmit _ ) Bi2). destruct IHSe as [Bi1 | [T00 [Bi1 [St Sb]]]].
-    * left. auto.
-    * right. exists T00. repeat split; auto.
-      apply (weaken_subtyp_end (okadmit _) St).
-Qed.
-*)
 
 Lemma memberwise_subtyp_refl: forall G T,
   wf_typ G T ->
   memberwise_subtyp G T T.
 Proof.
-  unfold memberwise_subtyp. introv Wf. simpl in *. refine (conj _ (conj Wf Wf)).
+  unfold memberwise_subtyp. introv Wf. simpl in *. refine (conj _ (subtyp_refl _ Wf)).
   introv Has. exists D2. apply (conj Has).
   apply subdec_refl.
   apply (typ_has_preserves_wf Has Wf).
 Qed.
 
-(*
 Lemma power_sub_refl: forall n,
    (forall G T, wf_typ G T -> power_subtyp n G T T)
 /\ (forall G D, wf_dec G D -> power_subdec n G D D).
 Proof.
   intro n. induction n; split; introv Wf; simpl.
-  + apply (subtyp_refl Wf).
-  + apply (subdec_refl Wf).
+  + apply (subtyp_refl _ Wf).
+  + apply (subdec_refl _ Wf).
   + destruct IHn as [IH1 IH2]. refine (conj _ (IH1 _ _ Wf)).
     introv Has. exists D2. apply (conj Has). apply IH2.
     apply (typ_has_preserves_wf Has Wf).
@@ -3486,23 +3342,6 @@ Proof.
   - rewrite (binds_func Bi1' Bi1). apply (power_subtyp_refl _ WfT1).
   - lets Eq: (binds_func Bi1' Bi1). subst. assumption.
 Qed.
-*)
-
-Lemma narrow_binds_4: forall G1 G2 x T1 T2,
-  wf_typ G1 T1 ->
-  binds x T2 G2 ->
-  binds x T1 G1 ->
-  subenv G1 G2 ->
-  subtyp nohyp G1 T1 T2 /\ memberwise_subtyp G1 T1 T2.
-Proof.
-  introv WfT1 Bi2 Bi1 Se.
-  lets P: (narrow_binds_3 Se (okadmit _) Bi2). 
-  destruct P as [Bi1' | [T0 [Bi1' [St [MSt Sb]]]]].
-  - rewrite (binds_func Bi1' Bi1). split.
-    * apply (subtyp_refl _ WfT1).
-    * apply (memberwise_subtyp_refl WfT1).
-  - lets Eq: (binds_func Bi1' Bi1). subst. split; assumption.
-Qed.
 
 Lemma narrow_binds_5: forall G1 G2 x T2,
   wf_typ G1 T2 ->
@@ -3513,7 +3352,7 @@ Proof.
   introv WfT2 Bi2 Se.
   lets P: (narrow_binds_3 Se (okadmit _) Bi2). destruct P as [Bi1' | [T0 [Bi1' [St Sb]]]].
   - exists T2. auto.
-  - exists T0. auto.
+  - exists T0. destruct St as [MMSt [MSt St]]. simpl in St. auto.
 Qed.
 
 Lemma narrow_has_hasnt_stable:
@@ -3574,30 +3413,6 @@ Proof.
   + (* case typ_sel_has *)
     intros G x X2 L Lo2 Hi2 D2 Bix2 _ IH1 _ IH2 G' Se Wf. subst.
     apply invert_wf_sel in Wf. destruct Wf as [X1 [T [U [Bix1 [X1Has [WfX1 [WfT WfU]]]]]]].
-    destruct (narrow_binds_4 WfX1 Bix2 Bix1 Se) as [StX MStX].
-    lets WfX2: (proj2 (subtyp_regular StX)).
-    specialize (IH1 _ Se WfX2). destruct IH1 as [D0 [X2Has Sd0]].
-    apply invert_subdec_typ_sync_left in Sd0.
-    destruct Sd0 as [Lo1 [Hi1 [Eq [StLo12 StHi12]]]]. subst D0.
-    lets WfHi2: (proj2 (subtyp_regular StHi12)).
-    specialize (IH2 _ Se WfHi2). destruct IH2 as [D1 [Hi2Has Sd12]].
-    lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ X2Has).
-            (********************)
-    destruct P as [D0 [X1Has' Sd0]].
-    apply invert_subdec_typ_sync_left in Sd0.
-    destruct Sd0 as [Lo0 [Hi0 [Eq [StLo01 StHi01]]]]. subst D0.
-    lets StLo: (subtyp_trans StLo12 StLo01).
-    lets StHi: (subtyp_trans StHi01 StHi12).
-    lets P: (subtyp_to_memberwise StHi). destruct P as [P _]. specialize (P _ Hi2Has).
-            (********************)
-    destruct P as [D0 [Hi0Has Sd01]].
-    exists D0. split.
-    - apply (typ_sel_has Bix1 X1Has' Hi0Has).
-    - apply (subdec_trans Sd01 Sd12).
-(*
-  + (* case typ_sel_has *)
-    intros G x X2 L Lo2 Hi2 D2 Bix2 _ IH1 _ IH2 G' Se Wf. subst.
-    apply invert_wf_sel in Wf. destruct Wf as [X1 [T [U [Bix1 [X1Has [WfX1 [WfT WfU]]]]]]].
     lets N: (narrow_binds_4 WfX1 Bix2 Bix1 Se). clear N.
     assert (P: power_subtyp 3 G' X1 X2) by admit.
     destruct P as [P3 [P2 [P1 P0]]]. simpl in P0, P1.
@@ -3614,10 +3429,8 @@ Proof.
     specialize (IH2 _ Se WfHi2). destruct IH2 as [D1 [Hi2Has Sd12]].
     (* in G', Hi2 isn't the upper bound of anything, so we cannot use Hi2Has in Q *)
 
-    specialize (P2 _ X2Has). destruct P2 as [D0 
 
-
-
+(*
   + (* case typ_sel_has *)
     intros G x X2 L Lo2 Hi2 D2 Bix2 _ IH1 _ IH2 G' Se Wf. subst.
     apply invert_wf_sel in Wf. destruct Wf as [X1 [T [U [Bix1 [X1Has [WfX1 [WfT WfU]]]]]]].
