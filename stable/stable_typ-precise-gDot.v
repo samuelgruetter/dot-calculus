@@ -300,9 +300,23 @@ with typ_hasnt: ctx -> typ -> label -> Prop :=
       typ_hasnt G T1 l ->
       typ_hasnt G T2 l ->
       typ_hasnt G (typ_or T1 T2) l.
- 
+
+(* [stable_typ G T] means that T's members don't change under narrowing. *)
+Inductive stable_typ: ctx -> typ -> Prop :=
+  | stable_top: forall G,
+      stable_typ G typ_top
+  | stable_bot: forall G,
+      stable_typ G typ_bot
+  | stable_rcd: forall G D,
+      stable_typ G (typ_rcd D)
+(*| stable_sel: typ_sel is not stable (that's the whole point) *)
+  | stable_and: forall G T1 T2,
+      stable_typ G T1 -> stable_typ G T2 -> stable_typ G (typ_and T1 T2)
+  | stable_or: forall G T1 T2,
+      stable_typ G T1 -> stable_typ G T2 -> stable_typ G (typ_or T1 T2).
+
 (* [stable_typ T] means that T's members don't change under narrowing.
-   TODO this can be extended to include "class types", and aliases to stable types. *)
+   TODO this can be extended to include "class types", and aliases to stable types.
 Inductive stable_typ: typ -> Prop :=
 | stable_top: stable_typ typ_top
 | stable_bot: stable_typ typ_bot
@@ -310,6 +324,7 @@ Inductive stable_typ: typ -> Prop :=
 (* Note: typ_sel is not stable (that's the whole point) *)
 | stable_and: forall T1 T2, stable_typ T1 -> stable_typ T2 -> stable_typ (typ_and T1 T2)
 | stable_or : forall T1 T2, stable_typ T1 -> stable_typ T2 -> stable_typ (typ_or  T1 T2).
+*)
 
 (* wf means "well-formed", not "well-founded" ;-)
    G; A |- T wf       G: context
@@ -337,7 +352,7 @@ Inductive wf_typ_impl: ctx -> fset typ -> typ -> Prop :=
       wf_typ_impl G A (typ_rcd D)
   | wf_sel: forall G A x X L T U,
       binds x X G ->
-      stable_typ X -> (* <-- important restriction *)
+      stable_typ G X -> (* <-- important restriction *)
       typ_has G X (dec_typ L T U) ->
       wf_typ_impl G A X ->
       wf_typ_impl G A T ->
@@ -382,14 +397,14 @@ Inductive subtyp: hmode -> ctx -> typ -> typ -> Prop :=
   | subtyp_sel_l: forall hm G x X L T U,
       binds x X G ->
       wf_typ G X ->
-      stable_typ X -> (* <-- important restriction *)
+      stable_typ G X -> (* <-- important restriction *)
       typ_has G X (dec_typ L T U) ->
       subtyp hm G T U -> (* <-- probably not needed, just for symmetry with subtyp_sel_r *)
       subtyp hm G (typ_sel (avar_f x) L) U
   | subtyp_sel_r: forall hm G x X L T U,
       binds x X G ->
       wf_typ G X ->
-      stable_typ X -> (* <-- important restriction *)
+      stable_typ G X -> (* <-- important restriction *)
       typ_has G X (dec_typ L T U) ->
       subtyp hm G T U -> (* <-- makes proofs a lot easier!! *)
       subtyp hm G T (typ_sel (avar_f x) L)
@@ -424,7 +439,7 @@ Inductive subtyp: hmode -> ctx -> typ -> typ -> Prop :=
   | subtyp_hyp: forall x X G L Lo Hi,
       binds x X G ->
       typ_has G X (dec_typ L Lo Hi) ->
-      stable_typ X ->
+      stable_typ G X ->
       wf_typ G X ->
       wf_typ G Lo ->
       wf_typ G Hi ->
@@ -1912,6 +1927,24 @@ Proof.
   introv Hasnt Ok. eapply (proj2 weaken_has); eauto.
 Qed.
 
+Lemma weaken_stable_typ: forall G1 G2 G3 T,
+  ok (G1 & G2 & G3) ->
+  stable_typ (G1 & G3) T ->
+  stable_typ (G1 & G2 & G3) T.
+Proof.
+  introv Ok Sb. gen_eq G: (G1 & G3). gen G1 G2 G3. induction Sb; eauto.
+Qed.
+
+Lemma weaken_stable_typ_end: forall G1 G2 T,
+  ok (G1 & G2) ->
+  stable_typ G1 T ->
+  stable_typ (G1 & G2) T.
+Proof.
+  introv Ok Sb.
+  specialize (@weaken_stable_typ G1 G2 empty T).
+  repeat rewrite concat_empty_r in *. auto.
+Qed.
+
 Lemma weaken_wf:
    (forall G A T, wf_typ_impl G A T -> forall G1 G2 G3,
       G = G1 & G3 ->
@@ -1927,6 +1960,7 @@ Proof.
   introv Bi Sb XHas WfX IHX WfT IHT WFU IHU. introv Eq Ok. subst G.
   lets Bi': (binds_weaken Bi Ok).
   lets XHas': ((proj1 weaken_has) _ _ _ XHas _ _ _ eq_refl Ok).
+  apply (weaken_stable_typ Ok) in Sb.
   repeat split; repeat eexists; eauto.
 Qed.
 
@@ -2590,7 +2624,7 @@ Definition subenv(G1 G2: ctx) :=
   forall x T2, binds x T2 G2 -> 
     binds x T2 G1 \/
     exists T1,
-      binds x T1 G1 /\ subtyp nohyp G1 T1 T2 /\ stable_typ T1.
+      binds x T1 G1 /\ subtyp nohyp G1 T1 T2 /\ stable_typ G1 T1.
 
 Definition memberwise_subtyp(G: ctx)(T1 T2: typ) := 
   (forall D2, typ_has G T2 D2 -> exists D1, typ_has G T1 D1 /\ subdec nohyp G D1 D2)
@@ -2621,10 +2655,10 @@ Proof.
   + (* case subtyp_rcd   *) eauto.
   + (* case subtyp_sel_l *)
     introv Bix WfX Sb XHas St IH Eq Ok. subst. apply subtyp_sel_l with X T; eauto.
-    apply (binds_weaken Bix Ok).
+    apply (binds_weaken Bix Ok). apply (weaken_stable_typ Ok Sb).
   + (* case subtyp_sel_r *)
     introv Bix WfX Sb XHas St IH Eq Ok. subst. apply subtyp_sel_r with X U; eauto.
-    apply (binds_weaken Bix Ok).
+    apply (binds_weaken Bix Ok). apply (weaken_stable_typ Ok Sb).
   + (* case subtyp_and   *) eauto.
   + (* case subtyp_and_l *) eauto.
   + (* case subtyp_and_r *) eauto.
@@ -2634,6 +2668,7 @@ Proof.
   + (* case subtyp_trans *) eauto.
   + (* case subtyp_hyp   *)
     introv Bix Has SbX WfX WfLo WfHi Eq Ok.
+    rewrite Eq in SbX. apply (weaken_stable_typ Ok) in SbX.
     apply subtyp_hyp with x X L; ((subst; apply (binds_weaken Bix Ok)) || eauto).
   + (* case subdec_typ   *) eauto.
   + (* case subdec_mtd   *) eauto.
@@ -3169,7 +3204,7 @@ Lemma narrow_binds_3: forall G1 G2 x T2,
   binds x T2 G2 ->
   binds x T2 G1
   \/ exists T1, 
-  binds x T1 G1 /\ subtyp nohyp G1 T1 T2 /\ stable_typ T1.
+  binds x T1 G1 /\ subtyp nohyp G1 T1 T2 /\ stable_typ G1 T1.
 Proof.
   introv Se Bi. unfold subenv in Se. (* destruct Se as [Ok1 [Ok2 Se]]. *) apply (Se _ _ Bi).
 Qed.
@@ -3212,23 +3247,31 @@ Qed.
 
 Lemma narrow_has_hasnt_stable:
    (forall G T D, typ_has G T D -> forall G',
-    stable_typ T ->
+    stable_typ G T ->
     subenv G' G ->
     typ_has G' T D)
 /\ (forall G T l, typ_hasnt G T l -> forall G',
-    stable_typ T ->
+    stable_typ G T ->
     subenv G' G ->
     typ_hasnt G' T l).
 Proof.
   apply typ_has_mutind; intros; subst;
   match goal with
-  | H: stable_typ _ |- _ => inversions H
+  | H: stable_typ _ _ |- _ => inversions H
   end;
   eauto.
 Qed.
 
 Definition narrow_has_stable := proj1 narrow_has_hasnt_stable.
 Definition narrow_hasnt_stable := proj2 narrow_has_hasnt_stable.
+
+Lemma narrow_stable: forall G' G T,
+  stable_typ G T ->
+  subenv G' G ->
+  stable_typ G' T.
+Proof.
+  introv Sb. gen G'. induction Sb; eauto.
+Qed.
 
 (* Needed by narrow_ty *)
 Lemma narrow_has_hasnt:
@@ -3468,7 +3511,7 @@ Proof.
     specialize (IHU _ Se).
     destruct (narrow_binds_3 Se Bix) as [Bix' | [X' [Bix' [St SbX']]]].
     - (* case "type of x remained unchanged" *)
-      apply (wf_sel Bix' SbX XHas' IHX IHT IHU).
+      apply (wf_sel Bix' (narrow_stable SbX Se) XHas' IHX IHT IHU).
     - (* case "type of x changed from X to X'" *)
       lets P: (subtyp_to_memberwise St). destruct P as [P _]. specialize (P _ XHas').
               (********************)
@@ -3516,7 +3559,7 @@ Proof.
     lets P: (narrow_binds_3 Se Bi2).
     destruct P as [Bi1 | [X' [Bi1 [StX SbX']]]].
     - (* case "type of x remained unchanged" *)
-      apply (subtyp_sel_l Bi1 WfX' SbX XHas' IHSt).
+      apply (subtyp_sel_l Bi1 WfX' (narrow_stable SbX Se) XHas' IHSt).
     - (* case "type of x changed from X to X'" *)
       lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ XHas').
               (********************)
@@ -3536,7 +3579,7 @@ Proof.
     lets P: (narrow_binds_3 Se Bi2).
     destruct P as [Bi1 | [X' [Bi1 [StX SbX']]]].
     - (* case "type of x remained unchanged" *)
-      apply (subtyp_sel_r Bi1 WfX' SbX XHas' IHSt).
+      apply (subtyp_sel_r Bi1 WfX' (narrow_stable SbX Se) XHas' IHSt).
     - (* case "type of x changed from X to X'" *)
       lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ XHas').
               (********************)
@@ -3567,7 +3610,8 @@ Proof.
     lets P: (narrow_binds_3 Se Bi2).
     destruct P as [Bi1 | [X' [Bi1 [StX SbX']]]].
     - (* case "type of x remained unchanged" *)
-      apply (subtyp_hyp Bi1 XHas' SbX WfX' (narrow_wf_typ WfLo Se) (narrow_wf_typ WfHi Se)).
+      apply (subtyp_hyp Bi1 XHas' (narrow_stable SbX Se) WfX' (narrow_wf_typ WfLo Se)
+                                                              (narrow_wf_typ WfHi Se)).
     - (* case "type of x changed from X to X'" *)
       lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ XHas').
               (********************)
@@ -3634,18 +3678,18 @@ Qed.
 
 Lemma subenv_sub: forall G1 G2 x T1 T2,
   subenv G1 G2 ->
-  stable_typ T1 ->
+  stable_typ G1 T1 ->
   ok (G1 & x ~ T1) ->
   subtyp nohyp (G1 & x ~ T1) T1 T2 ->
   subenv (G1 & x ~ T1) (G2 & x ~ T2).
 Proof.
   introv Se Sb Ok St. unfold subenv in *. intros v V Bi.
   apply binds_push_inv in Bi. destruct Bi as [[? ?] | [Ne Bi]].
-  - subst. right. exists T1. auto.
+  - subst. right. exists T1. apply (weaken_stable_typ_end Ok) in Sb. auto.
   - specialize (Se _ _ Bi). destruct Se as [Bi' | Se].
     * left. auto.
     * right. destruct Se as [V' [Bi' [StV Sb']]]. exists V'.
-      refine (conj _ (conj _ Sb')).
+      refine (conj _ (conj _ (weaken_stable_typ_end Ok Sb'))).
       + auto.
       + apply (weaken_subtyp_end Ok StV).
 Qed.
@@ -3661,7 +3705,7 @@ Proof.
   - specialize (Se _ _ Bi). destruct Se as [Bi' | Se].
     * left. auto.
     * right. destruct Se as [V' [Bi' [StV Sb']]]. exists V'.
-      refine (conj _ (conj _ Sb')).
+      refine (conj _ (conj _ (weaken_stable_typ_end Ok Sb'))).
       + auto.
       + apply (weaken_subtyp_end Ok StV).
 Qed.
@@ -3683,7 +3727,7 @@ Proof.
   specialize (Se _ _ Bi). destruct Se as [Bi' | Se].
   * left. apply* binds_push_neq.
   * right. destruct Se as [V' [Bi' [StV Sb']]]. exists V'.
-    refine (conj _ (conj _ Sb')).
+      refine (conj _ (conj _ (weaken_stable_typ_end Ok Sb'))).
     + auto.
     + apply (weaken_subtyp_end Ok StV).
 Qed.
@@ -3755,7 +3799,7 @@ Qed.
 Lemma narrow_ty_end: forall G x S1 S2 t T,
   ty_trm (G & x ~ S2) t T ->
   ok (G & x ~ S1) ->
-  stable_typ S1 ->
+  stable_typ G S1 ->
   subtyp nohyp (G & x ~ S1) S1 S2 ->
   ty_trm (G & x ~ S1) t T.
 Proof.
@@ -3841,9 +3885,11 @@ Proof.
   intros. case_if*.
 Qed.
 
-Lemma subst_stable_typ: forall x y T, stable_typ T -> stable_typ (subst_typ x y T).
+Lemma subst_stable_typ: forall G1 S G2 x y T,
+  stable_typ (G1 & x ~ S & G2) T ->
+  stable_typ (subst_ctx x y (G1 & G2)) (subst_typ x y T).
 Proof.
-  intros x y T. induction T; intro S; simpl; inversions S; auto.
+  intros G1 S G2 x y T. induction T; intro Sb; simpl; inversions Sb; auto.
 Qed.
 
 Lemma subst_has_hasnt: forall y S,
@@ -3977,7 +4023,7 @@ Proof.
     lets Bix': (subst_binds Bix Ok Biy).
     simpl. rewrite if_hoist.
     refine (wf_sel Bix' _ _ IHX IHLo IHHi).
-    - apply (subst_stable_typ _ _ Sb).
+    - apply (subst_stable_typ _ Sb).
     - apply (SubstHas _ _ _ XHas _ _ _ eq_refl Ok Biy).
   + (* case wf_and *)
     intros. subst. apply wf_and; eauto.
@@ -4042,7 +4088,7 @@ Proof.
     apply subtyp_sel_l with (subst_typ x0 y X) (subst_typ x0 y T).
     * apply Bix'.
     * eauto.
-    * apply (subst_stable_typ _ _ Sb).
+    * apply (subst_stable_typ _ Sb).
     * apply (subst_has XHas Ok Biy).
     * apply IH.
   + (* case subtyp_sel_r *)
@@ -4053,7 +4099,7 @@ Proof.
     apply subtyp_sel_r with (subst_typ x0 y X) (subst_typ x0 y U).
     * apply Bix'.
     * eauto.
-    * apply (subst_stable_typ _ _ Sb).
+    * apply (subst_stable_typ _ Sb).
     * apply (subst_has XHas Ok Biy).
     * apply IH.
   + (* case subtyp_and *)
@@ -4082,7 +4128,7 @@ Proof.
     apply subtyp_hyp with (subst_fvar x0 y x) (subst_typ x0 y X) L.
     * apply Bix'.
     * apply (subst_has XHas Ok Biy).
-    * apply (subst_stable_typ _ _ Sb).
+    * apply (subst_stable_typ _ Sb).
     * eauto.
     * eauto.
     * eauto.
@@ -4520,7 +4566,7 @@ Proof.
 Qed.
 
 Lemma defs_have_stable_typ: forall G ds T,
-  ty_defs G ds T -> stable_typ T.
+  ty_defs G ds T -> stable_typ G T.
 Proof.
   introv Tyds. induction Tyds; eauto.
 Qed.
