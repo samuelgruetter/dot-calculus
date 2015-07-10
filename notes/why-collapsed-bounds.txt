@@ -1,0 +1,9 @@
+
+Why we only allow collapsed bounds in ty_defs:
+
+(i.e. lower bound must be the same as upper bound)
+
+If we allow any bounds, ty_tdef has to check that the lower bound is a subtype of the upper bound. Should this check be done in okhyp or nohyp mode? If done in okhyp mode, we could just apply subtyp_hyp, because the self reference is already in the environment, so the subtype check is worthless. If done in nohyp mode, narrow_ty/case ty_tdef does not work any more, because the narrow_subtyp it has to apply always returns an okhyp subtyp proof, even if it's fed a nohyp subtyp proof, because narrow_subtyp/case subtyp_sel_l/r need the subtyp_hyp rule.
+Or we could say that the subtype check in ty_tdef can use subtyp_hyp for all entries of the env except for the self ref. Or we could even parameterize the subtyp judgment by a set of all needed "good bounds" hypotheses to be more general, and require that this set does not contain the self ref. But then, narrowing/case ty_tdef will still not work, because if we're in an environment with bad bounds, the bounds of the type being instantiated might become bad as well, and we must use the subtyp_hyp rule to save us from that.
+So there's no simple way to allow non-collapsed bounds in ty_defs.
+
