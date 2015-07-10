@@ -309,7 +309,13 @@ Inductive stable_typ: ctx -> typ -> Prop :=
       stable_typ G typ_bot
   | stable_rcd: forall G D,
       stable_typ G (typ_rcd D)
-(*| stable_sel: typ_sel is not stable (that's the whole point) *)
+  (* typ_sel is only stable if its lower and upper bounds are the same stable type *)
+  | stable_alias: forall G x X L T,
+      binds x X G ->
+      stable_typ G X ->
+      typ_has G X (dec_typ L T T) ->
+      stable_typ G T ->
+      stable_typ G (typ_sel (avar_f x) L)
   | stable_and: forall G T1 T2,
       stable_typ G T1 -> stable_typ G T2 -> stable_typ G (typ_and T1 T2)
   | stable_or: forall G T1 T2,
@@ -1933,6 +1939,11 @@ Lemma weaken_stable_typ: forall G1 G2 G3 T,
   stable_typ (G1 & G2 & G3) T.
 Proof.
   introv Ok Sb. gen_eq G: (G1 & G3). gen G1 G2 G3. induction Sb; eauto.
+  introv Ok Eq. subst. apply stable_alias with X T.
+  - apply (binds_weaken H Ok).
+  - apply* IHSb1.
+  - apply* weaken_has_middle.
+  - apply* IHSb2.
 Qed.
 
 Lemma weaken_stable_typ_end: forall G1 G2 T,
@@ -3255,11 +3266,55 @@ Lemma narrow_has_hasnt_stable:
     subenv G' G ->
     typ_hasnt G' T l).
 Proof.
-  apply typ_has_mutind; intros; subst;
+  apply typ_has_mutind; try solve [intros; subst;
   match goal with
   | H: stable_typ _ _ |- _ => inversions H
   end;
-  eauto.
+  eauto].
+  + (* case typ_sel_has *)
+    introv Bi THas IH1 HiHas IH2 Sb Se. inversions Sb.
+    lets Eq: (binds_func H1 Bi). subst. clear H1.
+    lets Eq: (typ_has_unique H4 THas eq_refl). inversions Eq. clear H4.
+    rename H2 into SbT, H5 into SbHi.
+    specialize (IH1 _ SbT Se). specialize (IH2 _ SbHi Se).
+    apply (narrow_binds_3 Se) in Bi.
+    destruct Bi as [Bi1 | [T' [Bi1 [StT SbT']]]].
+    - (* case "type of x remained unchanged" *)
+      apply (typ_sel_has Bi1 IH1 IH2).
+    - (* case "type of x changed from T to T'" *)
+      lets P: (subtyp_to_memberwise StT). destruct P as [P _]. specialize (P _ IH1).
+              (********************)
+      destruct P as [D1 [T'Has Sd]].
+      apply invert_subdec_typ_sync_left in Sd. destruct Sd as [Lo' [Hi' [Eq [StLo StHi1]]]].
+      subst D1.
+      eapply (typ_sel_has Bi1 T'Has).
+      lets StHi2: (subtyp_trans (subtyp_to_okhyp StLo) (subtyp_hyp Bi1 T'Has SbT'
+         (subtyp_regular_1 StT) (subtyp_regular_2 StLo) (subtyp_regular_1 StHi1))).
+      (* from StHi1 and StHi2, we can conclude that Hi and Hi' are "equivalent",
+         so could apply IH2 (modula equivalence) *)
+      admit.
+  + (* case typ_sel_hasnt *)
+    introv Bi THas IH1 HiHasnt IH2 Sb Se. inversions Sb.
+    lets Eq: (binds_func H1 Bi). subst. clear H1.
+    lets Eq: (typ_has_unique H4 THas eq_refl). inversions Eq. clear H4.
+    rename H2 into SbT, H5 into SbHi.
+    specialize (IH1 _ SbT Se). specialize (IH2 _ SbHi Se).
+    apply (narrow_binds_3 Se) in Bi.
+    destruct Bi as [Bi1 | [T' [Bi1 [StT SbT']]]].
+    - (* case "type of x remained unchanged" *)
+      apply (typ_sel_hasnt Bi1 IH1 IH2).
+    - (* case "type of x changed from T to T'" *)
+      lets P: (subtyp_to_memberwise StT). destruct P as [P _]. specialize (P _ IH1).
+              (********************)
+      destruct P as [D1 [T'Has Sd]].
+      apply invert_subdec_typ_sync_left in Sd. destruct Sd as [Lo' [Hi' [Eq [StLo StHi1]]]].
+      subst D1.
+      eapply (typ_sel_hasnt Bi1 T'Has).
+      lets StHi2: (subtyp_trans (subtyp_to_okhyp StLo) (subtyp_hyp Bi1 T'Has SbT'
+         (subtyp_regular_1 StT) (subtyp_regular_2 StLo) (subtyp_regular_1 StHi1))).
+      (* from StHi1 and StHi2, we can conclude that Hi and Hi' are "equivalent",
+         so could apply IH2 (modula equivalence) *)
+      admit.
 Qed.
 
 Definition narrow_has_stable := proj1 narrow_has_hasnt_stable.
@@ -3271,6 +3326,13 @@ Lemma narrow_stable: forall G' G T,
   stable_typ G' T.
 Proof.
   introv Sb. gen G'. induction Sb; eauto.
+  + (* case stable_alias *)
+    introv Se. rename H into Bi, H0 into XHas.
+    specialize (IHSb1 _ Se). specialize (IHSb2 _ Se).
+    apply (narrow_binds_3 Se) in Bi.
+    destruct Bi as [Bi1 | [X' [Bi1 [StX SbX']]]].
+    - (* case "type of x remained unchanged" *)
+      eapply (stable_alias Bi1 IHSb1). (* same problems as above *)
 Qed.
 
 (* Needed by narrow_ty *)
