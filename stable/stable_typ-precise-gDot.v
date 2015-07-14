@@ -12,12 +12,23 @@ Require Import LibLN.
 (* ###################################################################### *)
 (** ** Syntax *)
 
-Parameter typ_label: Set.
-Parameter mtd_label: Set.
+Require Import Coq.Strings.String.
+Open Scope string_scope.
+Definition typ_label := string.
+Definition mtd_label := string.
+
+Notation "s1 == s2" :=
+  (if (string_dec s1 s2) then true else false) (at level 70, no associativity).
 
 Inductive label: Set :=
 | label_typ: typ_label -> label
 | label_mtd: mtd_label -> label.
+
+Definition beq_label(l1 l2: label): bool := match l1, l2 with
+| label_typ L1, label_typ L2 => L1 == L2
+| label_mtd m1, label_mtd m2 => m1 == m2
+| _, _ => false
+end.
 
 Inductive avar : Set :=
   | avar_b : nat -> avar  (* bound var (de Bruijn index) *)
@@ -85,7 +96,8 @@ Definition defs_hasnt(ds: defs)(l: label) := get_def l ds = None.
 
 Definition open_rec_avar (k: nat) (u: var) (a: avar) : avar :=
   match a with
-  | avar_b i => If k = i then avar_f u else avar_b i
+(*| avar_b i => If k = i then avar_f u else avar_b i*)
+  | avar_b i => if EqNat.beq_nat k i then avar_f u else avar_b i
   | avar_f x => avar_f x
   end.
 
@@ -210,7 +222,7 @@ Inductive red : trm -> sto -> trm -> sto -> Prop :=
 
 (* returns (option dec) because it's not total. *)
 Definition intersect_dec(D1 D2: dec): option dec :=
-  If label_of_dec D1 = label_of_dec D2 then
+  if beq_label (label_of_dec D1) (label_of_dec D2) then
     match D1, D2 with
     | (dec_typ L S1 U1), (dec_typ _ S2 U2)
       => Some (dec_typ L (typ_or S1 S2) (typ_and U1 U2))
@@ -222,7 +234,7 @@ Definition intersect_dec(D1 D2: dec): option dec :=
     None.
 
 Definition union_dec(D1 D2: dec): option dec :=
-  If label_of_dec D1 = label_of_dec D2 then
+  if beq_label (label_of_dec D1) (label_of_dec D2) then
     match D1, D2 with
     | (dec_typ L S1 U1), (dec_typ _ S2 U2)
       => Some (dec_typ L (typ_and S1 S2) (typ_or U1 U2))
@@ -233,8 +245,15 @@ Definition union_dec(D1 D2: dec): option dec :=
   else
     None.
 
-Notation "D1 && D2 == D3" := (intersect_dec D1 D2 = Some D3) (at level 40).
-Notation "D1 || D2 == D3" := (union_dec D1 D2 = Some D3) (at level 40).
+Notation "D1 &&& D2 === D3" := (intersect_dec D1 D2 = Some D3) (at level 40).
+Notation "D1 ||| D2 === D3" := (union_dec D1 D2 = Some D3) (at level 40).
+
+(*
+Definition dec_top(l: label): dec := match l with
+  | label_typ L => dec_typ L typ_bot typ_top
+  | label_mtd m => dec_mtd m typ_bot typ_top
+end.
+*)
 
 Definition dec_bot(l: label): dec := match l with
   | label_typ L => dec_typ L typ_top typ_bot
@@ -263,12 +282,12 @@ Inductive typ_has: ctx -> typ -> dec -> Prop :=
   | typ_and_has_12: forall G T1 T2 D1 D2 D3,
       typ_has G T1 D1 ->
       typ_has G T2 D2 ->
-      D1 && D2 == D3 ->
+      D1 &&& D2 === D3 ->
       typ_has G (typ_and T1 T2) D3
   | typ_or_has: forall G T1 T2 D1 D2 D3,
       typ_has G T1 D1 ->
       typ_has G T2 D2 ->
-      D1 || D2 == D3 ->
+      D1 ||| D2 === D3 ->
       typ_has G (typ_or T1 T2) D3
 with typ_hasnt: ctx -> typ -> label -> Prop :=
   | typ_top_hasnt: forall G l,
@@ -664,6 +683,618 @@ trm_new (defs_cons (defs_cons defs_nil
 )
 (trm_new defs_nil
 (trm_var (avar_b 0))).
+
+(*
+Eval cbv in (if "foo" == "foo" then 1 else 2).
+
+(if (string_dec "" "foo") then 1 else 2)
+
+(if (string_dec "" "foo") then 1 else 2)
+
+Example HelloWorld := " ""Hello world!"" ".
+*)
+
+(* Inductive subtyp_result: Set := subtyp_yes | subtyp_no | subtyp_timeout. *)
+
+(*
+Print Visibility.
+
+Close Scope dec_scope.
+
+Print Visibility.
+
+Open Scope bool_scope.
+
+Print Visibility.
+
+Scopes don't help to disambiguate between "_ && _ == " and "_ && _", because the
+first "spoils" the parser too much, so that the second can never be used afterwards.
+*)
+
+Open Scope bool_scope.
+
+(* First option is for timeout or non-wf types, second is for has/hasnt. *)
+Fixpoint lookup(fuel0: nat)(G: ctx)(T: typ)(l: label): option (option dec) :=
+match fuel0 with
+| 0 => None
+| S fuel => match T with
+  | typ_top => Some None
+  | typ_bot => Some (Some (dec_bot l))
+  | typ_rcd D => if (beq_label l (label_of_dec D)) then Some (Some D) else (Some None)
+  | typ_sel a L => match a with
+    | avar_f x => match EnvOps.get x G with
+      | Some X => match (lookup fuel G X (label_typ L)) with
+        | Some (Some (dec_typ _ Lo Hi)) => lookup fuel G Hi l
+        | _ => None (* error: x has no member named L, so x.L is not wf *)
+        end
+      | None => None (* error: x.L with x not in G *)
+      end
+    | avar_b n => None (* error: type not closed *)
+    end
+  | typ_and T1 T2 => match (lookup fuel G T1 l), (lookup fuel G T2 l) with
+    | Some oD1, Some oD2 => Some (match oD1, oD2 with
+      | Some D1, Some D2 => intersect_dec D1 D2
+      | Some D1, None    => Some D1
+      | None   , Some D2 => Some D2
+      | None   , None    => None
+      end)
+    | _, _ => None
+    end
+  | typ_or T1 T2 => match (lookup fuel G T1 l), (lookup fuel G T2 l) with
+    | Some oD1, Some oD2 => Some (match oD1, oD2 with
+      | Some D1, Some D2 => union_dec D1 D2
+      | _, _ => None
+      end)
+    | _, _ => None
+    end
+  end
+end.
+
+Lemma ifb_hoist: forall (A B: Type) (C: bool) (f: A -> B) (e1 e2: A),
+  (if C then f e1 else f e2) = f (if C then e1 else e2).
+Proof.
+  intros. destruct C; auto.
+Qed.
+
+Ltac case_ifb :=
+  match goal with
+  | _ : context[if ?c then _ else _] |- _ => let Eq := fresh "Eq" in destruct c eqn: Eq
+  end.
+
+Lemma beq_label_to_eq: forall l1 l2,
+  beq_label l1 l2 = true -> l1 = l2.
+Proof.
+  intros. unfold beq_label in H. destruct l1; destruct l2; try solve [inversions H].
+  + destruct (string_dec t t0) as [Eq | Ne]; try discriminate; subst; reflexivity.
+  + destruct (string_dec m m0) as [Eq | Ne]; try discriminate; subst; reflexivity.
+Qed.
+
+Lemma beq_label_to_neq: forall l1 l2,
+  beq_label l1 l2 = false -> l1 <> l2.
+Proof.
+  intros. intro Eq. subst.
+  unfold beq_label in H. destruct l2; try solve [inversions H].
+  + destruct (string_dec t t) as [Eq | Ne]; try discriminate; auto.
+  + destruct (string_dec m m) as [Eq | Ne]; try discriminate; auto.
+Qed.
+
+Lemma lookup_correct: forall fuel,
+ (forall G T l D, lookup fuel G T l = Some (Some D) -> typ_has G T D /\ label_of_dec D = l)
+/\ (forall G T l, lookup fuel G T l = Some None     -> typ_hasnt G T l).
+Proof.
+  intro fuel. induction fuel; try solve [split; intros; simpl in *; discriminate].
+  destruct IHfuel as [IH1 IH2]. split; introv Eq; simpl in Eq.
+  + destruct T; inversions Eq.
+    - destruct l; auto.
+    - rewrite ifb_hoist in H0. inversions H0. case_ifb; try discriminate.
+      inversions H1. apply beq_label_to_eq in Eq. subst. auto.
+    - destruct a; try solve [inversions H0].
+      destruct (EnvOps.get v G) eqn: Eq1; try solve [inversions H0].
+      destruct (lookup fuel G t0 (label_typ t)) eqn: Eq2; try solve [inversions H0].
+      destruct o as [tD | ].
+      * destruct (IH1 _ _ _ _ Eq2) as [Has1 Eq3].
+        destruct tD as [L Lo Hi | m T1 T2]; simpl in Eq3; inversions Eq3.
+        destruct (IH1 _ _ _ _ H0) as [Has2 Eq3]. eauto.
+      * inversions H0.
+    - repeat match goal with
+      | H: match ?t with
+           | Some _ => _
+           | None => _
+           end = _ |- _ => let Eq := fresh "Eq" in destruct t eqn: Eq; inversions H
+      end.
+      * destruct (IH1 _ _ _ _ Eq) as [Has1 E1].
+        destruct (IH1 _ _ _ _ Eq0) as [Has2 E2].
+        rename d into D1, d0 into D2. split; eauto. 
+        subst. destruct D1; destruct D2; unfold intersect_dec in H0; simpl; case_if;
+        inversions E2; inversions H0; auto.
+      * destruct (IH1 _ _ _ _ Eq) as [Has1 E1].
+        lets Hasnt2: (IH2 _ _ _ Eq0). subst. eauto.
+      * destruct (IH1 _ _ _ _ Eq0) as [Has1 E1].
+        lets Hasnt2: (IH2 _ _ _ Eq). subst. eauto.
+    - repeat match goal with
+      | H: match ?t with
+           | Some _ => _
+           | None => _
+           end = _ |- _ => let Eq := fresh "Eq" in destruct t eqn: Eq; inversions H
+      end.
+      destruct (IH1 _ _ _ _ Eq) as [Has1 E1].
+      destruct (IH1 _ _ _ _ Eq0) as [Has2 E2].
+      rename d into D1, d0 into D2. split; eauto. 
+      subst. destruct D1; destruct D2; unfold union_dec in H0; simpl; case_if;
+      inversions E2; inversions H0; auto.
+  + destruct T; inversions Eq.
+    - destruct l; auto.
+    - rewrite ifb_hoist in H0. inversions H0. case_ifb; try discriminate.
+      inversions H1. apply beq_label_to_neq in Eq. auto.
+    - destruct a; try solve [inversions H0].
+      destruct (EnvOps.get v G) eqn: Eq1; try solve [inversions H0].
+      destruct (lookup fuel G t0 (label_typ t)) eqn: Eq2; try solve [inversions H0].
+      destruct o as [tD | ].
+      * destruct (IH1 _ _ _ _ Eq2) as [Has1 Eq3].
+        destruct tD as [L Lo Hi | m T1 T2]; simpl in Eq3; inversions Eq3.
+        lets Hasnt2: (IH2 _ _ _ H0). eauto.
+      * inversions H0.
+    - repeat match goal with
+      | H: match ?t with
+           | Some _ => _
+           | None => _
+           end = _ |- _ => let Eq := fresh "Eq" in destruct t eqn: Eq; inversions H
+      end.
+      * destruct (IH1 _ _ _ _ Eq) as [Has1 E1].
+        destruct (IH1 _ _ _ _ Eq0) as [Has2 E2].
+        rename d into D1, d0 into D2.
+        subst. destruct D1; destruct D2; unfold intersect_dec in H0; simpl; case_if;
+        inversions E2; inversions H0; simpl in *.
+        { destruct (string_dec t t); try discriminate. exfalso. auto. }
+        { destruct (string_dec m m); try discriminate. exfalso. auto. }
+      * lets Hasnt1: (IH2 _ _ _ Eq).
+        lets Hasnt2: (IH2 _ _ _ Eq0). eauto.
+    - repeat match goal with
+      | H: match ?t with
+           | Some _ => _
+           | None => _
+           end = _ |- _ => let Eq := fresh "Eq" in destruct t eqn: Eq; inversions H
+      end.
+      * destruct (IH1 _ _ _ _ Eq) as [Has1 E1].
+        destruct (IH1 _ _ _ _ Eq0) as [Has2 E2].
+        unfold union_dec in H0. rewrite E1 in H0. rewrite E2 in H0.
+        case_ifb. {
+          rename d into D1, d0 into D2.
+          subst. destruct D1; destruct D2; simpl; discriminate.
+        } {
+          exfalso. destruct l; unfold beq_label in Eq1.
+          - destruct (string_dec t t); [discriminate | auto].
+          - destruct (string_dec m m); [discriminate | auto].
+        }
+      * destruct (IH1 _ _ _ _ Eq) as [Has1 E1].
+        lets Hasnt2: (IH2 _ _ _ Eq0). subst. eauto.
+      * destruct o0 as [D |].
+        { destruct (IH1 _ _ _ _ Eq0) as [Has1 E1].
+          lets Hasnt2: (IH2 _ _ _ Eq). subst. eauto. }
+        { lets Hasnt1: (IH2 _ _ _ Eq).
+          lets Hasnt2: (IH2 _ _ _ Eq0). eauto. }
+Qed.
+
+Fixpoint is_stable_typ(T: typ): bool := match T with
+| typ_top => true
+| typ_bot => true
+| typ_rcd _ => true
+| typ_sel _ _ => false
+| typ_and T1 T2 => (is_stable_typ T1) && (is_stable_typ T2)
+| typ_or  T1 T2 => (is_stable_typ T1) && (is_stable_typ T2)
+end.
+
+Lemma is_stable_typ_correct: forall T,
+  is_stable_typ T = true -> stable_typ T.
+Proof.
+  intro T. induction T; intro Eq; unfold is_stable_typ in Eq; eauto; try discriminate;
+  apply andb_prop in Eq; destruct Eq as [Eq1 Eq2]; eauto.
+Qed.
+
+Fixpoint eq_typ_dec(T1 T2: typ) : {T1 = T2} + {T1 <> T2}
+with eq_dec_dec(D1 D2: dec) : {D1 = D2} + {D1 <> D2}.
+{ decide equality.
+  + apply string_dec.
+  + admit.
+Abort.
+
+(* Not in std_lib because it requires decidable equality
+Definition in_list(T: Set)(x: T)(l: list T): bool := List.find (fun y => x = y) l.*)
+
+Fixpoint is_wf_typ(fuel0: nat)(G: ctx)(A: list typ)(T: typ): bool := match fuel0 with
+| 0 => false
+| S fuel => (LibList.mem T A) (* <-- TODO this cannot be evaluated!!!*)
+  || match T with
+  | typ_top => true
+  | typ_bot => false
+  | typ_rcd (dec_typ L Lo Hi) => let A2 := cons T A in
+                                 is_wf_typ fuel G A2 Lo && is_wf_typ fuel G A2 Hi
+  | typ_rcd (dec_mtd m T1 T2) => let A2 := cons T A in
+                                 is_wf_typ fuel G A2 T1 && is_wf_typ fuel G A2 T2
+  | typ_sel a L => match a with
+    | avar_f x => match EnvOps.get x G with
+      | Some X => match (lookup fuel G X (label_typ L)) with
+        | Some (Some (dec_typ _ Lo Hi)) => is_stable_typ X &&
+                                           is_wf_typ fuel G A X &&
+                                           is_wf_typ fuel G A Lo &&
+                                           is_wf_typ fuel G A Hi
+        | _ => false (* x has no member named L *)
+        end
+      | None => false (* x.L with x not in G *)
+      end
+    | avar_b n => false (* error: type not closed *)
+    end
+  | typ_and T1 T2 => (is_wf_typ fuel G A T1) && (is_wf_typ fuel G A T2)
+  | typ_or T1 T2 => (is_wf_typ fuel G A T1) && (is_wf_typ fuel G A T2)
+  end
+end.
+
+Lemma is_wf_typ_correct: forall fuel G A T,
+  is_wf_typ fuel G A T = true -> wf_typ_impl G (from_list A) T.
+Proof.
+  intro. induction fuel; try solve [intros; simpl in *; discriminate].
+  rename IHfuel into IH. introv Eq. simpl in Eq.
+  destruct (LibList.mem T A) eqn: EqI.
+  - clear Eq. assert (In: T \in (from_list A)) by admit. (* from EqI *)
+    apply (wf_hyp _ In).
+  - simpl in Eq. destruct T.
+    + apply wf_top.
+    + apply wf_bot.
+    + apply wf_rcd. rewrite union_comm. rewrite <- from_list_cons.
+      destruct d as [L Lo Hi | m Ta Tr];
+      apply andb_prop in Eq; destruct Eq as [Eq1 Eq2];
+      eauto.
+    + destruct a; try discriminate.
+      repeat match goal with
+      | H: match ?t with
+           | Some _ => _
+           | None => _
+           end = _ |- _ => let Eq := fresh "Eq" in destruct t eqn: Eq; inversions H
+      end.
+      destruct d; try discriminate.
+      apply andb_prop in H0. destruct H0 as [H0 Eq4].
+      apply andb_prop in H0. destruct H0 as [H0 Eq3].
+      apply andb_prop in H0. destruct H0 as [Eq1 Eq2].
+      lets W1: (IH _ _ _ Eq2).
+      lets W2: (IH _ _ _ Eq3).
+      lets W3: (IH _ _ _ Eq4).
+      refine (wf_sel Eq0 _ _ W1 W2 W3).
+      * apply (is_stable_typ_correct _ Eq1).
+      * destruct ((proj1 (lookup_correct fuel)) _ _ _ _ Eq) as [Has E].
+        simpl in E. inversions E. exact Has.
+    + apply andb_prop in Eq. destruct Eq as [Eq1 Eq2]. eauto.
+    + apply andb_prop in Eq. destruct Eq as [Eq1 Eq2]. eauto.
+Qed.
+
+Fixpoint isSubType(fuel0: nat)(G: ctx)(tp1 tp2: typ): bool := match fuel0 with
+| 0 => false
+| S fuel => match tp2 with
+  | typ_top => is_wf_typ fuel G nil tp1
+  | typ_bot => secondTry fuel G tp1 tp2
+  | typ_rcd (dec_typ L2 tpLo2 tpHi2) => match tp1 with
+    | typ_rcd (dec_typ L1 tpLo1 tpHi1) => (L1 == L2) && 
+                                          (isSubType fuel G tpLo2 tpLo1) &&
+                                          (isSubType fuel G tpHi1 tpHi2)
+    | _ => false
+    end
+  | typ_rcd (dec_mtd m2 tpArg2 tpRet2) => match tp1 with
+    | typ_rcd (dec_mtd m1 tpArg1 tpRet1) => (m1 == m2) && 
+                                            (isSubType fuel G tpArg2 tpArg1) &&
+                                            (isSubType fuel G tpRet1 tpRet2)
+    | _ => false
+    end
+  | typ_sel a L => match a with
+    | avar_f x => match EnvOps.get x G with
+      | Some X => match (lookup fuel G X (label_typ L)) with
+        | Some (Some (dec_typ _ Lo Hi)) =>
+          ( (isSubType fuel G tp1 Lo) &&
+            (isSubType fuel G Lo Hi) &&
+            (is_stable_typ X) &&
+            (is_wf_typ fuel G nil X)
+          ) || (secondTry fuel G tp1 tp2)
+        | _ => false (* x has no member named L *)
+        end
+      | None => false (* x.L with x not in G *)
+      end
+    | avar_b n => false (* error: type not closed *)
+    end
+  | typ_and tp21 tp22 => (isSubType fuel G tp1 tp21) && (isSubType fuel G tp1 tp22)
+  | typ_or tp21 tp22 =>
+      ((isSubType fuel G tp1 tp21) && (is_wf_typ fuel G nil tp22)) ||
+      ((isSubType fuel G tp1 tp22) && (is_wf_typ fuel G nil tp21)) ||
+      (secondTry fuel G tp1 tp2)
+  end
+end
+with secondTry(fuel0: nat)(G: ctx)(tp1 tp2: typ): bool := match fuel0 with
+| 0 => false
+| S fuel => match tp1 with
+  | typ_bot => is_wf_typ fuel G nil tp2
+  | typ_sel a L => match a with
+    | avar_f x => match EnvOps.get x G with
+      | Some X => match (lookup fuel G X (label_typ L)) with
+        | Some (Some (dec_typ _ Lo Hi)) =>
+            (isSubType fuel G Hi tp2) &&
+            (isSubType fuel G Lo Hi) &&
+            (is_stable_typ X) &&
+            (is_wf_typ fuel G nil X)
+        | _ => false (* x has no member named L *)
+        end
+      | None => false (* x.L with x not in G *)
+      end
+    | avar_b n => false (* error: type not closed *)
+    end
+  | typ_and tp11 tp12 => 
+      ((isSubType fuel G tp11 tp2) && (is_wf_typ fuel G nil tp12)) ||
+      ((isSubType fuel G tp12 tp2) && (is_wf_typ fuel G nil tp11))
+  | typ_or tp11 tp12 => (isSubType fuel G tp11 tp2) && (isSubType fuel G tp12 tp2)
+  | _ => false
+  end
+end.
+
+Lemma isSubType_correct: forall fuel,
+   (forall G tp1 tp2, isSubType fuel G tp1 tp2 = true -> subtyp nohyp G tp1 tp2)
+/\ (forall G tp1 tp2, secondTry fuel G tp1 tp2 = true -> subtyp nohyp G tp1 tp2).
+Proof.
+  intro. induction fuel. try solve [split; intros; simpl in *; discriminate].
+  destruct IHfuel as [IH1 IH2]. split; introv Eq.
+  + destruct tp2.
+    - apply subtyp_top. rewrite <- from_list_nil.
+      apply (is_wf_typ_correct fuel). exact Eq.
+    - apply (IH2 _ _ _ Eq).
+    - unfold isSubType in Eq. fold isSubType in Eq.
+      destruct d as [L2 Lo2 Hi2 | m2 A2 R2]; destruct tp1; try discriminate;
+      destruct d as [L1 Lo1 Hi1 | m1 A1 R1]; try discriminate;
+      apply andb_prop in Eq; destruct Eq as [Eq Eq3];
+      apply andb_prop in Eq; destruct Eq as [Eq1 Eq2].
+      * destruct (string_dec L1 L2) as [Eq | Ne]; try discriminate; subst.
+        apply subtyp_rcd. apply* subdec_typ.
+      * destruct (string_dec m1 m2) as [Eq | Ne]; try discriminate; subst.
+        apply subtyp_rcd. apply* subdec_mtd.
+    - unfold isSubType in Eq. fold isSubType in Eq.
+      destruct a; try discriminate.
+      repeat match goal with
+      | H: match ?t with
+           | Some _ => _
+           | None => _
+           end = _ |- _ => let Eq := fresh "Eq" in destruct t eqn: Eq; inversions H
+      end.
+      destruct d; try discriminate.
+      apply Bool.orb_true_elim in H0. destruct H0 as [H0 | H0].
+      * apply andb_prop in H0. destruct H0 as [H0 Eq4].
+        apply andb_prop in H0. destruct H0 as [H0 Eq3].
+        apply andb_prop in H0. destruct H0 as [Eq1 Eq2].
+        apply (subtyp_trans (IH1 _ _ _ Eq1)).
+        refine (subtyp_sel_r Eq0 _ _ _ _).
+        { rewrite <- from_list_nil. apply* is_wf_typ_correct. }
+        { apply* is_stable_typ_correct. }
+        { destruct ((proj1 (lookup_correct fuel)) _ _ _ _ Eq) as [Has E].
+          simpl in E. inversions E. exact Has. }
+        { apply* IH1. }
+      * fold secondTry in H0. apply* IH2.
+    - unfold isSubType in Eq. fold isSubType in Eq.
+      apply andb_prop in Eq. destruct Eq as [Eq1 Eq2]. apply* subtyp_and.
+    - unfold isSubType in Eq. fold secondTry in Eq.
+      apply Bool.orb_true_elim in Eq. destruct Eq as [Eq | Eq].
+      * fold isSubType in Eq.
+        apply Bool.orb_true_elim in Eq. destruct Eq as [Eq | Eq];
+        apply andb_prop in Eq; destruct Eq as [Eq1 Eq2].
+        { specialize (IH1 _ _ _ Eq1).
+          refine (subtyp_trans IH1 (subtyp_or_l _ _ _)).
+          + admit. (* subtyp_regular *)
+          + rewrite <- from_list_nil. apply* is_wf_typ_correct. }
+        { specialize (IH1 _ _ _ Eq1).
+          refine (subtyp_trans IH1 (subtyp_or_r _ _ _)).
+          + rewrite <- from_list_nil. apply* is_wf_typ_correct.
+          + admit. (* subtyp_regular *) }
+      * apply* IH2.
+  + destruct tp1; unfold secondTry in Eq.
+    - discriminate.
+    - apply subtyp_bot.
+      rewrite <- from_list_nil. apply* is_wf_typ_correct.
+    - discriminate.
+    - fold isSubType in Eq.
+      destruct a; try discriminate.
+      repeat match goal with
+      | H: match ?t with
+           | Some _ => _
+           | None => _
+           end = _ |- _ => let Eq := fresh "Eq" in destruct t eqn: Eq; inversions H
+      end.
+      destruct d; try discriminate.
+      apply andb_prop in H0. destruct H0 as [H0 Eq4].
+      apply andb_prop in H0. destruct H0 as [H0 Eq3].
+      apply andb_prop in H0. destruct H0 as [Eq1 Eq2].
+      refine (subtyp_trans _ (IH1 _ _ _ Eq1)).
+      refine (subtyp_sel_l Eq0 _ _ _ _).
+      { rewrite <- from_list_nil. apply* is_wf_typ_correct. }
+      { apply* is_stable_typ_correct. }
+      { destruct ((proj1 (lookup_correct fuel)) _ _ _ _ Eq) as [Has E].
+        simpl in E. inversions E. exact Has. }
+      { apply* IH1. }
+    - fold isSubType in Eq.
+      apply Bool.orb_true_elim in Eq.
+      destruct Eq as [Eq | Eq]; apply andb_prop in Eq; destruct Eq as [Eq1 Eq2].
+      * specialize (IH1 _ _ _ Eq1).
+        refine (subtyp_trans (subtyp_and_l _ _ _) IH1).
+        { admit. (* subtyp_regular *) }
+        { rewrite <- from_list_nil. apply* is_wf_typ_correct. }
+      * specialize (IH1 _ _ _ Eq1).
+        refine (subtyp_trans (subtyp_and_r _ _ _) IH1).
+        { rewrite <- from_list_nil. apply* is_wf_typ_correct. }
+        { admit. (* subtyp_regular *) }
+    - fold isSubType in Eq. apply andb_prop in Eq; destruct Eq as [Eq1 Eq2].
+      apply* subtyp_or.
+Qed.
+
+Definition predictDefType(d: def): dec := match d with
+| def_typ L U => dec_typ L U U
+| def_mtd m T1 T2 body => dec_mtd m T1 T2
+end.
+
+Fixpoint predictDefsType(ds: defs): typ := match ds with
+| defs_nil => typ_top
+| defs_cons rest d => typ_and (predictDefsType rest) (typ_rcd (predictDefType d))
+end.
+
+Lemma open_and_predictDefType_commute: forall x d,
+  open_dec x (predictDefType d) = predictDefType (open_def x d).
+Admitted.
+
+Lemma open_and_predictDefsType_commute: forall x ds,
+  open_typ x (predictDefsType ds) = predictDefsType (open_defs x ds).
+Admitted.
+
+Parameter theFreshVar: var.
+Axiom theFreshVarEq: forall x, x = theFreshVar.
+(*Axiom theFreshVarIsFresh: forall L, theFreshVar \notin L.*)
+
+Fixpoint typeAssign(fuel0: nat)(G: ctx)(t: trm): option typ := match fuel0 with
+| 0 => None
+| S fuel => match t with
+  | trm_var a => match a with
+    | avar_f x => match EnvOps.get x G with
+      | Some T => if is_wf_typ fuel G nil T then Some T else None
+      | None => None
+      end
+    | avar_b _ => None
+    end
+  | trm_new ds u => let T := predictDefsType (open_defs theFreshVar ds) in
+      if (typeCheckDefs fuel (G & theFreshVar ~ T) (open_defs theFreshVar ds)) then
+        match typeAssign fuel (G & theFreshVar ~ T) (open_trm theFreshVar u) with
+        | Some U => if is_wf_typ fuel G nil U then Some U else None
+        | None => None
+        end
+      else
+        None
+  | trm_call t m u => match typeAssign fuel G t with
+    | Some T => match lookup fuel G T (label_mtd m) with
+      | Some (Some (dec_mtd _ tpArg tpRet)) => match typeAssign fuel G u with
+        | Some U => if isSubType fuel G U tpArg && is_wf_typ fuel G nil tpRet then
+                      Some tpRet
+                    else
+                      None
+        | None => None
+        end
+      | _ => None
+      end
+    | None => None
+    end
+  end
+end
+with typeCheckDef(fuel0: nat)(G: ctx)(d: def): bool := match fuel0 with
+| 0 => false
+| S fuel => match d with
+  | def_typ L U => is_wf_typ fuel G nil U
+  | def_mtd m T1 T2 body =>
+    match typeAssign fuel (G & theFreshVar ~ T1) (open_trm theFreshVar body) with
+    | Some B => (is_wf_typ fuel G nil T1) &&
+                (is_wf_typ fuel G nil T2) &&
+                (isSubType fuel G B T2)
+    | None => false
+    end
+  end
+end
+with typeCheckDefs(fuel0: nat)(G: ctx)(ds: defs): bool := match fuel0 with
+| 0 => false
+| S fuel => match ds with
+  | defs_nil => true
+  | defs_cons rest d => match get_def (label_of_def d) rest with
+    | Some _ => false
+    | None => (typeCheckDefs fuel G rest) && (typeCheckDef fuel G d)
+    end
+  end
+end.
+
+Lemma typeChecking_correct: forall fuel,
+   (forall G t T, typeAssign    fuel G t  = Some T -> ty_trm  G t  T)
+/\ (forall G d  , typeCheckDef  fuel G d  = true   -> ty_def  G d  (predictDefType  d ))
+/\ (forall G ds , typeCheckDefs fuel G ds = true   -> ty_defs G ds (predictDefsType ds)).
+Proof.
+  intro fuel. induction fuel; try solve [repeat split; intros; inversions H].
+  destruct IHfuel as [IH1 [IH2 IH3]]. repeat split; introv Eq.
+  + destruct t; unfold typeAssign in Eq.
+    - destruct a; try discriminate.
+      destruct (EnvOps.get v G) eqn: Eq2; try discriminate.
+      case_ifb; try discriminate. inversions Eq.
+      apply (ty_var Eq2). rewrite <- from_list_nil. apply* is_wf_typ_correct.
+    - fold typeCheckDefs in Eq. fold typeAssign in Eq. case_ifb; try discriminate.
+      match goal with
+      | H: match ?t with
+           | Some _ => _
+           | None => _
+           end = _ |- _ => destruct t eqn: Eq1
+      end; try discriminate.
+      case_ifb; try discriminate. inversions Eq.
+      specialize (IH1 _ _ _ Eq1).
+      specialize (IH3 _ _ Eq0).
+      apply_fresh ty_new as x; try (rewrite (theFreshVarEq x); clear Frx x).
+      * rewrite <- open_and_predictDefsType_commute in IH3. apply IH3.
+      * rewrite <- open_and_predictDefsType_commute in IH1. apply IH1.
+      * rewrite <- from_list_nil. apply* is_wf_typ_correct.
+    - fold typeAssign in Eq.
+      repeat match goal with
+      | H: match ?t with
+           | Some _ => _
+           | None => _
+           end = _ |- _ => let Eq := fresh "Eq" in destruct t eqn: Eq; inversions H
+      end.
+      destruct d; try discriminate.
+      match goal with
+      | H: match ?t with
+           | Some _ => _
+           | None => _
+           end = _ |- _ => let Eq := fresh "Eq" in destruct t eqn: Eq; inversions H
+      end.
+      case_ifb; try discriminate. inversions H1.
+      apply andb_prop in Eq2. destruct Eq2 as [Eq2 Eq3].
+      refine (ty_call _ _ _ _).
+      * apply (IH1 _ _ _ Eq0).
+      * destruct ((proj1 (lookup_correct fuel)) _ _ _ _ Eq) as [Has E].
+        simpl in E. inversions E. apply Has.
+      * apply ty_sbsm with t4. 
+        { apply (IH1 _ _ _ Eq1). }
+        { assert (Imp: subtyp nohyp G t4 t0 -> subtyp okhyp G t4 t0) by admit. apply Imp.
+          apply ((proj1 (isSubType_correct fuel)) _ _ _ Eq2). }
+      * rewrite <- from_list_nil. apply* is_wf_typ_correct.
+  + destruct d; unfold typeCheckDef in Eq.
+    - apply ty_tdef. rewrite <- from_list_nil. apply* is_wf_typ_correct.
+    - fold typeAssign in Eq.
+      match goal with
+      | H: match ?t with
+           | Some _ => _
+           | None => _
+           end = _ |- _ => let Eq := fresh "Eq" in destruct t eqn: Eq
+      end; try discriminate.
+      apply andb_prop in Eq. destruct Eq as [Eq Eq3].
+      apply andb_prop in Eq. destruct Eq as [Eq1 Eq2].
+      apply_fresh ty_mdef as x; try (rewrite (theFreshVarEq x); clear Frx x).
+      * rewrite <- from_list_nil. apply* is_wf_typ_correct.
+      * rewrite <- from_list_nil. apply* is_wf_typ_correct.
+      * apply ty_sbsm with t2.
+        { apply (IH1 _ _ _ Eq0). }
+        { assert (Imp: subtyp nohyp G t2 t0
+                    -> subtyp okhyp (G & theFreshVar ~ t) t2 t0) by admit. apply Imp.
+           (* TODO weakening & nohyp_to_okhyp *)
+          apply ((proj1 (isSubType_correct fuel)) _ _ _ Eq3). }
+  + destruct ds; unfold typeCheckDefs in Eq.
+    - simpl. apply ty_defs_nil.
+    - fold typeCheckDef in Eq. fold typeCheckDefs in Eq.
+      destruct (get_def (label_of_def d) ds) eqn: Eq0; try discriminate.
+      apply andb_prop in Eq. destruct Eq as [Eq1 Eq2].
+      apply ty_defs_cons.
+      * fold predictDefsType. apply* IH3.
+      * apply* IH2.
+      * apply Eq0.
+Qed.
+
+Definition typeAssign_correct(fuel: nat) := (proj1 (typeChecking_correct fuel)).
+
+Fact tc1: ty_trm empty ex1 typ_top.
+Proof.
+  apply (typeAssign_correct 3). simpl. case_if.
+  apply (typeAssign_correct 12). simpl.
+Qed.
+
 
 Fact tc1: ty_trm empty ex1 typ_top.
 Proof.
