@@ -13,10 +13,12 @@ Require Import LibLN.
 (** ** Syntax *)
 
 Parameter typ_label: Set.
+Parameter cls_label: Set.
 Parameter mtd_label: Set.
 
 Inductive label: Set :=
 | label_typ: typ_label -> label
+| label_cls: cls_label -> label
 | label_mtd: mtd_label -> label.
 
 Inductive avar : Set :=
@@ -32,6 +34,7 @@ Inductive typ : Set :=
   | typ_or   : typ -> typ -> typ
 with dec : Set :=
   | dec_typ  : typ_label -> typ -> typ -> dec (* L: S..U *)
+  | dec_cls  : cls_label -> typ -> dec        (* C: Bot..U *)
   | dec_mtd  : mtd_label -> typ -> typ -> dec (* m: S->U *).
 
 Inductive trm: Set :=
@@ -40,6 +43,7 @@ Inductive trm: Set :=
   | trm_call: trm -> mtd_label -> trm -> trm (* t1.m(t2) *)
 with def : Set :=
   | def_typ : typ_label -> typ -> def (* only type aliases allowed here *)
+  | def_cls : cls_label -> typ -> def
   | def_mtd : mtd_label -> typ -> typ -> trm -> def (* one nameless argument *)
 with defs : Set :=
   | defs_nil : defs
@@ -59,11 +63,13 @@ Definition sto := env defs.
 
 Definition label_of_def(d: def): label := match d with
 | def_typ L _ => label_typ L
+| def_cls C _ => label_cls C
 | def_mtd m _ _ _ => label_mtd m
 end.
 
 Definition label_of_dec(D: dec): label := match D with
 | dec_typ L _ _ => label_typ L
+| dec_cls C _   => label_cls C
 | dec_mtd m _ _ => label_mtd m
 end.
 
@@ -101,6 +107,7 @@ Fixpoint open_rec_typ (k: nat) (u: var) (T: typ): typ :=
 with open_rec_dec (k: nat) (u: var) (D: dec): dec :=
   match D with
   | dec_typ L T U => dec_typ L (open_rec_typ k u T) (open_rec_typ k u U)
+  | dec_cls C U   => dec_cls C (open_rec_typ k u U)
   | dec_mtd m T U => dec_mtd m (open_rec_typ k u T) (open_rec_typ k u U)
   end.
 
@@ -114,6 +121,7 @@ Fixpoint open_rec_trm (k: nat) (u: var) (t: trm): trm :=
 with open_rec_def (k: nat) (u: var) (d: def): def :=
   match d with
   | def_typ L T => def_typ L (open_rec_typ k u T)
+  | def_cls C T => def_cls C (open_rec_typ k u T)
   | def_mtd m T1 T2 e => def_mtd m (open_rec_typ k u T1) (open_rec_typ k u T2)
                          (open_rec_trm (S k) u e)
   end
@@ -152,6 +160,7 @@ Fixpoint fv_typ (T: typ) : vars :=
 with fv_dec (D: dec) : vars :=
   match D with
   | dec_typ L T U => (fv_typ T) \u (fv_typ U)
+  | dec_cls C U   => (fv_typ U)
   | dec_mtd m T U => (fv_typ T) \u (fv_typ U)
   end.
 
@@ -166,6 +175,7 @@ Fixpoint fv_trm (t: trm) : vars :=
 with fv_def (d: def) : vars :=
   match d with
   | def_typ _ T     => (fv_typ T)
+  | def_cls _ T     => (fv_typ T)
   | def_mtd _ T U u => (fv_typ T) \u (fv_typ U) \u (fv_trm u)
   end
 with fv_defs(ds: defs) : vars :=
@@ -238,6 +248,7 @@ Notation "D1 || D2 == D3" := (union_dec D1 D2 = Some D3) (at level 40).
 
 Definition dec_bot(l: label): dec := match l with
   | label_typ L => dec_typ L typ_top typ_bot
+  | label_cls C => dec_cls C typ_bot
   | label_mtd m => dec_mtd m typ_top typ_bot
 end.
 
@@ -371,6 +382,9 @@ with wf_dec_impl: ctx -> fset typ -> dec -> Prop :=
       wf_typ_impl G A Lo ->
       wf_typ_impl G A Hi ->
       wf_dec_impl G A (dec_typ L Lo Hi)
+  | wf_cmem: forall G A C T,
+      wf_typ_impl G A T ->
+      wf_dec_impl G A (dec_cls C T)
   | wf_mtd: forall G A m U V,
       wf_typ_impl G A U ->
       wf_typ_impl G A V ->
@@ -449,6 +463,9 @@ with subdec: hmode -> ctx -> dec -> dec -> Prop :=
       subtyp hm G Lo2 Lo1 ->
       subtyp hm G Hi1 Hi2 ->
       subdec hm G (dec_typ L Lo1 Hi1) (dec_typ L Lo2 Hi2)
+  | subdec_cls: forall hm G C T,
+      wf_typ G T ->
+      subdec hm G (dec_cls C T) (dec_cls C T) (* class definitions cannot be refined *)
   | subdec_mtd: forall hm m G S1 T1 S2 T2,
       subtyp hm G S2 S1 ->
       subtyp hm G T1 T2 ->
@@ -483,6 +500,9 @@ with ty_def: ctx -> def -> dec -> Prop :=
   | ty_tdef: forall G L T,
       wf_typ G T ->
       ty_def G (def_typ L T) (dec_typ L T T)
+  | ty_cdef: forall G C T,
+      wf_typ G T ->
+      ty_def G (def_cls C T)
   | ty_mdef: forall L m G T U u,
       (* These wf checks ensure that x does not appear in T and U.
          But note that it is allowed to occur in the precise type of u. *)
@@ -499,6 +519,13 @@ with ty_defs: ctx -> defs -> typ -> Prop :=
       ty_def G d D ->
       defs_hasnt ds (label_of_def d) -> (* <-- no duplicates *)
       ty_defs G (defs_cons ds d) (typ_and T (typ_rcd D)).
+
+(* How can a term be assinged a class type?? 
+   --> need to give the type in ty_new! 
+   But we don't want to do expansion of the type given there...
+
+*)
+hmmm
 
 (** *** Well-formed store *)
 Inductive wf_sto: sto -> ctx -> Prop :=
@@ -1404,6 +1431,7 @@ Fixpoint subst_typ (z: var) (u: var) (T: typ) { struct T } : typ :=
 with subst_dec (z: var) (u: var) (D: dec) { struct D } : dec :=
   match D with
   | dec_typ L T U => dec_typ L (subst_typ z u T) (subst_typ z u U)
+  | dec_cls C U   => dec_cls C (subst_typ z u U)
   | dec_mtd m T U => dec_mtd m (subst_typ z u T) (subst_typ z u U)
   end.
 
@@ -1416,6 +1444,7 @@ Fixpoint subst_trm (z: var) (u: var) (t: trm) : trm :=
 with subst_def (z: var) (u: var) (d: def) : def :=
   match d with
   | def_typ L T => def_typ L (subst_typ z u T)
+  | def_cls C T => def_cls C (subst_typ z u T)
   | def_mtd m T1 T2 b => def_mtd m (subst_typ z u T1) (subst_typ z u T2) (subst_trm z u b)
   end
 with subst_defs (z: var) (u: var) (ds: defs) : defs :=
@@ -2111,8 +2140,8 @@ Lemma subdec_intersect_l: forall hm G D1 D2 D12,
   subdec hm G D12 D1.
 Proof.
   introv Eq WfD1 WfD2. unfold intersect_dec in Eq. case_if.
-  destruct D1 as [L1 S1 U1 | m1 S1 U1];
-  destruct D2 as [L2 S2 U2 | m2 S2 U2];
+  destruct D1;
+  destruct D2;
   inversions Eq;
   destruct_wf;
   try in_empty_contradiction;
@@ -2126,8 +2155,8 @@ Lemma subdec_intersect_r: forall hm G D1 D2 D12,
   subdec hm G D12 D2.
 Proof.
   introv Eq WfD1 WfD2. unfold intersect_dec in Eq. case_if.
-  destruct D1 as [L1 S1 U1 | m1 S1 U1];
-  destruct D2 as [L2 S2 U2 | m2 S2 U2];
+  destruct D1;
+  destruct D2;
   inversions Eq;
   inversions H;
   destruct_wf;
@@ -2142,8 +2171,8 @@ Lemma subdec_union_l: forall hm G D1 D2 D12,
   subdec hm G D1 D12.
 Proof.
   introv Eq Wf1 Wf2. unfold union_dec in Eq. case_if.
-  destruct D1 as [L1 S1 U1 | m1 S1 U1];
-  destruct D2 as [L2 S2 U2 | m2 S2 U2];
+  destruct D1;
+  destruct D2;
   inversions Eq;
   inversions H;
   destruct_wf;
@@ -2157,8 +2186,8 @@ Lemma subdec_union_r: forall hm G D1 D2 D12,
   subdec hm G D2 D12.
 Proof.
   introv Eq Wf1 Wf2. unfold union_dec in Eq. case_if.
-  destruct D1 as [L1 S1 U1 | m1 S1 U1];
-  destruct D2 as [L2 S2 U2 | m2 S2 U2];
+  destruct D1;
+  destruct D2;
   inversions Eq;
   inversions H;
   destruct_wf;
