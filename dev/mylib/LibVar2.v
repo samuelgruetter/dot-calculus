@@ -33,6 +33,9 @@ Parameter var_gen : vars -> var.
 Parameter var_gen_spec : forall E, (var_gen E) \notin E.
 Parameter var_fresh : forall (L : vars), { x : var | x \notin L }.
 
+Definition var_gen_list (l : list nat) :=
+  1 + fold_right plus O l.
+
 End VariablesType.
 
 

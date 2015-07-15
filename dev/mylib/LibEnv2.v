@@ -30,9 +30,9 @@ Definition concat : env A -> env A -> env A := fun E F => (F ++ E)%list.
 Definition singles : list var -> list A -> env A := fun xs vs =>
     fold_right (fun p acc => concat acc (single (fst p) (snd p))) empty (combine xs vs).
 
-Parameter keys : env A -> list var.
-Parameter keys_def : 
-  keys = map fst.
+Definition keys : env A -> list var := map fst.
+
+Definition gen_fresh_var_from_env(E: env A) := var_gen_list (keys E).
 
 Parameter values : env A -> list A.
 Parameter values_def :
@@ -146,6 +146,8 @@ Lemma get_def :
   get = get_impl.
 Proof. reflexivity. Qed.
 
+Definition gen_fresh_var_from_env(E: env A) := var_gen_list (keys E).
+
 End Concrete.
 
 Implicit Arguments empty [A].
@@ -221,7 +223,7 @@ End MoreDefinitions.
 (* ---------------------------------------------------------------------- *)
 (** ** Basic Properties *)
 
-Hint Rewrite keys_def values_def
+Hint Rewrite values_def
   dom_def map_def map_keys_def : env_defs.
 
 Ltac rew_env_defs := autorewrite with env_defs in *.

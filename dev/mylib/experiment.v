@@ -713,6 +713,19 @@ first "spoils" the parser too much, so that the second can never be used afterwa
 
 Open Scope bool_scope.
 
+(*
+Inductive tc_result(A: Set) :=
+| tc_success: A -> tc_result
+| tc_typ_hasnt: typ -> label -> tc_result
+| tc_ctx_hasnt: env -> var -> tc_result
+| tc_lookup_timeout: typ -> label -> tc_result
+| tc_unbound_avar_b: tc_result
+| tc_assertion_failed: tc_result
+
+| tc_wf_timeout: typ -> tc_result
+| tc_
+*)
+
 (* First option is for timeout or non-wf types, second is for has/hasnt. *)
 Fixpoint lookup(fuel0: nat)(G: ctx)(T: typ)(l: label): option (option dec) :=
 match fuel0 with
@@ -987,6 +1000,10 @@ Qed.
 
 Fixpoint isSubType(fuel0: nat)(G: ctx)(tp1 tp2: typ): bool := match fuel0 with
 | 0 => false
+| S fuel => if eq_typ_dec tp1 tp2 then is_wf_typ fuel G nil tp1 else firstTry fuel G tp1 tp2
+end
+with firstTry(fuel0: nat)(G: ctx)(tp1 tp2: typ): bool := match fuel0 with
+| 0 => false
 | S fuel => match tp2 with
   | typ_top => is_wf_typ fuel G nil tp1
   | typ_bot => secondTry fuel G tp1 tp2
@@ -1052,10 +1069,15 @@ end.
 
 Lemma isSubType_correct: forall fuel,
    (forall G tp1 tp2, isSubType fuel G tp1 tp2 = true -> subtyp nohyp G tp1 tp2)
+/\ (forall G tp1 tp2, firstTry  fuel G tp1 tp2 = true -> subtyp nohyp G tp1 tp2)
 /\ (forall G tp1 tp2, secondTry fuel G tp1 tp2 = true -> subtyp nohyp G tp1 tp2).
 Proof.
-  intro. induction fuel. try solve [split; intros; simpl in *; discriminate].
-  destruct IHfuel as [IH1 IH2]. split; introv Eq.
+  intro. induction fuel. try solve [repeat split; intros; simpl in *; discriminate].
+  destruct IHfuel as [IH0 [IH1 IH2]]. repeat split; introv Eq.
+  + unfold isSubType in Eq. fold isSubType in Eq. fold firstTry in Eq. case_ifb.
+    - subst. apply subtyp_refl. rewrite <- from_list_nil.
+      apply (is_wf_typ_correct fuel). exact Eq.
+    - apply (IH1 _ _ _ Eq).
   + destruct tp2.
     - apply subtyp_top. rewrite <- from_list_nil.
       apply (is_wf_typ_correct fuel). exact Eq.
@@ -1069,7 +1091,7 @@ Proof.
         apply subtyp_rcd. apply* subdec_typ.
       * destruct (Peano_dec.eq_nat_dec m1 m2) as [Eq | Ne]; try discriminate; subst.
         apply subtyp_rcd. apply* subdec_mtd.
-    - unfold isSubType in Eq. fold isSubType in Eq.
+    - unfold firstTry in Eq. fold secondTry in Eq. fold isSubType in Eq.
       destruct a; try discriminate.
       repeat match goal with
       | H: match ?t with
@@ -1082,13 +1104,13 @@ Proof.
       * apply andb_prop in H0. destruct H0 as [H0 Eq4].
         apply andb_prop in H0. destruct H0 as [H0 Eq3].
         apply andb_prop in H0. destruct H0 as [Eq1 Eq2].
-        apply (subtyp_trans (IH1 _ _ _ Eq1)).
+        apply (subtyp_trans (IH0 _ _ _ Eq1)).
         refine (subtyp_sel_r Eq0 _ _ _ _).
         { rewrite <- from_list_nil. apply* is_wf_typ_correct. }
         { apply* is_stable_typ_correct. }
         { destruct ((proj1 (lookup_correct fuel)) _ _ _ _ Eq) as [Has E].
           simpl in E. inversions E. exact Has. }
-        { apply* IH1. }
+        { apply* IH0. }
       * fold secondTry in H0. apply* IH2.
     - unfold isSubType in Eq. fold isSubType in Eq.
       apply andb_prop in Eq. destruct Eq as [Eq1 Eq2]. apply* subtyp_and.
@@ -1097,12 +1119,12 @@ Proof.
       * fold isSubType in Eq.
         apply Bool.orb_true_elim in Eq. destruct Eq as [Eq | Eq];
         apply andb_prop in Eq; destruct Eq as [Eq1 Eq2].
-        { specialize (IH1 _ _ _ Eq1).
-          refine (subtyp_trans IH1 (subtyp_or_l _ _ _)).
+        { specialize (IH0 _ _ _ Eq1).
+          refine (subtyp_trans IH0 (subtyp_or_l _ _ _)).
           + admit. (* subtyp_regular *)
           + rewrite <- from_list_nil. apply* is_wf_typ_correct. }
-        { specialize (IH1 _ _ _ Eq1).
-          refine (subtyp_trans IH1 (subtyp_or_r _ _ _)).
+        { specialize (IH0 _ _ _ Eq1).
+          refine (subtyp_trans IH0 (subtyp_or_r _ _ _)).
           + rewrite <- from_list_nil. apply* is_wf_typ_correct.
           + admit. (* subtyp_regular *) }
       * apply* IH2.
@@ -1123,22 +1145,22 @@ Proof.
       apply andb_prop in H0. destruct H0 as [H0 Eq4].
       apply andb_prop in H0. destruct H0 as [H0 Eq3].
       apply andb_prop in H0. destruct H0 as [Eq1 Eq2].
-      refine (subtyp_trans _ (IH1 _ _ _ Eq1)).
+      refine (subtyp_trans _ (IH0 _ _ _ Eq1)).
       refine (subtyp_sel_l Eq0 _ _ _ _).
       { rewrite <- from_list_nil. apply* is_wf_typ_correct. }
       { apply* is_stable_typ_correct. }
       { destruct ((proj1 (lookup_correct fuel)) _ _ _ _ Eq) as [Has E].
         simpl in E. inversions E. exact Has. }
-      { apply* IH1. }
+      { apply* IH0. }
     - fold isSubType in Eq.
       apply Bool.orb_true_elim in Eq.
       destruct Eq as [Eq | Eq]; apply andb_prop in Eq; destruct Eq as [Eq1 Eq2].
-      * specialize (IH1 _ _ _ Eq1).
-        refine (subtyp_trans (subtyp_and_l _ _ _) IH1).
+      * specialize (IH0 _ _ _ Eq1).
+        refine (subtyp_trans (subtyp_and_l _ _ _) IH0).
         { admit. (* subtyp_regular *) }
         { rewrite <- from_list_nil. apply* is_wf_typ_correct. }
-      * specialize (IH1 _ _ _ Eq1).
-        refine (subtyp_trans (subtyp_and_r _ _ _) IH1).
+      * specialize (IH0 _ _ _ Eq1).
+        refine (subtyp_trans (subtyp_and_r _ _ _) IH0).
         { rewrite <- from_list_nil. apply* is_wf_typ_correct. }
         { admit. (* subtyp_regular *) }
     - fold isSubType in Eq. apply andb_prop in Eq; destruct Eq as [Eq1 Eq2].
@@ -1163,9 +1185,11 @@ Lemma open_and_predictDefsType_commute: forall x ds,
   open_typ x (predictDefsType ds) = predictDefsType (open_defs x ds).
 Admitted.
 
+(*
 Parameter theFreshVar: var.
 Axiom theFreshVarEq: forall x, x = theFreshVar.
 (*Axiom theFreshVarIsFresh: forall L, theFreshVar \notin L.*)
+*)
 
 Fixpoint typeAssign(fuel0: nat)(G: ctx)(t: trm): option typ := match fuel0 with
 | 0 => None
@@ -1177,7 +1201,9 @@ Fixpoint typeAssign(fuel0: nat)(G: ctx)(t: trm): option typ := match fuel0 with
       end
     | avar_b _ => None
     end
-  | trm_new ds u => let T := predictDefsType (open_defs theFreshVar ds) in
+  | trm_new ds u =>
+      let theFreshVar := (gen_fresh_var_from_env G) in
+      let T := predictDefsType (open_defs theFreshVar ds) in
       if (typeCheckDefs fuel (G & theFreshVar ~ T) (open_defs theFreshVar ds)) then
         match typeAssign fuel (G & theFreshVar ~ T) (open_trm theFreshVar u) with
         | Some U => if is_wf_typ fuel G nil U then Some U else None
@@ -1205,12 +1231,13 @@ with typeCheckDef(fuel0: nat)(G: ctx)(d: def): bool := match fuel0 with
 | S fuel => match d with
   | def_typ L U => is_wf_typ fuel G nil U
   | def_mtd m T1 T2 body =>
-    match typeAssign fuel (G & theFreshVar ~ T1) (open_trm theFreshVar body) with
-    | Some B => (is_wf_typ fuel G nil T1) &&
-                (is_wf_typ fuel G nil T2) &&
-                (isSubType fuel G B T2)
-    | None => false
-    end
+      let theFreshVar := (gen_fresh_var_from_env G) in
+      match typeAssign fuel (G & theFreshVar ~ T1) (open_trm theFreshVar body) with
+      | Some B => (is_wf_typ fuel G nil T1) &&
+                  (is_wf_typ fuel G nil T2) &&
+                  (isSubType fuel G B T2)
+      | None => false
+      end
   end
 end
 with typeCheckDefs(fuel0: nat)(G: ctx)(ds: defs): bool := match fuel0 with
@@ -1246,7 +1273,8 @@ Proof.
       case_ifb; try discriminate. inversions Eq.
       specialize (IH1 _ _ _ Eq1).
       specialize (IH3 _ _ Eq0).
-      apply_fresh ty_new as x; try (rewrite (theFreshVarEq x); clear Frx x).
+      apply_fresh ty_new as x;
+      try assert (Eqx: gen_fresh_var_from_env G = x) by admit; subst.
       * rewrite <- open_and_predictDefsType_commute in IH3. apply IH3.
       * rewrite <- open_and_predictDefsType_commute in IH1. apply IH1.
       * rewrite <- from_list_nil. apply* is_wf_typ_correct.
@@ -1286,13 +1314,15 @@ Proof.
       end; try discriminate.
       apply andb_prop in Eq. destruct Eq as [Eq Eq3].
       apply andb_prop in Eq. destruct Eq as [Eq1 Eq2].
-      apply_fresh ty_mdef as x; try (rewrite (theFreshVarEq x); clear Frx x).
+      apply_fresh ty_mdef as x;
+      try assert (Eqx: gen_fresh_var_from_env G = x) by admit; subst.
       * rewrite <- from_list_nil. apply* is_wf_typ_correct.
       * rewrite <- from_list_nil. apply* is_wf_typ_correct.
       * apply ty_sbsm with t2.
         { apply (IH1 _ _ _ Eq0). }
         { assert (Imp: subtyp nohyp G t2 t0
-                    -> subtyp okhyp (G & theFreshVar ~ t) t2 t0) by admit. apply Imp.
+                    -> subtyp okhyp (G & gen_fresh_var_from_env G ~ t) t2 t0) by admit.
+          apply Imp.
            (* TODO weakening & nohyp_to_okhyp *)
           apply ((proj1 (isSubType_correct fuel)) _ _ _ Eq3). }
   + destruct ds; unfold typeCheckDefs in Eq.
@@ -1346,13 +1376,17 @@ Qed.
 
 Eval vm_compute in (is_wf_typ 15 env1 nil TStream).
 
-Fact tc1: exists T, typeAssign 100 empty ex1 = Some T.
-Proof. eexists. reflexivity.
+(*
+Eval simpl in (isSubType 30 env1 TStream TStream). || (is_wf_typ 15 env1 nil TStream)).
+*)
 
+Eval cbv in (typeAssign 15 empty ex1).
 
-Fact tc1: exists T, ty_trm empty ex1 T.
+Eval simpl in (EnvOps.get 3 (1 ~ typ_top & 2 ~ typ_bot & 3 ~ typ_bot)).
+
+Fact tc1: ty_trm empty ex1 typ_top.
 Proof.
-  eexists. apply (typeAssign_correct 100). reflexivity. ; simpl. case_if. EnvOps.get_impl
+  apply (typeAssign_correct 20). reflexivity.
 Qed.
 
 Fact tc1: ty_trm empty ex1 typ_top.
