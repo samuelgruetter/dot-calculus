@@ -672,6 +672,7 @@ Definition Stream: typ_label := 1.
 Lemma E_ne_Stream: (E == Stream) = false. reflexivity. Qed.
 Definition head: mtd_label := 2.
 Definition tail: mtd_label := 3.
+Definition msg: mtd_label := 4.
 Lemma head_ne_tail: (head == tail) = false. reflexivity. Qed.
 
 Definition ex1: trm :=
@@ -713,53 +714,74 @@ first "spoils" the parser too much, so that the second can never be used afterwa
 
 Open Scope bool_scope.
 
-(*
-Inductive tc_result(A: Set) :=
-| tc_success: A -> tc_result
-| tc_typ_hasnt: typ -> label -> tc_result
-| tc_ctx_hasnt: env -> var -> tc_result
-| tc_lookup_timeout: typ -> label -> tc_result
-| tc_unbound_avar_b: tc_result
-| tc_assertion_failed: tc_result
+Inductive tc_error: Type :=
+| err_ctx_hasnt: ctx -> var -> tc_error
+| err_typ_hasnt: typ -> label -> tc_error
+| err_unbound_avar_b: nat -> tc_error
+| err_timeout: tc_error
+| err_typ_sel_on_unstable: avar -> typ -> typ_label -> tc_error
+| err_type_mismatch: ctx -> trm -> typ -> typ -> tc_error
+| err_duplicate_def: label -> tc_error.
 
-| tc_wf_timeout: typ -> tc_result
-| tc_
-*)
+Inductive tc_result(A: Set): Type :=
+| tc_success0: forall (a: A), tc_result A
+| tc_fail: tc_error -> tc_result A.
 
-(* First option is for timeout or non-wf types, second is for has/hasnt. *)
-Fixpoint lookup(fuel0: nat)(G: ctx)(T: typ)(l: label): option (option dec) :=
-match fuel0 with
-| 0 => None
-| S fuel => match T with
-  | typ_top => Some None
-  | typ_bot => Some (Some (dec_bot l))
-  | typ_rcd D => if (beq_label l (label_of_dec D)) then Some (Some D) else (Some None)
-  | typ_sel a L => match a with
-    | avar_f x => match EnvOps.get x G with
-      | Some X => match (lookup fuel G X (label_typ L)) with
-        | Some (Some (dec_typ _ Lo Hi)) => lookup fuel G Hi l
-        | _ => None (* error: x has no member named L, so x.L is not wf *)
-        end
-      | None => None (* error: x.L with x not in G *)
-      end
-    | avar_b n => None (* error: type not closed *)
+Notation SUCCESS x := (tc_success0 x).
+Notation FAIL err := (tc_fail _ err).
+
+Notation "'LET' x 'BE' t1 'IN' t2" :=
+  (match t1 with
+   | tc_success0 x => t2
+   | tc_fail err => tc_fail _ err
+   end)   (right associativity, at level 60).
+
+Eval cbv in (LET tp1 BE (SUCCESS typ_top) IN (SUCCESS (dec_typ 3 tp1 tp1))).
+
+Eval cbv in (LET tp1 BE (FAIL err_timeout) IN (SUCCESS (dec_typ 3 tp1 tp1))).
+
+Definition lookup_in_env(G: ctx)(a: avar): tc_result typ :=
+  match a with
+  | avar_f x => match EnvOps.get x G with
+    | Some X => SUCCESS X
+    | None => FAIL (err_ctx_hasnt G x)
     end
-  | typ_and T1 T2 => match (lookup fuel G T1 l), (lookup fuel G T2 l) with
-    | Some oD1, Some oD2 => Some (match oD1, oD2 with
+  | avar_b n => FAIL (err_unbound_avar_b n)
+  end.
+
+(* tc_result is for timeout or non-wf types, option is for has/hasnt. *)
+Fixpoint lookup(fuel0: nat)(G: ctx)(T: typ)(l: label): tc_result (option dec) :=
+match fuel0 with
+| 0 => FAIL err_timeout
+| S fuel => match T with
+  | typ_top => SUCCESS None
+  | typ_bot => SUCCESS (Some (dec_bot l))
+  | typ_rcd D => if (beq_label l (label_of_dec D))
+                 then SUCCESS (Some D)
+                 else SUCCESS None
+  | typ_sel a L =>
+      LET X BE (lookup_in_env G a) IN
+      LET opD BE (lookup fuel G X (label_typ L)) IN
+      match opD with
+      | Some (dec_typ _ Lo Hi) => lookup fuel G Hi l
+      | _ => FAIL (err_typ_hasnt X (label_typ L))
+      end
+  | typ_and T1 T2 => 
+      LET oD1 BE (lookup fuel G T1 l) IN
+      LET oD2 BE (lookup fuel G T2 l) IN
+      (SUCCESS (match oD1, oD2 with
       | Some D1, Some D2 => intersect_dec D1 D2
       | Some D1, None    => Some D1
       | None   , Some D2 => Some D2
       | None   , None    => None
-      end)
-    | _, _ => None
-    end
-  | typ_or T1 T2 => match (lookup fuel G T1 l), (lookup fuel G T2 l) with
-    | Some oD1, Some oD2 => Some (match oD1, oD2 with
+      end))
+  | typ_or T1 T2 =>
+      LET oD1 BE (lookup fuel G T1 l) IN
+      LET oD2 BE (lookup fuel G T2 l) IN
+      (SUCCESS (match oD1, oD2 with
       | Some D1, Some D2 => union_dec D1 D2
       | _, _ => None
-      end)
-    | _, _ => None
-    end
+      end))
   end
 end.
 
@@ -791,9 +813,11 @@ Proof.
   + destruct (Peano_dec.eq_nat_dec m m) as [Eq | Ne]; try discriminate; auto.
 Qed.
 
+(*
 Lemma lookup_correct: forall fuel,
- (forall G T l D, lookup fuel G T l = Some (Some D) -> typ_has G T D /\ label_of_dec D = l)
-/\ (forall G T l, lookup fuel G T l = Some None     -> typ_hasnt G T l).
+   (forall G T l D, lookup fuel G T l = SUCCESS (Some D) ->
+    typ_has G T D /\ label_of_dec D = l)
+/\ (forall G T l, lookup fuel G T l = SUCCESS None     -> typ_hasnt G T l).
 Proof.
   intro fuel. induction fuel; try solve [split; intros; simpl in *; discriminate].
   destruct IHfuel as [IH1 IH2]. split; introv Eq; simpl in Eq.
@@ -887,6 +911,7 @@ Proof.
         { lets Hasnt1: (IH2 _ _ _ Eq).
           lets Hasnt2: (IH2 _ _ _ Eq0). eauto. }
 Qed.
+*)
 
 Fixpoint is_stable_typ(T: typ): bool := match T with
 | typ_top => true
@@ -933,34 +958,33 @@ Definition in_typ_list(T: typ)(l: list typ): bool :=
    Some false: not wf
    None: timeout, either because of lack of fuel, or because not wf. *)
 
-
-Fixpoint is_wf_typ(fuel0: nat)(G: ctx)(A: list typ)(T: typ): bool := match fuel0 with
-| 0 => false
-| S fuel => (in_typ_list T A) || (match T with
-  | typ_top => true
-  | typ_bot => true
+Fixpoint check_wf_typ(fuel0: nat)(G: ctx)(A: list typ)(T: typ): tc_result unit :=
+match fuel0 with
+| 0 => FAIL err_timeout
+| S fuel => if (in_typ_list T A) then SUCCESS tt else (match T with
+  | typ_top => SUCCESS tt
+  | typ_bot => SUCCESS tt
   | typ_rcd (dec_typ L Lo Hi) => let A2 := cons T A in
-                                 is_wf_typ fuel G A2 Lo && is_wf_typ fuel G A2 Hi
+      LET _ BE (check_wf_typ fuel G A2 Lo) IN (check_wf_typ fuel G A2 Hi)
   | typ_rcd (dec_mtd m T1 T2) => let A2 := cons T A in
-                                 is_wf_typ fuel G A2 T1 && is_wf_typ fuel G A2 T2
-  | typ_sel a L => match a with
-    | avar_f x => match EnvOps.get x G with
-      | Some X => match (lookup fuel G X (label_typ L)) with
-        | Some (Some (dec_typ _ Lo Hi)) => is_stable_typ X &&
-                                           is_wf_typ fuel G A X &&
-                                           is_wf_typ fuel G A Lo &&
-                                           is_wf_typ fuel G A Hi
-        | _ => false (* x has no member named L *)
-        end
-      | None => false (* x.L with x not in G *)
+      LET _ BE (check_wf_typ fuel G A2 T1) IN (check_wf_typ fuel G A2 T2)
+  | typ_sel a L => 
+      LET X BE (lookup_in_env G a) IN
+      LET oD BE (lookup fuel G X (label_typ L)) IN
+      match oD with
+      | Some (dec_typ _ Lo Hi) => if is_stable_typ X
+          then LET _ BE check_wf_typ fuel G A X  IN
+               LET _ BE check_wf_typ fuel G A Lo IN
+                        check_wf_typ fuel G A Hi
+          else FAIL (err_typ_sel_on_unstable a X L)
+      | _ => FAIL (err_typ_hasnt X (label_typ L))
       end
-    | avar_b n => false (* error: type not closed *)
-    end
-  | typ_and T1 T2 => (is_wf_typ fuel G A T1) && (is_wf_typ fuel G A T2)
-  | typ_or T1 T2 => (is_wf_typ fuel G A T1) && (is_wf_typ fuel G A T2)
+  | typ_and T1 T2 => LET _ BE (check_wf_typ fuel G A T1) IN (check_wf_typ fuel G A T2)
+  | typ_or  T1 T2 => LET _ BE (check_wf_typ fuel G A T1) IN (check_wf_typ fuel G A T2)
   end)
 end.
 
+(*
 Lemma is_wf_typ_correct: forall fuel G A T,
   is_wf_typ fuel G A T = true -> wf_typ_impl G (from_list A) T.
 Proof.
@@ -997,76 +1021,97 @@ Proof.
     + apply andb_prop in Eq. destruct Eq as [Eq1 Eq2]. eauto.
     + apply andb_prop in Eq. destruct Eq as [Eq1 Eq2]. eauto.
 Qed.
+*)
 
-Fixpoint isSubType(fuel0: nat)(G: ctx)(tp1 tp2: typ): bool := match fuel0 with
-| 0 => false
-| S fuel => if eq_typ_dec tp1 tp2 then is_wf_typ fuel G nil tp1 else firstTry fuel G tp1 tp2
+Fixpoint isSubType(fuel0: nat)(G: ctx)(tp1 tp2: typ): tc_result bool := match fuel0 with
+| 0 => FAIL err_timeout
+| S fuel => if eq_typ_dec tp1 tp2
+            then LET _ BE (check_wf_typ fuel G nil tp1) IN SUCCESS true
+            else firstTry fuel G tp1 tp2
 end
-with firstTry(fuel0: nat)(G: ctx)(tp1 tp2: typ): bool := match fuel0 with
-| 0 => false
+with firstTry(fuel0: nat)(G: ctx)(tp1 tp2: typ): tc_result bool := match fuel0 with
+| 0 => FAIL err_timeout
 | S fuel => match tp2 with
-  | typ_top => is_wf_typ fuel G nil tp1
+  | typ_top => LET _ BE check_wf_typ fuel G nil tp1 IN SUCCESS true
   | typ_bot => secondTry fuel G tp1 tp2
   | typ_rcd (dec_typ L2 tpLo2 tpHi2) => match tp1 with
-    | typ_rcd (dec_typ L1 tpLo1 tpHi1) => (L1 == L2) && 
-                                          (isSubType fuel G tpLo2 tpLo1) &&
-                                          (isSubType fuel G tpHi1 tpHi2)
-    | _ => false
+    | typ_rcd (dec_typ L1 tpLo1 tpHi1) =>
+        if (L1 == L2)
+        then LET b1 BE (isSubType fuel G tpLo2 tpLo1) IN
+             LET b2 BE (isSubType fuel G tpHi1 tpHi2) IN
+             SUCCESS (b1 && b2)
+        else SUCCESS false
+    | _ => (secondTry fuel G tp1 tp2)
     end
   | typ_rcd (dec_mtd m2 tpArg2 tpRet2) => match tp1 with
-    | typ_rcd (dec_mtd m1 tpArg1 tpRet1) => (m1 == m2) && 
-                                            (isSubType fuel G tpArg2 tpArg1) &&
-                                            (isSubType fuel G tpRet1 tpRet2)
-    | _ => false
+    | typ_rcd (dec_mtd m1 tpArg1 tpRet1) =>
+        if (m1 == m2)
+        then LET b1 BE (isSubType fuel G tpArg2 tpArg1) IN
+             LET b2 BE (isSubType fuel G tpRet1 tpRet2) IN
+             SUCCESS (b1 && b2)
+        else SUCCESS false
+    | _ => (secondTry fuel G tp1 tp2)
     end
-  | typ_sel a L => match a with
-    | avar_f x => match EnvOps.get x G with
-      | Some X => match (lookup fuel G X (label_typ L)) with
-        | Some (Some (dec_typ _ Lo Hi)) =>
-          ( (isSubType fuel G tp1 Lo) &&
-            (isSubType fuel G Lo Hi) &&
-            (is_stable_typ X) &&
-            (is_wf_typ fuel G nil X)
-          ) || (secondTry fuel G tp1 tp2)
-        | _ => false (* x has no member named L *)
-        end
-      | None => false (* x.L with x not in G *)
+  | typ_sel a L => 
+      LET X BE (lookup_in_env G a) IN
+      LET oD BE (lookup fuel G X (label_typ L)) IN
+      match oD with
+      | Some (dec_typ _ Lo Hi) =>
+          if is_stable_typ X
+          then LET _  BE (check_wf_typ fuel G nil X) IN
+               LET b1 BE (isSubType fuel G tp1 Lo) IN
+               LET b2 BE (isSubType fuel G Lo Hi) IN
+               if (b1 && b2) then (SUCCESS true) else (secondTry fuel G tp1 tp2)
+          else FAIL (err_typ_sel_on_unstable a X L) 
+        | _ => FAIL (err_typ_hasnt X (label_typ L))
       end
-    | avar_b n => false (* error: type not closed *)
-    end
-  | typ_and tp21 tp22 => (isSubType fuel G tp1 tp21) && (isSubType fuel G tp1 tp22)
+  | typ_and tp21 tp22 => 
+      LET b1 BE (isSubType fuel G tp1 tp21) IN
+      LET b2 BE (isSubType fuel G tp1 tp22) IN
+      SUCCESS (b1 && b2)
   | typ_or tp21 tp22 =>
-      ((isSubType fuel G tp1 tp21) && (is_wf_typ fuel G nil tp22)) ||
-      ((isSubType fuel G tp1 tp22) && (is_wf_typ fuel G nil tp21)) ||
+      LET _ BE (check_wf_typ fuel G nil tp21) IN
+      LET _ BE (check_wf_typ fuel G nil tp22) IN
+      LET b1 BE (isSubType fuel G tp1 tp21) IN
+      if b1 then (SUCCESS true) else
+      LET b2 BE (isSubType fuel G tp1 tp22) IN
+      if b2 then (SUCCESS true) else
       (secondTry fuel G tp1 tp2)
   end
 end
-with secondTry(fuel0: nat)(G: ctx)(tp1 tp2: typ): bool := match fuel0 with
-| 0 => false
+with secondTry(fuel0: nat)(G: ctx)(tp1 tp2: typ): tc_result bool := match fuel0 with
+| 0 => FAIL err_timeout
 | S fuel => match tp1 with
-  | typ_bot => is_wf_typ fuel G nil tp2
-  | typ_sel a L => match a with
-    | avar_f x => match EnvOps.get x G with
-      | Some X => match (lookup fuel G X (label_typ L)) with
-        | Some (Some (dec_typ _ Lo Hi)) =>
-            (isSubType fuel G Hi tp2) &&
-            (isSubType fuel G Lo Hi) &&
-            (is_stable_typ X) &&
-            (is_wf_typ fuel G nil X)
-        | _ => false (* x has no member named L *)
-        end
-      | None => false (* x.L with x not in G *)
+  | typ_bot => LET _ BE (check_wf_typ fuel G nil tp2) IN (SUCCESS true)
+  | typ_sel a L => 
+      LET X BE (lookup_in_env G a) IN
+      LET oD BE (lookup fuel G X (label_typ L)) IN
+      match oD with
+      | Some (dec_typ _ Lo Hi) =>
+          if is_stable_typ X
+          then LET _  BE (check_wf_typ fuel G nil X) IN
+               LET b1 BE (isSubType fuel G Hi tp2) IN
+               LET b2 BE (isSubType fuel G Lo Hi) IN
+               SUCCESS (b1 && b2)
+          else FAIL (err_typ_sel_on_unstable a X L) 
+        | _ => FAIL (err_typ_hasnt X (label_typ L))
       end
-    | avar_b n => false (* error: type not closed *)
-    end
-  | typ_and tp11 tp12 => 
-      ((isSubType fuel G tp11 tp2) && (is_wf_typ fuel G nil tp12)) ||
-      ((isSubType fuel G tp12 tp2) && (is_wf_typ fuel G nil tp11))
-  | typ_or tp11 tp12 => (isSubType fuel G tp11 tp2) && (isSubType fuel G tp12 tp2)
-  | _ => false
+  | typ_and tp11 tp12 =>
+      LET _ BE (check_wf_typ fuel G nil tp11) IN
+      LET _ BE (check_wf_typ fuel G nil tp12) IN
+      LET b1 BE (isSubType fuel G tp11 tp2) IN
+      if b1 then (SUCCESS true) else
+      LET b2 BE (isSubType fuel G tp12 tp2) IN
+      (SUCCESS b2)
+  | typ_or tp11 tp12 =>
+      LET b1 BE (isSubType fuel G tp11 tp2) IN
+      LET b2 BE (isSubType fuel G tp12 tp2) IN
+      (SUCCESS (b1 && b2))
+  | _ => SUCCESS false
   end
 end.
 
+(*
 Lemma isSubType_correct: forall fuel,
    (forall G tp1 tp2, isSubType fuel G tp1 tp2 = true -> subtyp nohyp G tp1 tp2)
 /\ (forall G tp1 tp2, firstTry  fuel G tp1 tp2 = true -> subtyp nohyp G tp1 tp2)
@@ -1166,6 +1211,7 @@ Proof.
     - fold isSubType in Eq. apply andb_prop in Eq; destruct Eq as [Eq1 Eq2].
       apply* subtyp_or.
 Qed.
+*)
 
 Definition predictDefType(d: def): dec := match d with
 | def_typ L U => dec_typ L U U
@@ -1191,66 +1237,62 @@ Axiom theFreshVarEq: forall x, x = theFreshVar.
 (*Axiom theFreshVarIsFresh: forall L, theFreshVar \notin L.*)
 *)
 
-Fixpoint typeAssign(fuel0: nat)(G: ctx)(t: trm): option typ := match fuel0 with
-| 0 => None
-| S fuel => match t with
-  | trm_var a => match a with
-    | avar_f x => match EnvOps.get x G with
-      | Some T => if is_wf_typ fuel G nil T then Some T else None
-      | None => None
-      end
-    | avar_b _ => None
-    end
+Definition adapt(fuel: nat)(G: ctx)(t: trm)(tpFound: typ)(tpExpected: option typ)
+  : tc_result typ :=
+  match tpExpected with
+  | Some tpEx => LET b1 BE (isSubType fuel G tpFound tpEx) IN
+                 if b1 then SUCCESS tpEx
+                 else FAIL (err_type_mismatch G t tpFound tpEx)
+  | None => SUCCESS tpFound
+  end.
+
+(* pt: expected type *)
+Fixpoint typeCheckTrm(fuel0: nat)(G: ctx)(t: trm)(pt: option typ): tc_result typ :=
+match fuel0 with
+| 0 => FAIL err_timeout
+| S fuel => LET tpFound BE (match t with
+  | trm_var a => lookup_in_env G a
   | trm_new ds u =>
       let theFreshVar := (gen_fresh_var_from_env G) in
       let T := predictDefsType (open_defs theFreshVar ds) in
-      if (typeCheckDefs fuel (G & theFreshVar ~ T) (open_defs theFreshVar ds)) then
-        match typeAssign fuel (G & theFreshVar ~ T) (open_trm theFreshVar u) with
-        | Some U => if is_wf_typ fuel G nil U then Some U else None
-        | None => None
-        end
-      else
-        None
-  | trm_call t m u => match typeAssign fuel G t with
-    | Some T => match lookup fuel G T (label_mtd m) with
-      | Some (Some (dec_mtd _ tpArg tpRet)) => match typeAssign fuel G u with
-        | Some U => if isSubType fuel G U tpArg && is_wf_typ fuel G nil tpRet then
-                      Some tpRet
-                    else
-                      None
-        | None => None
-        end
-      | _ => None
+      LET _ BE (typeCheckDefs fuel (G & theFreshVar ~ T) (open_defs theFreshVar ds)) IN
+      LET U BE (typeCheckTrm fuel (G & theFreshVar ~ T) (open_trm theFreshVar u) pt) IN
+      LET _ BE (check_wf_typ fuel G nil U) IN
+      SUCCESS U
+  | trm_call t m u =>
+      LET T BE (typeCheckTrm fuel G t None) IN
+      LET oD BE (lookup fuel G T (label_mtd m)) IN
+      match oD with
+      | Some (dec_mtd _ tpArg tpRet) =>
+          LET _ BE (typeCheckTrm fuel G u (Some tpArg)) IN
+          LET _ BE (check_wf_typ fuel G nil tpRet) IN
+          SUCCESS tpRet
+      | _ => FAIL (err_typ_hasnt T (label_mtd m))
       end
-    | None => None
-    end
-  end
+  end) IN (adapt fuel G t tpFound pt)
 end
-with typeCheckDef(fuel0: nat)(G: ctx)(d: def): bool := match fuel0 with
-| 0 => false
+with typeCheckDef(fuel0: nat)(G: ctx)(d: def): tc_result unit := match fuel0 with
+| 0 => FAIL err_timeout
 | S fuel => match d with
-  | def_typ L U => is_wf_typ fuel G nil U
+  | def_typ L U => check_wf_typ fuel G nil U
   | def_mtd m T1 T2 body =>
-      let theFreshVar := (gen_fresh_var_from_env G) in
-      match typeAssign fuel (G & theFreshVar ~ T1) (open_trm theFreshVar body) with
-      | Some B => (is_wf_typ fuel G nil T1) &&
-                  (is_wf_typ fuel G nil T2) &&
-                  (isSubType fuel G B T2)
-      | None => false
-      end
+      let x := (gen_fresh_var_from_env G) in
+      LET _ BE (typeCheckTrm fuel (G & x ~ T1) (open_trm x body) (Some T2)) IN
+      LET _ BE (check_wf_typ fuel G nil T1) IN (check_wf_typ fuel G nil T2)
   end
 end
-with typeCheckDefs(fuel0: nat)(G: ctx)(ds: defs): bool := match fuel0 with
-| 0 => false
+with typeCheckDefs(fuel0: nat)(G: ctx)(ds: defs): tc_result unit := match fuel0 with
+| 0 => FAIL err_timeout
 | S fuel => match ds with
-  | defs_nil => true
+  | defs_nil => SUCCESS tt
   | defs_cons rest d => match get_def (label_of_def d) rest with
-    | Some _ => false
-    | None => (typeCheckDefs fuel G rest) && (typeCheckDef fuel G d)
+    | Some _ => FAIL (err_duplicate_def (label_of_def d))
+    | None => LET _ BE (typeCheckDefs fuel G rest) IN (typeCheckDef fuel G d)
     end
   end
 end.
 
+(*
 Lemma typeChecking_correct: forall fuel,
    (forall G t T, typeAssign    fuel G t  = Some T -> ty_trm  G t  T)
 /\ (forall G d  , typeCheckDef  fuel G d  = true   -> ty_def  G d  (predictDefType  d ))
@@ -1337,6 +1379,7 @@ Proof.
 Qed.
 
 Definition typeAssign_correct(fuel: nat) := (proj1 (typeChecking_correct fuel)).
+*)
 
 Eval cbv in (EnvOps.get 0 (@empty typ)).
 
@@ -1355,9 +1398,9 @@ Definition env1: ctx := (glob ~ TGlob).
 
 Eval cbv in (lookup 3 env1 TStream (label_mtd head)).
 
-Eval simpl in (is_wf_typ 20 env1 nil TStream).
-Eval simpl in (is_wf_typ 15 env1 nil TStream).
+Eval cbv in (check_wf_typ 20 env1 nil TStream).
 
+(*
 Fact wfStream: wf_typ env1 TStream.
 Proof.
   rewrite <- from_list_nil.
@@ -1373,20 +1416,69 @@ Proof.
   apply (is_wf_typ_correct 16).
   simpl. reflexivity.
 Qed.
+*)
 
-Eval vm_compute in (is_wf_typ 15 env1 nil TStream).
+Eval vm_compute in (check_wf_typ 15 env1 nil TStream).
 
 (*
 Eval simpl in (isSubType 30 env1 TStream TStream). || (is_wf_typ 15 env1 nil TStream)).
 *)
 
-Eval cbv in (typeAssign 15 empty ex1).
+Eval cbv in (typeCheckTrm 15 empty ex1 None).
 
 Eval simpl in (EnvOps.get 3 (1 ~ typ_top & 2 ~ typ_bot & 3 ~ typ_bot)).
 
+(*
 Fact tc1: ty_trm empty ex1 typ_top.
 Proof.
   apply (typeAssign_correct 20). reflexivity.
+Qed.
+
+val glob = new {
+  E: Top..Top,
+  Stream: Bot..{head: Top -> glob.E} /\ {tail: Top -> glob.Stream}
+};
+val unit = new {};
+val stream = new { head(x: Top): glob.E = unit, tail(x: Top): glob.Stream = stream };
+stream.tail(unit).tail(unit).head(unit)
+*)
+
+Definition ex2: trm :=
+trm_new (defs_cons (defs_cons defs_nil
+  (def_typ E (typ_rcd (dec_mtd msg typ_top typ_top))))
+  (def_typ Stream (typ_and
+       (typ_rcd (dec_mtd head typ_top (typ_sel (avar_b 0) E)))
+       (typ_rcd (dec_mtd tail typ_top (typ_sel (avar_b 0) Stream)))))
+)
+(trm_new defs_nil
+(trm_new (defs_cons defs_nil 
+  (def_mtd msg typ_top typ_top (trm_var (avar_b 1))))
+(trm_new (defs_cons (defs_cons defs_nil
+   (def_mtd head typ_top (typ_sel (avar_b 3) E) (trm_var (avar_b 2))))
+   (def_mtd tail typ_top (typ_sel (avar_b 3) Stream) (trm_var (avar_b 1))))
+(trm_call (trm_var (avar_b 0)) head (trm_var (avar_b 2)))))).
+
+Eval vm_compute in
+  (typeCheckTrm 34 empty ex2 (Some (typ_rcd (dec_mtd msg typ_top typ_top)))).
+
+Definition ex2: trm :=
+trm_new (defs_cons (defs_cons defs_nil
+  (def_typ E typ_top))
+  (def_typ Stream (typ_and
+       (typ_rcd (dec_mtd head typ_top (typ_sel (avar_b 0) E)))
+       (typ_rcd (dec_mtd tail typ_top (typ_sel (avar_b 0) Stream)))))
+)
+(trm_new defs_nil
+(trm_new (defs_cons (defs_cons defs_nil
+   (def_mtd head typ_top (typ_sel (avar_b 2) E) (trm_var (avar_b 2))))
+   (def_mtd tail typ_top (typ_sel (avar_b 2) Stream) (trm_var (avar_b 1))))
+(trm_var (avar_b 1)))).
+
+Eval vm_compute in (typeAssign 34 empty ex2).
+
+Fact tc2: ty_trm empty ex2 typ_top.
+Proof.
+  apply (typeAssign_correct 30). reflexivity.
 Qed.
 
 Fact tc1: ty_trm empty ex1 typ_top.
