@@ -385,7 +385,13 @@ end.
    label. That's possible (by returning some dummy method def), but this changes
    the semantics in such a way that we don't prove what we actually wanted to 
    prove, because all "stuck"/NoSuchMethodError cases will not fail any more,
-   but just silently execute the dummy method. *)
+   but just silently execute the dummy method.
+   Note, though, that this dummy method will be of type Bot->Top, so we can't
+   really call it, but it's only the type system which tells us this, and the
+   reduction rules don't check types before applying methods.
+   So, changing lookup_def like this changes the operational semantics in an
+   unwanted way.
+ *)
 Fixpoint lookup_dec(fuel1: nat)(G: ctx)(T: typ)(l: label): dec := match fuel1 with
 | 0 => dec_top l
 | S fuel => match T with
