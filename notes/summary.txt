@@ -172,5 +172,94 @@ Problem: This only works with imprecise, but we still need precise typing to dea
 
 2015-01-27: detected unexpected anomaly in swap_sub_and_has/case subtyp_or 
 
+2015-01-28: started studying existential-DOT, sketched existential-DOT rules in txt format
+
+2015-01-28: started lambda-DOT
+
+2015-03-01: another "max ctx growth" attempt, but weakening goes in the other direction than the the termination measure
+
+2015-03-03: deep/shallow wf judgment (inspired by Julien Crétin's thesis), which makes the wf derivations big enough to use them as fuel to prove expansion total, but still allows recursive types
+
+2015-03-06: start ip-pr-lambda-DOT
+
+2015-03-10: [Milestone 4] Progress+Preservation for ip-pr-lambda-DOT
+
+2015-03-21: Problem in going from lambda-DOT to muDOT is the mutual dependency between narrowing and exp_preserves_sub (remember whole the dependency diagram). Encode it in leon, hoping that its termination checker would give a counterexample to termination, but it turns out that leon is far from being able to answer this.
+
+2015-03-22: start ip-pr-muDOT
+
+2015-03-23: insight: in a typ_bind-only env, "pth_has" only uses exp_bind,
+which is very simple. So we can prove narrow_has without any induction.
+Using this, we can prove narrowing for subtyp/dec/decs, and then prove
+exp_preserves_sub, and then ip2pr
+BUT the whole ip-pr approach will not work in muDOT, because ip2pr only works if we all types in the environment are wf, and in order to prove precise wf-ness of a bind-type, we have to put that bind-type into the env, so we have to show that it's wf, but that's exactly what we're about to prove -> chicken/egg problem.
+And actually that's not very surprising, because an imprecise wf-jugment is not very strong, because you can always get rid of bad cycles by subsumption.
+
+2015-03-24: study transitivity in nohas-imprecise lambda-DOT, all cases work except the case where the first subtyping judgment is a subtyp_sel_r, and the second is a subtyp_sel_l. So if we're given
+x.A <: y.B <: z.C
+and inversion will give us
+y: {B: x.A..Top} and y: {B: Bot..z.C}.
+and we have to prove z.A <: z.C. (Top and Bot might be something else, but it doesn't matter here.)
+
+2015-03-31: [in papers repo] proof sketch for simple-dot, highlighting the delicate parts which do not yet work
+
+2015-04-01: Working with Nada on ip-pr-gDOT, but ip-pr problems mentioned above still apply
+
+2015-04-21: wip on no-declists precise lambda-DOT (with intersection/union types).
+If we don't want to depend on (and narrow) wf-ness judgments, we could instead make member lookup (typ_has/hasnt) a total function (by using some cycle detection mechanism based on all visited path types). Note that it has to be total for the cases subtyp_and_l/r of swap_sub_and_typ_has (corresponds to exp_preserves_sub).
+Problem: in order to prove termination of member lookup, we want to use the number of visited x.L as a termination measure, because it is upper-bounded by some number which can be determined from the ctx, but to find that number, we need to expand/do member lookup on every type of the ctx, which requires termination of member lookup, but this is just what we are proving.
+
+2015-05-04: Another way to get total member lookup (typ_has): Add a set of already seen path types to this judgment, and return a bottom-decl if a cycle is detected. This is sound because no objects with cyclic bounds will ever be allocated, cyclic bounds will only occur in contradictory environments. Also return a top-decl for typ_top and typ_rcd when the label doesn't match, to make sure it's total (and doesn't need typ_hasnt). This is also sound because you can't do anything interesting with a top-decl (but note that this only holds for type members, but a method member might still be called...).
+Now in swap_sub_and_typ_has/case subtyp_sel_l/r, we have to invert the typ_has judgment, so we get out two typ_has judgments with a history of length 1 (instead of empty). Idea: If there are no cycles, we can get rid of it because it's not used, and if there's a cycle, we can just "rotate" the proof by one step on the cycle. In other words: It should be possible to prove a remove_history lemma.
+But note that it only holds if the decl is not a bottom-decl (because if it is then it could be the result of breaking a cycle). Problem in case typ_or_has: if left type T1 has some D1, but right type T2 has bottom-decl with some history, we cannot just remove that history.
+We also need cyclic_typ_has_dec_bot: given history h12 from x1.L1 to x2.L2 and history h23 from x2.L2 to x3.L3, and next_in_hist from x3.L3 to x2.L2 (i.e. cycle), show that x2.L2 has bottom-decl. Problem: What if the next_in_hist`s in h23 depend on h12 (which is removed)?
+--> not sure if this can work...
+
+2015-05-11: The chicken-egg problem regarding wf_ctx (or simple_ctx or whatever you call it) also occures in gDOT, but not in ip2pr, but only in preservation/case red_new.
+
+2015-05-16: explore various ways of defining typ_has as a total lookup function.
+One idea is to go fuel-based, and return dec_top in the failure case, but if do that,
+we'll have problems when defining lookup_def accordingly, because we'll have to return a method def for every label. That's possible (by returning some dummy method def), but this changes the semantics in such a way that we don't prove what we actually wanted to prove, because all "stuck"/NoSuchMethodError cases will not fail any more, but just silently execute the dummy method.
+And an even bigger problem is the fuel: It hopefully holds that the more fuel we give, the more precise the returned dec is (because we return dec_top in case of timeout). But this doesn't really save us from proving lookup total, but it now just appears in a different shape: We have to prove that it converges, i.e. that there exists an amount of fuel after which it doesn't change any more.
+
+2015-05-24: Idea: Don't carry wf-ness in a wf_ctx judgment, to avoid chicken-egg problems. But only carry it in regularity of typing --> no problems in narrow_wf with bigger env. Problem: narrow_has cannot get wf-ness to return subtyp_refl etc, because it can't conclude that since T is wf, all its members are wf as well (= typ_has_preserves_wf).
+
+2015-05-25: try out co-inductive wf judgments, because it allows us to make them so "deeply looping" that typ_has_preserves_wf works, and thanks to coinduction, recursive types are not ruled out.
+Problem: How can we prove lemmas of the form
+(co-inductive Prop) -> (inductive Prop) ?
+In particular: typ_has_total!
+
+2015-05-30: Encode the coinduction of wf_typ with an Inductive wf_typ which takes a set of assumptions (grown only when we go through typ_rcd, so only guarded recursion is allowed).
+Allows to prove typ_has_preserves_wf, typ_has_total, and still allows recursive types.
+
+2015-05-31: in narrow_has, we cannot obtain all needed wf-ness from the subtyping judgment
+
+2015-06-10: narrow_wf has to call narrow_binds, which expects a wf jugment with empty history (for the subdec_refl case, but then narrow_wf also calls subtyp_regular on this later, so it's really needed). But if we do induction on wf derivations, sub-derivations can have non-empty history.
+So: Idea: narrow_wf only for empty set of assumptions, so that
+we can use the wf_typ to pass to narrow_binds (because narrow_binds
+wants an empty set of assumptions in the wf_typ), and remove the
+assumption added by wf_rcd on-the-fly using remove_hyp_from_wf_dec.
+Since induction on wf_typ_impl itself only gives us an IH which
+requires \{} = \{ typ_rcd D }, we have to measure the height of the
+wf judgments ourselves, and do induction on that height.
+Problem: remove_hyp_from_wf_dec increases the height by at least 1,
+so we cannot apply it to a derivation on which we want to apply the IH.
+
+2015-06-10: narrow_has finally works, but needs wf_ness of the type in the more precise env (which is quite a strong hypothesis).
+
+
+
+
+
+
+
+narrow_has_hasnt (from G2 to narrower G1) needs need wf_typ G1 T (G1, not G2!)
+in case typ_sel_has might, but there we might get rid of it if we're in a wf_ctx,
+but in case typ_and_has_1, we really need wf-ness in G1 to look up the members!
+
+
+
+ 
+ 
 
 
