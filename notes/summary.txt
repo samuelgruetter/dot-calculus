@@ -247,19 +247,112 @@ so we cannot apply it to a derivation on which we want to apply the IH.
 
 2015-06-10: narrow_has finally works, but needs wf_ness of the type in the more precise env (which is quite a strong hypothesis).
 
+2015-06-11: We cannot give a wf_ctx hyp to narrow_ty, because otherwise we have a chicken-egg problem in narrow_ty/case ty_new. But narrow_ty works without a wf_ctx hyp, so we're fine.
 
+2015-06-11: Add a rule which allows to assume good bounds (as a Coq proof term). Cannot add it to the subtyping rules because of the strict positivity restriction, but we can add it to the term typing rules.
+          G |- T wf
+          good_bounds G => G |- t : T
+          --------------------------- (ty_hyp)
+          G |- t : T
 
+where Definition good_bounds_typ(G: ctx)(T: typ) :=
+        forall L Lo Hi, typ_has G T (dec_typ L Lo Hi) -> subtyp G Lo Hi.
+      Definition good_bounds(G: ctx) :=
+        forall x X, binds x X G -> forall L Lo Hi, typ_has G X (dec_typ L Lo Hi) -> subtyp G Lo Hi.
 
+2015-06-12: Revisit the problem that induction on wf judgments has to deal with non-empty history:
+Define a valid_history judgment which states that a given history (set of visited types) indeed corresponds to what was seen when proving a wf statement, and also carries all seen wf proofs (so that we can append them once we hit a wf_hyp). Make sure that valid_history is defined in such a way that it can be maintained during an induction on a wf derivation.
+Then prove a lemma remove_valid_history, which turns a wf proof with some valid history into one with empty history (by "rotating" the proof).
+This works, but we cannot use it in narrow_wf, because we would have to narrow a valid_history proof, which contains wf proofs, so we would have to narrow these, but narrowing wf proofs is just what we're about to prove --> another chicken/egg problem.
+Defining a custom induction principle for wf_typ/dec which always has empty A (history) doesn't work either, becauset if we apply remove_own_hyp_from_wf_dec before passing the derivation to the IH, its size might increase!
 
+2015-06-16: define typ_has and wf_typ coinductively, hoping that typ_has_total (wf_typ implies typ_has or typ_hasnt) can be proven, but cofix cannot be applied to goal of the form "exists D, ..." because that's inductive.
 
+2015-06-16: allowing type selections only on stable types solves 1 problem:
+* remove_history in narrowing/case wf_sel (not needed any more)
 
-narrow_has_hasnt (from G2 to narrower G1) needs need wf_typ G1 T (G1, not G2!)
+2015-06-26: Since in ty_hyp, the good_bounds judgment appears in a contravariant positions, each lemma now also needs an "undo" version:
+- weakening -> strengthening (might hold with enough wf-ness hypotheses, but very hard in the transitivity case)
+- narrowing -> undo-narrowing (doesn't hold)
+- substitution -> undo-subst (very tricky, didn't succeed, it's not even clear how to state it)
+New ty_hyp rule: If you want to suppose good bounds, you must prove
+the typing derivation not just for G, but for all subenvs of G.
+Moreover, if we also include weakening in the subenv judgment, strengthening and undo-subst is not needed any more.
+But: Will the substitution lemma work with the ty_hyp rule?
+
+2015-06-26: make term typing imprecise --> solves the problem that in narrowing/case ty_new, the fv-restriction was not preserved
+
+2015-07-03: undo-subst: general problem: to undo the substitution [x:=y], we cannot just do [y:=x], because the ys which already were ys before the first substitution should not be turned into xs
+
+2015-07-04: introduce ty_def_hyp as a rule (instead of only ty_trm_hyp), and hmode to control whether it is allowed at top-level.
+Problem: ty_def can suppose good_bounds for the type it is about to check, but this is too much.
+
+2015-07-04: having only aliases in "new" allows us to get rid of the ty_def_hyp rule
+--> problem that ty_def can suppose good_bounds for the type it is about to check is gone
+
+2015-07-06: Giving up on undo-subst after more than one week of unsuccessful attempts.
+
+2015-07-07: Add subtyping rule [x has L:S..U => S <: U] and hmode to control if we allow it (deeply).
+Actually this is the same idea as in 0a9cf32 (exactly 11 months ago),
+but this time I insisted more and it works for gDOT :-)
+Note, though, that okhyp_to_nohyp currently relies on the fact that
+subtyping never grows the env, which will not be the case any more
+when we add existentials.
+
+2015-07-08: "power_subtyp n" is a stronger version of subtyping which additionally
+guarantees memberwise subtyping up to depth n.
+Might be helpful if used in the subenv judgment used by narrowing, but I am not sure.
+
+2015-07-08: [Milestone 5] Progress+Preservation for gDOT (global self refs)
+Restriction: Type selections x.L are only allowed if the type of
+x is stable, i.e. not allowed if the type of x is again a sel type
+
+2015-07-08: exDOT with precise typ_has: do we need/want a typ_ex_has rule or only the skolemization rule?
+For instance: How to typecheck the term a.f(x).g(y) where a.f(x) is of type ex(z: T)U ?
+Three "solutions":
+
+1) G, x: T |- U has D     x notin fv D
+   -----------------------------------
+   G |- ex(x: T)U has D
+
+   too lame because of the fv condition
+
+2) distribute(x, T D) = match D with
+   | L: S..U => L: ex(x: T)S .. ex(x: T)U
+   | m: S->U => m: ex(x: T)S -> ex(x: T)U
+   end
+
+   G, x: T |- U has D
+   --------------------------------------
+   G |- ex(x: T)U has distribute(x, T, D)
+
+3) First convert into single assignment form:
+   val v1 = a.f(x);
+   v1.g(y)
+   No typ_ex_has rule, only the skolemization rule.
+
+Solution 3) seems to be the best because the 1) and 2) are too lame.
+
+2015-07-09: Solution 3) is not good enough for cases like
+G = x: {L: Bot .. ex(z: T)U}     (or x: {D} /\ ex(z: T)U)
+    a: x.L
+where we want to do skolemization before typechecking a.m(...),
+because the existential is not at top level.
+--> also discuss what problems remain/go away if we use imprecise typing instead of typ_has.
+
+2015-07-10: narrow_has_hasnt (from G2 to narrower G1) needs need wf_typ G1 T (G1, not G2!)
 in case typ_sel_has might, but there we might get rid of it if we're in a wf_ctx,
 but in case typ_and_has_1, we really need wf-ness in G1 to look up the members!
 
+2015-07-10: add stable_alias rule, problem: narrowing can change a member of a stable type to an "equivalent" one (i.e. one which is a subdec and a superdec of the original one), so we would have to deal with such equivalence everywhere, which is ugly.
+
+2015-07-14: problem adding class types (nominal): how are terms of type class type introduced? Answer: By "new", but this requires expansion to check if all members were given.
+
+2015-07-15: monadic typechecker with error messages for gDOT
 
 
- 
+
+TODO discuss significant differences to F/Fsub
  
 
 
