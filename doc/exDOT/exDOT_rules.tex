@@ -1,0 +1,520 @@
+\documentclass{llncs}
+
+\setlength{\textwidth}{13.5cm}
+\advance\evensidemargin by -.65cm
+\advance\oddsidemargin by -.65cm
+
+\usepackage{fleqn}
+\usepackage{listings}
+\usepackage{math}
+\usepackage{amsmath}
+\usepackage{latexsym}
+\usepackage{bcprules}
+\usepackage[T1]{fontenc}
+
+% Prooftree formatting
+\usepackage{prooftree}
+
+\usepackage[bookmarks=true]{hyperref}
+\usepackage{bookmark}
+
+\usepackage{xcolor}
+
+\input{dot_macros.tex}
+
+%%%%%%%%%%%%%%%%%%%%%%%%
+%%%% BEGIN DOCUMENT %%%%
+%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+\thispagestyle{plain}
+\pagestyle{plain}
+\mainmatter
+
+\title{[DRAFT] The exDOT Calculus}
+\author{Samuel Gruetter, Nada Amin, Martin Odersky}
+\institute{EPFL}
+
+\maketitle
+\sloppy
+\newcommand{\lindent}{\hspace{-4mm}}
+
+%\newcommand{\highlight}[1]{\fcolorbox{lightgray}{lightgray}{#1}}
+
+\newcommand{\highlight}[1]{\colorbox{lightgray}{#1}}
+
+\newcommand{\HIGHLIGHT}[1]{\colorbox{lightgray}{$#1$}}
+
+This document presents gDOT, and the additions made by exDOT are \highlight{highlighted} in gray.
+
+\begin{figure}
+\figurebox{
+%\renewcommand{\baselinestretch}{0.95}
+\pdfbookmark[0]{Syntax}{syntax}
+{\bf Syntax}\medskip
+    
+$\ba{l@{\hspace{0.2mm}}|@{\hspace{0.2mm}}l}
+\ba[t]{l@{\hspace{10mm}}l}
+x, y, z    & \lindent{\mbox{Variable}} \\[0.2em]
+l ::=      & \lindent{\mbox{Label}} \\
+\gap L     & \mbox{Type label}\\
+\gap m     & \mbox{Method label}\\[0.2em]
+t, u ::=      & \lindent{\mbox{Term}} \\
+\gap x     & \mbox{variable} \\
+\gap \trmnew x {\seq{d}} t & \mbox{new instance} \\
+%\gap \highlight{$\trmcall t m u$} & \mbox{method invocation} \\[0.2em]
+\gap \trmcall t m u & \mbox{method invocation} \\[0.2em]
+d ::= & \lindent{\mbox{Initialization}} \\
+\gap \deftyp L T        & \mbox{field init.}\\
+\gap \defmtd m x T U u  & \mbox{method init.}\\[0.2em]
+\Gamma ::= \seq{x \typ T} & \lindent\mbox{Environment} \\[0.2em]
+s      ::= \seq{x \mapsto \{\seq{d}\}} & \lindent\mbox{Store} \\
+\ea
+&
+
+\ba[t]{l@{\hspace{10mm}}l}
+S,T,U,V,W ::= & \lindent\mbox{Type}\\
+\gap \Top  & \mbox{top type} \\
+\gap \Bot  & \mbox{bottom type} \\
+\gap \{D\} & \mbox{one-member record} \\
+\gap x.L & \mbox{type selection} \\
+\gap T \tand T & \mbox{intersection type} \\
+\gap T \tor T  & \mbox{union type} \\[0.2em]
+\gap \highlight{$x\sing$}    & \mbox{singleton type} \\[0.3em]
+\gap \highlight{$\exTyp x T U$} & \mbox{existential type} \\
+D ::= & \lindent\mbox{Declaration} \\
+\gap \Ldecl {L} S U & \mbox{abstract type decl.} \\
+\gap \mdecl m S U & \mbox{method declaration}
+\ea
+\ea$
+}
+%\caption{The DOT Calculus : Syntax}\label{dot-syntax}
+\end{figure}
+
+
+\begin{figure}
+\figurebox{
+\pdfbookmark[0]{Reduction}{reduction}
+{\bf Reduction}\hfill\fbox{$\reduction t s {t'} {s'}$}
+
+\infrule[\textsc{red-call}]
+{x \mapsto \ldefs{\seq{\deftyp L W}\;\seq{\defmtd m z T U u}} \in s}
+{\reduction {\trmcall x {m_i} y} s {\subst y {z_i} {u_i}} s}
+
+\infrule[\textsc{red-new}]
+{z \notin \dom(s)}
+{\reduction {\trmnew x {\seq{d}} t} s
+            {\subst z x t} {s \envplus{z \mapsto {\subst z x {\{\seq{d}\}}}}}}
+
+\vspace{0.5em}
+
+\begin{multicols}{2}
+
+\infrule[\textsc{red-call-1}]
+{\reduction {t} s {t'} {s'}}
+{\reduction {\trmcall t m u} s {\trmcall {t'} m u} {s'}}
+
+\infrule[\textsc{red-call-2}]
+{\reduction {u} s {u'} {s'}}
+{\reduction {\trmcall x m u} s {\trmcall x m {u'}} {s'}}
+
+\end{multicols}
+
+}
+%\caption{The DOT Calculus : Reduction}\label{dot-red}
+\end{figure}
+
+\begin{figure}
+\figurebox{
+{\bf Declaration intersection}\hfill\fbox{$intersect(D_1, D_2) = D_3$}
+
+\begin{multicols}{2}
+
+\infrule
+{D_1 = (\Ldecl L {S_1} {U_1}) ~~~~~~~ D_2 = (\Ldecl L {S_2} {U_2})}
+{intersect(D_1, D_2) = (\Ldecl L {S_1 \tor S_2~} {~U_1 \tand U_2})}
+
+\infrule
+{D_1 = (\mdecl m {S_1} {U_1}) ~~~~~~~ D_2 = (\mdecl m {S_2} {U_2})}
+{intersect(D_1, D_2) = (\mdecl m {S_1 \tor S_2~} {~U_1 \tand U_2})}
+
+\end{multicols}
+
+\linesep
+
+{\bf Declaration union}\hfill\fbox{$union(D_1, D_2) = D_3$}
+
+\begin{multicols}{2}
+
+\infrule
+{D_1 = (\Ldecl L {S_1} {U_1}) ~~~~~~~ D_2 = (\Ldecl L {S_2} {U_2})}
+{union(D_1, D_2) = (\Ldecl L {S_1 \tand S_2~} {~U_1 \tor U_2})}
+
+\infrule
+{D_1 = (\mdecl m {S_1} {U_1}) ~~~~~~~ D_2 = (\mdecl m {S_2} {U_2})}
+{union(D_1, D_2) = (\mdecl m {S_1 \tand S_2~} {~U_1 \tor U_2})}
+
+\end{multicols}
+
+}
+\end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{figure}
+\figurebox{
+\pdfbookmark[0]{Membership}{membership}
+{\bf Membership}\hfill{\fbox{$\Gamma \ts T \ni D$}}
+
+\begin{multicols}{2}
+
+\infrule[\textsc{$\Bot$-$\ni$-typ}]
+{}
+{\Gamma \ts \Bot \ni (\Ldecl L \Top \Bot)}
+
+\infrule[\textsc{$\Bot$-$\ni$-mtd}]
+{}
+{\Gamma \ts \Bot \ni (\mdecl m \Top \Bot)}
+
+\infrule[\textsc{rcd-$\ni$}]
+{}
+{\Gamma \ts \{D\} \ni D}
+
+\infrule[\textsc{sel-$\ni$}]
+{(x: T) \in \Gamma \\
+ \Gamma \ts T \ni (\Ldecl L S U) \\
+ \Gamma \ts U \ni D}
+{\Gamma \ts x.L \ni D}
+
+\infrule[\textsc{$\tand$-$\ni$-1}]
+{\Gamma \ts T_1 \ni D \\
+ \Gamma \ts T_2 \hasnt label(D)}
+{\Gamma \ts T_1 \tand T_2 \ni D}
+
+\infrule[\textsc{$\tand$-$\ni$-2}]
+{\Gamma \ts T_2 \ni D \\
+ \Gamma \ts T_1 \hasnt label(D)}
+{\Gamma \ts T_1 \tand T_2 \ni D}
+
+\infrule[\textsc{$\tand$-$\ni$-12}]
+{\Gamma \ts T_1 \ni D_1 ~~~~ \Gamma \ts T_2 \ni D_2}
+{\Gamma \ts T_1 \tand T_2 \ni intersect(D_1, D_2)}
+
+\infrule[\textsc{$\tor$-$\ni$}]
+{\Gamma \ts T_1 \ni D_1 ~~~~ \Gamma \ts T_2 \ni D_2}
+{\Gamma \ts T_1 \tor T_2 \ni union(D_1, D_2)}
+
+\end{multicols}
+
+\linesep
+   
+\begin{multicols}{2}[\judgement{Non-membership}{\fbox{$\Gamma \ts T \hasnt l$}}]
+
+\infrule[\textsc{$\Top$-$\hasnt$}]
+{}
+{\Gamma \ts \Top \hasnt l}
+
+\infrule[\textsc{rcd-$\hasnt$}]
+{l \neq label(D)}
+{\Gamma \ts \{ D \} \hasnt l}
+
+\infrule[\textsc{sel-$\hasnt$}]
+{(x: T) \in \Gamma \\
+ \Gamma \ts T \ni (\Ldecl L S U) \\
+ \Gamma \ts U \hasnt l}
+{\Gamma \ts x.L \hasnt l}
+
+\infrule[\textsc{$\tand$-$\hasnt$}]
+{\Gamma \ts T_1 \hasnt l ~~~~ \Gamma \ts T_2 \hasnt l}
+{\Gamma \ts T_1 \tand T_2 \hasnt l}
+
+\infrule[\textsc{$\tor$-$\hasnt$-1}]
+{\Gamma \ts T_1 \ni D \\
+ \Gamma \ts T_2 \hasnt label(D)}
+{\Gamma \ts T_1 \tor T_2 \hasnt label(D)}
+
+\infrule[\textsc{$\tor$-$\hasnt$-2}]
+{\Gamma \ts T_2 \ni D \\
+ \Gamma \ts T_1 \hasnt label(D)}
+{\Gamma \ts T_1 \tor T_2 \hasnt label(D)}
+
+\infrule[\textsc{$\tor$-$\hasnt$-12}]
+{\Gamma \ts T_1 \hasnt l ~~~~ \Gamma \ts T_2 \hasnt l}
+{\Gamma \ts T_1 \tor T_2 \hasnt l}
+
+\end{multicols}
+}
+\end{figure}
+
+% TODO stable_typ restriction !!!
+
+%%%%%%%%%%%%%%%%%%%%%
+
+\begin{figure}
+  \figurebox{
+\pdfbookmark[0]{Well-formedness}{wf}
+\begin{multicols}{2}[\judgement{Well-formed types}{\fbox{$\Gamma \ts T \wf$}}]
+
+      \infax[\textsc{TODO}]
+      {}
+      
+%Inductive wf_typ_impl: ctx -> fset typ -> typ -> Prop :=
+%  | wf_top: forall G A,
+%      wf_typ_impl G A typ_top
+%  | wf_bot: forall G A,
+%      wf_typ_impl G A typ_bot
+%  | wf_hyp: forall G A T,
+%      T \in A ->
+%      wf_typ_impl G A T
+%  | wf_rcd: forall G A D,
+%      wf_dec_impl G (A \u \{(typ_rcd D)}) D ->
+%      wf_typ_impl G A (typ_rcd D)
+%  | wf_sel: forall G A x X L T U,
+%      binds x X G ->
+%      stable_typ X -> (* <-- important restriction *)
+%      typ_has G X (dec_typ L T U) ->
+%      wf_typ_impl G A X ->
+%      wf_typ_impl G A T ->
+%      wf_typ_impl G A U ->
+%      wf_typ_impl G A (typ_sel (avar_f x) L)
+%  | wf_and: forall G A T1 T2,
+%      wf_typ_impl G A T1 ->
+%      wf_typ_impl G A T2 ->
+%      wf_typ_impl G A (typ_and T1 T2)
+%  | wf_or: forall G A T1 T2,
+%      wf_typ_impl G A T1 ->
+%      wf_typ_impl G A T2 ->
+%      wf_typ_impl G A (typ_or T1 T2)
+%  | wf_self: forall G A x X,
+%      binds x X G ->
+%      wf_typ_impl G A X ->
+%      wf_typ_impl G A (typ_self (avar_f x))
+%  | wf_ex: forall L G A T U,
+%      (forall x, x \notin L -> wf_typ_impl (G & x ~ (open_typ x T)) A (open_typ x T)) ->
+%      (forall x, x \notin L -> wf_typ_impl (G & x ~ (open_typ x T)) A (open_typ x U)) ->
+%      wf_typ_impl G A (typ_ex T U)
+%  | wf_skolem: forall L G1 G2 x A S T U,
+%      (forall y, y \notin L ->
+%         wf_typ_impl (G1 & x ~ (open_typ y U) & y ~ (open_typ y S) & G2) A T) ->
+%      fv_typ T \c (dom (G1 & x ~ typ_ex S U & G2)) -> (* instead of "y \notin fv_typ T" *)
+%      wf_typ_impl (G1 & x ~ typ_ex S U & G2) A T
+%with wf_dec_impl: ctx -> fset typ -> dec -> Prop :=
+%  | wf_tmem: forall G A L Lo Hi,
+%      wf_typ_impl G A Lo ->
+%      wf_typ_impl G A Hi ->
+%      wf_dec_impl G A (dec_typ L Lo Hi)
+%  | wf_mtd: forall G A m U V,
+%      wf_typ_impl G A U ->
+%      wf_typ_impl G A V ->
+%      wf_dec_impl G A (dec_mtd m U V).
+
+    \end{multicols}
+
+\vspace{7cm}
+    \linesep
+
+    \begin{multicols}{2}[\judgement{Well-formed declarations}{\fbox{$\Gamma \ts D \wf$}}]
+      \infrule[\textsc{wf-tmem}]
+      {\Gamma \ts S \wf ~~~~ \Gamma \ts U \wf}
+      {\Gamma \ts \Ldecl L S U \wf}
+
+      \infrule[\textsc{wf-mtd}]
+      {\Gamma \ts S \wf ~~~~ \Gamma \ts U \wf}
+      {\Gamma \ts \mdecl m S U \wf}
+
+    \end{multicols}
+  }
+
+\end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%
+
+\begin{figure}
+  \figurebox{
+
+\pdfbookmark[0]{Subtyping}{subtyping}
+\begin{multicols}{2}[\judgement{Subtyping}{\fbox{$\Gamma \ts S \sub T$}}]
+
+\infrule[\textsc{$\sub$-refl}]
+{\Gamma \ts T \wf}
+{\Gamma \ts T \sub T}
+
+\infrule[\textsc{$\sub$-$\Top$}]
+{\Gamma \ts T \wf}
+{\Gamma \ts T \sub \Top}
+
+\infrule[\textsc{$\Bot$-$\sub$}]
+{\Gamma \ts T \wf}
+{\Gamma \ts \Bot \sub T}
+
+\infrule[\textsc{$\sub$-rcd}]
+{\Gamma \ts D_1 \sub D_2}
+{\Gamma \ts \{D_1\} \sub \{D_2\}}
+
+\infrule[\textsc{$\sub$-sel-l}]
+{(x: T) \in \Gamma ~~~~~~~~~~~  \Gamma \ts T \wf \\
+ \Gamma \ts T \ni (\Ldecl L S U) ~~~ \Gamma \ts S \sub U}
+{\Gamma \ts x.L \sub U}
+
+\infrule[\textsc{$\sub$-sel-r}]
+{(x: T) \in \Gamma ~~~~~~~~~~~  \Gamma \ts T \wf \\
+ \Gamma \ts T \ni (\Ldecl L S U) ~~~ \Gamma \ts S \sub U}
+{\Gamma \ts S \sub x.L}
+
+%%%%
+
+\infrule[\textsc{$\sub$-$\tand$}]
+{\Gamma \ts T \sub U_1 ~~~~ \Gamma \ts T \sub U_2}
+{\Gamma \ts T \sub U_1 \tand U_2}
+
+\infrule[\textsc{$\sub$-$\tand$-1}]
+{\Gamma \ts T_1 \wf ~~~~ \Gamma \ts T_2 \wf}
+{\Gamma \ts T_1 \tand T_2 \sub T_1}
+
+\infrule[\textsc{$\sub$-$\tand$-2}]
+{\Gamma \ts T_1 \wf ~~~~ \Gamma \ts T_2 \wf}
+{\Gamma \ts T_1 \tand T_2 \sub T_2}
+
+\infrule[\textsc{$\sub$-$\tor$}]
+{\Gamma \ts T_1 \sub U ~~~~ \Gamma \ts T_2 \sub U}
+{\Gamma \ts T_1 \tor T_2 \sub U}
+
+\infrule[\textsc{$\sub$-$\tor$-1}]
+{\Gamma \ts T_1 \wf ~~~~ \Gamma \ts T_2 \wf}
+{\Gamma \ts T_1 \sub T_1 \tor T_2}
+
+\infrule[\textsc{$\sub$-$\tor$-2}]
+{\Gamma \ts T_1 \wf ~~~~ \Gamma \ts T_2 \wf}
+{\Gamma \ts T_2 \sub T_1 \tor T_2}
+
+\end{multicols}
+
+\vspace{0.1em}
+
+\begin{multicols}{2}
+
+\infrule[\textsc{$\sub$-trans}]
+{\Gamma \ts T_1 \sub T_2 \\ \Gamma \ts T_2 \sub T_3}
+{\Gamma \ts T_1 \sub T_3}
+
+\infrule[\textsc{$\sub$-hyp}]
+{(x: T) \in \Gamma ~~~~  \Gamma \ts T \wf \\
+ \Gamma \ts T \ni (\Ldecl L S U) \\
+ \Gamma \ts S \wf ~~~~  \Gamma \ts U \wf}
+{\Gamma \ts S \sub U}
+
+\end{multicols}
+
+\vspace{0.1em}
+
+\newruletrue
+
+\begin{multicols}{2}
+
+\infrule[\textsc{$\sub$-self-l}]
+{(x: T) \in \Gamma \\  \Gamma \ts T \wf}
+{\Gamma \ts x\sing \sub T}
+
+\infrule[\textsc{$\sub$-ex-l}]
+{\Gamma \envplus{x: S} \ts T \sub U \\
+ \Gamma \ts U \wf ~~~~ \Gamma \envplus{x: S} \ts S \wf}
+{\Gamma \ts {\exTyp x S T} \sub U}
+
+\infrule[\textsc{$\sub$-self-r}]
+{(x: T) \in \Gamma \\
+ \Gamma \ts x\sing \wf \\
+ \Gamma \ts y\sing \wf}
+{\Gamma \ts y\sing \sub x\sing}
+
+\infrule[\textsc{$\sub$-ex-r}]
+{(x: S') \in \Gamma ~~~~ \Gamma \ts S' \sub S \\
+ \Gamma \ts T \sub U}
+{\Gamma \ts T \sub {\exTyp x S U}}
+
+\end{multicols}
+
+\newrulefalse
+
+\linesep
+
+\begin{multicols}{2}[\judgement{Declaration subtyping}{\fbox{$\Gamma \ts D \sub D'$}}]
+
+    \infrule[\textsc{subdec-typ}]
+            {~~\Gamma \ts S' \sub S ~~~~ \Gamma \ts T \sub T'~~}
+            {\Gamma \ts (\Ldecl L S T) \sub (\Ldecl L {S'} {T'})}
+
+    \infrule[\textsc{subdec-mtd}]
+            {\Gamma \ts S' \sub S ~~~~ \Gamma \ts T \sub T'}
+            {\Gamma \ts (\mdecl m S T) \sub (\mdecl m {S'} {T'})}
+
+\end{multicols}
+}
+\end{figure}
+
+
+%%%%%%%%%%%%%%%%%%%%%
+
+\begin{figure}
+\figurebox{
+\pdfbookmark[0]{Typing}{typing}
+\begin{multicols}{2}[\judgement{Term Typing}{\fbox{$\Gamma \ts t : T$}}]
+
+\infrule[\textsc{ty-var}]
+{(x: T) \in \Gamma\\
+ \Gamma \ts T \wf}
+{\Gamma \ts x: T}
+
+\infrule[\textsc{ty-call}]
+{\Gamma \ts t : T ~~ \Gamma \ts u : U  ~~ \Gamma \ts V \wf \\
+ \Gamma \ts T \ni (\mdecl m U V)}
+{\Gamma \ts {\trmcall t m u} : V}
+
+\infrule[\textsc{ty-new}]
+{\Gamma \envplus{x: T} \ts \{\seq{d}\} : T \\
+ \Gamma \envplus{x: T} \ts u : U ~~~~ \Gamma \ts U \wf}
+{\Gamma \ts {\trmnew x {\seq{d}} u}: U}
+
+\infrule[\textsc{ty-sbsm}]
+{\Gamma \ts t: T_1\\
+ \Gamma \ts T_1 \sub T_2}
+{\Gamma \ts t: T_2}
+
+\end{multicols}
+
+\linesep
+
+\begin{multicols}{2}[\judgement{Initialization Typing}{\fbox{$\Gamma \ts d : D$}}]
+
+\infrule[\textsc{ty-tdef}]
+{\Gamma \ts T \wf}
+{\Gamma \ts (\deftyp L T) : (\Ldecl L T T)}
+
+\infrule[\textsc{ty-mdef}]
+{\Gamma \ts T \wf ~~~~ \Gamma \ts U \wf \\
+ \Gamma \envplus{x: T} \ts u : U}
+{\Gamma \ts (\defmtd m x T U u) : (\mdecl m T U) }
+
+\end{multicols}
+
+\linesep
+
+\begin{multicols}{2}[\judgement{Initialization List Typing}{\fbox{$\Gamma \ts \{\seq{d}\} : T$}}]
+
+\infrule[\textsc{ty-nil}]
+{}
+{\Gamma \ts \{\} : \Top}
+
+\infrule[\textsc{ty-cons}]
+{ label(d) \notin labels(\seq{d})\\
+  \Gamma \ts \{ \seq{d} \} : T ~~~~ \Gamma \ts d : D }
+{\Gamma \ts \{ \seq{d}, d \} : T \tand \{ D \} }
+
+\end{multicols}
+}
+
+\end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\end{document}
