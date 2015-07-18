@@ -1,0 +1,116 @@
+
+\begin{multicols}{2}[\judgement{Subtyping}{\fbox{$\Gamma \ts S \sub T$}}]
+
+\infrule[\textsc{$\sub$-refl}]
+{\Gamma \ts T \wf}
+{\Gamma \ts T \sub T}
+
+\infrule[\textsc{$\sub$-$\Top$}]
+{\Gamma \ts T \wf}
+{\Gamma \ts T \sub \Top}
+
+\infrule[\textsc{$\Bot$-$\sub$}]
+{\Gamma \ts T \wf}
+{\Gamma \ts \Bot \sub T}
+
+\infrule[\textsc{$\sub$-rcd}]
+{\Gamma \ts D_1 \sub D_2}
+{\Gamma \ts \{D_1\} \sub \{D_2\}}
+
+\infrule[\textsc{$\sub$-sel-l}]
+{(x: T) \in \Gamma ~~~~~~~~~~~  \Gamma \ts T \wf \\
+ \Gamma \ts T \ni (\Ldecl L S U) ~~~ \Gamma \ts S \sub U}
+{\Gamma \ts x.L \sub U}
+
+\infrule[\textsc{$\sub$-sel-r}]
+{(x: T) \in \Gamma ~~~~~~~~~~~  \Gamma \ts T \wf \\
+ \Gamma \ts T \ni (\Ldecl L S U) ~~~ \Gamma \ts S \sub U}
+{\Gamma \ts S \sub x.L}
+
+%%%%
+
+\infrule[\textsc{$\sub$-$\tand$}]
+{\Gamma \ts T \sub U_1 ~~~~ \Gamma \ts T \sub U_2}
+{\Gamma \ts T \sub U_1 \tand U_2}
+
+\infrule[\textsc{$\sub$-$\tand$-1}]
+{\Gamma \ts T_1 \wf ~~~~ \Gamma \ts T_2 \wf}
+{\Gamma \ts T_1 \tand T_2 \sub T_1}
+
+\infrule[\textsc{$\sub$-$\tand$-2}]
+{\Gamma \ts T_1 \wf ~~~~ \Gamma \ts T_2 \wf}
+{\Gamma \ts T_1 \tand T_2 \sub T_2}
+
+\infrule[\textsc{$\sub$-$\tor$}]
+{\Gamma \ts T_1 \sub U ~~~~ \Gamma \ts T_2 \sub U}
+{\Gamma \ts T_1 \tor T_2 \sub U}
+
+\infrule[\textsc{$\sub$-$\tor$-1}]
+{\Gamma \ts T_1 \wf ~~~~ \Gamma \ts T_2 \wf}
+{\Gamma \ts T_1 \sub T_1 \tor T_2}
+
+\infrule[\textsc{$\sub$-$\tor$-2}]
+{\Gamma \ts T_1 \wf ~~~~ \Gamma \ts T_2 \wf}
+{\Gamma \ts T_2 \sub T_1 \tor T_2}
+
+\end{multicols}
+
+\vspace{0.1em}
+
+\begin{multicols}{2}
+
+\infrule[\textsc{$\sub$-trans}]
+{\Gamma \ts T_1 \sub T_2 \\ \Gamma \ts T_2 \sub T_3}
+{\Gamma \ts T_1 \sub T_3}
+
+\infrule[\textsc{$\sub$-hyp}]
+{(x: T) \in \Gamma ~~~~  \Gamma \ts T \wf \\
+ \Gamma \ts T \ni (\Ldecl L S U) \\
+ \Gamma \ts S \wf ~~~~  \Gamma \ts U \wf}
+{\Gamma \ts S \sub U}
+
+\end{multicols}
+
+\vspace{0.1em}
+
+\newruletrue
+
+\begin{multicols}{2}
+
+\infrule[\textsc{$\sub$-self-l}]
+{(x: T) \in \Gamma \\  \Gamma \ts T \wf}
+{\Gamma \ts x\sing \sub T}
+
+\infrule[\textsc{$\sub$-$\exists$-l}]
+{\Gamma \envplus{x: S} \ts T \sub U \\
+ \Gamma \ts U \wf ~~~~ \Gamma \envplus{x: S} \ts S \wf}
+{\Gamma \ts {\exTyp x S T} \sub U}
+
+\infrule[\textsc{$\sub$-self-r}]
+{(x: T) \in \Gamma \\
+ \Gamma \ts x\sing \wf \\
+ \Gamma \ts y\sing \wf}
+{\Gamma \ts y\sing \sub x\sing}
+
+\infrule[\textsc{$\sub$-$\exists$-r}]
+{(x: S') \in \Gamma ~~~~ \Gamma \ts S' \sub S \\
+ \Gamma \ts T \sub U}
+{\Gamma \ts T \sub {\exTyp x S U}}
+
+\end{multicols}
+
+\newrulefalse
+
+\linesep
+
+\begin{multicols}{2}[\judgement{Declaration subtyping}{\fbox{$\Gamma \ts D \sub D'$}}]
+
+    \infrule[\textsc{subdec-typ}]
+            {~~\Gamma \ts S' \sub S ~~~~ \Gamma \ts T \sub T'~~}
+            {\Gamma \ts (\Ldecl L S T) \sub (\Ldecl L {S'} {T'})}
+
+    \infrule[\textsc{subdec-mtd}]
+            {\Gamma \ts S' \sub S ~~~~ \Gamma \ts T \sub T'}
+            {\Gamma \ts (\mdecl m S T) \sub (\mdecl m {S'} {T'})}
+
+\end{multicols}

@@ -1,0 +1,76 @@
+
+{\bf Membership}\hfill{\fbox{$\Gamma \ts T \ni D$}}
+
+\begin{multicols}{2}
+
+\infax[\textsc{$\Bot$-$\ni$-typ}]
+{\Gamma \ts \Bot \ni (\Ldecl L \Top \Bot)~~~~}
+
+\infax[\textsc{$\Bot$-$\ni$-mtd}]
+{\Gamma \ts \Bot \ni (\mdecl m \Top \Bot)~~~~}
+
+\infax[\textsc{rcd-$\ni$}]
+{\Gamma \ts \{D\} \ni D}
+
+\infrule[\textsc{sel-$\ni$}]
+{(x: T) \in \Gamma \\
+ \Gamma \ts T \ni (\Ldecl L S U) \\
+ \Gamma \ts U \ni D}
+{\Gamma \ts x.L \ni D}
+
+\infrule[\textsc{$\tand$-$\ni$-1}]
+{\Gamma \ts T_1 \ni D \\
+ \Gamma \ts T_2 \hasnt label(D)}
+{\Gamma \ts T_1 \tand T_2 \ni D}
+
+\infrule[\textsc{$\tand$-$\ni$-2}]
+{\Gamma \ts T_2 \ni D \\
+ \Gamma \ts T_1 \hasnt label(D)}
+{\Gamma \ts T_1 \tand T_2 \ni D}
+
+\infrule[\textsc{$\tand$-$\ni$-12}]
+{\Gamma \ts T_1 \ni D_1 ~~~~ \Gamma \ts T_2 \ni D_2}
+{\Gamma \ts T_1 \tand T_2 \ni intersect(D_1, D_2)}
+
+\infrule[\textsc{$\tor$-$\ni$}]
+{\Gamma \ts T_1 \ni D_1 ~~~~ \Gamma \ts T_2 \ni D_2}
+{\Gamma \ts T_1 \tor T_2 \ni union(D_1, D_2)}
+
+\end{multicols}
+
+\linesep
+   
+\begin{multicols}{2}[\judgement{Non-membership}{\fbox{$\Gamma \ts T \hasnt l$}}]
+
+\infax[\textsc{$\Top$-$\hasnt$}]
+{\Gamma \ts \Top \hasnt l}
+
+\infrule[\textsc{rcd-$\hasnt$}]
+{l \neq label(D)}
+{\Gamma \ts \{ D \} \hasnt l}
+
+\infrule[\textsc{sel-$\hasnt$}]
+{(x: T) \in \Gamma \\
+ \Gamma \ts T \ni (\Ldecl L S U) \\
+ \Gamma \ts U \hasnt l}
+{\Gamma \ts x.L \hasnt l}
+
+\infrule[\textsc{$\tand$-$\hasnt$}]
+{\Gamma \ts T_1 \hasnt l ~~~~ \Gamma \ts T_2 \hasnt l}
+{\Gamma \ts T_1 \tand T_2 \hasnt l}
+
+\infrule[\textsc{$\tor$-$\hasnt$-1}]
+{\Gamma \ts T_1 \ni D \\
+ \Gamma \ts T_2 \hasnt label(D)}
+{\Gamma \ts T_1 \tor T_2 \hasnt label(D)}
+
+\infrule[\textsc{$\tor$-$\hasnt$-2}]
+{\Gamma \ts T_2 \ni D \\
+ \Gamma \ts T_1 \hasnt label(D)}
+{\Gamma \ts T_1 \tor T_2 \hasnt label(D)}
+
+\infrule[\textsc{$\tor$-$\hasnt$-12}]
+{\Gamma \ts T_1 \hasnt l ~~~~ \Gamma \ts T_2 \hasnt l}
+{\Gamma \ts T_1 \tor T_2 \hasnt l}
+
+\end{multicols}

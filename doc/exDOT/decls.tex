@@ -1,0 +1,30 @@
+
+{\bf Declaration intersection}\hfill\fbox{$intersect(D_1, D_2) = D_3$}
+
+\begin{multicols}{2}
+
+\infrule
+{D_1 = (\Ldecl L {S_1} {U_1}) ~~~~~~~ D_2 = (\Ldecl L {S_2} {U_2})}
+{intersect(D_1, D_2) = (\Ldecl L {S_1 \tor S_2~} {~U_1 \tand U_2})}
+
+\infrule
+{D_1 = (\mdecl m {S_1} {U_1}) ~~~~~~~ D_2 = (\mdecl m {S_2} {U_2})}
+{intersect(D_1, D_2) = (\mdecl m {S_1 \tor S_2~} {~U_1 \tand U_2})}
+
+\end{multicols}
+
+\linesep
+
+{\bf Declaration union}\hfill\fbox{$union(D_1, D_2) = D_3$}
+
+\begin{multicols}{2}
+
+\infrule
+{D_1 = (\Ldecl L {S_1} {U_1}) ~~~~~~~ D_2 = (\Ldecl L {S_2} {U_2})}
+{union(D_1, D_2) = (\Ldecl L {S_1 \tand S_2~} {~U_1 \tor U_2})}
+
+\infrule
+{D_1 = (\mdecl m {S_1} {U_1}) ~~~~~~~ D_2 = (\mdecl m {S_2} {U_2})}
+{union(D_1, D_2) = (\mdecl m {S_1 \tand S_2~} {~U_1 \tor U_2})}
+
+\end{multicols}

@@ -1,0 +1,61 @@
+
+\begin{multicols}{2}[\judgement{Well-formed types}{\fbox{$\Gamma; \seq{W} \ts T \wf$}}]
+
+\infax[\textsc{wf-$\Top$}]
+{\Gamma; \seq{W} \ts \Top \wf}
+
+\infax[\textsc{wf-$\Bot$}]
+{\Gamma; \seq{W} \ts \Bot \wf}
+
+\infax[\textsc{wf-hyp}]
+{\Gamma; \seq{W} \ts W_i \wf}
+
+\infrule[\textsc{wf-rcd}]
+{\Gamma; \seq{W},\{D\} \ts D \wf}
+{\Gamma; \seq{W} \ts \{D\} \wf}
+
+\infrule[\textsc{wf-sel}]
+{(x: T) \in \Gamma \\
+ \Gamma \ts T \ni (\Ldecl L S U) \\
+ \Gamma; \seq{W} \ts T \wf \spcomma S \wf \spcomma U \wf}
+{\Gamma; \seq{W} \ts x.L \wf}
+
+\infrule[\textsc{wf-and}]
+{\Gamma; \seq{W} \ts T_1 \wf \spcomma T_2 \wf}
+{\Gamma; \seq{W} \ts T_1 \tand T_2 \wf}
+
+\infrule[\textsc{wf-or}]
+{\Gamma; \seq{W} \ts T_1 \wf \spcomma T_2 \wf}
+{\Gamma; \seq{W} \ts T_1 \tor T_2 \wf}
+
+\end{multicols}
+
+\newruletrue
+
+\begin{multicols}{2}
+
+\infrule[\textsc{wf-self}]
+{(x: T) \in \Gamma \\
+ \Gamma; \seq{W} \ts T \wf}
+{\Gamma; \seq{W} \ts x\sing \wf}
+
+\infrule[\textsc{wf-$\exists$}]
+{\Gamma \envplus{x: T}; \seq{W} \ts T \wf \spcomma U \wf}
+{\Gamma; \seq{W} \ts {\exTyp x T U} \wf}
+
+\end{multicols}
+
+\newrulefalse
+
+\linesep
+
+\begin{multicols}{2}[\judgement{Well-formed declarations}{\fbox{$\Gamma; \seq{W} \ts D \wf$}}]
+      \infrule[\textsc{wf-tmem}]
+      {\Gamma; \seq{W} \ts S \wf \spcomma U \wf}
+      {\Gamma; \seq{W} \ts \Ldecl L S U \wf}
+
+      \infrule[\textsc{wf-mtd}]
+      {\Gamma; \seq{W} \ts S \wf \spcomma U \wf}
+      {\Gamma; \seq{W} \ts \mdecl m S U \wf}
+
+\end{multicols}

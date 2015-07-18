@@ -1,0 +1,63 @@
+
+\begin{multicols}{2}[\judgement{Term Typing}{\fbox{$\Gamma \ts t : T$}}]
+
+\infrule[\textsc{ty-var}]
+{(x: T) \in \Gamma\\
+ \Gamma \ts T \wf}
+{\Gamma \ts x: T}
+
+\infrule[\textsc{ty-call}]
+{\Gamma \ts t : T ~~ \Gamma \ts u : U  ~~ \Gamma \ts V \wf \\
+ \Gamma \ts T \ni (\mdecl m U V)}
+{\Gamma \ts {\trmcall t m u} : V}
+
+\infrule[\textsc{ty-new}]
+{\Gamma \envplus{x: T} \ts \{\seq{d}\} : T \\
+ \Gamma \envplus{x: T} \ts u : U ~~~~ \Gamma \ts U \wf}
+{\Gamma \ts {\trmnew x {\seq{d}} u}: U}
+
+\infrule[\textsc{ty-sbsm}]
+{\Gamma \ts t: T_1\\
+ \Gamma \ts T_1 \sub T_2}
+{\Gamma \ts t: T_2}
+
+\end{multicols}
+
+\newruletrue
+
+\infrule[\textsc{ty-skolem}]
+{\Gamma \envplus{x: U} \envplus{y: S} \ts t: T ~~~~
+ y \notin \text{fv}(t) ~~~~ 
+ y \notin \text{fv}(T)}
+{\Gamma \envplus{x: \exTyp y S U} \ts t : T}
+
+\newrulefalse
+
+\linesep
+
+\begin{multicols}{2}[\judgement{Initialization Typing}{\fbox{$\Gamma \ts d : D$}}]
+
+\infrule[\textsc{ty-tdef}]
+{\Gamma \ts T \wf}
+{\Gamma \ts (\deftyp L T) : (\Ldecl L T T)}
+
+\infrule[\textsc{ty-mdef}]
+{\Gamma \ts T \wf ~~~~ \Gamma \ts U \wf \\
+ \Gamma \envplus{x: T} \ts u : U}
+{\Gamma \ts (\defmtd m x T U u) : (\mdecl m T U) }
+
+\end{multicols}
+
+\linesep
+
+\begin{multicols}{2}[\judgement{Initialization List Typing}{\fbox{$\Gamma \ts \{\seq{d}\} : T$}}]
+
+\infax[\textsc{ty-nil}]
+{\Gamma \ts \{\} : \Top}
+
+\infrule[\textsc{ty-cons}]
+{ label(d) \notin labels(\seq{d})\\
+  \Gamma \ts \{ \seq{d} \} : T ~~~~ \Gamma \ts d : D }
+{\Gamma \ts \{ \seq{d}, d \} : T \tand \{ D \} }
+
+\end{multicols}

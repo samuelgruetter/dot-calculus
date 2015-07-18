@@ -1,0 +1,37 @@
+
+{\bf Syntax}\medskip
+    
+$\ba{l@{\hspace{0.2mm}}|@{\hspace{0.2mm}}l}
+\ba[t]{l@{\hspace{10mm}}l}
+x, y, z    & \lindent{\mbox{Variable}} \\[0.2em]
+l ::=      & \lindent{\mbox{Label}} \\
+\gap L     & \mbox{Type label}\\
+\gap m     & \mbox{Method label}\\[0.2em]
+t, u ::=      & \lindent{\mbox{Term}} \\
+\gap x     & \mbox{variable} \\
+\gap \trmnew x {\seq{d}} t & \mbox{new instance} \\
+%\gap \highlight{$\trmcall t m u$} & \mbox{method invocation} \\[0.2em]
+\gap \trmcall t m u & \mbox{method invocation} \\[0.2em]
+d ::= & \lindent{\mbox{Initialization}} \\
+\gap \deftyp L T        & \mbox{field init.}\\
+\gap \defmtd m x T U u  & \mbox{method init.}\\[0.2em]
+\Gamma ::= \seq{x \typ T} & \lindent\mbox{Environment} \\[0.2em]
+s      ::= \seq{x \mapsto \{\seq{d}\}} & \lindent\mbox{Store} \\
+\ea
+&
+
+\ba[t]{l@{\hspace{10mm}}l}
+S,T,U,V,W ::= & \lindent\mbox{Type}\\
+\gap \Top  & \mbox{top type} \\
+\gap \Bot  & \mbox{bottom type} \\
+\gap \{D\} & \mbox{one-member record} \\
+\gap x.L & \mbox{type selection} \\
+\gap T \tand T & \mbox{intersection type} \\
+\gap T \tor T  & \mbox{union type} \\[0.2em]
+\gap \highlight{$x\sing$}    & \mbox{singleton type} \\[0.3em]
+\gap \highlight{$\exTyp x T U$} & \mbox{existential type} \\
+D ::= & \lindent\mbox{Declaration} \\
+\gap \Ldecl {L} S U & \mbox{abstract type decl.} \\
+\gap \mdecl m S U & \mbox{method declaration}
+\ea
+\ea$

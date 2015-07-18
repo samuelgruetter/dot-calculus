@@ -1,0 +1,25 @@
+
+{\bf Reduction}\hfill\fbox{$\reduction t s {t'} {s'}$}
+
+\infrule[\textsc{red-call}]
+{x \mapsto \ldefs{\seq{\deftyp L W}\;\seq{\defmtd m z T U u}} \in s}
+{\reduction {\trmcall x {m_i} y} s {\subst y {z_i} {u_i}} s}
+
+\infrule[\textsc{red-new}]
+{z \notin \dom(s)}
+{\reduction {\trmnew x {\seq{d}} t} s
+            {\subst z x t} {s \envplus{z \mapsto {\subst z x {\{\seq{d}\}}}}}}
+
+\vspace{0.5em}
+
+\begin{multicols}{2}
+
+\infrule[\textsc{red-call-1}]
+{\reduction {t} s {t'} {s'}}
+{\reduction {\trmcall t m u} s {\trmcall {t'} m u} {s'}}
+
+\infrule[\textsc{red-call-2}]
+{\reduction {u} s {u'} {s'}}
+{\reduction {\trmcall x m u} s {\trmcall x m {u'}} {s'}}
+
+\end{multicols}
