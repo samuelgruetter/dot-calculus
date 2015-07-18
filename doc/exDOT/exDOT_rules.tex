@@ -467,6 +467,16 @@ D ::= & \lindent\mbox{Declaration} \\
 
 \end{multicols}
 
+\newruletrue
+
+\infrule[\textsc{ty-skolem}]
+{\Gamma \envplus{x: U} \envplus{y: S} \ts t: T ~~~~
+ y \notin \text{fv}(t) ~~~~ 
+ y \notin \text{fv}(T)}
+{\Gamma \envplus{x: \exTyp y S U} \ts t : T}
+
+\newrulefalse
+
 \linesep
 
 \begin{multicols}{2}[\judgement{Initialization Typing}{\fbox{$\Gamma \ts d : D$}}]
