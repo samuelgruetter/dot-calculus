@@ -168,16 +168,13 @@ D ::= & \lindent\mbox{Declaration} \\
 
 \begin{multicols}{2}
 
-\infrule[\textsc{$\Bot$-$\ni$-typ}]
-{}
-{\Gamma \ts \Bot \ni (\Ldecl L \Top \Bot)}
+\infax[\textsc{$\Bot$-$\ni$-typ}]
+{\Gamma \ts \Bot \ni (\Ldecl L \Top \Bot)~~~~}
 
-\infrule[\textsc{$\Bot$-$\ni$-mtd}]
-{}
-{\Gamma \ts \Bot \ni (\mdecl m \Top \Bot)}
+\infax[\textsc{$\Bot$-$\ni$-mtd}]
+{\Gamma \ts \Bot \ni (\mdecl m \Top \Bot)~~~~}
 
-\infrule[\textsc{rcd-$\ni$}]
-{}
+\infax[\textsc{rcd-$\ni$}]
 {\Gamma \ts \{D\} \ni D}
 
 \infrule[\textsc{sel-$\ni$}]
@@ -210,8 +207,7 @@ D ::= & \lindent\mbox{Declaration} \\
    
 \begin{multicols}{2}[\judgement{Non-membership}{\fbox{$\Gamma \ts T \hasnt l$}}]
 
-\infrule[\textsc{$\Top$-$\hasnt$}]
-{}
+\infax[\textsc{$\Top$-$\hasnt$}]
 {\Gamma \ts \Top \hasnt l}
 
 \infrule[\textsc{rcd-$\hasnt$}]
@@ -246,81 +242,71 @@ D ::= & \lindent\mbox{Declaration} \\
 }
 \end{figure}
 
-% TODO stable_typ restriction !!!
+% Note: stable_typ restriction not included here!!
 
 %%%%%%%%%%%%%%%%%%%%%
 
 \begin{figure}
   \figurebox{
 \pdfbookmark[0]{Well-formedness}{wf}
-\begin{multicols}{2}[\judgement{Well-formed types}{\fbox{$\Gamma \ts T \wf$}}]
+\begin{multicols}{2}[\judgement{Well-formed types}{\fbox{$\Gamma; \seq{W} \ts T \wf$}}]
 
-      \infax[\textsc{TODO}]
-      {}
-      
-%Inductive wf_typ_impl: ctx -> fset typ -> typ -> Prop :=
-%  | wf_top: forall G A,
-%      wf_typ_impl G A typ_top
-%  | wf_bot: forall G A,
-%      wf_typ_impl G A typ_bot
-%  | wf_hyp: forall G A T,
-%      T \in A ->
-%      wf_typ_impl G A T
-%  | wf_rcd: forall G A D,
-%      wf_dec_impl G (A \u \{(typ_rcd D)}) D ->
-%      wf_typ_impl G A (typ_rcd D)
-%  | wf_sel: forall G A x X L T U,
-%      binds x X G ->
-%      stable_typ X -> (* <-- important restriction *)
-%      typ_has G X (dec_typ L T U) ->
-%      wf_typ_impl G A X ->
-%      wf_typ_impl G A T ->
-%      wf_typ_impl G A U ->
-%      wf_typ_impl G A (typ_sel (avar_f x) L)
-%  | wf_and: forall G A T1 T2,
-%      wf_typ_impl G A T1 ->
-%      wf_typ_impl G A T2 ->
-%      wf_typ_impl G A (typ_and T1 T2)
-%  | wf_or: forall G A T1 T2,
-%      wf_typ_impl G A T1 ->
-%      wf_typ_impl G A T2 ->
-%      wf_typ_impl G A (typ_or T1 T2)
-%  | wf_self: forall G A x X,
-%      binds x X G ->
-%      wf_typ_impl G A X ->
-%      wf_typ_impl G A (typ_self (avar_f x))
-%  | wf_ex: forall L G A T U,
-%      (forall x, x \notin L -> wf_typ_impl (G & x ~ (open_typ x T)) A (open_typ x T)) ->
-%      (forall x, x \notin L -> wf_typ_impl (G & x ~ (open_typ x T)) A (open_typ x U)) ->
-%      wf_typ_impl G A (typ_ex T U)
-%  | wf_skolem: forall L G1 G2 x A S T U,
-%      (forall y, y \notin L ->
-%         wf_typ_impl (G1 & x ~ (open_typ y U) & y ~ (open_typ y S) & G2) A T) ->
-%      fv_typ T \c (dom (G1 & x ~ typ_ex S U & G2)) -> (* instead of "y \notin fv_typ T" *)
-%      wf_typ_impl (G1 & x ~ typ_ex S U & G2) A T
-%with wf_dec_impl: ctx -> fset typ -> dec -> Prop :=
-%  | wf_tmem: forall G A L Lo Hi,
-%      wf_typ_impl G A Lo ->
-%      wf_typ_impl G A Hi ->
-%      wf_dec_impl G A (dec_typ L Lo Hi)
-%  | wf_mtd: forall G A m U V,
-%      wf_typ_impl G A U ->
-%      wf_typ_impl G A V ->
-%      wf_dec_impl G A (dec_mtd m U V).
+\infax[\textsc{wf-$\Top$}]
+{\Gamma; \seq{W} \ts \Top \wf}
 
-    \end{multicols}
+\infax[\textsc{wf-$\Bot$}]
+{\Gamma; \seq{W} \ts \Bot \wf}
 
-\vspace{7cm}
-    \linesep
+\infax[\textsc{wf-hyp}]
+{\Gamma; \seq{W} \ts W_i \wf}
 
-    \begin{multicols}{2}[\judgement{Well-formed declarations}{\fbox{$\Gamma \ts D \wf$}}]
+\infrule[\textsc{wf-rcd}]
+{\Gamma; \seq{W},\{D\} \ts D \wf}
+{\Gamma; \seq{W} \ts \{D\} \wf}
+
+\infrule[\textsc{wf-sel}]
+{(x: T) \in \Gamma \\
+ \Gamma \ts T \ni (\Ldecl L S U) \\
+ \Gamma; \seq{W} \ts T \wf \spcomma S \wf \spcomma U \wf}
+{\Gamma; \seq{W} \ts x.L \wf}
+
+\infrule[\textsc{wf-and}]
+{\Gamma; \seq{W} \ts T_1 \wf \spcomma T_2 \wf}
+{\Gamma; \seq{W} \ts T_1 \tand T_2 \wf}
+
+\infrule[\textsc{wf-or}]
+{\Gamma; \seq{W} \ts T_1 \wf \spcomma T_2 \wf}
+{\Gamma; \seq{W} \ts T_1 \tor T_2 \wf}
+
+\end{multicols}
+
+\newruletrue
+
+\begin{multicols}{2}
+
+\infrule[\textsc{wf-self}]
+{(x: T) \in \Gamma \\
+ \Gamma; \seq{W} \ts T \wf}
+{\Gamma; \seq{W} \ts x\sing \wf}
+
+\infrule[\textsc{wf-$\exists$}]
+{\Gamma \envplus{x: T}; \seq{W} \ts T \wf \spcomma U \wf}
+{\Gamma; \seq{W} \ts {\exTyp x T U} \wf}
+
+\end{multicols}
+
+\newrulefalse
+
+\linesep
+
+\begin{multicols}{2}[\judgement{Well-formed declarations}{\fbox{$\Gamma; \seq{W} \ts D \wf$}}]
       \infrule[\textsc{wf-tmem}]
-      {\Gamma \ts S \wf ~~~~ \Gamma \ts U \wf}
-      {\Gamma \ts \Ldecl L S U \wf}
+      {\Gamma; \seq{W} \ts S \wf \spcomma U \wf}
+      {\Gamma; \seq{W} \ts \Ldecl L S U \wf}
 
       \infrule[\textsc{wf-mtd}]
-      {\Gamma \ts S \wf ~~~~ \Gamma \ts U \wf}
-      {\Gamma \ts \mdecl m S U \wf}
+      {\Gamma; \seq{W} \ts S \wf \spcomma U \wf}
+      {\Gamma; \seq{W} \ts \mdecl m S U \wf}
 
     \end{multicols}
   }
@@ -415,7 +401,7 @@ D ::= & \lindent\mbox{Declaration} \\
 {(x: T) \in \Gamma \\  \Gamma \ts T \wf}
 {\Gamma \ts x\sing \sub T}
 
-\infrule[\textsc{$\sub$-ex-l}]
+\infrule[\textsc{$\sub$-$\exists$-l}]
 {\Gamma \envplus{x: S} \ts T \sub U \\
  \Gamma \ts U \wf ~~~~ \Gamma \envplus{x: S} \ts S \wf}
 {\Gamma \ts {\exTyp x S T} \sub U}
@@ -426,7 +412,7 @@ D ::= & \lindent\mbox{Declaration} \\
  \Gamma \ts y\sing \wf}
 {\Gamma \ts y\sing \sub x\sing}
 
-\infrule[\textsc{$\sub$-ex-r}]
+\infrule[\textsc{$\sub$-$\exists$-r}]
 {(x: S') \in \Gamma ~~~~ \Gamma \ts S' \sub S \\
  \Gamma \ts T \sub U}
 {\Gamma \ts T \sub {\exTyp x S U}}
@@ -500,8 +486,7 @@ D ::= & \lindent\mbox{Declaration} \\
 
 \begin{multicols}{2}[\judgement{Initialization List Typing}{\fbox{$\Gamma \ts \{\seq{d}\} : T$}}]
 
-\infrule[\textsc{ty-nil}]
-{}
+\infax[\textsc{ty-nil}]
 {\Gamma \ts \{\} : \Top}
 
 \infrule[\textsc{ty-cons}]
