@@ -1648,10 +1648,6 @@ Proof.
   apply* subst_idempotent_trm_def_defs.
 Qed.
 
-Lemma subst_ctx_idempotent: forall x y G,
-  subst_ctx x y (subst_ctx x y G) = subst_ctx x y G.
-Admitted.
-
 
 (* ###################################################################### *)
 (** ** Growing and shrinking the assumptions of wf *)
