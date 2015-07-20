@@ -1747,7 +1747,19 @@ Qed.
 
 Lemma subst_ctx_idempotent: forall x y G,
   subst_ctx x y (subst_ctx x y G) = subst_ctx x y G.
-Admitted.
+Proof.
+  intros x y.
+  apply (env_ind (fun G => subst_ctx x y (subst_ctx x y G) = subst_ctx x y G)).
+  + unfold subst_ctx.
+    rewrite map_empty. rewrite map_empty.
+    reflexivity.
+  + intros G z T IH.
+    unfold subst_ctx in *.
+    rewrite map_push. rewrite map_push.
+    rewrite IH.
+    rewrite subst_typ_idempotent.
+    reflexivity.
+Qed.
 
 
 (* ###################################################################### *)
