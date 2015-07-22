@@ -1834,6 +1834,22 @@ Proof.
   - exists x X T U. eauto 10.
 Qed.
 
+Lemma invert_wf_sel_3: forall G x X L,
+  binds x X G ->
+  wf_typ G (typ_sel (avar_f x) L) ->
+  exists T U,
+    typ_has G X (dec_typ L T U) /\
+    stable_typ X /\
+    wf_typ G X /\
+    wf_typ G T /\
+    wf_typ G U.
+Proof.
+  intros. inversions H0.
+  - in_empty_contradiction.
+  - exists T U. lets Eq: (binds_func H3 H). subst. eauto.
+Qed.
+
+
 Ltac destruct_wf :=
   repeat match goal with
   | W: wf_dec _ (dec_typ _ _ _)         |- _ => inversions W
@@ -2402,6 +2418,22 @@ Proof.
   apply (P G T (label_of_dec D) Hasnt D eq_refl Has).
 Qed.
 
+Lemma invert_wf_sel_4: forall G x X L T U,
+  binds x X G ->
+  typ_has G X (dec_typ L T U) ->
+  wf_typ G (typ_sel (avar_f x) L) ->
+  stable_typ X /\
+  wf_typ G X /\
+  wf_typ G T /\
+  wf_typ G U.
+Proof.
+  intros. inversions H1.
+  - in_empty_contradiction.
+  - lets Eq: (binds_func H4 H). subst.
+    lets Eq: (typ_has_unique H6 H0 eq_refl). inversions Eq.
+    eauto.
+Qed.
+
 Lemma typ_has_preserves_wf: forall G T D,
   typ_has G T D ->
   wf_typ G T ->
@@ -2413,13 +2445,11 @@ Proof.
   + (* case typ_rcd_has *)
     apply (invert_wf_rcd Wf). (* <--- uses remove_hyp_from_wf_dec ! *)
   + (* case typ_sel_has *)
-    inversions Wf. (* <-- gives us full wf-ness of bounds, wouldn't be possible
+    apply (invert_wf_sel_4 H Has1) in Wf.
+    (* Note: this gives us full wf-ness of bounds, which wouldn't be possible
       without the assumption-set-based wf-judgment because it would require infinite
       proof trees for recursive types. *)
-    - in_empty_contradiction.
-    - lets Eq: (binds_func H H2). subst T.
-      lets Eq: (typ_has_unique H4 Has1 eq_refl). inversions Eq.
-      apply IHHas2. assumption.
+    apply IHHas2. jauto.
   + (* case typ_and_has_1 *)
     inversions Wf.
     - in_empty_contradiction.
@@ -2607,17 +2637,13 @@ Proof.
     introv Sd Wf. destruct Wf as [Wf1 Wf2].
     split; apply wf_rcd; apply add_hyps_to_wf_dec; assumption.
   + (* case subtyp_sel_l *)
-    introv hm Bix Wf Has. apply (conj Wf). destruct_wf.
-    lets Eq: (binds_func H Bix). subst.
-    lets Eq: (typ_has_unique H0 Has eq_refl). inversions Eq.
-    lets WfD: (typ_has_preserves_wf Has H1). destruct_wf. assumption.
+    introv hm Bix Wf Has. apply (conj Wf).
+    apply (invert_wf_sel_4 Bix Has) in Wf. jauto.
   + (* case subtyp_sel_r_checked *)
     introv Bix Wf Has St IH. refine (conj _ Wf). apply (proj1 IH).
   + (* case subtyp_sel_r_nocheck *)
-    introv Bix Wf Has. refine (conj _ Wf). destruct_wf.
-    lets Eq: (binds_func H Bix). subst.
-    lets Eq: (typ_has_unique H0 Has eq_refl). inversions Eq.
-    lets WfD: (typ_has_preserves_wf Has H1). destruct_wf. assumption.
+    introv Bix Wf Has. refine (conj _ Wf).
+    apply (invert_wf_sel_4 Bix Has) in Wf. jauto.
 Qed.
 
 Definition subtyp_regular := proj1 subtyping_regular.
@@ -3478,16 +3504,6 @@ Qed.
 
 Print Assumptions narrow_wf.
 
-Lemma wf_sel_to_stable: forall G x X L,
-  binds x X G ->
-  wf_typ G (typ_sel (avar_f x) L) ->
-  stable_typ X.
-Proof.
-  introv Bi Wf. inversions Wf.
-  - in_empty_contradiction.
-  - lets Eq: (binds_func H1 Bi). subst. assumption.
-Qed.
-
 Definition narrow_wf_typ := proj1 narrow_wf.
 Definition narrow_wf_dec := proj2 narrow_wf.
 
@@ -3509,58 +3525,55 @@ Proof.
   + (* case subtyp_rcd *)
     eauto.
   + (* case subtyp_sel_l *)
-    introv hm Bi2 Wf XHas. introv Se.
-    lets Wf': (narrow_wf_typ Wf Se).
-    lets XHas': (narrow_has_stable XHas (wf_sel_to_stable Bi2 Wf) Se).
-    lets P: (narrow_binds_3 Se Bi2).
-    destruct P as [Bi1 | [X' [Bi1 [StX SbX']]]].
-    - (* case "type of x remained unchanged" *)
-      apply (subtyp_sel_l _ Bi1 Wf' XHas').
-    - (* case "type of x changed from X to X'" *)
-      lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ XHas').
-              (********************)
-      destruct P as [D1 [X'Has Sd]].
-      apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT StU]]]].
-      subst D1.
-      refine (subtyp_trans _ (subtyp_to_nocheck StU)).
-      apply (subtyp_sel_l _ Bi1 Wf' X'Has).
+    introv hm Bi2 Wf X2Has2 Se. subst. rename X into X2.
+    lets P: (invert_wf_sel_4 Bi2 X2Has2 Wf). destruct P as [_ [WfX2 [WfT WfU]]].
+    lets WfX2': (narrow_wf_typ WfX2 Se).
+    lets P: (narrow_binds_5 WfX2' Bi2 Se). destruct P as [X1 [Bi1 StX]].
+    destruct (narrow_has X2Has2 Se WfX2') as [D [X2Has1 Sd]].
+    apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT1 StU1]]]].
+    subst D.
+    lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ X2Has1).
+    destruct P as [D [X1Has Sd]].
+    apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T'' [U'' [Eq [StT2 StU2]]]].
+    subst D.
+    refine (subtyp_trans _ (subtyp_to_nocheck StU1)).
+    refine (subtyp_trans _ (subtyp_to_nocheck StU2)).
+    refine (subtyp_sel_l _ Bi1 _ X1Has).
+    apply (narrow_wf_typ Wf Se).
   + (* case subtyp_sel_r_checked *)
-    introv Bi2 Wf XHas St IHSt. introv Se.
-    lets Wf': (narrow_wf_typ Wf Se).
-    specialize (IHSt _ Se).
-    lets XHas': (narrow_has_stable XHas (wf_sel_to_stable Bi2 Wf) Se).
-    lets P: (narrow_binds_3 Se Bi2).
-    destruct P as [Bi1 | [X' [Bi1 [StX SbX']]]].
-    - (* case "type of x remained unchanged" *)
-      apply (subtyp_sel_r_nocheck Bi1 Wf' XHas').
-    - (* case "type of x changed from X to X'" *)
-      lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ XHas').
-              (********************)
-      destruct P as [D1 [X'Has Sd]].
-      apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT StU]]]].
-      subst D1.
-      refine (subtyp_trans (subtyp_to_nocheck StT) _).
-      (* If we're in an env with bad bounds, maybe T' is not a subtype of U',
-         so that's why we cannot return subtyp checked, but only subtyp nocheck. *)
-      apply (subtyp_sel_r_nocheck Bi1 Wf' X'Has).
-  + (* case subtyp_sel_r_checked *)
-    introv Bi2 Wf XHas. introv Se.
-    lets Wf': (narrow_wf_typ Wf Se).
-    lets XHas': (narrow_has_stable XHas (wf_sel_to_stable Bi2 Wf) Se).
-    lets P: (narrow_binds_3 Se Bi2).
-    destruct P as [Bi1 | [X' [Bi1 [StX SbX']]]].
-    - (* case "type of x remained unchanged" *)
-      apply (subtyp_sel_r_nocheck Bi1 Wf' XHas').
-    - (* case "type of x changed from X to X'" *)
-      lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ XHas').
-              (********************)
-      destruct P as [D1 [X'Has Sd]].
-      apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT StU]]]].
-      subst D1.
-      refine (subtyp_trans (subtyp_to_nocheck StT) _).
-      (* If we're in an env with bad bounds, maybe T' is not a subtype of U',
-         so that's why we cannot return subtyp checked, but only subtyp nocheck. *)
-      apply (subtyp_sel_r_nocheck Bi1 Wf' X'Has).
+    introv Bi2 Wf X2Has2 St IHSt Se. subst. rename X into X2.
+    lets P: (invert_wf_sel_4 Bi2 X2Has2 Wf). destruct P as [_ [WfX2 [WfT WfU]]].
+    lets WfX2': (narrow_wf_typ WfX2 Se).
+    lets P: (narrow_binds_5 WfX2' Bi2 Se). destruct P as [X1 [Bi1 StX]].
+    destruct (narrow_has X2Has2 Se WfX2') as [D [X2Has1 Sd]].
+    apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT1 StU1]]]].
+    subst D.
+    lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ X2Has1).
+    destruct P as [D [X1Has Sd]].
+    apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T'' [U'' [Eq [StT2 StU2]]]].
+    subst D.
+    refine (subtyp_trans (subtyp_to_nocheck StT1) _).
+    refine (subtyp_trans (subtyp_to_nocheck StT2) _).
+    (* If we're in an env with bad bounds, maybe T' is not a subtype of U',
+       so that's why we cannot return subtyp checked, but only subtyp nocheck. *)
+    refine (subtyp_sel_r_nocheck Bi1 _ X1Has).
+    apply (narrow_wf_typ Wf Se).
+  + (* case subtyp_sel_r_nocheck *)
+    introv Bi2 Wf X2Has2 Se. subst. rename X into X2.
+    lets P: (invert_wf_sel_4 Bi2 X2Has2 Wf). destruct P as [_ [WfX2 [WfT WfU]]].
+    lets WfX2': (narrow_wf_typ WfX2 Se).
+    lets P: (narrow_binds_5 WfX2' Bi2 Se). destruct P as [X1 [Bi1 StX]].
+    destruct (narrow_has X2Has2 Se WfX2') as [D [X2Has1 Sd]].
+    apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT1 StU1]]]].
+    subst D.
+    lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ X2Has1).
+    destruct P as [D [X1Has Sd]].
+    apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T'' [U'' [Eq [StT2 StU2]]]].
+    subst D.
+    refine (subtyp_trans (subtyp_to_nocheck StT1) _).
+    refine (subtyp_trans (subtyp_to_nocheck StT2) _).
+    refine (subtyp_sel_r_nocheck Bi1 _ X1Has).
+    apply (narrow_wf_typ Wf Se).
   + (* case subtyp_and *) eauto.
   + (* case subtyp_and_l *)
     intros. subst. apply subtyp_and_l; apply* narrow_wf.
