@@ -364,9 +364,10 @@ with wf_dec_impl: ctx -> fset typ -> dec -> Prop :=
 Notation wf_typ G T := (wf_typ_impl G \{} T).
 Notation wf_dec G D := (wf_dec_impl G \{} D).
 
-Inductive hmode: Set := okhyp | nohyp.
+(* whether subtyp_sel_r checks the bounds *)
+Inductive cbmode: Set := checked | nocheck.
 
-Inductive subtyp: hmode -> ctx -> typ -> typ -> Prop :=
+Inductive subtyp: cbmode -> ctx -> typ -> typ -> Prop :=
   | subtyp_refl: forall hm G T,
       wf_typ G T ->
       subtyp hm G T T
@@ -381,18 +382,20 @@ Inductive subtyp: hmode -> ctx -> typ -> typ -> Prop :=
       subtyp hm G (typ_rcd D1) (typ_rcd D2)
   | subtyp_sel_l: forall hm G x X L T U,
       binds x X G ->
-      wf_typ G X ->
-      stable_typ X -> (* <-- important restriction *)
+      wf_typ G (typ_sel (avar_f x) L) ->
       typ_has G X (dec_typ L T U) ->
-      subtyp hm G T U -> (* <-- probably not needed, just for symmetry with subtyp_sel_r *)
       subtyp hm G (typ_sel (avar_f x) L) U
-  | subtyp_sel_r: forall hm G x X L T U,
+  | subtyp_sel_r_checked: forall G x X L T U,
       binds x X G ->
-      wf_typ G X ->
-      stable_typ X -> (* <-- important restriction *)
+      wf_typ G (typ_sel (avar_f x) L) ->
       typ_has G X (dec_typ L T U) ->
-      subtyp hm G T U -> (* <-- makes proofs a lot easier!! *)
-      subtyp hm G T (typ_sel (avar_f x) L)
+      subtyp checked G T U -> (* <-- needed in subtyp_to_memberwise *)
+      subtyp checked G T (typ_sel (avar_f x) L)
+  | subtyp_sel_r_nocheck: forall G x X L T U,
+      binds x X G ->
+      wf_typ G (typ_sel (avar_f x) L) ->
+      typ_has G X (dec_typ L T U) ->
+      subtyp nocheck G T (typ_sel (avar_f x) L)
   | subtyp_and: forall hm G T U1 U2,
       subtyp hm G T U1 ->
       subtyp hm G T U2 ->
@@ -421,15 +424,7 @@ Inductive subtyp: hmode -> ctx -> typ -> typ -> Prop :=
       subtyp hm G T1 T2 ->
       subtyp hm G T2 T3 ->
       subtyp hm G T1 T3
-  | subtyp_hyp: forall x X G L Lo Hi,
-      binds x X G ->
-      typ_has G X (dec_typ L Lo Hi) ->
-      stable_typ X ->
-      wf_typ G X ->
-      wf_typ G Lo ->
-      wf_typ G Hi ->
-      subtyp okhyp G Lo Hi
-with subdec: hmode -> ctx -> dec -> dec -> Prop :=
+with subdec: cbmode -> ctx -> dec -> dec -> Prop :=
   | subdec_typ: forall hm G L Lo1 Hi1 Lo2 Hi2,
       subtyp hm G Lo2 Lo1 ->
       subtyp hm G Hi1 Hi2 ->
@@ -462,7 +457,7 @@ Inductive ty_trm: ctx -> trm -> typ -> Prop :=
 (* imprecise typing: subsumption allowed *)
   | ty_sbsm: forall G t T1 T2,
       ty_trm G t T1 ->
-      subtyp okhyp G T1 T2 ->
+      subtyp nocheck G T1 T2 ->
       ty_trm G t T2
 with ty_def: ctx -> def -> dec -> Prop :=
   | ty_tdef: forall G L T,
@@ -1968,66 +1963,6 @@ Qed.
 
 
 (* ###################################################################### *)
-(** ** Regularity of Typing *)
-
-(* If a type is involved in a subtyping judgment, it is (deeply) well-formed. *)
-Lemma subtyping_regular:
-   (forall hm G T1 T2, subtyp hm G T1 T2 -> wf_typ G T1 /\ wf_typ G T2)
-/\ (forall hm G D1 D2, subdec hm G D1 D2 -> wf_dec G D1 /\ wf_dec G D2).
-Proof.
-  apply subtyp_mutind; try solve [intros; split; subst; destruct_wf; eauto].
-  (* case subtyp_rcd *)
-  introv Sd Wf. destruct Wf as [Wf1 Wf2].
-  split; apply wf_rcd; apply add_hyps_to_wf_dec; assumption.
-Qed.
-
-Definition subtyp_regular := proj1 subtyping_regular.
-Definition subdec_regular := proj2 subtyping_regular.
-
-Definition subtyp_regular_1(hm: hmode)(G: ctx)(T1 T2: typ)(St: subtyp hm G T1 T2) :=
-  (proj1 (subtyp_regular St)).
-Definition subtyp_regular_2(hm: hmode)(G: ctx)(T1 T2: typ)(St: subtyp hm G T1 T2) :=
-  (proj2 (subtyp_regular St)).
-Definition subdec_regular_1(hm: hmode)(G: ctx)(D1 D2: dec)(Sd: subdec hm G D1 D2) :=
-  (proj1 (subdec_regular Sd)).
-Definition subdec_regular_2(hm: hmode)(G: ctx)(D1 D2: dec)(Sd: subdec hm G D1 D2) :=
-  (proj2 (subdec_regular Sd)).
-
-Hint Resolve subtyp_regular_1 subtyp_regular_2 subdec_regular_1 subdec_regular_2.
-
-Lemma typing_regular:
-   (forall G t T, ty_trm G t T ->
-      wf_typ G T)
-/\ (forall G d D, ty_def G d D ->
-      wf_dec G D)
-/\ (forall G ds T, ty_defs G ds T ->
-      wf_typ G T).
-Proof.
-  apply ty_mutind;
-  try solve [
-    intros; subst;
-    repeat match goal with
-    | H: _ /\ _ |- _ => destruct H
-    | H: wf_dec _ (dec_typ _ _ _) |- _ => inversions H
-    | H: wf_dec _ (dec_mtd _ _ _) |- _ => inversions H
-    | H: subtyp _ _ _ |- _ => apply subtyp_regular in H
-    end;
-    eauto
-  ].
-  (* case ty_defs_cons *)
-  introv Tyds WfT TyD WfD Hasnt.
-  apply (wf_and WfT). apply wf_rcd. apply add_hyps_to_wf_dec; assumption.
-  Grab Existential Variables. constructor. constructor.
-Qed.
-
-Definition ty_trm_regular  := proj31 typing_regular.
-Definition ty_def_regular  := proj32 typing_regular.
-Definition ty_defs_regular := proj33 typing_regular.
-
-Hint Resolve ty_trm_regular ty_def_regular ty_defs_regular.
-
-
-(* ###################################################################### *)
 (** ** Looks like rules, but follows from the rules *)
 
 Lemma subdec_refl: forall hm G D,
@@ -2203,7 +2138,6 @@ Proof.
   inversions Eq;
   inversions Wf1; inversions Wf2;
   eauto.
-  Grab Existential Variables. constructor. constructor.
 Qed.
 
 Lemma union_dec_preserves_wf: forall G D1 D2 D3,
@@ -2218,7 +2152,6 @@ Proof.
   inversions Eq;
   inversions Wf1; inversions Wf2;
   eauto.
-  Grab Existential Variables. constructor. constructor.
 Qed.
 
 Lemma subdec_trans: forall hm G D1 D2 D3,
@@ -2503,7 +2436,6 @@ Proof.
     inversions Wf.
     - in_empty_contradiction.
     - apply (union_dec_preserves_wf H); auto.
-  Grab Existential Variables. constructor. constructor.
 Qed.
 
 Print Assumptions typ_has_preserves_wf.
@@ -2586,10 +2518,10 @@ Definition subenv(G1 G2: ctx) :=
   forall x T2, binds x T2 G2 -> 
     binds x T2 G1 \/
     exists T1,
-      binds x T1 G1 /\ subtyp nohyp G1 T1 T2 /\ stable_typ T1.
+      binds x T1 G1 /\ subtyp checked G1 T1 T2 /\ stable_typ T1.
 
 Definition memberwise_subtyp(G: ctx)(T1 T2: typ) := 
-  (forall D2, typ_has G T2 D2 -> exists D1, typ_has G T1 D1 /\ subdec nohyp G D1 D2)
+  (forall D2, typ_has G T2 D2 -> exists D1, typ_has G T1 D1 /\ subdec checked G D1 D2)
   /\ wf_typ G T1 /\ wf_typ G T2.
 
 
@@ -2616,10 +2548,13 @@ Proof.
   + (* case subtyp_bot   *) eauto.
   + (* case subtyp_rcd   *) eauto.
   + (* case subtyp_sel_l *)
-    introv Bix WfX Sb XHas St IH Eq Ok. subst. apply subtyp_sel_l with X T; eauto.
+    introv Bix WfX XHas Eq Ok. subst. apply subtyp_sel_l with X T; eauto.
     apply (binds_weaken Bix Ok).
-  + (* case subtyp_sel_r *)
-    introv Bix WfX Sb XHas St IH Eq Ok. subst. apply subtyp_sel_r with X U; eauto.
+  + (* case subtyp_sel_r_checked *)
+    introv Bix WfX XHas St IH Eq Ok. subst. apply subtyp_sel_r_checked with X U; eauto.
+    apply (binds_weaken Bix Ok).
+  + (* case subtyp_sel_r_nocheck *)
+    introv Bix WfX XHas Eq Ok. subst. apply subtyp_sel_r_nocheck with X U; eauto.
     apply (binds_weaken Bix Ok).
   + (* case subtyp_and   *) eauto.
   + (* case subtyp_and_l *) eauto.
@@ -2628,19 +2563,8 @@ Proof.
   + (* case subtyp_or_l  *) eauto.
   + (* case subtyp_or_r  *) eauto.
   + (* case subtyp_trans *) eauto.
-  + (* case subtyp_hyp   *)
-    introv Bix Has SbX WfX WfLo WfHi Eq Ok.
-    apply subtyp_hyp with x X L; ((subst; apply (binds_weaken Bix Ok)) || eauto).
   + (* case subdec_typ   *) eauto.
   + (* case subdec_mtd   *) eauto.
-  (* See
-     Zongker, D. (2006). Chicken chicken chicken: Chicken chicken.
-     Annals of Improbable Research, 12(5), 16-21.
-     https://isotropic.org/papers/chicken.pdf *)
-  Grab Existential Variables.
-  chicken.
-  chicken. chicken. chicken.
-  chicken. chicken. chicken. chicken.
 Qed.
 
 Lemma weaken_subtyp_middle: forall hm G1 G2 G3 S U,
@@ -2668,6 +2592,75 @@ Proof.
   introv Ok St. destruct weaken_subtyp_subdec as [_ P].
   specialize (P _ G1 D1 D2 St G1 G2 empty). repeat rewrite concat_empty_r in P. auto.
 Qed.
+
+
+(* ###################################################################### *)
+(** ** Regularity of Typing *)
+
+(* If a type is involved in a subtyping judgment, it is (deeply) well-formed. *)
+Lemma subtyping_regular:
+   (forall hm G T1 T2, subtyp hm G T1 T2 -> wf_typ G T1 /\ wf_typ G T2)
+/\ (forall hm G D1 D2, subdec hm G D1 D2 -> wf_dec G D1 /\ wf_dec G D2).
+Proof.
+  apply subtyp_mutind; try solve [intros; split; subst; destruct_wf; eauto].
+  + (* case subtyp_rcd *)
+    introv Sd Wf. destruct Wf as [Wf1 Wf2].
+    split; apply wf_rcd; apply add_hyps_to_wf_dec; assumption.
+  + (* case subtyp_sel_l *)
+    introv hm Bix Wf Has. apply (conj Wf). destruct_wf.
+    lets Eq: (binds_func H Bix). subst.
+    lets Eq: (typ_has_unique H0 Has eq_refl). inversions Eq.
+    lets WfD: (typ_has_preserves_wf Has H1). destruct_wf. assumption.
+  + (* case subtyp_sel_r_checked *)
+    introv Bix Wf Has St IH. refine (conj _ Wf). apply (proj1 IH).
+  + (* case subtyp_sel_r_nocheck *)
+    introv Bix Wf Has. refine (conj _ Wf). destruct_wf.
+    lets Eq: (binds_func H Bix). subst.
+    lets Eq: (typ_has_unique H0 Has eq_refl). inversions Eq.
+    lets WfD: (typ_has_preserves_wf Has H1). destruct_wf. assumption.
+Qed.
+
+Definition subtyp_regular := proj1 subtyping_regular.
+Definition subdec_regular := proj2 subtyping_regular.
+
+Definition subtyp_regular_1(hm: cbmode)(G: ctx)(T1 T2: typ)(St: subtyp hm G T1 T2) :=
+  (proj1 (subtyp_regular St)).
+Definition subtyp_regular_2(hm: cbmode)(G: ctx)(T1 T2: typ)(St: subtyp hm G T1 T2) :=
+  (proj2 (subtyp_regular St)).
+Definition subdec_regular_1(hm: cbmode)(G: ctx)(D1 D2: dec)(Sd: subdec hm G D1 D2) :=
+  (proj1 (subdec_regular Sd)).
+Definition subdec_regular_2(hm: cbmode)(G: ctx)(D1 D2: dec)(Sd: subdec hm G D1 D2) :=
+  (proj2 (subdec_regular Sd)).
+
+Hint Resolve subtyp_regular_1 subtyp_regular_2 subdec_regular_1 subdec_regular_2.
+
+Lemma typing_regular:
+   (forall G t T, ty_trm G t T ->
+      wf_typ G T)
+/\ (forall G d D, ty_def G d D ->
+      wf_dec G D)
+/\ (forall G ds T, ty_defs G ds T ->
+      wf_typ G T).
+Proof.
+  apply ty_mutind;
+  try solve [
+    intros; subst;
+    repeat match goal with
+    | H: _ /\ _ |- _ => destruct H
+    | H: wf_dec _ (dec_typ _ _ _) |- _ => inversions H
+    | H: wf_dec _ (dec_mtd _ _ _) |- _ => inversions H
+    | H: subtyp _ _ _ |- _ => apply subtyp_regular in H
+    end;
+    eauto
+  ].
+  Grab Existential Variables. constructor. constructor. constructor.
+Qed.
+
+Definition ty_trm_regular  := proj31 typing_regular.
+Definition ty_def_regular  := proj32 typing_regular.
+Definition ty_defs_regular := proj33 typing_regular.
+
+Hint Resolve ty_trm_regular ty_def_regular ty_defs_regular.
 
 
 (* ###################################################################### *)
@@ -2761,7 +2754,7 @@ Proof.
 Qed.
 
 Definition good_bounds_typ(G: ctx)(T: typ) :=
-  wf_typ G T /\ (forall L Lo Hi, typ_has G T (dec_typ L Lo Hi) -> subtyp nohyp G Lo Hi).
+  wf_typ G T /\ (forall L Lo Hi, typ_has G T (dec_typ L Lo Hi) -> subtyp checked G Lo Hi).
 
 Definition good_bounds(G: ctx) :=
   forall x X, binds x X G -> good_bounds_typ G X.
@@ -2817,7 +2810,6 @@ Qed.
 
 (* ###################################################################### *)
 (** ** Well-formed store *)
-
 
 Lemma wf_sto_to_ok_s: forall s G,
   wf_sto s G -> ok s.
@@ -2899,13 +2891,13 @@ Qed.
 (** ** subtyp-and-then-lookup to lookup-and-then-subdec *)
 
 Lemma subtyp_to_memberwise: forall G T1 T2,
-  subtyp nohyp G T1 T2 ->
+  subtyp checked G T1 T2 ->
   memberwise_subtyp G T1 T2.
 Proof.
   introv St. unfold memberwise_subtyp.
   destruct (subtyp_regular St) as [Wf1 Wf2].
   refine (conj _ (conj Wf1 Wf2)). clear Wf1 Wf2.
-  gen_eq hm: nohyp.
+  gen_eq hm: checked.
   induction St; unfold memberwise_subtyp in *; introv Eq T2Has; subst.
   + (* case subtyp_refl *)
     eexists. apply (conj T2Has). apply subdec_refl.
@@ -2920,18 +2912,22 @@ Proof.
   + (* case subtyp_rcd *)
     inversions T2Has. rename D0 into D2. exists D1. auto.
   + (* case subtyp_sel_l *)
-    rename H into Bi, H0 into XHas.
+    rename H into Bi, H0 into Wf, H1 into XHas.
     exists D2. split.
     - eauto.
     - apply subdec_refl. apply (typ_has_preserves_wf T2Has).
-      apply (proj2 (subtyp_regular St)).
-  + (* case subtyp_sel_r *)
-    rename H into Bi, H0 into Sb, H1 into WfX, H2 into XHas.
-    inversions T2Has.
+      destruct_wf.
+      lets Eq: (binds_func H Bi). subst.
+      lets WfD: (typ_has_preserves_wf XHas H1). inversions WfD. assumption.
+  + (* case subtyp_sel_r_checked *)
+    rename H into Bi, H0 into Wf, H1 into XHas.
+    inversions T2Has. clear Eq.
     lets Eq: (binds_func H1 Bi). subst T0.
     apply (IHSt eq_refl). clear IHSt.
     lets Eq: (typ_has_unique H3 XHas eq_refl). inversions Eq.
     exact H5.
+  + (* case subtyp_sel_r_nocheck *)
+    discriminate.
   + (* case subtyp_and *)
     inversions T2Has.
     - eauto.
@@ -3000,8 +2996,6 @@ Proof.
     specialize (IHSt1 eq_refl _ T2Has).
     destruct IHSt1 as [D1 [T1Has Sd12]].
     exists D1. apply (conj T1Has). apply (subdec_trans Sd12 Sd23).
-  + (* case subtyp_hyp *)
-    discriminate.
 Qed.
 
 Print Assumptions subtyp_to_memberwise.
@@ -3143,18 +3137,18 @@ Print Assumptions supertyp_has_good_bounds.
 *)
 
 (* ###################################################################### *)
-(** ** okhyp/nohyp *)
+(** ** check-bounds mode *)
 
 (* the trivial direction *)
-Lemma anyhyp_to_okhyp: 
-   (forall hm G T1 T2, subtyp hm G T1 T2 -> subtyp okhyp G T1 T2)
-/\ (forall hm G D1 D2, subdec hm G D1 D2 -> subdec okhyp G D1 D2).
+Lemma anycbmode_to_nocheck: 
+   (forall hm G T1 T2, subtyp hm G T1 T2 -> subtyp nocheck G T1 T2)
+/\ (forall hm G D1 D2, subdec hm G D1 D2 -> subdec nocheck G D1 D2).
 Proof.
   apply subtyp_mutind; intros; eauto.
 Qed.
 
-Definition subtyp_to_okhyp := proj1 anyhyp_to_okhyp.
-Definition subdec_to_okhyp := proj2 anyhyp_to_okhyp.
+Definition subtyp_to_nocheck := proj1 anycbmode_to_nocheck.
+Definition subdec_to_nocheck := proj2 anycbmode_to_nocheck.
 
 
 (* ###################################################################### *)
@@ -3165,7 +3159,7 @@ Lemma narrow_binds_3: forall G1 G2 x T2,
   binds x T2 G2 ->
   binds x T2 G1
   \/ exists T1, 
-  binds x T1 G1 /\ subtyp nohyp G1 T1 T2 /\ stable_typ T1.
+  binds x T1 G1 /\ subtyp checked G1 T1 T2 /\ stable_typ T1.
 Proof.
   introv Se Bi. unfold subenv in Se. (* destruct Se as [Ok1 [Ok2 Se]]. *) apply (Se _ _ Bi).
 Qed.
@@ -3185,7 +3179,7 @@ Lemma narrow_binds_4: forall G1 G2 x T1 T2,
   binds x T2 G2 ->
   binds x T1 G1 ->
   subenv G1 G2 ->
-  subtyp nohyp G1 T1 T2.
+  subtyp checked G1 T1 T2.
 Proof.
   introv WfT1 Bi2 Bi1 Se.
   lets P: (narrow_binds_3 Se Bi2). 
@@ -3198,7 +3192,7 @@ Lemma narrow_binds_5: forall G1 G2 x T2,
   wf_typ G1 T2 ->
   binds x T2 G2 ->
   subenv G1 G2 ->
-  exists T1, binds x T1 G1 /\ subtyp nohyp G1 T1 T2.
+  exists T1, binds x T1 G1 /\ subtyp checked G1 T1 T2.
 Proof.
   introv WfT2 Bi2 Se.
   lets P: (narrow_binds_3 Se Bi2). destruct P as [Bi1' | [T0 [Bi1' [St Sb]]]].
@@ -3233,7 +3227,7 @@ Lemma narrow_has_hasnt:
     wf_typ G' T -> (* G' !! *)
     exists D1,
       typ_has G' T D1 /\
-      subdec nohyp G' D1 D2)
+      subdec checked G' D1 D2)
 /\ (forall G T l, typ_hasnt G T l -> forall G',
     subenv G' G ->
     wf_typ G' T -> (* G' !! *)
@@ -3484,16 +3478,26 @@ Qed.
 
 Print Assumptions narrow_wf.
 
+Lemma wf_sel_to_stable: forall G x X L,
+  binds x X G ->
+  wf_typ G (typ_sel (avar_f x) L) ->
+  stable_typ X.
+Proof.
+  introv Bi Wf. inversions Wf.
+  - in_empty_contradiction.
+  - lets Eq: (binds_func H1 Bi). subst. assumption.
+Qed.
+
 Definition narrow_wf_typ := proj1 narrow_wf.
 Definition narrow_wf_dec := proj2 narrow_wf.
 
 Lemma narrow_subtyp_subdec:
    (forall hm G T1 T2, subtyp hm G T1 T2 -> forall G',
     subenv G' G ->
-    subtyp okhyp G' T1 T2)
+    subtyp nocheck G' T1 T2)
 /\ (forall hm G D1 D2, subdec hm G D1 D2 -> forall G',
     subenv G' G ->
-    subdec okhyp G' D1 D2).
+    subdec nocheck G' D1 D2).
 Proof.
   apply subtyp_mutind.
   + (* case subtyp_refl *)
@@ -3505,45 +3509,58 @@ Proof.
   + (* case subtyp_rcd *)
     eauto.
   + (* case subtyp_sel_l *)
-    introv Bi2 WfX SbX XHas St IHSt. introv Se.
-    lets WfX': (narrow_wf_typ WfX Se).
-    specialize (IHSt _ Se).
-    lets XHas': (narrow_has_stable XHas SbX Se).
+    introv hm Bi2 Wf XHas. introv Se.
+    lets Wf': (narrow_wf_typ Wf Se).
+    lets XHas': (narrow_has_stable XHas (wf_sel_to_stable Bi2 Wf) Se).
     lets P: (narrow_binds_3 Se Bi2).
     destruct P as [Bi1 | [X' [Bi1 [StX SbX']]]].
     - (* case "type of x remained unchanged" *)
-      apply (subtyp_sel_l Bi1 WfX' SbX XHas' IHSt).
+      apply (subtyp_sel_l _ Bi1 Wf' XHas').
     - (* case "type of x changed from X to X'" *)
       lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ XHas').
               (********************)
       destruct P as [D1 [X'Has Sd]].
       apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT StU]]]].
       subst D1.
-      refine (subtyp_trans _ (subtyp_to_okhyp StU)).
-      apply (subtyp_sel_l Bi1 (proj1 (subtyp_regular StX)) SbX' X'Has).
-      apply (subtyp_hyp Bi1 X'Has SbX' (proj1 (subtyp_regular StX))
-            (**********)               (proj2 (subtyp_regular StT))
-                                       (proj1 (subtyp_regular StU))).
-  + (* case subtyp_sel_r *)
-    introv Bi2 WfX SbX XHas St IHSt. introv Se.
-    lets WfX': (narrow_wf_typ WfX Se).
+      refine (subtyp_trans _ (subtyp_to_nocheck StU)).
+      apply (subtyp_sel_l _ Bi1 Wf' X'Has).
+  + (* case subtyp_sel_r_checked *)
+    introv Bi2 Wf XHas St IHSt. introv Se.
+    lets Wf': (narrow_wf_typ Wf Se).
     specialize (IHSt _ Se).
-    lets XHas': (narrow_has_stable XHas SbX Se).
+    lets XHas': (narrow_has_stable XHas (wf_sel_to_stable Bi2 Wf) Se).
     lets P: (narrow_binds_3 Se Bi2).
     destruct P as [Bi1 | [X' [Bi1 [StX SbX']]]].
     - (* case "type of x remained unchanged" *)
-      apply (subtyp_sel_r Bi1 WfX' SbX XHas' IHSt).
+      apply (subtyp_sel_r_nocheck Bi1 Wf' XHas').
     - (* case "type of x changed from X to X'" *)
       lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ XHas').
               (********************)
       destruct P as [D1 [X'Has Sd]].
       apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT StU]]]].
       subst D1.
-      refine (subtyp_trans (subtyp_to_okhyp StT) _).
-      apply (subtyp_sel_r Bi1 (proj1 (subtyp_regular StX)) SbX' X'Has).
-      apply (subtyp_hyp Bi1 X'Has SbX' (proj1 (subtyp_regular StX))
-            (**********)               (proj2 (subtyp_regular StT))
-                                       (proj1 (subtyp_regular StU))).
+      refine (subtyp_trans (subtyp_to_nocheck StT) _).
+      (* If we're in an env with bad bounds, maybe T' is not a subtype of U',
+         so that's why we cannot return subtyp checked, but only subtyp nocheck. *)
+      apply (subtyp_sel_r_nocheck Bi1 Wf' X'Has).
+  + (* case subtyp_sel_r_checked *)
+    introv Bi2 Wf XHas. introv Se.
+    lets Wf': (narrow_wf_typ Wf Se).
+    lets XHas': (narrow_has_stable XHas (wf_sel_to_stable Bi2 Wf) Se).
+    lets P: (narrow_binds_3 Se Bi2).
+    destruct P as [Bi1 | [X' [Bi1 [StX SbX']]]].
+    - (* case "type of x remained unchanged" *)
+      apply (subtyp_sel_r_nocheck Bi1 Wf' XHas').
+    - (* case "type of x changed from X to X'" *)
+      lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ XHas').
+              (********************)
+      destruct P as [D1 [X'Has Sd]].
+      apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT StU]]]].
+      subst D1.
+      refine (subtyp_trans (subtyp_to_nocheck StT) _).
+      (* If we're in an env with bad bounds, maybe T' is not a subtype of U',
+         so that's why we cannot return subtyp checked, but only subtyp nocheck. *)
+      apply (subtyp_sel_r_nocheck Bi1 Wf' X'Has).
   + (* case subtyp_and *) eauto.
   + (* case subtyp_and_l *)
     intros. subst. apply subtyp_and_l; apply* narrow_wf.
@@ -3556,25 +3573,6 @@ Proof.
     intros. subst. apply subtyp_or_r; apply* narrow_wf.
   + (* case subtyp_trans *)
     intros. apply subtyp_trans with T2; eauto.
-  + (* case subtyp_hyp *)
-    introv Bi2 XHas SbX WfX WfLo WfHi Se.
-    lets WfX': (narrow_wf_typ WfX Se).
-    lets XHas': (narrow_has_stable XHas SbX Se).
-    lets P: (narrow_binds_3 Se Bi2).
-    destruct P as [Bi1 | [X' [Bi1 [StX SbX']]]].
-    - (* case "type of x remained unchanged" *)
-      apply (subtyp_hyp Bi1 XHas' SbX WfX' (narrow_wf_typ WfLo Se) (narrow_wf_typ WfHi Se)).
-    - (* case "type of x changed from X to X'" *)
-      lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ XHas').
-              (********************)
-      destruct P as [D1 [X'Has Sd]].
-      apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT StU]]]].
-      subst D1.
-      refine (subtyp_trans (subtyp_to_okhyp StT) _).
-      refine (subtyp_trans _ (subtyp_to_okhyp StU)).
-      lets WfX'': (proj1 (subtyp_regular StX)).
-      lets WfD: (typ_has_preserves_wf X'Has WfX''). inversions WfD.
-      apply (subtyp_hyp Bi1 X'Has SbX'); assumption.
   + (* case subdec_typ *) eauto.
   + (* case subdec_mtd *) eauto.
 Qed.
@@ -3632,7 +3630,7 @@ Lemma subenv_sub: forall G1 G2 x T1 T2,
   subenv G1 G2 ->
   stable_typ T1 ->
   ok (G1 & x ~ T1) ->
-  subtyp nohyp (G1 & x ~ T1) T1 T2 ->
+  subtyp checked (G1 & x ~ T1) T1 T2 ->
   subenv (G1 & x ~ T1) (G2 & x ~ T2).
 Proof.
   introv Se Sb Ok St. unfold subenv in *. intros v V Bi.
@@ -3708,7 +3706,7 @@ Proof.
     lets WfT': (narrow_wf_typ WfT Se).
     lets P: (narrow_binds_5 WfT' Bi2 Se). destruct P as [T1 [Bi1 St]].
     lets WfT1: (proj1 (subtyp_regular St)).
-    apply subtyp_to_okhyp in St.
+    apply subtyp_to_nocheck in St.
     apply ty_sbsm with T1; eauto.
   + (* case ty_call *)
     introv Tyt IH1 T2Has Tyu IH2 WfV2. introv Ok Se.
@@ -3718,9 +3716,9 @@ Proof.
     lets P: (narrow_has T2Has Se (ty_trm_regular IH1)).
     destruct P as [D [T2Has' Sd]]. apply invert_subdec_mtd_sync_left in Sd.
     destruct Sd as [U2' [V2' [Eq [StU2 StV2]]]]. subst D.
-    refine (ty_sbsm _ (subtyp_to_okhyp StV2)).
+    refine (ty_sbsm _ (subtyp_to_nocheck StV2)).
     apply (ty_call IH1 T2Has').
-    - apply (ty_sbsm IH2 (subtyp_to_okhyp StU2)).
+    - apply (ty_sbsm IH2 (subtyp_to_nocheck StU2)).
     - apply (proj1 (subtyp_regular StV2)).
   + (* case ty_new *)
     introv Tyds IH1 Tyu IH2 WfU Ok1 Se. subst.
@@ -3752,7 +3750,7 @@ Lemma narrow_ty_end: forall G x S1 S2 t T,
   ty_trm (G & x ~ S2) t T ->
   ok (G & x ~ S1) ->
   stable_typ S1 ->
-  subtyp nohyp (G & x ~ S1) S1 S2 ->
+  subtyp checked (G & x ~ S1) S1 S2 ->
   ty_trm (G & x ~ S1) t T.
 Proof.
   introv Ty Ok Sb St. destruct narrow_ty as [P _].
@@ -4031,27 +4029,31 @@ Proof.
   + (* case subtyp_rcd *)
     introv Sd IH Eq Ok Biy. subst. apply subtyp_rcd. eauto.
   + (* case subtyp_sel_l *)
-    introv Bix WfX Sb XHas St IH Eq Ok Biy. subst. eq_specialize.
-    specialize (IH Ok Biy).
+    introv Bix Wf XHas Eq Ok Biy. subst.
     lets Bix': (subst_binds Bix Ok Biy).
     simpl. rewrite if_hoist.
     apply subtyp_sel_l with (subst_typ x0 y X) (subst_typ x0 y T).
     * apply Bix'.
-    * eauto.
-    * apply (subst_stable_typ _ _ Sb).
+    * lets P: (subst_wf_typ Wf Ok Biy). simpl in P. rewrite if_hoist in P. exact P.
     * apply (subst_has XHas Ok Biy).
-    * apply IH.
-  + (* case subtyp_sel_r *)
-    introv Bix WfX Sb XHas St IH Eq Ok Biy. subst. eq_specialize.
+  + (* case subtyp_sel_r_checked *)
+    introv Bix Wf XHas St IH Eq Ok Biy. subst. eq_specialize.
     specialize (IH Ok Biy).
     lets Bix': (subst_binds Bix Ok Biy).
     simpl. rewrite if_hoist.
-    apply subtyp_sel_r with (subst_typ x0 y X) (subst_typ x0 y U).
+    apply subtyp_sel_r_checked with (subst_typ x0 y X) (subst_typ x0 y U).
     * apply Bix'.
-    * eauto.
-    * apply (subst_stable_typ _ _ Sb).
+    * lets P: (subst_wf_typ Wf Ok Biy). simpl in P. rewrite if_hoist in P. exact P.
     * apply (subst_has XHas Ok Biy).
     * apply IH.
+  + (* case subtyp_sel_r_nocheck *)
+    introv Bix Wf XHas Eq Ok Biy. subst.
+    lets Bix': (subst_binds Bix Ok Biy).
+    simpl. rewrite if_hoist.
+    apply subtyp_sel_r_nocheck with (subst_typ x0 y X) (subst_typ x0 y U).
+    * apply Bix'.
+    * lets P: (subst_wf_typ Wf Ok Biy). simpl in P. rewrite if_hoist in P. exact P.
+    * apply (subst_has XHas Ok Biy).
   + (* case subtyp_and *)
     introv St1 IH1 St2 IH2 Eq Ok Biy. subst. eq_specialize.
     specialize (IH1 Ok Biy).
@@ -4072,16 +4074,6 @@ Proof.
     specialize (IH12 Ok Biy).
     specialize (IH23 Ok Biy).
     apply subtyp_trans with (subst_typ x y T2); eauto.
-  + (* case subtyp_hyp *)
-    introv Bix XHas Sb WfX WfLo WfHi Eq Ok Biy. subst.
-    lets Bix': (subst_binds Bix Ok Biy).
-    apply subtyp_hyp with (subst_fvar x0 y x) (subst_typ x0 y X) L.
-    * apply Bix'.
-    * apply (subst_has XHas Ok Biy).
-    * apply (subst_stable_typ _ _ Sb).
-    * eauto.
-    * eauto.
-    * eauto.
   + (* case subdec_typ *)
     intros. subst. eq_specialize. apply subdec_typ; eauto.
   + (* case subdec_mtd *)
@@ -4090,7 +4082,7 @@ Proof.
   chicken. chicken. chicken.
   chicken. chicken. chicken. chicken. chicken.
   chicken. chicken.
-  chicken. chicken. chicken.
+  chicken.
 Qed.
 
 Print Assumptions subst_subtyp_subdec.
@@ -4299,7 +4291,7 @@ Qed.
 
 Lemma invert_ty_var: forall G x T,
   ty_trm G (trm_var (avar_f x)) T ->
-  exists T', binds x T' G /\ subtyp okhyp G T' T.
+  exists T', binds x T' G /\ subtyp nocheck G T' T.
 Proof.
   introv Ty. gen_eq t: (trm_var (avar_f x)). induction Ty; intro Eq; inversions Eq.
   - exists T. auto.
@@ -4353,11 +4345,11 @@ Qed.
 
 
 (* ###################################################################### *)
-(** ** okhyp to nohyp *)
+(** ** unchecked bounds to checked bounds *)
 
 Lemma anyhyp_to_nohyp:
-   (forall hm G T1 T2, subtyp hm G T1 T2 -> good_bounds G -> subtyp nohyp G T1 T2)
-/\ (forall hm G D1 D2, subdec hm G D1 D2 -> good_bounds G -> subdec nohyp G D1 D2).
+   (forall hm G T1 T2, subtyp hm G T1 T2 -> good_bounds G -> subtyp checked G T1 T2)
+/\ (forall hm G D1 D2, subdec hm G D1 D2 -> good_bounds G -> subdec checked G D1 D2).
 Proof.
   apply subtyp_mutind.
   + (* case subtyp_refl *) auto.
@@ -4365,9 +4357,14 @@ Proof.
   + (* case subtyp_bot *) auto.
   + (* case subtyp_rcd *) auto.
   + (* case subtyp_sel_l *)
-    introv Bix WfX Sb XHas St IH Gb. apply (subtyp_sel_l Bix WfX Sb XHas (IH Gb)).
-  + (* case subtyp_sel_r *)
-    introv Bix WfX Sb XHas St IH Gb. apply (subtyp_sel_r Bix WfX Sb XHas (IH Gb)).
+    introv hm Bix Wf XHas Gb. apply (subtyp_sel_l _ Bix Wf XHas).
+  + (* case subtyp_sel_r_checked *)
+    introv Bix Wf XHas St IH Gb. apply (subtyp_sel_r_checked Bix Wf XHas (IH Gb)).
+  + (* case subtyp_sel_r_nocheck *)
+    introv Bix Wf XHas Gb. apply (subtyp_sel_r_checked Bix Wf XHas).
+    (* Use good_bounds to turn nocheck into checked: *)
+    specialize (Gb _ _ Bix). unfold good_bounds_typ in Gb. destruct Gb as [_ Gb].
+    apply (Gb _ _ _ XHas).
   + (* case subtyp_and *) auto.
   + (* case subtyp_and_l *) auto.
   + (* case subtyp_and_r *) auto.
@@ -4375,10 +4372,6 @@ Proof.
   + (* case subtyp_or_l *) auto.
   + (* case subtyp_or_r *) auto.
   + (* case subtyp_trans *) eauto.
-  + (* case subtyp_hyp *)
-    introv Bix XHas Sb WfX WfLo WfHi Gb.
-    unfold good_bounds, good_bounds_typ in Gb. specialize (Gb _ _ Bix).
-    destruct Gb as [_ Gb]. apply (Gb _ _ _ XHas).
   + (* case subdec_typ *) auto.
   + (* case subdec_mtd *) auto.
 Qed.
@@ -4548,7 +4541,7 @@ Lemma invert_ty_call: forall G t m V2 u,
     ty_trm G t T /\
     typ_has G T (dec_mtd m U V1) /\
     ty_trm G u U /\
-    subtyp okhyp G V1 V2.
+    subtyp nocheck G V1 V2.
 Proof.
   introv Ty. gen_eq t0: (trm_call t m u). induction Ty; intro Eq; inversions Eq.
   - do 3 eexists. eauto.
@@ -4601,7 +4594,7 @@ Proof.
     }
     inversions Eq. clear dsHas'.
     rename U2''' into U1.
-    lets StU: (subtyp_trans StU2 (subtyp_to_okhyp StU1)).
+    lets StU: (subtyp_trans StU2 (subtyp_to_nocheck StU1)).
     pick_fresh y'.
     assert (y'L: y' \notin L) by auto.
     specialize (Tybody y' y'L).
@@ -4624,7 +4617,7 @@ Proof.
     rewrite <- (@subst_intro_trm y' y body y'body) in P.
     apply (ty_sbsm (P y'G BiGy)).
     assert (EqV2: (subst_typ y' y V2) = V2). { refine (@subst_fresh_typ y' y _ _). auto. }
-    rewrite EqV2. apply (subtyp_trans (subtyp_to_okhyp StV') StV).
+    rewrite EqV2. apply (subtyp_trans (subtyp_to_nocheck StV') StV).
   + (* red_new *)
     introv Wf Ty.
     lets Gb: (wf_sto_to_good_bounds Wf).
