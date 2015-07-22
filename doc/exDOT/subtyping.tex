@@ -18,13 +18,18 @@
 {\Gamma \ts \{D_1\} \sub \{D_2\}}
 
 \infrule[\textsc{$\sub$-sel-l}]
-{(x: T) \in \Gamma ~~~~~~~~~~~  \Gamma \ts T \wf \\
- \Gamma \ts T \ni (\Ldecl L S U) ~~~ \Gamma \ts S \sub U}
+{\Gamma \ts x.L \wf \\
+ (x: T) \in \Gamma \\
+ \Gamma \ts T \ni (\Ldecl L S U)}
 {\Gamma \ts x.L \sub U}
 
 \infrule[\textsc{$\sub$-sel-r}]
-{(x: T) \in \Gamma ~~~~~~~~~~~  \Gamma \ts T \wf \\
- \Gamma \ts T \ni (\Ldecl L S U) ~~~ \Gamma \ts S \sub U}
+{\Gamma \ts x.L \wf \\
+ (x: T) \in \Gamma\\
+ \Gamma \ts T \ni (\Ldecl L S U)}
+ % note that in check_bounds mode, we have to check S<:U here, so that
+ % subtyp_to_memberwise works, but we don't check this always, because
+ % otherwise narrowing wouldn't hold (bounds could get bad through narrowing)
 {\Gamma \ts S \sub x.L}
 
 %%%%
@@ -53,21 +58,16 @@
 {\Gamma \ts T_1 \wf ~~~~ \Gamma \ts T_2 \wf}
 {\Gamma \ts T_2 \sub T_1 \tor T_2}
 
-\end{multicols}
-
-\vspace{0.1em}
-
-\begin{multicols}{2}
-
 \infrule[\textsc{$\sub$-trans}]
-{\Gamma \ts T_1 \sub T_2 \\ \Gamma \ts T_2 \sub T_3}
+{\Gamma \ts T_1 \sub T_2 ~~~~ \Gamma \ts T_2 \sub T_3}
 {\Gamma \ts T_1 \sub T_3}
 
-\infrule[\textsc{$\sub$-hyp}]
-{(x: T) \in \Gamma ~~~~  \Gamma \ts T \wf \\
- \Gamma \ts T \ni (\Ldecl L S U) \\
- \Gamma \ts S \wf ~~~~  \Gamma \ts U \wf}
-{\Gamma \ts S \sub U}
+% Not needed any more
+%\infrule[\textsc{$\sub$-hyp}]
+%{(x: T) \in \Gamma ~~~~  \Gamma \ts T \wf \\
+% \Gamma \ts T \ni (\Ldecl L S U) \\
+% \Gamma \ts S \wf ~~~~  \Gamma \ts U \wf}
+%{\Gamma \ts S \sub U}
 
 \end{multicols}
 
