@@ -7,8 +7,8 @@
 {\Gamma \ts x: T}
 
 \infrule[\textsc{ty-call}]
-{\Gamma \ts t : T ~~ \Gamma \ts u : U  ~~ \Gamma \ts V \wf \\
- \Gamma \ts T \ni (\mdecl m U V)}
+{\Gamma \ts t : T ~~~~~~~ \Gamma \ts u : U  \\
+ \Gamma \ts T \ni (\mdecl m U V) ~~~~ \Gamma \ts V \wf}
 {\Gamma \ts {\trmcall t m u} : V}
 
 \infrule[\textsc{ty-new}]
