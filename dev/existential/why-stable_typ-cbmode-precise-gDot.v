@@ -3482,6 +3482,16 @@ Qed.
 Definition narrow_has_stable := proj1 narrow_has_hasnt_stable.
 Definition narrow_hasnt_stable := proj2 narrow_has_hasnt_stable.
 
+Lemma narrow_has_2:
+  (forall G T D2, typ_has G T D2 -> forall G' A,
+    subenv G' G ->
+    wf_typ_impl G' A T -> (* G' !! *)
+    typ_has G' T D2 \/
+    exists D1,
+      typ_has G' T D1 /\
+      subdec checked G' D1 D2).
+Admitted.
+
 Lemma narrow_wf:
    (forall G A T, wf_typ_impl G A T -> forall G',
     subenv G' G ->
@@ -3495,18 +3505,54 @@ Proof.
   + (* case wf_bot *) eauto.
   + (* case wf_hyp *) eauto.
   + (* case wf_rcd *) eauto.
-  (* Trying to not depend on stable_typ, but it doesn't work:
+  (* Trying to not depend on stable_typ, which requires narrow_has_2: *)
   + (* case wf_sel *)
     introv Bi2 SbX2 X2Has WfX2 IHX WfT IHT WfU IHU. introv Se. subst.
     rename X into X2.
     specialize (IHX _ Se).
     specialize (IHT _ Se).
     specialize (IHU _ Se).
-    lets P: (narrow_binds_3 Se Bi2). destruct P as [Bix' | [X1 [Bi1 [StX _]]]].
+    lets P: (narrow_binds_3 Se Bi2). destruct P as [Bix' | [X1 [Bix' [StX _]]]].
     - (* case "type of x remained unchanged" *)
-      refine (wf_sel Bix' SbX2 _ IHX IHT IHU).      
-      destruct (narrow_has X2Has2 Se WfX2') as [D [X2Has1 Sd]].
-      (* how can we get WfX2'? It's almost IHX, but A should be empty! *) *)
+      lets P: (narrow_has_2 X2Has Se IHX). destruct P as [X2Has' | [D1 [X2Has' Sd]]].
+      * (* case "bounds of L in X2 remained unchanged" *)
+        apply (wf_sel Bix' SbX2 X2Has' IHX IHT IHU).
+      * (* case "bounds of L in X2 changed from T..U to T'..U'" *)
+        apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT2 StU2]]]].
+        subst D1.
+        apply (wf_sel Bix' SbX2 X2Has' IHX);
+        rewrite <- (union_empty_l A); apply add_hyps_to_wf_typ.
+        { apply (proj2 (subtyp_regular StT2)). }
+        { apply (proj1 (subtyp_regular StU2)). }
+    - (* case "type of x changed from X2 to X1" *)
+      lets P: (narrow_has_2 X2Has Se IHX). destruct P as [X2Has' | [D1 [X2Has' Sd]]].
+      * (* case "bounds of L in X2 remained unchanged" *)
+        lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ X2Has').
+                (********************)
+        destruct P as [D1 [X1Has Sd]].
+        apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT2 StU2]]]].
+        subst D1.
+        assert (SbX1: stable_typ X1) by admit.
+        apply (wf_sel Bix' SbX1 X1Has);
+        try (rewrite <- (union_empty_l A); apply add_hyps_to_wf_typ).
+        { apply (proj1 (subtyp_regular StX)). }
+        { apply (proj2 (subtyp_regular StT2)). }
+        { apply (proj1 (subtyp_regular StU2)). }
+      * (* case "bounds of L in X2 changed from T..U to T'..U'" *)
+        apply invert_subdec_typ_sync_left in Sd. destruct Sd as [T' [U' [Eq [StT2 StU2]]]].
+        subst D1.
+        lets P: (subtyp_to_memberwise StX). destruct P as [P _]. specialize (P _ X2Has').
+                (********************)
+        destruct P as [D1 [X1Has Sd]].
+        apply invert_subdec_typ_sync_left in Sd.
+        destruct Sd as [T'' [U'' [Eq [StT1 StU1]]]]. subst D1.
+        assert (SbX1: stable_typ X1) by admit.
+        apply (wf_sel Bix' SbX1 X1Has);
+        rewrite <- (union_empty_l A); apply add_hyps_to_wf_typ.
+        { apply (proj1 (subtyp_regular StX)). }
+        { apply (proj2 (subtyp_regular StT1)). }
+        { apply (proj1 (subtyp_regular StU1)). }
+(*
   + (* case wf_sel *)
     introv Bix SbX XHas WfX IHX WfT IHT WfU IHU. introv Se. subst.
     lets XHas': (narrow_has_stable XHas SbX Se).
@@ -3527,6 +3573,7 @@ Proof.
       * apply (proj1 (subtyp_regular St)).
       * apply (proj2 (subtyp_regular StT2)).
       * apply (proj1 (subtyp_regular StU2)).
+*)
   + (* case wf_and  *) eauto.
   + (* case wf_or   *) eauto.
   + (* case wf_tmem *) eauto.
