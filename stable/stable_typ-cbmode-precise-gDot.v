@@ -3244,26 +3244,6 @@ Proof.
   - exists T0. auto.
 Qed.
 
-Lemma narrow_has_hasnt_stable:
-   (forall G T D, typ_has G T D -> forall G',
-    stable_typ T ->
-    subenv G' G ->
-    typ_has G' T D)
-/\ (forall G T l, typ_hasnt G T l -> forall G',
-    stable_typ T ->
-    subenv G' G ->
-    typ_hasnt G' T l).
-Proof.
-  apply typ_has_mutind; intros; subst;
-  match goal with
-  | H: stable_typ _ |- _ => inversions H
-  end;
-  eauto.
-Qed.
-
-Definition narrow_has_stable := proj1 narrow_has_hasnt_stable.
-Definition narrow_hasnt_stable := proj2 narrow_has_hasnt_stable.
-
 (* Needed by narrow_ty *)
 Lemma narrow_has_hasnt:
    (forall G T D2, typ_has G T D2 -> forall G',
@@ -3480,6 +3460,26 @@ Print Assumptions narrow_has_hasnt.
 
 Definition narrow_has := proj1 narrow_has_hasnt.
 Definition narrow_hasnt := proj2 narrow_has_hasnt.
+
+Lemma narrow_has_hasnt_stable:
+   (forall G T D, typ_has G T D -> forall G',
+    stable_typ T ->
+    subenv G' G ->
+    typ_has G' T D)
+/\ (forall G T l, typ_hasnt G T l -> forall G',
+    stable_typ T ->
+    subenv G' G ->
+    typ_hasnt G' T l).
+Proof.
+  apply typ_has_mutind; intros; subst;
+  match goal with
+  | H: stable_typ _ |- _ => inversions H
+  end;
+  eauto.
+Qed.
+
+Definition narrow_has_stable := proj1 narrow_has_hasnt_stable.
+Definition narrow_hasnt_stable := proj2 narrow_has_hasnt_stable.
 
 Lemma narrow_wf:
    (forall G A T, wf_typ_impl G A T -> forall G',
