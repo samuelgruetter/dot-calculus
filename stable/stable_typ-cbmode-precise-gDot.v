@@ -1777,6 +1777,13 @@ Proof.
     exact Wf.
 Qed.
 
+Lemma invert_wf_rcd: forall G A D,
+  wf_typ_impl G A (typ_rcd D) ->
+  wf_dec_impl G A D.
+Abort.
+(* Does not hold because if (typ_rcd D) is in A, we basically know nothing. *)
+
+(* But if A is empty, it works: *)
 Lemma invert_wf_rcd: forall G D,
   wf_typ G (typ_rcd D) ->
   wf_dec G D.
@@ -1848,7 +1855,6 @@ Proof.
   - in_empty_contradiction.
   - exists T U. lets Eq: (binds_func H3 H). subst. eauto.
 Qed.
-
 
 Ltac destruct_wf :=
   repeat match goal with
@@ -2433,6 +2439,18 @@ Proof.
     lets Eq: (typ_has_unique H6 H0 eq_refl). inversions Eq.
     eauto.
 Qed.
+
+Lemma typ_has_preserves_wf: forall G A T D,
+  typ_has G T D ->
+  wf_typ_impl G A T ->
+  wf_dec_impl G A D.
+Proof.
+  introv Has. gen A. induction Has; introv Wf.
+  + (* case typ_bot_has *)
+    destruct l; simpl; eauto.
+  + (* case typ_rcd_has *)
+    (* Here we would need invert_wf_rcd with non-empty A, but that doesn't hold *)
+Abort.
 
 Lemma typ_has_preserves_wf: forall G T D,
   typ_has G T D ->
@@ -3476,6 +3494,18 @@ Proof.
   + (* case wf_bot *) eauto.
   + (* case wf_hyp *) eauto.
   + (* case wf_rcd *) eauto.
+  (* Trying to not depend on stable_typ, but it doesn't work:
+  + (* case wf_sel *)
+    introv Bi2 SbX2 X2Has WfX2 IHX WfT IHT WfU IHU. introv Se. subst.
+    rename X into X2.
+    specialize (IHX _ Se).
+    specialize (IHT _ Se).
+    specialize (IHU _ Se).
+    lets P: (narrow_binds_3 Se Bi2). destruct P as [Bix' | [X1 [Bi1 [StX _]]]].
+    - (* case "type of x remained unchanged" *)
+      refine (wf_sel Bix' SbX2 _ IHX IHT IHU).      
+      destruct (narrow_has X2Has2 Se WfX2') as [D [X2Has1 Sd]].
+      (* how can we get WfX2'? It's almost IHX, but A should be empty! *) *)
   + (* case wf_sel *)
     introv Bix SbX XHas WfX IHX WfT IHT WfU IHU. introv Se. subst.
     lets XHas': (narrow_has_stable XHas SbX Se).
