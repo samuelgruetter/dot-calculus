@@ -324,16 +324,16 @@ Non-expansive types are those which are just "aliases" [in a broad sense ;-)],
 i.e. bounds of path types and/or-types.
 Since we only want to allow guarded recursion, only the rules for compuational types
 add the type being checked to the assumptions (i.e. only wf_rcd). *)
-Inductive wf_typ_impl: ctx -> fset typ -> typ -> Prop :=
+Inductive wf_typ_impl: ctx -> fset dec -> typ -> Prop :=
   | wf_top: forall G A,
       wf_typ_impl G A typ_top
   | wf_bot: forall G A,
       wf_typ_impl G A typ_bot
-  | wf_hyp: forall G A T,
-      T \in A ->
-      wf_typ_impl G A T
+  | wf_hyp: forall G A D,
+      D \in A ->
+      wf_typ_impl G A (typ_rcd D)
   | wf_rcd: forall G A D,
-      wf_dec_impl G (A \u \{(typ_rcd D)}) D ->
+      wf_dec_impl G (A \u \{ D }) D ->
       wf_typ_impl G A (typ_rcd D)
   | wf_sel: forall G A x X L T U,
       binds x X G ->
@@ -351,7 +351,7 @@ Inductive wf_typ_impl: ctx -> fset typ -> typ -> Prop :=
       wf_typ_impl G A T1 ->
       wf_typ_impl G A T2 ->
       wf_typ_impl G A (typ_or T1 T2)
-with wf_dec_impl: ctx -> fset typ -> dec -> Prop :=
+with wf_dec_impl: ctx -> fset dec -> dec -> Prop :=
   | wf_tmem: forall G A L Lo Hi,
       wf_typ_impl G A Lo ->
       wf_typ_impl G A Hi ->
@@ -1657,30 +1657,30 @@ Proof.
   + (* case wf_rcd *)
     intros G A1 D WfD IH.
     rewrite <- union_assoc in *.
-    rewrite (union_comm \{ typ_rcd D } A2) in *.
+    rewrite (union_comm \{ D } A2) in *.
     rewrite union_assoc in *.
     eauto.
 Qed.
 
-Definition add_hyps_to_wf_typ(G: ctx)(A1 A2: fset typ) := (proj1 (add_hyps_to_wf A2)) G A1.
-Definition add_hyps_to_wf_dec(G: ctx)(A1 A2: fset typ) := (proj2 (add_hyps_to_wf A2)) G A1.
+Definition add_hyps_to_wf_typ(G: ctx)(A1 A2: fset dec) := (proj1 (add_hyps_to_wf A2)) G A1.
+Definition add_hyps_to_wf_dec(G: ctx)(A1 A2: fset dec) := (proj2 (add_hyps_to_wf A2)) G A1.
 
-Lemma remove_hyp_from_wf: forall G A0 U, wf_typ_impl G A0 U ->
-   (forall G' A T, wf_typ_impl G' A T -> G' = G -> wf_typ_impl G (A0 \u (A \- \{ U })) T) 
-/\ (forall G' A D, wf_dec_impl G' A D -> G' = G -> wf_dec_impl G (A0 \u (A \- \{ U })) D).
+Lemma remove_hyp_from_wf: forall G A0 D0, wf_typ_impl G A0 (typ_rcd D0) ->
+   (forall G' A T, wf_typ_impl G' A T -> G' = G -> wf_typ_impl G (A0 \u (A \- \{ D0 })) T) 
+/\ (forall G' A D, wf_dec_impl G' A D -> G' = G -> wf_dec_impl G (A0 \u (A \- \{ D0 })) D).
 Proof.
   introv WfU. apply wf_mutind; eauto.
   + (* case wf_hyp *)
     introv In Eq. subst G0.
-    destruct (classicT (T = U)) as [Eq | Ne].
-    - subst T. rewrite <- (union_empty_l (A \- \{ U })). apply add_hyps_to_wf. exact WfU.
+    destruct (classicT (D = D0)) as [Eq | Ne].
+    - subst D. rewrite <- (union_empty_l (A \- \{ D0 })). apply add_hyps_to_wf. exact WfU.
     - apply wf_hyp. rewrite in_union. right. rewrite in_remove.
       apply (conj In). rewrite notin_singleton. exact Ne.
   + (* case wf_rcd *)
     introv WfD IH Eq. subst G0. eq_specialize.
-    destruct (classicT (typ_rcd D = U)) as [Eq | Ne].
-    - rewrite <- (union_empty_l (A \- \{ U })). subst U. apply add_hyps_to_wf. exact WfU.
-    - assert (Eq: (A \u \{ typ_rcd D }) \- \{ U} = (A \- \{ U } \u \{ typ_rcd D})). {
+    destruct (classicT (D = D0)) as [Eq | Ne].
+    - rewrite <- (union_empty_l (A \- \{ D0 })). subst D. apply add_hyps_to_wf. exact WfU.
+    - assert (Eq: (A \u \{ D }) \- \{ D0 } = (A \- \{ D0 } \u \{ D})). {
         apply fset_extens; unfold subset; intros X H;
         repeat (rewrite in_remove in * || rewrite in_union in * ).
         + auto_star.
@@ -1726,18 +1726,18 @@ Proof.
 Qed.
 
 Lemma remove_own_hyp_from_wf_dec: forall G A D,
-  wf_dec_impl G (A \u \{ typ_rcd D }) D ->
-  wf_dec_impl G (A \- \{ typ_rcd D }) D.
+  wf_dec_impl G (A \u \{ D }) D ->
+  wf_dec_impl G (A \- \{ D }) D.
 Proof.
   introv Wf1.
-  assert (Eq: A \u \{ typ_rcd D } = (A \- \{ typ_rcd D }) \u \{ typ_rcd D }). {
+  assert (Eq: A \u \{ D } = (A \- \{ D }) \u \{ D }). {
     apply fset_extens; unfold subset; intros; rewrite in_union in *.
-    + rewrite in_singleton in *. destruct (classicT (x = typ_rcd D)) as [Eq | Ne].
+    + rewrite in_singleton in *. destruct (classicT (x = D)) as [Eq | Ne].
       - subst. auto.
       - left. rewrite in_remove. rewrite notin_singleton. destruct H.
         * auto.
         * exfalso. subst. auto.
-    + rewrite in_singleton in *. destruct (classicT (x = typ_rcd D)) as [Eq | Ne].
+    + rewrite in_singleton in *. destruct (classicT (x = D)) as [Eq | Ne].
       - subst. auto.
       - left. rewrite in_remove in H. rewrite notin_singleton in H. repeat destruct H.
         * auto.
@@ -1756,18 +1756,18 @@ Qed.
 Print Assumptions remove_own_hyp_from_wf_dec.
 
 Lemma weak_remove_own_hyp_from_wf_dec: forall G A D,
-  wf_dec_impl G (A \u \{ typ_rcd D }) D ->
+  wf_dec_impl G (A \u \{ D }) D ->
   wf_dec_impl G A D.
 Proof.
   introv Wf.
-  destruct (classicT ((typ_rcd D) \in A)) as [In | Ni].
-  * assert (Eq: (A \u \{ typ_rcd D}) = A). {
+  destruct (classicT (D \in A)) as [In | Ni].
+  * assert (Eq: (A \u \{ D }) = A). {
       apply fset_extens; unfold subset; intros.
       - rewrite in_union, in_singleton in H. destruct H; subst; auto.
       - rewrite in_union. auto.
     }
     rewrite Eq in Wf. exact Wf.
-  * assert (Eq: A = (A \u \{ typ_rcd D}) \- \{ typ_rcd D }). {
+  * assert (Eq: A = (A \u \{ D }) \- \{ D }). {
       rewrite union_remove. rewrite singleton_remove. rewrite union_empty_r.
       rewrite (remove_notin Ni). reflexivity.
     }
@@ -1794,22 +1794,21 @@ Proof.
     rewrite empty_remove in P. exact P.
 Qed.
 
-Lemma invert_wf_and: forall G T1 T2,
-  wf_typ G (typ_and T1 T2) ->
-  wf_typ G T1 /\ wf_typ G T2.
+Lemma invert_wf_and: forall G A T1 T2,
+  wf_typ_impl G A (typ_and T1 T2) ->
+  wf_typ_impl G A T1 /\ wf_typ_impl G A T2.
 Proof.
   introv Wf. inversions Wf.
-  - in_empty_contradiction.
+  (* - in_empty_contradiction. This case is not needed any more since inversion now knows
+       that wf_hyp only applies to record types *)
   - eauto.
 Qed.
 
-Lemma invert_wf_or: forall G T1 T2,
-  wf_typ G (typ_or T1 T2) ->
-  wf_typ G T1 /\ wf_typ G T2.
+Lemma invert_wf_or: forall G A T1 T2,
+  wf_typ_impl G A (typ_or T1 T2) ->
+  wf_typ_impl G A T1 /\ wf_typ_impl G A T2.
 Proof.
-  introv Wf. inversions Wf.
-  - in_empty_contradiction.
-  - eauto.
+  introv Wf. inversions Wf. eauto.
 Qed.
 
 Lemma invert_wf_sel: forall G x L,
@@ -1821,9 +1820,7 @@ Lemma invert_wf_sel: forall G x L,
     wf_typ G T /\
     wf_typ G U.
 Proof.
-  intros. inversions H.
-  - in_empty_contradiction.
-  - exists X T U. eauto.
+  intros. inversions H. exists X T U. eauto.
 Qed.
 
 Lemma invert_wf_sel_2: forall G a L,
@@ -1836,9 +1833,7 @@ Lemma invert_wf_sel_2: forall G a L,
     wf_typ G T /\
     wf_typ G U.
 Proof.
-  intros. inversions H.
-  - in_empty_contradiction.
-  - exists x X T U. eauto 10.
+  intros. inversions H. exists x X T U. eauto 10.
 Qed.
 
 Lemma invert_wf_sel_3: forall G x X L,
@@ -1851,9 +1846,7 @@ Lemma invert_wf_sel_3: forall G x X L,
     wf_typ G T /\
     wf_typ G U.
 Proof.
-  intros. inversions H0.
-  - in_empty_contradiction.
-  - exists T U. lets Eq: (binds_func H3 H). subst. eauto.
+  intros. inversions H0. exists T U. lets Eq: (binds_func H3 H). subst. eauto.
 Qed.
 
 Ltac destruct_wf :=
@@ -2148,11 +2141,11 @@ Proof.
   introv Sd. inversions Sd. exists S1 T1. auto.
 Qed.
 
-Lemma intersect_dec_preserves_wf: forall G D1 D2 D3,
+Lemma intersect_dec_preserves_wf: forall G A D1 D2 D3,
   D1 && D2 == D3 ->
-  wf_dec G D1 ->
-  wf_dec G D2 ->
-  wf_dec G D3.
+  wf_dec_impl G A D1 ->
+  wf_dec_impl G A D2 ->
+  wf_dec_impl G A D3.
 Proof.
   introv Eq Wf1 Wf2. unfold intersect_dec in Eq. case_if.
   destruct D1 as [L1 S1 U1 | m1 S1 U1];
@@ -2424,17 +2417,17 @@ Proof.
   apply (P G T (label_of_dec D) Hasnt D eq_refl Has).
 Qed.
 
-Lemma invert_wf_sel_4: forall G x X L T U,
+Lemma invert_wf_sel_4: forall G A x X L T U,
   binds x X G ->
   typ_has G X (dec_typ L T U) ->
-  wf_typ G (typ_sel (avar_f x) L) ->
+  wf_typ_impl G A (typ_sel (avar_f x) L) ->
   stable_typ X /\
-  wf_typ G X /\
-  wf_typ G T /\
-  wf_typ G U.
+  wf_typ_impl G A X /\
+  wf_typ_impl G A T /\
+  wf_typ_impl G A U.
 Proof.
   intros. inversions H1.
-  - in_empty_contradiction.
+(*- in_empty_contradiction.*)
   - lets Eq: (binds_func H4 H). subst.
     lets Eq: (typ_has_unique H6 H0 eq_refl). inversions Eq.
     eauto.
@@ -2442,14 +2435,30 @@ Qed.
 
 Lemma typ_has_preserves_wf: forall G A T D,
   typ_has G T D ->
+  D \notin A ->
   wf_typ_impl G A T ->
   wf_dec_impl G A D.
 Proof.
-  introv Has. gen A. induction Has; introv Wf.
+  introv Has. gen A. induction Has; introv Ni Wf.
   + (* case typ_bot_has *)
     destruct l; simpl; eauto.
   + (* case typ_rcd_has *)
-    (* Here we would need invert_wf_rcd with non-empty A, but that doesn't hold *)
+    inversions Wf.
+    - exfalso. apply (Ni H2).
+    - apply (weak_remove_own_hyp_from_wf_dec H2).
+  + (* case typ_sel_has *)
+    apply (invert_wf_sel_4 H Has1) in Wf.
+    (* Note: this gives us full wf-ness of bounds, which wouldn't be possible
+      without the assumption-set-based wf-judgment because it would require infinite
+      proof trees for recursive types. *)
+    apply IHHas2; jauto.
+  + (* case typ_and_has_1 *)
+    inversions Wf. eauto.
+  + (* case typ_and_has_2 *)
+    inversions Wf. eauto.
+  + (* case typ_and_has_12 *)
+    inversions Wf. apply (intersect_dec_preserves_wf H).
+    - refine (IHHas1 _ _ H4). (* D1 \notin A does not follow from D3 \notin A !! *)
 Abort.
 
 Lemma typ_has_preserves_wf: forall G T D,
@@ -2469,20 +2478,14 @@ Proof.
       proof trees for recursive types. *)
     apply IHHas2. jauto.
   + (* case typ_and_has_1 *)
-    inversions Wf.
-    - in_empty_contradiction.
-    - eauto.
+    inversions Wf. eauto.
   + (* case typ_and_has_2 *)
-    inversions Wf.
-    - in_empty_contradiction.
-    - eauto.
+    inversions Wf. eauto.
   + (* case typ_and_has_12 *)
     inversions Wf.
-    - in_empty_contradiction.
     - apply (intersect_dec_preserves_wf H); auto.
   + (* case typ_or_has *)
     inversions Wf.
-    - in_empty_contradiction.
     - apply (union_dec_preserves_wf H); auto.
 Qed.
 
