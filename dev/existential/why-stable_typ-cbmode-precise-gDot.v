@@ -3965,9 +3965,9 @@ Proof.
   intros. apply* subst_has_hasnt.
 Qed.
 
-Definition subst_assumptions(x y: var)(A1 A2: fset typ) :=
-   (forall T1, T1 \in A1 -> (subst_typ x y T1) \in A2)
-/\ (forall T2, T2 \in A2 -> exists T1, T1 \in A1 /\ (subst_typ x y T1) = T2).
+Definition subst_assumptions(x y: var)(A1 A2: fset dec) :=
+   (forall D1, D1 \in A1 -> (subst_dec x y D1) \in A2)
+/\ (forall D2, D2 \in A2 -> exists D1, D1 \in A1 /\ (subst_dec x y D1) = D2).
 
 Lemma subst_wf: forall y S,
    (forall G A1 T, wf_typ_impl G A1 T -> forall G1 G2 x A2,
@@ -3998,11 +3998,11 @@ Proof.
     split; introv In.
     - rewrite in_union in *. destruct In as [In | In].
       * left. apply (Incl1 _ In).
-      * right. rewrite in_singleton in *. subst T1. reflexivity.
+      * right. rewrite in_singleton in *. subst D1. reflexivity.
     - rewrite in_union in *. destruct In as [In | In].
-      * specialize (Incl2 T2 In). destruct Incl2 as [T1 [T1A Eq]].
+      * specialize (Incl2 D2 In). destruct Incl2 as [T1 [T1A Eq]].
         eexists. rewrite in_union. eauto.
-      * rewrite in_singleton in In. subst T2. exists (typ_rcd D).
+      * rewrite in_singleton in In. subst D2. exists D.
         rewrite in_union. rewrite in_singleton. auto.
   + (* case wf_sel *)
     intros G A1 x X L Lo Hi Bix Sb XHas WfX IHX WfLo IHLo WfHi IHHi.
