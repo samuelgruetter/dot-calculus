@@ -4496,12 +4496,11 @@ Lemma ty_open_defs_change_var: forall y G S ds T,
   ok G ->
   y # G ->
   exists L, forall x, x \notin L ->
-  good_bounds (G & x ~ open_typ x S) ->
   ty_defs (G & x ~ open_typ x S) (open_defs x ds) (open_typ x T) ->
   ty_defs (G & y ~ open_typ y S) (open_defs y ds) (open_typ y T).
 Proof.
   introv Ok yG. let L := gather_vars in exists (L \u fv_typ (open_typ y S)).
-  intros x Fr Gb Ty.
+  intros x Fr Ty.
   destruct (classicT (x = y)) as [Eq | Ne].
   + subst. assumption.
   + assert (xG: x # G) by auto.
@@ -4526,12 +4525,11 @@ Lemma ty_open_trm_change_var: forall y G S t T,
   ok G ->
   y # G ->
   exists L, forall x, x \notin L ->
-  good_bounds (G & x ~ open_typ x S) ->
   ty_trm (G & x ~ open_typ x S) (open_trm x t) T ->
   ty_trm (G & y ~ open_typ y S) (open_trm y t) T.
 Proof.
   introv Ok yG. let L := gather_vars in exists (L \u fv_typ (open_typ y S)).
-  intros x Fr Gb Ty.
+  intros x Fr Ty.
   destruct (classicT (x = y)) as [Eq | Ne].
   + subst. assumption.
   + assert (xG: x # G) by auto.
@@ -4663,7 +4661,6 @@ Proof.
     rewrite EqV2. apply (subtyp_trans (subtyp_to_nocheck StV') StV).
   + (* red_new *)
     introv Wf Ty.
-    lets Gb: (wf_sto_to_good_bounds Wf).
     apply (invert_ty_new (wf_sto_to_ok_G Wf)) in Ty.
     destruct Ty as [L [Tds [Tyds [Tyt WfT]]]].
     exists (x ~ (open_typ x Tds)).
@@ -4679,9 +4676,7 @@ Proof.
     specialize (Tyds x' x'L). specialize (Tyt x' x'L).
     split.
     - refine (wf_sto_push Wf H xG _). apply* C1.
-      apply (good_bounds_push_ty_defs Gb Tyds). auto.
     - apply* C2.
-      apply (good_bounds_push_ty_defs Gb Tyds). auto.
   + (* red_call1 *)
     intros G Tr2 Wf TyCall.
     lets Gb: (wf_sto_to_good_bounds Wf).
