@@ -2180,10 +2180,10 @@ Qed.
 (* ###################################################################### *)
 (** ** Properties of typ_has/hasnt: total, unique, preserves wf *)
 
-Lemma typ_has_total_impl: forall G A T, wf_typ_impl G A T -> A = \{} ->
+Lemma typ_has_total: forall G A T, wf_typ_impl G A T ->
   forall l, typ_hasnt G T l \/ exists D, l = label_of_dec D /\ typ_has G T D.
 Proof.
-  introv Wf. induction Wf; intros Eq l; subst.
+  introv Wf. induction Wf; intros l.
   + (* case wf_top *)
     left. apply typ_top_hasnt.
   + (* case wf_bot *)
@@ -2191,7 +2191,11 @@ Proof.
     - destruct l; reflexivity.
     - apply typ_bot_has.
   + (* case wf_hyp *)
-    in_empty_contradiction.
+    destruct (classicT (l = label_of_dec D)) as [Eq | Ne].
+    - right. exists D. split.
+      * apply Eq.
+      * apply typ_rcd_has.
+    - left. apply (typ_rcd_hasnt _ _ Ne).
   + (* case wf_rcd *)
     destruct (classicT (l = label_of_dec D)) as [Eq | Ne].
     - right. exists D. split.
@@ -2199,13 +2203,13 @@ Proof.
       * apply typ_rcd_has.
     - left. apply (typ_rcd_hasnt _ _ Ne).
   + (* case wf_sel *)
-    specialize (IHWf3 eq_refl l). destruct IHWf3 as [UHasnt | [D [Eq UHas]]].
+    specialize (IHWf3 l). destruct IHWf3 as [UHasnt | [D [Eq UHas]]].
     - left. apply (typ_sel_hasnt H H1 UHasnt).
     - right. exists D. split.
       * apply Eq.
       * apply (typ_sel_has H H1 UHas).
   + (* case wf_and *)
-    specialize (IHWf1 eq_refl l). specialize (IHWf2 eq_refl l).
+    specialize (IHWf1 l). specialize (IHWf2 l).
     destruct IHWf1 as [T1Hasnt | [D1 [Eq1 T1Has]]];
     destruct IHWf2 as [T2Hasnt | [D2 [Eq2 T2Has]]].
     - left. apply (typ_and_hasnt T1Hasnt T2Hasnt).
@@ -2220,7 +2224,7 @@ Proof.
       apply (conj (proj32 (intersect_dec_label_eq _ _ Eq))).
       apply (typ_and_has_12 T1Has T2Has Eq).
   + (* case wf_or *)
-    specialize (IHWf1 eq_refl l). specialize (IHWf2 eq_refl l).
+    specialize (IHWf1 l). specialize (IHWf2 l).
     destruct IHWf1 as [T1Hasnt | [D1 [Eq1 T1Has]]];
     destruct IHWf2 as [T2Hasnt | [D2 [Eq2 T2Has]]].
     - left. apply (typ_or_hasnt_12 T1Hasnt T2Hasnt).
@@ -2232,12 +2236,6 @@ Proof.
       exists D12. rewrite Eq1.
       apply (conj (proj32 (union_dec_label_eq _ _ Eq))).
       apply (typ_or_has T1Has T2Has Eq).
-Qed.
-
-Lemma typ_has_total: forall G T, wf_typ G T ->
-  forall l, typ_hasnt G T l \/ exists D, l = label_of_dec D /\ typ_has G T D.
-Proof.
-  intros. apply* typ_has_total_impl.
 Qed.
 
 Print Assumptions typ_has_total.
