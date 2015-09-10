@@ -216,48 +216,51 @@ Inductive red : trm -> sto -> trm -> sto -> Prop :=
 (* ###################################################################### *)
 (** ** Typing *)
 
-Inductive ty_trm : ctx -> trm -> typ -> Prop :=
-| ty_var : forall G x T,
+Inductive tymode: Set := ty_precise | ty_general.
+Inductive submode: Set := sub_tight | sub_general.
+
+Inductive ty_trm : tymode -> ctx -> trm -> typ -> Prop :=
+| ty_var : forall m G x T,
     binds x T G ->
-    ty_trm G (trm_val (val_var (avar_f x))) T
-| ty_all_intro : forall L G T t U,
+    ty_trm m G (trm_val (val_var (avar_f x))) T
+| ty_all_intro : forall L m G T t U,
     wf_typ G T ->
     (forall x, x \notin L ->
-      ty_trm (G & x ~ T) t (open_typ x U)) ->
-    ty_trm G (trm_val (val_lambda T t)) (typ_all T U)
+      ty_trm m (G & x ~ T) t (open_typ x U)) ->
+    ty_trm m G (trm_val (val_lambda T t)) (typ_all T U)
 | ty_all_elim : forall G x z S T,
-    ty_trm G (trm_val (val_var (avar_f x))) (typ_all S T) ->
-    ty_trm G (trm_val (val_var (avar_f z))) S ->
-    ty_trm G (trm_app (avar_f x) (avar_f z)) (open_typ z T)
-| ty_new_intro : forall L G T ds,
+    ty_trm ty_general G (trm_val (val_var (avar_f x))) (typ_all S T) ->
+    ty_trm ty_general G (trm_val (val_var (avar_f z))) S ->
+    ty_trm ty_general G (trm_app (avar_f x) (avar_f z)) (open_typ z T)
+| ty_new_intro : forall m L G T ds,
     (forall x, x \notin L ->
       wf_typ (G & (x ~ open_typ x T)) (open_typ x T)) ->
     (forall x, x \notin L ->
       ty_defs (G & (x ~ open_typ x T)) (open_defs x ds) (open_typ x T)) ->
-    ty_trm G (trm_val (val_new T ds)) (typ_bnd T)
+    ty_trm m G (trm_val (val_new T ds)) (typ_bnd T)
 | ty_new_elim : forall G x m T,
-    ty_trm G (trm_val (val_var (avar_f x))) (typ_rcd (dec_trm m T)) ->
-    ty_trm G (trm_sel (avar_f x) m) T
+    ty_trm ty_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_trm m T)) ->
+    ty_trm ty_general G (trm_sel (avar_f x) m) T
 (* | ty_rec_intro (* TODO *) *)
-| ty_rec_elim : forall G x T,
-    ty_trm G (trm_val (val_var (avar_f x))) (typ_bnd T) ->
-    ty_trm G (trm_val (val_var (avar_f x))) (open_typ x T)
+| ty_rec_elim : forall m G x T,
+    ty_trm m G (trm_val (val_var (avar_f x))) (typ_bnd T) ->
+    ty_trm m G (trm_val (val_var (avar_f x))) (open_typ x T)
 | ty_let : forall L G t u T U,
-    ty_trm G t T ->
+    ty_trm ty_general G t T ->
     (forall x, x \notin L ->
-      ty_trm (G & x ~ T) u U) ->
+      ty_trm ty_general (G & x ~ T) u U) ->
     wf_typ G U ->
-    ty_trm G (trm_let t u) U
-| ty_sub : forall G t T U,
-    ty_trm G t T ->
-    subtyp G T U ->
-    ty_trm G t U
+    ty_trm ty_general G (trm_let t u) U
+| ty_sub : forall m G t T U,
+    ty_trm m G t T ->
+    subtyp m G T U ->
+    ty_trm m G t U
 with ty_def : ctx -> def -> dec -> Prop :=
 | ty_def_typ : forall G A T,
     wf_typ G T ->
     ty_def G (def_typ A T) (dec_typ A T T)
 | ty_def_trm : forall G a t T,
-    ty_trm G t T ->
+    ty_trm ty_general G t T ->
     ty_def G (def_trm a t) (dec_trm a T)
 with ty_defs : ctx -> defs -> typ -> Prop :=
 | ty_defs_one : forall G d D,
@@ -269,44 +272,44 @@ with ty_defs : ctx -> defs -> typ -> Prop :=
     defs_hasnt ds (label_of_def d) ->
     ty_defs G (defs_cons ds d) (typ_and T (typ_rcd D))
 
-with subtyp : ctx -> typ -> typ -> Prop :=
+with subtyp : tymode -> ctx -> typ -> typ -> Prop :=
 | subtyp_refl: forall G T,
-    subtyp G T T
-| subtyp_trans: forall G S T U,
-    subtyp G S T ->
-    subtyp G T U ->
-    subtyp G S U
-| subtyp_and11: forall G T U,
-    subtyp G (typ_and T U) T
-| subtyp_and12: forall G T U,
-    subtyp G (typ_and T U) U
+    subtyp ty_general G T T
+| subtyp_trans: forall m G S T U,
+    subtyp m G S T ->
+    subtyp m G T U ->
+    subtyp m G S U
+| subtyp_and11: forall m G T U,
+    subtyp m G (typ_and T U) T
+| subtyp_and12: forall m G T U,
+    subtyp m G (typ_and T U) U
 | subtyp_and2: forall G S T U,
-    subtyp G S T ->
-    subtyp G S U ->
-    subtyp G S (typ_and T U)
+    subtyp ty_general G S T ->
+    subtyp ty_general G S U ->
+    subtyp ty_general G S (typ_and T U)
 | subtyp_fld: forall G a T U,
-    subtyp G T U ->
-    subtyp G (typ_rcd (dec_trm a T)) (typ_rcd (dec_trm a U))
+    subtyp ty_general G T U ->
+    subtyp ty_general G (typ_rcd (dec_trm a T)) (typ_rcd (dec_trm a U))
 | subtyp_typ: forall G A S1 T1 S2 T2,
-    subtyp G S2 S1 ->
-    subtyp G T1 T2 ->
-    subtyp G (typ_rcd (dec_typ A S1 T1)) (typ_rcd (dec_typ A S2 T2))
+    subtyp ty_general G S2 S1 ->
+    subtyp ty_general G T1 T2 ->
+    subtyp ty_general G (typ_rcd (dec_typ A S1 T1)) (typ_rcd (dec_typ A S2 T2))
 | subtyp_sel2: forall G x A S T,
-    ty_trm G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A S T)) ->
-    subtyp G S (typ_sel (avar_f x) A)
+    ty_trm ty_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A S T)) ->
+    subtyp ty_general G S (typ_sel (avar_f x) A)
 | subtyp_sel1: forall G x A S T,
-    ty_trm G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A S T)) ->
-    subtyp G (typ_sel (avar_f x) A) T
+    ty_trm ty_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A S T)) ->
+    subtyp ty_general G (typ_sel (avar_f x) A) T
 | subtyp_bnd: forall L G T U,
     (forall x, x \notin L ->
-       subtyp (G & x ~ (open_typ x T)) (open_typ x T) (open_typ x U)) ->
-    subtyp G (typ_bnd T) (typ_bnd U)
+       subtyp ty_general (G & x ~ (open_typ x T)) (open_typ x T) (open_typ x U)) ->
+    subtyp ty_general G (typ_bnd T) (typ_bnd U)
 | subtyp_all: forall L G S1 T1 S2 T2,
-    subtyp G S2 S1 ->
+    subtyp ty_general G S2 S1 ->
     wf_typ G S2 ->
     (forall x, x \notin L ->
-       subtyp (G & x ~ S2) T1 T2) ->
-    subtyp G (typ_all S1 T1) (typ_all S2 T2)
+       subtyp ty_general (G & x ~ S2) T1 T2) ->
+    subtyp ty_general G (typ_all S1 T1) (typ_all S2 T2)
 
 with wf_typ : ctx -> typ -> Prop :=
 | wft_fld: forall G a T,
@@ -321,7 +324,7 @@ with wf_typ : ctx -> typ -> Prop :=
      wf_typ G U ->
      wf_typ G (typ_and T U)
 | wft_sel: forall G x A T U,
-     ty_trm G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T U)) ->
+     ty_trm ty_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T U)) ->
      wf_typ G (typ_sel (avar_f x) A)
 | wft_bnd: forall L G T,
      (forall x, x \notin L ->
