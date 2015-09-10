@@ -341,3 +341,12 @@ with wf_typ : ctx -> typ -> Prop :=
      (forall x, x \notin L ->
         wf_typ (G & x ~ T) U) ->
      wf_typ G (typ_all T U).
+
+Inductive wf_sto: ctx -> sto -> Prop :=
+| wf_sto_empty: wf_sto empty empty
+| wf_sto_push: forall G s x T v,
+    wf_sto G s ->
+    x # G ->
+    x # s ->
+    ty_trm ty_precise sub_general G (trm_val v) T ->
+    wf_sto (G & x ~ T) (s & x ~ v).
