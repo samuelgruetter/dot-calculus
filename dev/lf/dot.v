@@ -233,7 +233,7 @@ Inductive ty_trm : tymode -> submode -> ctx -> trm -> typ -> Prop :=
     ty_trm ty_general m2 G (trm_val (val_var (avar_f x))) (typ_all S T) ->
     ty_trm ty_general m2 G (trm_val (val_var (avar_f z))) S ->
     ty_trm ty_general m2 G (trm_app (avar_f x) (avar_f z)) (open_typ z T)
-| ty_new_intro : forall m1 m2 L G T ds,
+| ty_new_intro : forall L m1 m2 G T ds,
     (forall x, x \notin L ->
       wf_typ (G & (x ~ open_typ x T)) (open_typ x T)) ->
     (forall x, x \notin L ->
@@ -249,7 +249,7 @@ Inductive ty_trm : tymode -> submode -> ctx -> trm -> typ -> Prop :=
 | ty_rec_elim : forall m1 m2 G x T,
     ty_trm m1 m2 G (trm_val (val_var (avar_f x))) (typ_bnd T) ->
     ty_trm m1 m2 G (trm_val (val_var (avar_f x))) (open_typ x T)
-| ty_let : forall m2 L G t u T U,
+| ty_let : forall L m2 G t u T U,
     ty_trm ty_general m2 G t T ->
     (forall x, x \notin L ->
       ty_trm ty_general sub_general (G & x ~ T) u U) ->
@@ -376,6 +376,13 @@ with   ty_def_mut    := Induction for ty_def    Sort Prop
 with   ty_defs_mut   := Induction for ty_defs   Sort Prop.
 Combined Scheme ty_mutind from ty_trm_mut, ty_def_mut, ty_defs_mut.
 
+Scheme rules_trm_mut    := Induction for ty_trm    Sort Prop
+with   rules_def_mut    := Induction for ty_def    Sort Prop
+with   rules_defs_mut   := Induction for ty_defs   Sort Prop
+with   rules_subtyp     := Induction for subtyp    Sort Prop
+with   rules_wf_typ     := Induction for wf_typ    Sort Prop.
+Combined Scheme rules_mutind from rules_trm_mut, rules_def_mut, rules_defs_mut, rules_subtyp, rules_wf_typ.
+
 (* ###################################################################### *)
 (** ** Tactics *)
 
@@ -386,7 +393,7 @@ Ltac gather_vars :=
   let D := gather_vars_with (fun x : sto       => dom x     ) in
   let E := gather_vars_with (fun x : avar      => fv_avar  x) in
   let F := gather_vars_with (fun x : trm       => fv_trm   x) in
-  let G := gather_vars_with (fun x : trm       => fv_val   x) in
+  let G := gather_vars_with (fun x : val       => fv_val   x) in
   let H := gather_vars_with (fun x : def       => fv_def   x) in
   let I := gather_vars_with (fun x : defs      => fv_defs  x) in
   let J := gather_vars_with (fun x : typ       => fv_typ   x) in
@@ -415,8 +422,10 @@ Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
   apply_fresh_base T gather_vars x.
 
 Hint Constructors
+  ty_trm ty_def ty_defs
   subtyp
-  ty_trm ty_def ty_defs.
+  wf_typ.
+
 Hint Constructors wf_sto.
 
 Lemma fresh_push_eq_inv: forall A x a (E: env A),
@@ -429,6 +438,83 @@ Qed.
 (* ###################################################################### *)
 (* ###################################################################### *)
 (** * Proofs *)
+
+(* ###################################################################### *)
+(** ** Weakening *)
+
+Lemma weaken_rules:
+  (forall m1 m2 G t T, ty_trm m1 m2 G t T -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    ty_trm m1 m2 (G1 & G2 & G3) t T) /\
+  (forall G d D, ty_def G d D -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    ty_def (G1 & G2 & G3) d D) /\
+  (forall G ds T, ty_defs G ds T -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    ty_defs (G1 & G2 & G3) ds T) /\
+  (forall m1 m2 G T U, subtyp m1 m2 G T U -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    subtyp m1 m2 (G1 & G2 & G3) T U) /\
+  (forall G T, wf_typ G T -> forall G1 G2 G3,
+    G = G1 & G3 ->
+    ok (G1 & G2 & G3) ->
+    wf_typ (G1 & G2 & G3) T).
+Proof.
+  apply rules_mutind; try solve [eauto].
+  + intros. subst.
+    eapply ty_var. eapply binds_weaken; eauto.
+  + intros. subst.
+    apply_fresh ty_all_intro as z. eauto.
+    assert (zL: z \notin L) by auto.
+    specialize (H0 z zL G1 G2 (G3 & z ~ T)).
+    repeat rewrite concat_assoc in H0.
+    apply* H0.
+  + intros. subst.
+    apply_fresh ty_new_intro as z; assert (zL: z \notin L) by auto.
+    - specialize (H z zL G1 G2 (G3 & z ~ open_typ z T)).
+      repeat rewrite concat_assoc in H.
+      apply* H.
+    - specialize (H0 z zL G1 G2 (G3 & z ~ open_typ z T)).
+      repeat rewrite concat_assoc in H0.
+      apply* H0.
+  + intros. subst.
+    apply_fresh ty_let as z. eauto.
+    assert (zL: z \notin L) by auto.
+    specialize (H0 z zL G1 G2 (G3 & z ~ T)).
+    repeat rewrite concat_assoc in H0.
+    apply* H0.
+    eauto.
+  + intros. subst.
+    apply_fresh subtyp_bnd as z.
+    assert (zL: z \notin L) by auto.
+    specialize (H z zL G1 G2 (G3 & z ~ open_typ z T)).
+    repeat rewrite concat_assoc in H.
+    apply* H.
+  + intros. subst.
+    apply_fresh subtyp_all as z.
+    eauto.
+    eauto.
+    assert (zL: z \notin L) by auto.
+    specialize (H1 z zL G1 G2 (G3 & z ~ S2)).
+    repeat rewrite concat_assoc in H1.
+    apply* H1.
+  + intros. subst.
+    apply_fresh wft_bnd as z.
+    assert (zL: z \notin L) by auto.
+    specialize (H z zL G1 G2 (G3 & z ~ open_typ z T)).
+    repeat rewrite concat_assoc in H.
+    apply* H.
+  + intros. subst.
+    apply_fresh wft_all as z. eauto.
+    assert (zL: z \notin L) by auto.
+    specialize (H0 z zL G1 G2 (G3 & z ~ T)).
+    repeat rewrite concat_assoc in H0.
+    apply* H0.
+Qed.
 
 Lemma typing_implies_bound: forall m1 m2 G x T,
   ty_trm m1 m2 G (trm_val (val_var (avar_f x))) T ->
