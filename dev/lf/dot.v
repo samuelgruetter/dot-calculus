@@ -1,6 +1,7 @@
 Set Implicit Arguments.
 
 Require Import LibLN.
+Require Import Coq.Program.Equality.
 
 (* ###################################################################### *)
 (* ###################################################################### *)
@@ -424,3 +425,34 @@ Proof.
   intros. rewrite dom_push in H. false H. rewrite in_union.
   left. rewrite in_singleton. reflexivity.
 Qed.
+
+(* ###################################################################### *)
+(* ###################################################################### *)
+(** * Proofs *)
+
+Lemma typing_implies_bound: forall m1 m2 G x T,
+  ty_trm m1 m2 G (trm_val (val_var (avar_f x))) T ->
+  exists S, binds x S G.
+Proof.
+  intros. remember (trm_val (val_var (avar_f x))) as t. induction H; try solve [inversion Heqt].
+  - inversion Heqt. subst. exists T. assumption.
+  - inversion Heqt. subst. eapply IHty_trm. reflexivity.
+  - inversion Heqt. subst. eapply IHty_trm. reflexivity.
+  - subst. eapply IHty_trm. reflexivity.
+Qed.
+
+(*
+Lemma bound_ctx_implies_bound_sto: forall,
+  wf_sto G s ->
+  binds x T G ->
+  exists v, x v s.
+
+Lemma tight_bound_inversion: forall G s x A T,
+  wf_sto G s ->
+  ty_trm ty_precise sub_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T T)) ->
+  exists S ds, binds x (val_new S ds) s /\ defs_has ds (def_typ A T).
+Proof.
+  introv Hwf Hty.
+  dependent induction Hty.
+  inversion Hty. skip. skip.
+*)
