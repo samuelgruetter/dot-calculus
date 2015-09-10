@@ -294,12 +294,18 @@ with subtyp : tymode -> submode -> ctx -> typ -> typ -> Prop :=
     subtyp ty_general m2 G S2 S1 ->
     subtyp ty_general m2 G T1 T2 ->
     subtyp ty_general m2 G (typ_rcd (dec_typ A S1 T1)) (typ_rcd (dec_typ A S2 T2))
-| subtyp_sel2: forall m2 G x A S T,
-    ty_trm ty_general m2 G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A S T)) ->
-    subtyp ty_general m2 G S (typ_sel (avar_f x) A)
-| subtyp_sel1: forall m2 G x A S T,
-    ty_trm ty_general m2 G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A S T)) ->
-    subtyp ty_general m2 G (typ_sel (avar_f x) A) T
+| subtyp_sel2: forall G x A S T,
+    ty_trm ty_general sub_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A S T)) ->
+    subtyp ty_general sub_general G S (typ_sel (avar_f x) A)
+| subtyp_sel1: forall G x A S T,
+    ty_trm ty_general sub_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A S T)) ->
+    subtyp ty_general sub_general G (typ_sel (avar_f x) A) T
+| subtyp_sel2_tight: forall G x A T,
+    ty_trm ty_general sub_tight G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T T)) ->
+    subtyp ty_general sub_tight G T (typ_sel (avar_f x) A)
+| subtyp_sel1_tight: forall G x A T,
+    ty_trm ty_general sub_tight G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T T)) ->
+    subtyp ty_general sub_tight G (typ_sel (avar_f x) A) T
 | subtyp_bnd: forall L m2 G T U,
     (forall x, x \notin L ->
        subtyp ty_general sub_general (G & x ~ (open_typ x T)) (open_typ x T) (open_typ x U)) ->
