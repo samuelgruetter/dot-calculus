@@ -241,7 +241,10 @@ Inductive ty_trm : tymode -> submode -> ctx -> trm -> typ -> Prop :=
 | ty_new_elim : forall m2 G x m T,
     ty_trm ty_general m2 G (trm_val (val_var (avar_f x))) (typ_rcd (dec_trm m T)) ->
     ty_trm ty_general m2 G (trm_sel (avar_f x) m) T
-(* | ty_rec_intro (* TODO *) *)
+| ty_rec_intro : forall m2 G x T T',
+    ty_trm ty_general m2 G (trm_val (val_var (avar_f x))) T ->
+    T = open_typ x T' ->
+    ty_trm ty_general m2 G (trm_val (val_var (avar_f x))) (typ_bnd T')
 | ty_rec_elim : forall m1 m2 G x T,
     ty_trm m1 m2 G (trm_val (val_var (avar_f x))) (typ_bnd T) ->
     ty_trm m1 m2 G (trm_val (val_var (avar_f x))) (open_typ x T)
