@@ -350,3 +350,74 @@ Inductive wf_sto: ctx -> sto -> Prop :=
     x # s ->
     ty_trm ty_precise sub_general G (trm_val v) T ->
     wf_sto (G & x ~ T) (s & x ~ v).
+
+(* ###################################################################### *)
+(* ###################################################################### *)
+(** * Infrastructure *)
+
+(* ###################################################################### *)
+(** ** Induction principles *)
+
+Scheme typ_mut := Induction for typ Sort Prop
+with   dec_mut := Induction for dec Sort Prop.
+Combined Scheme typ_mutind from typ_mut, dec_mut.
+
+Scheme trm_mut  := Induction for trm  Sort Prop
+with   def_mut  := Induction for def  Sort Prop
+with   defs_mut := Induction for defs Sort Prop.
+Combined Scheme trm_mutind from trm_mut, def_mut, defs_mut.
+
+Scheme ty_trm_mut    := Induction for ty_trm    Sort Prop
+with   ty_def_mut    := Induction for ty_def    Sort Prop
+with   ty_defs_mut   := Induction for ty_defs   Sort Prop.
+Combined Scheme ty_mutind from ty_trm_mut, ty_def_mut, ty_defs_mut.
+
+(* ###################################################################### *)
+(** ** Tactics *)
+
+Ltac gather_vars :=
+  let A := gather_vars_with (fun x : vars      => x         ) in
+  let B := gather_vars_with (fun x : var       => \{ x }    ) in
+  let C := gather_vars_with (fun x : ctx       => (dom x) \u (fv_ctx_types x)) in
+  let D := gather_vars_with (fun x : sto       => dom x     ) in
+  let E := gather_vars_with (fun x : avar      => fv_avar  x) in
+  let F := gather_vars_with (fun x : trm       => fv_trm   x) in
+  let G := gather_vars_with (fun x : trm       => fv_val   x) in
+  let H := gather_vars_with (fun x : def       => fv_def   x) in
+  let I := gather_vars_with (fun x : defs      => fv_defs  x) in
+  let J := gather_vars_with (fun x : typ       => fv_typ   x) in
+  constr:(A \u B \u C \u D \u E \u F \u G \u H \u I \u J).
+
+Ltac pick_fresh x :=
+  let L := gather_vars in (pick_fresh_gen L x).
+
+Ltac in_empty_contradiction :=
+  solve [match goal with
+  | H: _ \in \{} |- _ => rewrite in_empty in H; exfalso; exact H
+  end].
+
+Ltac eq_specialize :=
+  repeat match goal with
+  | H:                 _ = _ -> _ |- _ => specialize (H         eq_refl)
+  | H: forall _      , _ = _ -> _ |- _ => specialize (H _       eq_refl)
+  | H: forall _ _    , _ = _ -> _ |- _ => specialize (H _ _     eq_refl)
+  | H: forall _ _ _  , _ = _ -> _ |- _ => specialize (H _ _ _   eq_refl)
+  | H: forall _ _ _ _, _ = _ -> _ |- _ => specialize (H _ _ _ _ eq_refl)
+  end.
+
+Ltac crush := eq_specialize; eauto.
+
+Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
+  apply_fresh_base T gather_vars x.
+
+Hint Constructors
+  subtyp
+  ty_trm ty_def ty_defs.
+Hint Constructors wf_sto.
+
+Lemma fresh_push_eq_inv: forall A x a (E: env A),
+  x # (E & x ~ a) -> False.
+Proof.
+  intros. rewrite dom_push in H. false H. rewrite in_union.
+  left. rewrite in_singleton. reflexivity.
+Qed.
