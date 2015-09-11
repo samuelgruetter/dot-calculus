@@ -685,19 +685,31 @@ Proof.
         eapply wf_sto_to_ok_s. rewrite <- Eqs. eassumption.
 Qed.
 
-(*
 Lemma tight_bound_inversion: forall G s x A T,
   wf_sto G s ->
   ty_trm ty_precise sub_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T T)) ->
   exists S ds, sto_get_val s x (val_new S ds) /\ defs_has ds (def_typ A T).
 Proof.
-  introv Hwf Hty.
-  remember (trm_val (val_var (avar_f x))) as t.
-  remember (typ_rcd (dec_typ A T T)) as T0.
-  induction Hty; try solve [inversion Heqt].
-  - inversion Heqt.
-    apply ctx_binds_to_sto_binds_raw with (x:=x) (T:=T0) in Hwf.
-    subst. destruct Hwf as [G1 [G2 [v [HeqG [Bis Ht]]]]].
-    inversion Ht; subst.
+  (* This is unlikely to hold due to variable intermediates. *)
+  admit.
 Qed.
-*)
+
+Lemma unique_bounds: forall G s x A T1 T2,
+  wf_sto G s ->
+  ty_trm ty_precise sub_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T1 T1)) ->
+  ty_trm ty_precise sub_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T2 T2)) ->
+  T1 = T2.
+Proof.
+  admit.
+Qed.
+
+(* If G ~ s, s |- x = new(x: T)d, and G |-# x: {A: S..U} then G |-# x.A <: U and G |-# S <: x.A. *)
+Lemma tight_bound_completeness: forall G s x T ds A S U,
+  wf_sto G s ->
+  sto_get_val s x (val_new T ds) ->
+  ty_trm ty_general sub_tight G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A S U)) ->
+  subtyp ty_general sub_tight G (typ_sel (avar_f x) A) U /\
+  subtyp ty_general sub_tight G S (typ_sel (avar_f x) A).
+Proof.
+  admit.
+Qed.
