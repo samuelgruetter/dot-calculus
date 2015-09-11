@@ -685,6 +685,9 @@ Proof.
         eapply wf_sto_to_ok_s. rewrite <- Eqs. eassumption.
 Qed.
 
+(* ###################################################################### *)
+(** ** Some Lemmas *)
+
 Lemma tight_bound_inversion: forall G s x A T,
   wf_sto G s ->
   ty_trm ty_precise sub_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T T)) ->
@@ -713,3 +716,50 @@ Lemma tight_bound_completeness: forall G s x T ds A S U,
 Proof.
   admit.
 Qed.
+
+(* ###################################################################### *)
+(** ** Possible types *)
+
+(*
+Definition (Possible types)
+
+For a variable x, non-variable value v, environment G, the set Ts(G, x, v) of possible types of x defined as v in G is the smallest set SS such that:
+
+If v = new(x: T)d then T in SS.
+If v = new(x: T)d and {a = t} in d and G |- t: T' then {a: T'} in SS.
+If v = new(x: T)d and {A = T'} in d and G |- S <: T', G |- T' <: U then {A: S..U} in SS.
+If v = lambda(x: T)t and G |- T' <: T and G |- t: U then all(x: T')U in SS.
+If S1 in SS and S2 in SS then S1 & S2 in SS.
+If S in SS and G |-! y: {A: S..S} then y.A in SS.
+If S in SS then rec(x: S) in SS.
+*)
+
+Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
+| pt_new : forall G x T ds,
+  possible_types G x (val_new T ds) (open_typ x T)
+| pt_rcd_trm : forall G x T ds a t T',
+  defs_has (open_defs x ds) (def_trm a t) ->
+  ty_trm ty_general sub_general G t T' ->               
+  possible_types G x (val_new T ds) (typ_rcd (dec_trm a T'))
+| pt_rcd_typ : forall G x T ds A T' S U,
+  defs_has (open_defs x ds) (def_typ A T') ->
+  subtyp ty_general sub_general G S T' ->
+  subtyp ty_general sub_general G T' U ->
+  possible_types G x (val_new T ds) (typ_rcd (dec_typ A S U))
+| pt_lambda : forall G x T t T' U,
+  subtyp ty_general sub_general G T' T ->
+  ty_trm ty_general sub_general (G & x ~ T) (open_trm x t) U ->
+  possible_types G x (val_lambda T t) (typ_all T' U)
+| pt_and : forall G x v S1 S2,
+  possible_types G x v S1 ->
+  possible_types G x v S2 ->
+  possible_types G x v (typ_and S1 S2)
+| pt_sel : forall G x v y A S,
+  possible_types G x v S ->
+  ty_trm ty_general sub_general G (trm_val (val_var y)) (typ_rcd (dec_typ A S S)) ->    
+  possible_types G x v (typ_sel y A)
+| pt_bnd : forall G x v S S',
+  possible_types G x v S ->
+  S = open_typ x S' ->
+  possible_types G x v (typ_bnd S')
+.
