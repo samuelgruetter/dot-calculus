@@ -764,3 +764,52 @@ Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
   S = open_typ x S' ->
   possible_types G x v (typ_bnd S')
 .
+
+(*
+Lemma (Possible types closure)
+
+If G ~ s and G |- x: T and s |- x = v then Ts(G, x, v) is closed wrt G |- _ <: _.
+
+Let SS = Ts(G, x, v). We first show SS is closed wrt G |-# _ <: _.
+
+Assume T0 in SS and G |- T0 <: U0.s We show U0 in SS by an induction on subtyping derivations of G |-# T0 <: U0.
+*)
+
+Lemma possible_types_closure: forall G s x v S T,
+  wf_sto G s ->
+  sto_get_val s x v ->
+  possible_types G x v S ->
+  subtyp ty_general sub_general G S T ->
+  possible_types G x v T.
+Proof.
+  admit.
+Qed.
+
+(*
+Lemma (Possible types)
+
+If G ~ s and G |- x: T then, for some non-variable value v, s |- x = v and T in Ts(G, x, v).
+ *)
+
+Lemma possible_types_lemma: forall G s x T,
+  wf_sto G s ->
+  ty_trm ty_general sub_general G (trm_val (val_var (avar_f x))) T ->
+  exists v, sto_get_val s x v /\ possible_types G x v T.
+Proof.
+  admit.
+Qed.
+
+(*
+Lemma (Canonical forms 1)
+
+If G ~ s and G |- v: all(x: T)U for some non-variable value v, then v is of the form lambda(x: T')t where G |- T <: T' and G, x: T' |- t: U.
+Proof: By (Possible Types), v cannot be a new because all(x: T)U is not a possible type of a new. So v must be of the form lambda(x: T')t. Again by (Possible Types) the only way a lambda(x: T')t can have a type all(x: T)U is if G |- T' <: T, G, x: T' |- t: U.
+ *)
+
+(*
+Lemma (Canonical forms 2)
+
+If G ~ s and G |- v: {a: T} for some non-variable value v, then v is of the form new(x: S)d for some x, S, d such that x = new(x: S)d in s, G |- d: S and d contains a definition {a = t} where G |- t: T.
+
+Proof: By (Possible Types) v cannot be a lambda because {a: T} is not a possible type of a lambda. So v must be of the form new(x: S)d. Again by (Possible Types) the only way a new(x: S)d can have a type {a: T} is if there is a definition {a = t} in d and G |- t: T.
+*)
