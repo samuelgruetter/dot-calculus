@@ -746,9 +746,10 @@ Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
   subtyp ty_general sub_general G S T' ->
   subtyp ty_general sub_general G T' U ->
   possible_types G x (val_new T ds) (typ_rcd (dec_typ A S U))
-| pt_lambda : forall G x T t T' U,
+| pt_lambda : forall L G x T t T' U,
   subtyp ty_general sub_general G T' T ->
-  ty_trm ty_general sub_general (G & x ~ T) (open_trm x t) U ->
+  (forall y, y \notin L ->
+    ty_trm ty_general sub_general (G & y ~ T) (open_trm y t) (open_typ y U)) ->
   possible_types G x (val_lambda T t) (typ_all T' U)
 | pt_and : forall G x v S1 S2,
   possible_types G x v S1 ->
