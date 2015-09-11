@@ -516,6 +516,20 @@ Proof.
     apply* H0.
 Qed.
 
+Lemma weaken_ty_trm:  forall m1 m2 G1 G2 t T,
+    ty_trm m1 m2 G1 t T ->
+    ok (G1 & G2) ->
+    ty_trm m1 m2 (G1 & G2) t T.
+Proof.
+  intros.
+    assert (G1 & G2 = G1 & G2 & empty) as EqG. {
+    rewrite concat_empty_r. reflexivity.
+  }
+  rewrite EqG. apply* weaken_rules.
+  rewrite concat_empty_r. reflexivity.
+  rewrite <- EqG. assumption.
+Qed.
+
 Lemma weaken_sto_get_val: forall s x v,
   sto_get_val s x v -> forall s',
   ok (s & s') ->
