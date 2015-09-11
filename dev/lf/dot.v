@@ -516,6 +516,21 @@ Proof.
     apply* H0.
 Qed.
 
+Lemma weaken_sto_get_val: forall s x v,
+  sto_get_val s x v -> forall s',
+  ok (s & s') ->
+  sto_get_val (s & s') x v.
+Proof.
+  introv H. induction H; introv Ok.
+  - apply sto_get_val_var.
+    rewrite <- concat_empty_r. apply binds_weaken.
+    rewrite -> concat_empty_r. assumption.
+    rewrite -> concat_empty_r. assumption.
+  - eapply sto_get_val_trans.
+    eapply IHsto_get_val1. assumption.
+    eapply IHsto_get_val2. assumption.
+Qed.
+
 (* ###################################################################### *)
 (** ** Well-formed store *)
 
@@ -532,13 +547,13 @@ Hint Resolve wf_sto_to_ok_s wf_sto_to_ok_G.
 Lemma ctx_binds_to_sto_binds_raw: forall s G x T,
   wf_sto G s ->
   binds x T G ->
-  exists G1 G2 v, G = G1 & G2 /\ binds x v s /\ ty_trm ty_precise sub_general G1 (trm_val v) T.
+  exists G1 G2 v, G = G1 & (x ~ T) & G2 /\ binds x v s /\ ty_trm ty_precise sub_general G1 (trm_val v) T.
 Proof.
   introv Wf Bi. gen x T Bi. induction Wf; intros.
   + false* binds_empty_inv.
   + unfolds binds. rewrite get_push in *. case_if.
-    - inversions Bi. exists G (x ~ T0) v.
-      auto.
+    - inversions Bi. exists G (@empty typ) v.
+      rewrite concat_empty_r. auto.
     - specialize (IHWf _ _ Bi). destruct IHWf as [G1 [G2 [ds' [Eq [Bi' Tyds]]]]].
       subst. exists G1 (G2 & x ~ T) ds'. rewrite concat_assoc. auto.
 Qed.
@@ -596,18 +611,79 @@ Proof.
   - subst. eapply IHty_trm. reflexivity.
 Qed.
 
-(*
-Lemma bound_ctx_implies_bound_sto: forall,
+Lemma typing_bvar_implies_false: forall m1 m2 G a T,
+  ty_trm m1 m2 G (trm_val (val_var (avar_b a))) T ->
+  False.
+Proof.
+  intros. remember (trm_val (val_var (avar_b a))) as t. induction H; try solve [inversion Heqt].
+  eapply IHty_trm. auto.
+Qed.
+
+Lemma ctx_binds_to_sto_get_val: forall n, forall s G x T,
+  LibList.length G <= n ->
   wf_sto G s ->
   binds x T G ->
-  exists v, x v s.
+  (exists U ds, sto_get_val s x (val_new U ds)) \/
+  (exists U t, sto_get_val s x (val_lambda U t)).
+Proof.
+  intros n. induction n.
+  - introv LE Hwf Bi.
+    assert (G = empty) as A. {
+      destruct G. symmetry. apply empty_def.
+      rewrite LibList.length_cons in LE. omega.
+    }
+    subst. false* binds_empty_inv.
+  - introv LE Hwf Bi.
+    assert (exists G1 G2 v, G = G1 & (x ~ T) & G2 /\ binds x v s /\ ty_trm ty_precise sub_general G1 (trm_val v) T) as H. {
+      apply ctx_binds_to_sto_binds_raw; assumption.
+    }
+    destruct H as [G1 [G2 [v [HeqG [Bis Hty]]]]].
+    destruct v.
+    + left. eexists. eexists. eapply sto_get_val_var. eassumption.
+    + right. eexists. eexists. eapply sto_get_val_var. eassumption.
+    + destruct a.
+      * false* typing_bvar_implies_false.
+      * eapply typing_implies_bound in Hty. destruct Hty as [T1 Bi1].
+        subst.
+        remember Hwf as Hwf'. clear HeqHwf'.
+        rewrite <- concat_assoc in Hwf.
+        apply invert_wf_sto_concat in Hwf. destruct Hwf as [s1 [s2 [Eqs Hwf]]].
+        assert ((exists U ds, sto_get_val s1 v (val_new U ds)) \/
+                (exists U t,  sto_get_val s1 v (val_lambda U t))) as A. {
+          apply IHn with (G:=G1) (T:=T1).
+          rewrite concat_def in LE.
+          rewrite LibList.length_app in LE.
+          rewrite LibList.length_app in LE.
+          rewrite single_def in LE.
+          simpl in LE.
+          omega.
+          assumption.
+          assumption.
+        }
+        destruct A as [[U [ds A]] | [U [t A]]].
+        left. exists U. exists ds.
+        eapply sto_get_val_trans. eapply sto_get_val_var. eapply Bis.
+        rewrite Eqs. eapply weaken_sto_get_val. eapply A.
+        eapply wf_sto_to_ok_s. rewrite <- Eqs. eassumption.
+        right. exists U. exists t.
+        eapply sto_get_val_trans. eapply sto_get_val_var. eapply Bis.
+        rewrite Eqs. eapply weaken_sto_get_val. eapply A.
+        eapply wf_sto_to_ok_s. rewrite <- Eqs. eassumption.
+Qed.
 
+(*
 Lemma tight_bound_inversion: forall G s x A T,
   wf_sto G s ->
   ty_trm ty_precise sub_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T T)) ->
-  exists S ds, binds x (val_new S ds) s /\ defs_has ds (def_typ A T).
+  exists S ds, sto_get_val s x (val_new S ds) /\ defs_has ds (def_typ A T).
 Proof.
   introv Hwf Hty.
-  dependent induction Hty.
-  inversion Hty. skip. skip.
+  remember (trm_val (val_var (avar_f x))) as t.
+  remember (typ_rcd (dec_typ A T T)) as T0.
+  induction Hty; try solve [inversion Heqt].
+  - inversion Heqt.
+    apply ctx_binds_to_sto_binds_raw with (x:=x) (T:=T0) in Hwf.
+    subst. destruct Hwf as [G1 [G2 [v [HeqG [Bis Ht]]]]].
+    inversion Ht; subst.
+Qed.
 *)
