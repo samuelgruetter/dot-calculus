@@ -659,6 +659,45 @@ Proof.
         assumption.
 Qed.
 
+(* TODO *)
+
+Lemma lambda_not_rcd: forall G x S U A T,
+  binds x (typ_all S U) G ->
+  ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T T)) ->
+  False.
+Proof.
+  introv Bi Hty.
+  remember (typ_rcd (dec_typ A T T)) as T'.
+  remember (trm_var (avar_f x)) as t.
+  remember ty_precise as m1.
+  remember sub_general as m2.
+  induction Hty; try solve [inversion Heqt].
+  - inversions Heqt.
+    unfold binds in Bi. unfold binds in H.
+    rewrite H in Bi. inversion Bi.
+  - admit.
+  - apply IHHty; try assumption.
+    rewrite HeqT' in H0. rewrite Heqm1 in H0. rewrite Heqm2 in H0.
+    inversion H0; subst.
+
+Lemma unique_tight_bounds: forall G s x T1 T2 A,
+  wf_sto G s ->
+  ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T1 T1)) ->
+  ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T2 T2)) ->
+  T1 = T2.
+Proof.
+  introv Hwf Hty1 Hty2.
+  assert (exists T, binds x T G) as Bi. {
+    eapply typing_implies_bound. eassumption.
+  }
+  destruct Bi as [T Bi].
+  destruct (corresponding_types Hwf Bi).
+  - destruct H as [S [U [t [Bis [Ht EqT]]]]].
+    subst. inversion Hty1; subst.
+    + unfold binds in Bi. unfold binds in H3.
+      rewrite H3 in Bi. inversion Bi.
+    + admit.
+
 Lemma tight_bound_inversion: forall G s x A T,
   wf_sto G s ->
   ty_trm ty_precise sub_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T T)) ->
@@ -710,7 +749,7 @@ Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
   possible_types G x (val_new T ds) (open_typ x T)
 | pt_rcd_trm : forall G x T ds a t T',
   defs_has (open_defs x ds) (def_trm a t) ->
-  ty_trm ty_general sub_general G t T' ->               
+  ty_trm ty_general sub_general G t T' ->
   possible_types G x (val_new T ds) (typ_rcd (dec_trm a T'))
 | pt_rcd_typ : forall G x T ds A T' S U,
   defs_has (open_defs x ds) (def_typ A T') ->
@@ -728,7 +767,7 @@ Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
   possible_types G x v (typ_and S1 S2)
 | pt_sel : forall G x v y A S,
   possible_types G x v S ->
-  ty_trm ty_general sub_general G (trm_val (val_var y)) (typ_rcd (dec_typ A S S)) ->    
+  ty_trm ty_general sub_general G (trm_val (val_var y)) (typ_rcd (dec_typ A S S)) ->
   possible_types G x v (typ_sel y A)
 | pt_bnd : forall G x v S S',
   possible_types G x v S ->
