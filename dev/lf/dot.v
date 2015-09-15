@@ -696,26 +696,17 @@ Proof.
     apply H0.
 Qed.
 
-(* TODO *)
-
 Lemma lambda_not_rcd: forall G x S U A T,
   binds x (typ_all S U) G ->
   ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T T)) ->
   False.
 Proof.
   introv Bi Hty.
-  remember (typ_rcd (dec_typ A T T)) as T'.
-  remember (trm_var (avar_f x)) as t.
-  remember ty_precise as m1.
-  remember sub_general as m2.
-  induction Hty; try solve [inversion Heqt].
-  - inversions Heqt.
-    unfold binds in Bi. unfold binds in H.
-    rewrite H in Bi. inversion Bi.
-  - admit.
-  - apply IHHty; try assumption.
-    rewrite HeqT' in H0. rewrite Heqm1 in H0. rewrite Heqm2 in H0.
-    inversion H0; subst.
+  assert (typ_rcd (dec_typ A T T) = typ_all S U) as Contra. {
+    eapply unique_lambda_typing; eassumption.
+  }
+  inversion Contra.
+Qed.
 
 Lemma unique_tight_bounds: forall G s x T1 T2 A,
   wf_sto G s ->
@@ -730,10 +721,13 @@ Proof.
   destruct Bi as [T Bi].
   destruct (corresponding_types Hwf Bi).
   - destruct H as [S [U [t [Bis [Ht EqT]]]]].
-    subst. inversion Hty1; subst.
-    + unfold binds in Bi. unfold binds in H3.
-      rewrite H3 in Bi. inversion Bi.
-    + admit.
+    false.
+    eapply lambda_not_rcd.
+    subst. eassumption. eassumption.
+  - admit.
+Qed.
+
+(* TODO update *)
 
 Lemma tight_bound_inversion: forall G s x A T,
   wf_sto G s ->
