@@ -659,6 +659,43 @@ Proof.
         assumption.
 Qed.
 
+Lemma unique_all_subtyping: forall G S U T,
+  subtyp ty_precise sub_general G (typ_all S U) T ->
+  T = typ_all S U.
+Proof.
+  introv Hsub.
+  remember (typ_all S U) as T'.
+  remember ty_precise as m1.
+  remember sub_general as m2.
+  induction Hsub; try solve [inversion Heqm1].
+  - specialize (IHHsub1 HeqT' Heqm1 Heqm2). subst.
+    apply IHHsub2; reflexivity.
+  - inversion HeqT'.
+  - inversion HeqT'.
+Qed.
+
+Lemma unique_lambda_typing: forall G x S U T,
+  binds x (typ_all S U) G ->
+  ty_trm ty_precise sub_general G (trm_var (avar_f x)) T ->
+  T = typ_all S U.
+Proof.
+  introv Bi Hty.
+  remember (trm_var (avar_f x)) as t.
+  remember ty_precise as m1.
+  remember sub_general as m2.
+  induction Hty; try solve [inversion Heqt].
+  - inversions Heqt.
+    unfold binds in Bi. unfold binds in H.
+    rewrite H in Bi. inversion Bi.
+    reflexivity.
+  - specialize (IHHty Bi Heqt Heqm1 Heqm2).
+    inversion IHHty.
+  - specialize (IHHty Bi Heqt Heqm1 Heqm2).
+    rewrite IHHty in H0. rewrite Heqm1 in H0. rewrite Heqm2 in H0.
+    apply unique_all_subtyping in H0.
+    apply H0.
+Qed.
+
 (* TODO *)
 
 Lemma lambda_not_rcd: forall G x S U A T,
