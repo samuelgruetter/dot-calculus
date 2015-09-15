@@ -32,6 +32,7 @@ with dec : Set :=
   | dec_trm  : trm_label -> typ -> dec (* a: T *).
 
 Inductive trm : Set :=
+  | trm_var  : avar -> trm
   | trm_val  : val -> trm
   | trm_sel  : avar -> trm_label -> trm
   | trm_app  : avar -> avar -> trm
@@ -39,7 +40,6 @@ Inductive trm : Set :=
 with val : Set :=
   | val_new  : typ -> defs -> val
   | val_lambda : typ -> trm -> val
-  | val_var  : avar -> val
 with def : Set :=
   | def_typ  : typ_label -> typ -> def
   | def_trm  : trm_label -> trm -> def
@@ -103,6 +103,7 @@ with open_rec_dec (k: nat) (u: var) (D: dec): dec :=
 
 Fixpoint open_rec_trm (k: nat) (u: var) (t: trm): trm :=
   match t with
+  | trm_var a      => trm_var (open_rec_avar k u a)
   | trm_val v      => trm_val (open_rec_val k u v)
   | trm_sel v m    => trm_sel (open_rec_avar k u v) m
   | trm_app f a    => trm_app (open_rec_avar k u f) (open_rec_avar k u a)
@@ -112,7 +113,6 @@ with open_rec_val (k: nat) (u: var) (v: val): val :=
   match v with
   | val_new T ds => val_new (open_rec_typ (S k) u T) (open_rec_defs (S k) u ds)
   | val_lambda T e => val_lambda (open_rec_typ k u T) (open_rec_trm (S k) u e)
-  | val_var a => val_var (open_rec_avar k u a)
   end
 with open_rec_def (k: nat) (u: var) (d: def): def :=
   match d with
@@ -158,6 +158,7 @@ with fv_dec (D: dec) : vars :=
 
 Fixpoint fv_trm (t: trm) : vars :=
   match t with
+  | trm_var a       => (fv_avar a)
   | trm_val v        => (fv_val v)
   | trm_sel x m      => (fv_avar x)
   | trm_app f a      => (fv_avar f) \u (fv_avar a)
@@ -167,7 +168,6 @@ with fv_val (v: val) : vars :=
   match v with
   | val_new T ds    => (fv_typ T) \u (fv_defs ds)
   | val_lambda T e  => (fv_typ T) \u (fv_trm e)
-  | val_var a       => (fv_avar a)
   end
 with fv_def (d: def) : vars :=
   match d with
@@ -185,31 +185,19 @@ Definition fv_ctx_types(G: ctx): vars := (fv_in_values (fun T => fv_typ T) G).
 (* ###################################################################### *)
 (** ** Operational Semantics *)
 
-Inductive sto_get_val : sto -> var -> val -> Prop :=
-| sto_get_val_var : forall s x v,
-    binds x v s ->
-    sto_get_val s x v
-| sto_get_val_trans : forall s x v y,
-    sto_get_val s x (val_var (avar_f y)) ->
-    sto_get_val s y v ->
-    sto_get_val s x v.
-
-Inductive sto_get_def : sto -> var -> def -> Prop :=
-| sto_get_def_any : forall s x T ds d,
-    sto_get_val s x (val_new T ds) ->
-    defs_has ds d ->
-    sto_get_def s x (open_def x d).
-
 Inductive red : trm -> sto -> trm -> sto -> Prop :=
-| red_sel : forall x m s t,
-    sto_get_def s x (def_trm m t) ->
+| red_sel : forall x m s t T ds,
+    binds x (val_new T ds) s ->
+    defs_has ds (def_trm m t) ->
     red (trm_sel (avar_f x) m) s t s
 | red_app : forall f a s T t,
-    sto_get_val s f (val_lambda T t) ->
+    binds f (val_lambda T t) s ->
     red (trm_app (avar_f f) (avar_f a)) s (open_trm a t) s
 | red_let : forall v t s x,
     x # s ->
     red (trm_let (trm_val v) t) s (open_trm x t) (s & x ~ v)
+| red_let_var : forall t s x,
+    red (trm_let (trm_var (avar_f x)) t) s (open_trm x t) s
 | red_let_tgt : forall t0 t s t0' s',
     red t0 s t0' s' ->
     red (trm_let t0 t) s (trm_let t0' t) s'.
