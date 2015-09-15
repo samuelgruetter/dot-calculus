@@ -211,15 +211,15 @@ Inductive submode: Set := sub_tight | sub_general.
 Inductive ty_trm : tymode -> submode -> ctx -> trm -> typ -> Prop :=
 | ty_var : forall m1 m2 G x T,
     binds x T G ->
-    ty_trm m1 m2 G (trm_val (val_var (avar_f x))) T
+    ty_trm m1 m2 G (trm_var (avar_f x)) T
 | ty_all_intro : forall L m1 m2 G T t U,
     wf_typ G T ->
     (forall x, x \notin L ->
       ty_trm m1 sub_general (G & x ~ T) t (open_typ x U)) ->
     ty_trm m1 m2 G (trm_val (val_lambda T t)) (typ_all T U)
 | ty_all_elim : forall m2 G x z S T,
-    ty_trm ty_general m2 G (trm_val (val_var (avar_f x))) (typ_all S T) ->
-    ty_trm ty_general m2 G (trm_val (val_var (avar_f z))) S ->
+    ty_trm ty_general m2 G (trm_var (avar_f x)) (typ_all S T) ->
+    ty_trm ty_general m2 G (trm_var (avar_f z)) S ->
     ty_trm ty_general m2 G (trm_app (avar_f x) (avar_f z)) (open_typ z T)
 | ty_new_intro : forall L m1 m2 G T ds,
     (forall x, x \notin L ->
@@ -228,15 +228,11 @@ Inductive ty_trm : tymode -> submode -> ctx -> trm -> typ -> Prop :=
       ty_defs (G & (x ~ open_typ x T)) (open_defs x ds) (open_typ x T)) ->
     ty_trm m1 m2 G (trm_val (val_new T ds)) (typ_bnd T)
 | ty_new_elim : forall m2 G x m T,
-    ty_trm ty_general m2 G (trm_val (val_var (avar_f x))) (typ_rcd (dec_trm m T)) ->
+    ty_trm ty_general m2 G (trm_var (avar_f x)) (typ_rcd (dec_trm m T)) ->
     ty_trm ty_general m2 G (trm_sel (avar_f x) m) T
-| ty_rec_intro : forall m2 G x T T',
-    ty_trm ty_general m2 G (trm_val (val_var (avar_f x))) T ->
-    T = open_typ x T' ->
-    ty_trm ty_general m2 G (trm_val (val_var (avar_f x))) (typ_bnd T')
 | ty_rec_elim : forall m1 m2 G x T,
-    ty_trm m1 m2 G (trm_val (val_var (avar_f x))) (typ_bnd T) ->
-    ty_trm m1 m2 G (trm_val (val_var (avar_f x))) (open_typ x T)
+    ty_trm m1 m2 G (trm_var (avar_f x)) (typ_bnd T) ->
+    ty_trm m1 m2 G (trm_var (avar_f x)) (open_typ x T)
 | ty_let : forall L m2 G t u T U,
     ty_trm ty_general m2 G t T ->
     (forall x, x \notin L ->
@@ -287,16 +283,16 @@ with subtyp : tymode -> submode -> ctx -> typ -> typ -> Prop :=
     subtyp ty_general m2 G T1 T2 ->
     subtyp ty_general m2 G (typ_rcd (dec_typ A S1 T1)) (typ_rcd (dec_typ A S2 T2))
 | subtyp_sel2: forall G x A S T,
-    ty_trm ty_general sub_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A S T)) ->
+    ty_trm ty_general sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A S T)) ->
     subtyp ty_general sub_general G S (typ_sel (avar_f x) A)
 | subtyp_sel1: forall G x A S T,
-    ty_trm ty_general sub_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A S T)) ->
+    ty_trm ty_general sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A S T)) ->
     subtyp ty_general sub_general G (typ_sel (avar_f x) A) T
 | subtyp_sel2_tight: forall G x A T,
-    ty_trm ty_general sub_tight G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T T)) ->
+    ty_trm ty_general sub_tight G (trm_var (avar_f x)) (typ_rcd (dec_typ A T T)) ->
     subtyp ty_general sub_tight G T (typ_sel (avar_f x) A)
 | subtyp_sel1_tight: forall G x A T,
-    ty_trm ty_general sub_tight G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T T)) ->
+    ty_trm ty_general sub_tight G (trm_var (avar_f x)) (typ_rcd (dec_typ A T T)) ->
     subtyp ty_general sub_tight G (typ_sel (avar_f x) A) T
 | subtyp_bnd: forall L m2 G T U,
     (forall x, x \notin L ->
@@ -322,7 +318,7 @@ with wf_typ : ctx -> typ -> Prop :=
      wf_typ G U ->
      wf_typ G (typ_and T U)
 | wft_sel: forall G x A T U,
-     ty_trm ty_general sub_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T U)) ->
+     ty_trm ty_general sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T U)) ->
      wf_typ G (typ_sel (avar_f x) A)
 | wft_bnd: forall L G T,
      (forall x, x \notin L ->
