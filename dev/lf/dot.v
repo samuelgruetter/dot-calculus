@@ -659,6 +659,21 @@ Proof.
         assumption.
 Qed.
 
+Lemma unique_rec_subtyping: forall G S T,
+  subtyp ty_precise sub_general G (typ_bnd S) T ->
+  T = typ_bnd S.
+Proof.
+  introv Hsub.
+  remember (typ_bnd S) as T'.
+  remember ty_precise as m1.
+  remember sub_general as m2.
+  induction Hsub; try solve [inversion Heqm1].
+  - specialize (IHHsub1 HeqT' Heqm1 Heqm2). subst.
+    apply IHHsub2; reflexivity.
+  - inversion HeqT'.
+  - inversion HeqT'.
+Qed.
+
 Lemma unique_all_subtyping: forall G S U T,
   subtyp ty_precise sub_general G (typ_all S U) T ->
   T = typ_all S U.
@@ -724,7 +739,8 @@ Proof.
     false.
     eapply lambda_not_rcd.
     subst. eassumption. eassumption.
-  - admit.
+  - destruct H as [S [ds [Bis [Ht EqT]]]].
+    admit.
 Qed.
 
 (* TODO update *)
