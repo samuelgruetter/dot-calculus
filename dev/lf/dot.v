@@ -723,6 +723,136 @@ Proof.
   inversion Contra.
 Qed.
 
+Inductive record_typ : typ -> fset label -> Prop :=
+| rt_one : forall D l,
+  l = label_of_dec D ->
+  record_typ (typ_rcd D) \{l}
+| rt_cons: forall T ls D l,
+  record_typ T ls ->
+  l = label_of_dec D ->
+  l \notin ls ->
+  record_typ (typ_and T (typ_rcd D)) (union ls \{l})
+.
+
+Definition record_type T := exists ls, record_typ T ls.
+
+Lemma open_dec_preserves_label: forall D x i,
+  label_of_dec D = label_of_dec (open_rec_dec i x D).
+Proof.
+  intros. induction D; simpl; reflexivity.
+Qed.
+
+Lemma open_record_typ: forall T x ls,
+  record_typ T ls -> record_typ (open_typ x T) ls.
+Proof.
+  intros. induction H.
+  - unfold open_typ. simpl.
+    apply rt_one.
+    rewrite <- open_dec_preserves_label. assumption.
+  - unfold open_typ. simpl.
+    apply rt_cons; try assumption.
+    rewrite <- open_dec_preserves_label. assumption.
+Qed.
+
+Lemma open_record_typ_rev: forall T x ls,
+  record_typ (open_typ x T) ls -> record_typ T ls.
+Proof.
+  intros. remember (open_typ x T) as TX.
+  generalize dependent T.
+  induction H; intros.
+  - destruct T; unfold open_typ in HeqTX; simpl in HeqTX; inversion HeqTX.
+    subst.
+    rewrite <- open_dec_preserves_label.
+    apply rt_one; eauto.
+  - destruct T0; unfold open_typ in HeqTX; simpl in HeqTX; inversion HeqTX.
+    subst.
+    destruct T0_2; unfold open_typ in H4; simpl in H4; inversion H4.
+    subst.
+    rewrite <- open_dec_preserves_label.
+    apply rt_cons; try assumption.
+    eapply IHrecord_typ. eauto. eauto.
+    rewrite <- open_dec_preserves_label in H1. apply H1.
+Qed.
+
+Lemma open_record_type_rev: forall T x,
+  record_type (open_typ x T) -> record_type T.
+Proof.
+  intros. destruct H as [ls H]. exists ls. eapply open_record_typ_rev.
+  eassumption.
+Qed.
+
+Lemma label_same_typing: forall G d D,
+  ty_def G d D -> label_of_def d = label_of_dec D.
+Proof.
+  intros. inversion H; subst; simpl; reflexivity.
+Qed.
+
+Lemma record_defs_typing_rec: forall G ds S,
+  ty_defs G ds S ->
+  exists ls, record_typ S ls /\ forall l, l \notin ls <-> defs_hasnt ds l.
+Proof.
+  intros. induction H.
+  - eexists. split.
+    apply rt_one. reflexivity.
+    apply label_same_typing in H. rewrite <- H.
+    intros. split; intro A.
+    + unfold defs_hasnt. simpl.
+      apply notin_singleton in A.
+      rewrite If_r. reflexivity. eauto.
+    + unfold defs_hasnt in A. unfold get_def in A.
+      case_if. apply notin_singleton. eauto.
+  - destruct IHty_defs as [ls [IH1 IH2]].
+    eexists. split.
+    apply rt_cons; try eassumption. reflexivity.
+    apply label_same_typing in H0. rewrite <- H0.
+    specialize (IH2 (label_of_def d)).
+    destruct IH2 as [IH2A IH2B].
+    apply IH2B. assumption.
+    intros. split; intro A.
+    + specialize (IH2 l).
+      destruct IH2 as [IH2A IH2B].
+      unfold defs_hasnt. simpl.
+      rewrite If_r. unfold defs_hasnt in IH2A. apply IH2A.
+      apply notin_union in A. destruct A as [A1 A2]. assumption.
+      apply notin_union in A. destruct A as [A1 A2]. apply notin_singleton in A2.
+      apply label_same_typing in H0. rewrite <- H0 in A2. eauto.
+    + apply notin_union. split.
+      * specialize (IH2 l).
+        destruct IH2 as [IH2A IH2B].
+        apply IH2B. inversion A.
+        case_if. unfold defs_hasnt. assumption.
+      * apply label_same_typing in H0. rewrite <- H0.
+        unfold defs_hasnt in A. unfold get_def in A.
+        case_if in A.
+        apply notin_singleton. eauto.
+Qed.
+
+Lemma record_defs_typing: forall G ds S,
+  ty_defs G ds S ->
+  record_type S.
+Proof.
+  intros.
+  assert (exists ls, record_typ S ls /\ forall l, l \notin ls <-> defs_hasnt ds l) as A.
+  eapply record_defs_typing_rec; eauto.
+  destruct A as [ls [A1 A2]].
+  exists ls. apply A1.
+Qed.
+
+Lemma record_new_typing: forall G S ds,
+  ty_trm ty_precise sub_general G (trm_val (val_new S ds)) (typ_bnd S) ->
+  record_type S.
+Proof.
+  intros.
+  inversion H; subst.
+  + pick_fresh x.
+   apply open_record_type_rev with (x:=x).
+   eapply record_defs_typing. eapply H6. eauto.
+  + assert (exists x, trm_val (val_new S ds) = trm_var (avar_f x)) as Contra. {
+      apply H0; eauto.
+    }
+    destruct Contra as [? Contra]. inversion Contra.
+Qed.
+
 Lemma unique_tight_bounds: forall G s x T1 T2 A,
   wf_sto G s ->
   ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T1 T1)) ->
