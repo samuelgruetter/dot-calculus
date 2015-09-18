@@ -1056,24 +1056,6 @@ Qed.
 
 (* TODO update *)
 
-Lemma tight_bound_inversion: forall G s x A T,
-  wf_sto G s ->
-  ty_trm ty_precise sub_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T T)) ->
-  exists S ds, sto_get_val s x (val_new S ds) /\ defs_has ds (def_typ A T).
-Proof.
-  (* This is unlikely to hold due to variable intermediates. *)
-  admit.
-Qed.
-
-Lemma unique_bounds: forall G s x A T1 T2,
-  wf_sto G s ->
-  ty_trm ty_precise sub_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T1 T1)) ->
-  ty_trm ty_precise sub_general G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A T2 T2)) ->
-  T1 = T2.
-Proof.
-  admit.
-Qed.
-
 (* If G ~ s, s |- x = new(x: T)d, and G |-# x: {A: S..U} then G |-# x.A <: U and G |-# S <: x.A. *)
 Lemma tight_bound_completeness: forall G s x T ds A S U,
   wf_sto G s ->
