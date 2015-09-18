@@ -1054,18 +1054,29 @@ Proof.
     eassumption.
 Qed.
 
-(* TODO update *)
-
 (* If G ~ s, s |- x = new(x: T)d, and G |-# x: {A: S..U} then G |-# x.A <: U and G |-# S <: x.A. *)
 Lemma tight_bound_completeness: forall G s x T ds A S U,
   wf_sto G s ->
-  sto_get_val s x (val_new T ds) ->
-  ty_trm ty_general sub_tight G (trm_val (val_var (avar_f x))) (typ_rcd (dec_typ A S U)) ->
+  binds x (val_new T ds) s ->
+  ty_trm ty_general sub_tight G (trm_var (avar_f x)) (typ_rcd (dec_typ A S U)) ->
   subtyp ty_general sub_tight G (typ_sel (avar_f x) A) U /\
   subtyp ty_general sub_tight G S (typ_sel (avar_f x) A).
 Proof.
-  admit.
+  introv Hwf Bis Hty.
+  assert (exists T, binds x T G) as Bi. {
+    eapply typing_implies_bound. eassumption.
+  }
+  destruct Bi as [Tx Bi].
+  apply corresponding_types with (x:=x) (T:=Tx) in Hwf; try assumption.
+  destruct Hwf as [Hex | Hex].
+  destruct Hex as [? [? [? [Bis' ?]]]].
+  unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversion Bis.
+  destruct Hex as [? [? [Bis' [Htyx EqTx]]]].
+  unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversions Bis.
+  admit.  
 Qed.
+
+(* TODO update *)
 
 (* ###################################################################### *)
 (** ** Possible types *)
