@@ -853,6 +853,39 @@ Proof.
     destruct Contra as [? Contra]. inversion Contra.
 Qed.
 
+Inductive record_sub : typ -> typ -> Prop :=
+| rs_refl: forall T,
+  record_sub T T
+| rs_drop: forall T T' D,
+  record_sub T T' ->
+  record_sub (typ_and T (typ_rcd D)) T'
+| rs_pick: forall T T' D,
+  record_sub T T' ->
+  record_sub (typ_and T (typ_rcd D)) (typ_and T' (typ_rcd D))
+.
+
+Lemma record_typ_sub_closed : forall T T' ls,
+  record_sub T T' ->
+  record_typ T ls ->
+  exists ls', record_typ T' ls' /\ subset ls' ls.
+Proof.
+  introv Hsub Htyp. generalize dependent ls.
+  induction Hsub; intros.
+  - exists ls. split. assumption. apply subset_refl.
+  - inversion Htyp; subst.
+    specialize (IHHsub ls0 H1). destruct IHHsub as [ls' [IH1 IH2]].
+    exists ls'. split. assumption.
+    rewrite <- union_empty_r with (E:=ls').
+    apply subset_union_2. assumption. apply subset_empty_l.
+  - inversion Htyp; subst.
+    specialize (IHHsub ls0 H1). destruct IHHsub as [ls0' [IH1 IH2]].
+    exists (ls0' \u \{ label_of_dec D }). split.
+    apply rt_cons; eauto.
+    unfold "\c" in IH2. unfold "\notin". intro I.
+    specialize (IH2 (label_of_dec D) I). eauto.
+    apply subset_union_2. assumption. apply subset_refl.
+Qed.
+
 Lemma unique_tight_bounds: forall G s x T1 T2 A,
   wf_sto G s ->
   ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T1 T1)) ->
