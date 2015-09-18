@@ -856,6 +856,9 @@ Qed.
 Inductive record_sub : typ -> typ -> Prop :=
 | rs_refl: forall T,
   record_sub T T
+| rs_dropl: forall T T' D,
+  record_sub T T' ->
+  record_sub (typ_and T (typ_rcd D)) (typ_rcd D)
 | rs_drop: forall T T' D,
   record_sub T T' ->
   record_sub (typ_and T (typ_rcd D)) T'
@@ -873,6 +876,11 @@ Proof.
   induction Hsub; intros.
   - exists ls. split. assumption. apply subset_refl.
   - inversion Htyp; subst.
+    eexists. split.
+    eapply rt_one. reflexivity.
+    rewrite <- union_empty_l with (E:=\{ label_of_dec D}) at 1.
+    apply subset_union_2. apply subset_empty_l. apply subset_refl.
+  - inversion Htyp; subst.
     specialize (IHHsub ls0 H1). destruct IHHsub as [ls' [IH1 IH2]].
     exists ls'. split. assumption.
     rewrite <- union_empty_r with (E:=ls').
@@ -884,6 +892,53 @@ Proof.
     unfold "\c" in IH2. unfold "\notin". intro I.
     specialize (IH2 (label_of_dec D) I). eauto.
     apply subset_union_2. assumption. apply subset_refl.
+Qed.
+
+Lemma record_type_sub_closed : forall T T',
+  record_sub T T' ->
+  record_type T ->
+  record_type T'.
+Proof.
+  introv Hsub Htype. destruct Htype as [ls Htyp].
+  apply record_typ_sub_closed with (ls:=ls) in Hsub; try assumption.
+  destruct Hsub as [ls' [Htyp' ?]].
+  exists ls'. apply Htyp'.
+Qed.
+
+Lemma record_sub_trans: forall T1 T2 T3,
+  record_sub T1 T2 ->
+  record_sub T2 T3 ->
+  record_sub T1 T3.
+Proof.
+  introv H12 H23. generalize dependent T3.
+  induction H12; intros.
+  - assumption.
+  - inversion H23; subst. eapply rs_dropl. eassumption.
+  - apply rs_drop. apply IHrecord_sub. assumption.
+  - inversion H23; subst.
+    + apply rs_pick. assumption.
+    + eapply rs_dropl. eassumption.
+    + apply rs_drop. apply IHrecord_sub. assumption.
+    + apply rs_pick. apply IHrecord_sub. assumption.
+Qed.
+
+Lemma record_subtyping: forall G T T',
+  subtyp ty_precise sub_general G T T' ->
+  record_type T ->
+  record_sub T T'.
+Proof.
+  introv Hsub Hr. generalize dependent Hr. dependent induction Hsub.
+  - intros HS.
+    apply record_sub_trans with (T2:=T).
+    apply IHHsub1. apply HS.
+    apply IHHsub2.
+    eapply record_type_sub_closed. apply IHHsub1. apply HS. apply HS.
+  - intros Htype. destruct Htype as [ls Htyp].
+    inversion Htyp; subst.
+    apply rs_drop. apply rs_refl.
+  - intros Htype. destruct Htype as [ls Htyp].
+    inversion Htyp; subst.
+    eapply rs_dropl. apply rs_refl.
 Qed.
 
 Lemma unique_tight_bounds: forall G s x T1 T2 A,
