@@ -290,10 +290,10 @@ with subtyp : tymode -> submode -> ctx -> typ -> typ -> Prop :=
     ty_trm ty_general sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A S T)) ->
     subtyp ty_general sub_general G (typ_sel (avar_f x) A) T
 | subtyp_sel2_tight: forall G x A T,
-    ty_trm ty_general sub_tight G (trm_var (avar_f x)) (typ_rcd (dec_typ A T T)) ->
+    ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T T)) ->
     subtyp ty_general sub_tight G T (typ_sel (avar_f x) A)
 | subtyp_sel1_tight: forall G x A T,
-    ty_trm ty_general sub_tight G (trm_var (avar_f x)) (typ_rcd (dec_typ A T T)) ->
+    ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T T)) ->
     subtyp ty_general sub_tight G (typ_sel (avar_f x) A) T
 | subtyp_bnd: forall L m2 G T U,
     (forall x, x \notin L ->
@@ -303,7 +303,7 @@ with subtyp : tymode -> submode -> ctx -> typ -> typ -> Prop :=
     subtyp ty_general m2 G S2 S1 ->
     wf_typ G S2 ->
     (forall x, x \notin L ->
-       subtyp ty_general sub_general (G & x ~ S2) T1 T2) ->
+       subtyp ty_general sub_general (G & x ~ S2) (open_typ x T1) (open_typ x T2)) ->
     subtyp ty_general m2 G (typ_all S1 T1) (typ_all S2 T2)
 
 with wf_typ : ctx -> typ -> Prop :=
@@ -360,6 +360,10 @@ Scheme ty_trm_mut    := Induction for ty_trm    Sort Prop
 with   ty_def_mut    := Induction for ty_def    Sort Prop
 with   ty_defs_mut   := Induction for ty_defs   Sort Prop.
 Combined Scheme ty_mutind from ty_trm_mut, ty_def_mut, ty_defs_mut.
+
+Scheme ts_ty_trm_mut := Induction for ty_trm    Sort Prop
+with   ts_subtyp     := Induction for subtyp    Sort Prop.
+Combined Scheme ts_mutind from ts_ty_trm_mut, ts_subtyp.
 
 Scheme rules_trm_mut    := Induction for ty_trm    Sort Prop
 with   rules_def_mut    := Induction for ty_def    Sort Prop
@@ -1054,6 +1058,59 @@ Proof.
     eassumption.
 Qed.
 
+Lemma precise_to_general:
+  (forall m1 m2 G t T,
+     ty_trm m1 m2 G t T ->
+     m1 = ty_precise ->
+     m2 = sub_general ->
+     ty_trm ty_general sub_general G t T) /\
+  (forall m1 m2 G S U,
+     subtyp m1 m2 G S U ->
+     m1 = ty_precise ->
+     m2 = sub_general ->
+     subtyp ty_general sub_general G S U).
+Proof.
+  apply ts_mutind; intros; subst; eauto.
+Qed.
+
+Lemma precise_to_general_typing: forall G t T,
+  ty_trm ty_precise sub_general G t T ->
+  ty_trm ty_general sub_general G t T.
+Proof.
+  intros. apply* precise_to_general.
+Qed.
+
+Lemma tight_to_general:
+  (forall m1 m2 G t T,
+     ty_trm m1 m2 G t T ->
+     m1 = ty_general ->
+     m2 = sub_tight ->
+     ty_trm ty_general sub_general G t T) /\
+  (forall m1 m2 G S U,
+     subtyp m1 m2 G S U ->
+     m1 = ty_general ->
+     m2 = sub_tight ->
+     subtyp ty_general sub_general G S U).
+Proof.
+  apply ts_mutind; intros; subst; eauto.
+  - apply precise_to_general in t; eauto.
+  - apply precise_to_general in t; eauto.
+Qed.
+
+Lemma tight_to_general_typing: forall G t T,
+  ty_trm ty_general sub_tight G t T ->
+  ty_trm ty_general sub_general G t T.
+Proof.
+  intros. apply* tight_to_general.
+Qed.
+
+Lemma tight_to_general_subtyping: forall G S U,
+  subtyp ty_general sub_tight G S U ->
+  subtyp ty_general sub_general G S U.
+Proof.
+  intros. apply* tight_to_general.
+Qed.
+
 (* If G ~ s, s |- x = new(x: T)d, and G |-# x: {A: S..U} then G |-# x.A <: U and G |-# S <: x.A. *)
 Lemma tight_bound_completeness: forall G s x T ds A S U,
   wf_sto G s ->
@@ -1074,6 +1131,19 @@ Proof.
   destruct Hex as [? [? [Bis' [Htyx EqTx]]]].
   unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversions Bis.
   admit.  
+Qed.
+
+(* ###################################################################### *)
+(** ** Narrowing *)
+
+(* TODO, define more reasonably *)
+
+Lemma narrow_typing: forall G S U x t T,
+  ty_trm ty_general sub_general (G & x ~ U) t T ->
+  subtyp ty_general sub_general G S U ->
+  ty_trm ty_general sub_general (G & x ~ S) t T.
+Proof.
+  admit.
 Qed.
 
 (* ###################################################################### *)
@@ -1133,6 +1203,68 @@ Let SS = Ts(G, x, v). We first show SS is closed wrt G |-# _ <: _.
 
 Assume T0 in SS and G |- T0 <: U0.s We show U0 in SS by an induction on subtyping derivations of G |-# T0 <: U0.
 *)
+
+Lemma possible_types_closure_tight: forall G s x v T0 U0,
+  wf_sto G s ->
+  binds x v s ->
+  possible_types G x v T0 ->
+  subtyp ty_general sub_tight G T0 U0 ->
+  possible_types G x v U0.
+Proof.
+  introv Hwf Bis HT0 Hsub. dependent induction Hsub.
+  - (* Refl-<: *) assumption.
+  - (* Trans-<: *)
+    apply IHHsub2; try assumption.
+    apply IHHsub1; assumption.
+  - (* And-<: *)
+    inversion HT0; subst.
+    admit.
+    assumption.
+  - (* And-<: *)
+    inversion HT0; subst.
+    admit.
+    assumption.
+  - (* <:-And *)
+    apply pt_and. apply IHHsub1; assumption. apply IHHsub2; assumption.
+  - (* Fld-<:-Fld *)
+    inversion HT0; subst.
+    admit.
+    eapply pt_rcd_trm.
+    eassumption.
+    apply ty_sub with (T:=T).
+    intro Contra. inversion Contra.
+    assumption.
+    apply tight_to_general_subtyping. assumption.
+  - (* Typ-<:-Typ *)
+    inversion HT0; subst.
+    admit.
+    eapply pt_rcd_typ.
+    eassumption.
+    eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
+    eapply subtyp_trans. eassumption. eapply tight_to_general_subtyping. eassumption.
+  - (* <:-Sel-tight *)
+    eapply pt_sel. eassumption. apply precise_to_general_typing. assumption.
+  - (* Sel-<:-tight *)
+    inversion HT0; subst.
+    admit.
+    assert (T = S) by admit.
+    subst. assumption.
+  - (* Rec-<:-Rec *)
+    inversion HT0; subst.
+    admit.
+    admit. (* requires different induction principle *)
+  - (* All-<:-All *)
+    inversion HT0; subst.
+    admit.
+    apply_fresh pt_lambda as y.
+    eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
+    eapply ty_sub.
+    intro Contra. inversion Contra.
+    eapply narrow_typing.
+    eapply H8. eauto.
+    eapply tight_to_general_subtyping. assumption.
+    eapply H0. eauto.
+Qed.
 
 Lemma possible_types_closure: forall G s x v S T,
   wf_sto G s ->
