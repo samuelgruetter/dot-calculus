@@ -1041,7 +1041,17 @@ Proof.
     assert (record_type S) as Htype. {
       eapply record_new_typing. eassumption.
     }
-    admit.
+    destruct (shape_new_typing Bi Htype Hty1) as [Contra1 | A1].
+    inversion Contra1.
+    destruct (shape_new_typing Bi Htype Hty2) as [Contra2 | A2].
+    inversion Contra2.
+    assert (record_type (open_typ x S)) as HXtype. {
+      apply open_record_type. assumption.
+    }
+    eapply unique_rcd_typ.
+    apply HXtype.
+    eassumption.
+    eassumption.
 Qed.
 
 (* TODO update *)
