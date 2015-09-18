@@ -941,6 +941,47 @@ Proof.
     eapply rs_dropl. apply rs_refl.
 Qed.
 
+Lemma record_typ_sub_label_in: forall T D ls,
+  record_typ T ls ->
+  record_sub T (typ_rcd D) ->
+  label_of_dec D \in ls.
+Proof.
+  introv Htyp Hsub. generalize dependent D. induction Htyp; intros.
+  - inversion Hsub. subst. apply in_singleton_self.
+  - inversion Hsub; subst.
+    + rewrite in_union. right. apply in_singleton_self.
+    + rewrite in_union. left. apply IHHtyp. assumption.
+Qed.
+
+Lemma unique_rcd_typ: forall T A T1 T2,
+  record_type T ->
+  record_sub T (typ_rcd (dec_typ A T1 T1)) ->
+  record_sub T (typ_rcd (dec_typ A T2 T2)) ->
+  T1 = T2.
+Proof.
+  introv Htype Hsub1 Hsub2.
+  generalize dependent T2. generalize dependent T1. generalize dependent A.
+  destruct Htype as [ls Htyp]. induction Htyp; intros; inversion Hsub1; inversion Hsub2; subst.
+  - inversion H4. subst. reflexivity.
+  - inversion H8. subst. reflexivity.
+  - apply record_typ_sub_label_in with (D:=dec_typ A T2 T2) in Htyp.
+    simpl in Htyp. simpl in H0. unfold "\notin" in H0. unfold not in H0.
+    specialize (H0 Htyp). inversion H0.
+    assumption.
+  - apply record_typ_sub_label_in with (D:=dec_typ A T1 T1) in Htyp.
+    simpl in Htyp. simpl in H0. unfold "\notin" in H0. unfold not in H0.
+    specialize (H0 Htyp). inversion H0.
+    assumption.
+  - eapply IHHtyp; eassumption.
+Qed.
+
+(*
+binds x (typ_bnd S) G ->
+record_type S ->
+ty_trm ty_precise sub_general G (trm_var (avar_f x)) T ->
+T = typ_bnd S \/ record_sub (open x S) T
+*)
+
 Lemma unique_tight_bounds: forall G s x T1 T2 A,
   wf_sto G s ->
   ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T1 T1)) ->
@@ -957,7 +998,10 @@ Proof.
     false.
     eapply lambda_not_rcd.
     subst. eassumption. eassumption.
-  - destruct H as [S [ds [Bis [Ht EqT]]]].
+  - destruct H as [S [ds [Bis [Ht EqT]]]]. subst.
+    assert (record_type S) as Htype. {
+      eapply record_new_typing. eassumption.
+    }
     admit.
 Qed.
 
