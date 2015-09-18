@@ -1076,8 +1076,6 @@ Proof.
   admit.  
 Qed.
 
-(* TODO update *)
-
 (* ###################################################################### *)
 (** ** Possible types *)
 
@@ -1089,7 +1087,7 @@ For a variable x, non-variable value v, environment G, the set Ts(G, x, v) of po
 If v = new(x: T)d then T in SS.
 If v = new(x: T)d and {a = t} in d and G |- t: T' then {a: T'} in SS.
 If v = new(x: T)d and {A = T'} in d and G |- S <: T', G |- T' <: U then {A: S..U} in SS.
-If v = lambda(x: T)t and G |- T' <: T and G |- t: U then all(x: T')U in SS.
+If v = lambda(x: T)t and G |- T' <: T and G, x: T' |- t: U then all(x: T')U in SS.
 If S1 in SS and S2 in SS then S1 & S2 in SS.
 If S in SS and G |-! y: {A: S..S} then y.A in SS.
 If S in SS then rec(x: S) in SS.
@@ -1110,7 +1108,7 @@ Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
 | pt_lambda : forall L G x T t T' U,
   subtyp ty_general sub_general G T' T ->
   (forall y, y \notin L ->
-    ty_trm ty_general sub_general (G & y ~ T) (open_trm y t) (open_typ y U)) ->
+    ty_trm ty_general sub_general (G & y ~ T') (open_trm y t) (open_typ y U)) ->
   possible_types G x (val_lambda T t) (typ_all T' U)
 | pt_and : forall G x v S1 S2,
   possible_types G x v S1 ->
@@ -1118,7 +1116,7 @@ Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
   possible_types G x v (typ_and S1 S2)
 | pt_sel : forall G x v y A S,
   possible_types G x v S ->
-  ty_trm ty_general sub_general G (trm_val (val_var y)) (typ_rcd (dec_typ A S S)) ->
+  ty_trm ty_general sub_general G (trm_var y) (typ_rcd (dec_typ A S S)) ->
   possible_types G x v (typ_sel y A)
 | pt_bnd : forall G x v S S',
   possible_types G x v S ->
@@ -1138,7 +1136,7 @@ Assume T0 in SS and G |- T0 <: U0.s We show U0 in SS by an induction on subtypin
 
 Lemma possible_types_closure: forall G s x v S T,
   wf_sto G s ->
-  sto_get_val s x v ->
+  binds x v s ->
   possible_types G x v S ->
   subtyp ty_general sub_general G S T ->
   possible_types G x v T.
@@ -1154,8 +1152,8 @@ If G ~ s and G |- x: T then, for some non-variable value v, s |- x = v and T in 
 
 Lemma possible_types_lemma: forall G s x T,
   wf_sto G s ->
-  ty_trm ty_general sub_general G (trm_val (val_var (avar_f x))) T ->
-  exists v, sto_get_val s x v /\ possible_types G x v T.
+  ty_trm ty_general sub_general G (trm_var (avar_f x)) T ->
+  exists v, binds x v s /\ possible_types G x v T.
 Proof.
   admit.
 Qed.
