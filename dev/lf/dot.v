@@ -774,6 +774,13 @@ Proof.
     rewrite <- open_dec_preserves_label in H1. apply H1.
 Qed.
 
+Lemma open_record_type: forall T x,
+  record_type T -> record_type (open_typ x T).
+Proof.
+  intros. destruct H as [ls H]. exists ls. eapply open_record_typ.
+  eassumption.
+Qed.
+
 Lemma open_record_type_rev: forall T x,
   record_type (open_typ x T) -> record_type T.
 Proof.
@@ -975,12 +982,44 @@ Proof.
   - eapply IHHtyp; eassumption.
 Qed.
 
-(*
-binds x (typ_bnd S) G ->
-record_type S ->
-ty_trm ty_precise sub_general G (trm_var (avar_f x)) T ->
-T = typ_bnd S \/ record_sub (open x S) T
-*)
+Lemma record_type_sub_not_rec: forall S T x,
+  record_sub (open_typ x S) (typ_bnd T) ->
+  record_type S ->
+  False.
+Proof.
+  introv Hsub Htype. remember (open_typ x S) as Sx.
+  apply open_record_type with (x:=x) in Htype.
+  rewrite <- HeqSx in Htype. clear HeqSx.
+  destruct Htype as [ls Htyp]. induction Htyp.
+  - inversion Hsub.
+  - inversion Hsub; subst. apply IHHtyp. assumption.
+Qed.
+
+Lemma shape_new_typing: forall G x S T,
+  binds x (typ_bnd S) G ->
+  record_type S ->
+  ty_trm ty_precise sub_general G (trm_var (avar_f x)) T ->
+  T = typ_bnd S \/ record_sub (open_typ x S) T.
+Proof.
+  introv Bi HS Hx. dependent induction Hx.
+  - unfold binds in H. unfold binds in Bi. rewrite H in Bi. inversion Bi.
+    left. reflexivity.
+  - assert (typ_bnd T = typ_bnd S \/ record_sub (open_typ x S) (typ_bnd T)) as A. {
+      eapply IHHx; eauto.
+    }
+    destruct A as [A | A].
+    + inversion A. right. apply rs_refl.
+    + apply record_type_sub_not_rec in A. inversion A. assumption.
+  - assert (T = typ_bnd S \/ record_sub (open_typ x S) T) as A. {
+      eapply IHHx; eauto.
+    }
+    destruct A as [A | A].
+    + subst. apply unique_rec_subtyping in H0. left. assumption.
+    + right. eapply record_sub_trans. eassumption.
+      eapply record_subtyping. eassumption.
+      eapply record_type_sub_closed. eassumption.
+      eapply open_record_type. assumption.
+Qed.
 
 Lemma unique_tight_bounds: forall G s x T1 T2 A,
   wf_sto G s ->
