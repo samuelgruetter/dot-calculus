@@ -352,9 +352,10 @@ with   dec_mut := Induction for dec Sort Prop.
 Combined Scheme typ_mutind from typ_mut, dec_mut.
 
 Scheme trm_mut  := Induction for trm  Sort Prop
+with   val_mut  := Induction for val Sort Prop
 with   def_mut  := Induction for def  Sort Prop
 with   defs_mut := Induction for defs Sort Prop.
-Combined Scheme trm_mutind from trm_mut, def_mut, defs_mut.
+Combined Scheme trm_mutind from trm_mut, val_mut, def_mut, defs_mut.
 
 Scheme ty_trm_mut    := Induction for ty_trm    Sort Prop
 with   ty_def_mut    := Induction for ty_def    Sort Prop
@@ -784,6 +785,263 @@ with subst_defs (z: var) (u: var) (ds: defs) : defs :=
   end.
 
 Definition subst_ctx (z: var) (u: var) (G: ctx) : ctx := map (subst_typ z u) G.
+
+(* ###################################################################### *)
+(** ** Lemmas for var-by-var substitution *)
+
+Lemma subst_fresh_avar: forall x y,
+  (forall a: avar, x \notin fv_avar a -> subst_avar x y a = a).
+Proof.
+  intros. destruct* a. simpl. case_var*. simpls. notin_false.
+Qed.
+
+Lemma subst_fresh_typ_dec: forall x y,
+  (forall T : typ , x \notin fv_typ  T  -> subst_typ  x y T  = T ) /\
+  (forall D : dec , x \notin fv_dec  D  -> subst_dec  x y D  = D ).
+Proof.
+  intros x y. apply typ_mutind; intros; simpls; f_equal*. apply* subst_fresh_avar.
+Qed.
+
+Definition subst_fresh_typ(x y: var) := proj1 (subst_fresh_typ_dec x y).
+Definition subst_fresh_dec(x y: var) := proj2 (subst_fresh_typ_dec x y).
+
+Lemma subst_fresh_trm_val_def_defs: forall x y,
+  (forall t : trm , x \notin fv_trm  t  -> subst_trm  x y t  = t ) /\
+  (forall v : val , x \notin fv_val  v  -> subst_val  x y v  = v ) /\
+  (forall d : def , x \notin fv_def  d  -> subst_def  x y d  = d ) /\
+  (forall ds: defs, x \notin fv_defs ds -> subst_defs x y ds = ds).
+Proof.
+  intros x y. apply trm_mutind; intros; simpls; f_equal*;
+    (apply* subst_fresh_avar || apply* subst_fresh_typ_dec).
+Qed.
+
+Definition subst_fresh_trm (x y: var) := proj41 (subst_fresh_trm_val_def_defs x y).
+Definition subst_fresh_val (x y: var) := proj42 (subst_fresh_trm_val_def_defs x y).
+Definition subst_fresh_def (x y: var) := proj43 (subst_fresh_trm_val_def_defs x y).
+Definition subst_fresh_defs(x y: var) := proj44 (subst_fresh_trm_val_def_defs x y).
+
+Lemma invert_fv_ctx_types_push: forall x z T G,
+  x \notin fv_ctx_types (G & z ~ T) -> x \notin fv_typ T /\ x \notin (fv_ctx_types G).
+Proof.
+  introv N.
+  unfold fv_ctx_types in *.
+  unfold fv_in_values in *.
+  rewrite <- cons_to_push in *.
+  rewrite values_def in *.
+  unfold LibList.map in *.
+  do 2 rewrite LibList.fold_right_cons in *.
+  simpl in *.
+  apply notin_union in N. exact N.
+Qed.
+
+Lemma subst_fresh_ctx: forall x y G,
+  x \notin fv_ctx_types G -> subst_ctx x y G = G.
+Proof.
+  intros x y.
+  apply (env_ind (fun G => x \notin fv_ctx_types G -> subst_ctx x y G = G)).
+  + intro N. unfold subst_ctx. apply map_empty.
+  + intros G z T IH N.
+    apply invert_fv_ctx_types_push in N. destruct N as [N1 N2].
+    unfold subst_ctx in *. rewrite map_push.
+    rewrite (IH N2).
+    rewrite ((proj1 (subst_fresh_typ_dec _ _)) _ N1).
+    reflexivity.
+Qed.
+
+Definition subst_fvar(x y z: var): var := If z = x then y else z.
+
+Lemma subst_open_commute_avar: forall x y u,
+  (forall a: avar, forall n: Datatypes.nat,
+    subst_avar x y (open_rec_avar n u a)
+    = open_rec_avar n (subst_fvar x y u) (subst_avar  x y a)).
+Proof.
+  intros. unfold subst_fvar, subst_avar, open_avar, open_rec_avar. destruct a.
+  + repeat case_if; auto.
+  + case_var*.
+Qed.
+
+(* "open and then substitute" = "substitute and then open" *)
+Lemma subst_open_commute_typ_dec: forall x y u,
+  (forall t : typ, forall n: nat,
+     subst_typ x y (open_rec_typ n u t)
+     = open_rec_typ n (subst_fvar x y u) (subst_typ x y t)) /\
+  (forall D : dec, forall n: nat,
+     subst_dec x y (open_rec_dec n u D)
+     = open_rec_dec n (subst_fvar x y u) (subst_dec x y D)).
+Proof.
+  intros. apply typ_mutind; intros; simpl; f_equal*. apply subst_open_commute_avar.
+Qed.
+
+Lemma subst_open_commute_typ: forall x y u T,
+  subst_typ x y (open_typ u T) = open_typ (subst_fvar x y u) (subst_typ x y T).
+Proof.
+  intros. apply* subst_open_commute_typ_dec.
+Qed.
+
+Lemma subst_open_commute_dec: forall x y u D,
+  subst_dec x y (open_dec u D) = open_dec (subst_fvar x y u) (subst_dec x y D).
+Proof.
+  intros. apply* subst_open_commute_typ_dec.
+Qed.
+
+(* "open and then substitute" = "substitute and then open" *)
+Lemma subst_open_commute_trm_val_def_defs: forall x y u,
+  (forall t : trm, forall n: Datatypes.nat,
+     subst_trm x y (open_rec_trm n u t)
+     = open_rec_trm n (subst_fvar x y u) (subst_trm x y t)) /\
+  (forall v : val, forall n: Datatypes.nat,
+     subst_val x y (open_rec_val n u v)
+     = open_rec_val n (subst_fvar x y u) (subst_val x y v)) /\
+  (forall d : def , forall n: Datatypes.nat,
+     subst_def x y (open_rec_def n u d)
+     = open_rec_def n (subst_fvar x y u) (subst_def x y d)) /\
+  (forall ds: defs, forall n: Datatypes.nat,
+     subst_defs x y (open_rec_defs n u ds)
+     = open_rec_defs n (subst_fvar x y u) (subst_defs x y ds)).
+Proof.
+  intros. apply trm_mutind; intros; simpl; f_equal*;
+    (apply* subst_open_commute_avar || apply* subst_open_commute_typ_dec).
+Qed.
+
+Lemma subst_open_commute_trm: forall x y u t,
+  subst_trm x y (open_trm u t) = open_trm (subst_fvar x y u) (subst_trm x y t).
+Proof.
+  intros. apply* subst_open_commute_trm_val_def_defs.
+Qed.
+
+Lemma subst_open_commute_val: forall x y u v,
+  subst_val x y (open_val u v) = open_val (subst_fvar x y u) (subst_val x y v).
+Proof.
+  intros. apply* subst_open_commute_trm_val_def_defs.
+Qed.
+
+Lemma subst_open_commute_defs: forall x y u ds,
+  subst_defs x y (open_defs u ds) = open_defs (subst_fvar x y u) (subst_defs x y ds).
+Proof.
+  intros. apply* subst_open_commute_trm_val_def_defs.
+Qed.
+
+(* "Introduce a substitution after open": Opening a term t with a var u is the
+   same as opening t with x and then replacing x by u. *)
+Lemma subst_intro_trm: forall x u t, x \notin (fv_trm t) ->
+  open_trm u t = subst_trm x u (open_trm x t).
+Proof.
+  introv Fr. unfold open_trm. rewrite* subst_open_commute_trm.
+  destruct (@subst_fresh_trm_val_def_defs x u) as [Q _]. rewrite* (Q t).
+  unfold subst_fvar. case_var*.
+Qed.
+
+Lemma subst_intro_val: forall x u v, x \notin (fv_val v) ->
+  open_val u v = subst_val x u (open_val x v).
+Proof.
+  introv Fr. unfold open_trm. rewrite* subst_open_commute_val.
+  destruct (@subst_fresh_trm_val_def_defs x u) as [_ [Q _]]. rewrite* (Q v).
+  unfold subst_fvar. case_var*.
+Qed.
+
+Lemma subst_intro_defs: forall x u ds, x \notin (fv_defs ds) ->
+  open_defs u ds = subst_defs x u (open_defs x ds).
+Proof.
+  introv Fr. unfold open_trm. rewrite* subst_open_commute_defs.
+  destruct (@subst_fresh_trm_val_def_defs x u) as [_ [_ [_ Q]]]. rewrite* (Q ds).
+  unfold subst_fvar. case_var*.
+Qed.
+
+Lemma subst_intro_typ: forall x u T, x \notin (fv_typ T) ->
+  open_typ u T = subst_typ x u (open_typ x T).
+Proof.
+  introv Fr. unfold open_typ. rewrite* subst_open_commute_typ.
+  destruct (@subst_fresh_typ_dec x u) as [Q _]. rewrite* (Q T).
+  unfold subst_fvar. case_var*.
+Qed.
+
+Lemma subst_intro_dec: forall x u D, x \notin (fv_dec D) ->
+  open_dec u D = subst_dec x u (open_dec x D).
+Proof.
+  introv Fr. unfold open_trm. rewrite* subst_open_commute_dec.
+  destruct (@subst_fresh_typ_dec x u) as [_ Q]. rewrite* (Q D).
+  unfold subst_fvar. case_var*.
+Qed.
+
+Lemma subst_undo_avar: forall x y,
+  (forall a, y \notin fv_avar a -> (subst_avar y x (subst_avar x y a)) = a).
+Proof.
+  intros. unfold subst_avar, subst_fvar, open_avar, open_rec_avar; destruct a.
+  + reflexivity.
+  + unfold fv_avar in H. assert (y <> v) by auto. repeat case_if; reflexivity.
+Qed.
+
+Lemma subst_undo_typ_dec: forall x y,
+   (forall T , y \notin fv_typ  T  -> (subst_typ  y x (subst_typ  x y T )) = T )
+/\ (forall D , y \notin fv_dec  D  -> (subst_dec  y x (subst_dec  x y D )) = D ).
+Proof.
+  intros.
+  apply typ_mutind; intros; simpl; unfold fv_typ, fv_dec in *; f_equal*.
+  apply* subst_undo_avar.
+Qed.
+
+Lemma subst_undo_trm_val_def_defs: forall x y,
+   (forall t , y \notin fv_trm  t  -> (subst_trm  y x (subst_trm  x y t )) = t )
+/\ (forall v , y \notin fv_val  v  -> (subst_val  y x (subst_val  x y v )) = v )
+/\ (forall d , y \notin fv_def  d  -> (subst_def  y x (subst_def  x y d )) = d )
+/\ (forall ds, y \notin fv_defs ds -> (subst_defs y x (subst_defs x y ds)) = ds).
+Proof.
+  intros.
+  apply trm_mutind; intros; simpl; unfold fv_trm, fv_val, fv_def, fv_defs in *; f_equal*;
+    (apply* subst_undo_avar || apply* subst_undo_typ_dec).
+Qed.
+
+Lemma subst_typ_undo: forall x y T,
+  y \notin fv_typ T -> (subst_typ y x (subst_typ x y T)) = T.
+Proof.
+  apply* subst_undo_typ_dec.
+Qed.
+
+Lemma subst_trm_undo: forall x y t,
+  y \notin fv_trm t -> (subst_trm y x (subst_trm x y t)) = t.
+Proof.
+  apply* subst_undo_trm_val_def_defs.
+Qed.
+
+Lemma subst_idempotent_avar: forall x y,
+  (forall a, (subst_avar x y (subst_avar x y a)) = (subst_avar x y a)).
+Proof.
+  intros. unfold subst_avar, subst_fvar, open_avar, open_rec_avar; destruct a.
+  + reflexivity.
+  + repeat case_if; reflexivity.
+Qed.
+
+Lemma subst_idempotent_typ_dec: forall x y,
+   (forall T, subst_typ x y (subst_typ x y T) = subst_typ x y T)
+/\ (forall D, subst_dec x y (subst_dec x y D) = subst_dec x y D).
+Proof.
+  intros.
+  apply typ_mutind; intros; simpl; unfold fv_typ, fv_dec in *; f_equal*.
+  apply* subst_idempotent_avar.
+Qed.
+
+Lemma subst_idempotent_trm_val_def_defs: forall x y,
+   (forall t , subst_trm  x y (subst_trm  x y t ) = (subst_trm  x y t ))
+/\ (forall v , subst_val  x y (subst_val  x y v ) = (subst_val  x y v ))
+/\ (forall d , subst_def  x y (subst_def  x y d ) = (subst_def  x y d ))
+/\ (forall ds, subst_defs x y (subst_defs x y ds) = (subst_defs x y ds)).
+Proof.
+  intros.
+  apply trm_mutind; intros; simpl; unfold fv_trm, fv_val, fv_def, fv_defs in *; f_equal*;
+    (apply* subst_idempotent_avar || apply* subst_idempotent_typ_dec).
+Qed.
+
+Lemma subst_typ_idempotent: forall x y T,
+  subst_typ x y (subst_typ x y T) = subst_typ x y T.
+Proof.
+  apply* subst_idempotent_typ_dec.
+Qed.
+
+Lemma subst_trm_idempotent: forall x y t,
+  subst_trm x y (subst_trm x y t) = subst_trm x y t.
+Proof.
+  apply* subst_idempotent_trm_val_def_defs.
+Qed.
 
 (* ###################################################################### *)
 (** ** Some Lemmas *)
