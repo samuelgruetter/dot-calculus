@@ -1199,17 +1199,28 @@ Proof.
     simpl. apply ty_defs_cons; eauto.
     rewrite <- subst_label_of_def.
     apply subst_defs_hasnt. assumption.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
+  - (* subtyp_refl *)
+    apply subtyp_refl.
+  - (* subtyp_trans *)
+    eapply subtyp_trans; eauto.
+  - (* subtyp_and11 *)
+    eapply subtyp_and11; eauto.
+  - (* subtyp_and12 *)
+    eapply subtyp_and12; eauto.
+  - (* subtyp_and2 *)
+    eapply subtyp_and2; eauto.
+  - (* subtyp_fld *)
+    eapply subtyp_fld; eauto.
+  - (* subtyp_typ *)
+    eapply subtyp_typ; eauto.
+  - (* subtyp_sel2 *)
+    eapply subtyp_sel2; eauto.
+    eapply H; eauto.
+  - (* subtyp_sel1 *)
+    eapply subtyp_sel1; eauto.
+    eapply H; eauto.
+  - (* subtyp_sel2_tight *) inversion H5.
+  - (* subtyp_sel1_tight *) inversion H5.
   - admit.
   - admit.
   - admit.
