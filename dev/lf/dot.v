@@ -1159,7 +1159,10 @@ Proof.
   - (* ty_new_elim *)
     simpl. apply ty_new_elim.
     apply H; eauto.
-  - admit.
+  - (* ty_rec_elim *)
+    simpl. rewrite subst_open_commute_typ.
+    apply ty_rec_elim.
+    apply H; eauto.
   - admit.
   - admit.
   - admit.
