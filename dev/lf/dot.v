@@ -1043,6 +1043,113 @@ Proof.
   apply* subst_idempotent_trm_val_def_defs.
 Qed.
 
+Lemma subst_label_of_dec: forall x y D,
+  label_of_dec D = label_of_dec (subst_dec x y D).
+Proof.
+  intros. destruct D; simpl; reflexivity.
+Qed.
+
+Lemma subst_label_of_def: forall x y d,
+  label_of_def d = label_of_def (subst_def x y d).
+Proof.
+  intros. destruct d; simpl; reflexivity.
+Qed.
+
+(* ###################################################################### *)
+(** ** The substitution principle *)
+
+Lemma subst_rules: forall y S,
+  (forall m1 m2 G t T, ty_trm m1 m2 G t T -> forall G1 G2 x,
+    G = G1 & x ~ S & G2 ->
+    ok (G1 & x ~ S & G2) ->
+    x \notin fv_ctx_types G1 ->
+    ty_trm ty_general sub_general (G1 & (subst_ctx x y G2)) (trm_var (avar_f y)) (subst_typ x y S) ->
+    m1 = ty_general ->
+    m2 = sub_general ->
+    ty_trm m1 m2 (G1 & (subst_ctx x y G2)) (subst_trm x y t) (subst_typ x y T)) /\
+  (forall G d D, ty_def G d D -> forall G1 G2 x,
+    G = G1 & x ~ S & G2 ->
+    ok (G1 & x ~ S & G2) ->
+    ty_trm ty_general sub_general (G1 & (subst_ctx x y G2)) (trm_var (avar_f y)) (subst_typ x y S) ->
+    ty_def (G1 & (subst_ctx x y G2)) (subst_def x y d) (subst_dec x y D)) /\
+  (forall G ds T, ty_defs G ds T -> forall G1 G2 x,
+    G = G1 & x ~ S & G2 ->
+    ok (G1 & x ~ S & G2) ->
+    x \notin fv_ctx_types G1 ->
+    ty_trm ty_general sub_general (G1 & (subst_ctx x y G2)) (trm_var (avar_f y)) (subst_typ x y S) ->
+    ty_defs (G1 & (subst_ctx x y G2)) (subst_defs x y ds) (subst_typ x y T)) /\
+  (forall m1 m2 G T U, subtyp m1 m2 G T U -> forall G1 G2 x,
+    G = G1 & x ~ S & G2 ->
+    ok (G1 & x ~ S & G2) ->
+    x \notin fv_ctx_types G1 ->
+    ty_trm ty_general sub_general (G1 & (subst_ctx x y G2)) (trm_var (avar_f y)) (subst_typ x y S) ->
+    m1 = ty_general ->
+    m2 = sub_general ->
+    subtyp m1 m2 (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_typ x y U)) /\
+  (forall G T, wf_typ G T -> forall G1 G2 x,
+    G = G1 & x ~ S & G2 ->
+    ok (G1 & x ~ S & G2) ->
+    x \notin fv_ctx_types G1 ->
+    ty_trm ty_general sub_general (G1 & (subst_ctx x y G2)) (trm_var (avar_f y)) (subst_typ x y S) ->
+    wf_typ (G1 & (subst_ctx x y G2)) (subst_typ x y T)).
+Proof.
+  intros y S. apply rules_mutind; intros; subst.
+  - (* ty_var *)
+    simpl. case_if.
+    + apply binds_middle_eq_inv in b. subst. assumption. assumption.
+    + apply subst_fresh_ctx with (y:=y) in H1.
+      apply binds_subst in b.
+      apply ty_var. rewrite <- H1.
+      unfold subst_ctx. rewrite <- map_concat.
+      apply binds_map. assumption. assumption.
+  - (* ty_all_intro *)
+    simpl.
+    apply_fresh ty_all_intro as z; eauto.
+    assert (z \notin L) as FrL by eauto.
+    assert (subst_fvar x y z = z) as A. {
+      unfold subst_fvar. rewrite If_r. reflexivity. eauto.
+    }
+    rewrite <- A at 2. rewrite <- subst_open_commute_typ.
+    assert (subst_ctx x y G2 & z ~ subst_typ x y T = subst_ctx x y (G2 & z ~ T)) as B. {
+      unfold subst_ctx. rewrite map_concat. rewrite map_single. reflexivity.
+    }
+    rewrite <- concat_assoc. rewrite B.
+    eapply H0; eauto.
+    rewrite concat_assoc. reflexivity.
+    rewrite concat_assoc. apply ok_push. assumption. eauto.
+    rewrite <- B. rewrite concat_assoc. apply weaken_ty_trm. assumption.
+    apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+Qed.
+
 (* ###################################################################### *)
 (** ** Some Lemmas *)
 
