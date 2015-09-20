@@ -743,7 +743,7 @@ Qed.
 Definition subst_avar (z: var) (u: var) (a: avar) : avar :=
   match a with
   | avar_b i => avar_b i
-  | avar_f x => If x = z then (avar_f u) else (avar_f x)
+  | avar_f x => (avar_f (If x = z then u else x))
   end.
 
 Fixpoint subst_typ (z: var) (u: var) (T: typ) { struct T } : typ :=
@@ -1119,7 +1119,12 @@ Proof.
     rewrite concat_assoc. apply ok_push. assumption. eauto.
     rewrite <- B. rewrite concat_assoc. apply weaken_ty_trm. assumption.
     apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
-  - admit.
+  - (* ty_all_elim *)
+    simpl. rewrite subst_open_commute_typ.
+    eapply ty_all_elim.
+    simpl in H.
+    apply H; eauto.
+    apply H0; eauto.
   - admit.
   - admit.
   - admit.
