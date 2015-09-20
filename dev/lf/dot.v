@@ -1175,7 +1175,9 @@ Proof.
     rewrite concat_assoc. apply ok_push. assumption. eauto.
     rewrite <- B. rewrite concat_assoc. apply weaken_ty_trm. assumption.
     apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
-  - admit.
+  - (* ty_sub *)
+    eapply ty_sub; eauto.
+    intro Contra. inversion Contra.
   - admit.
   - admit.
   - admit.
