@@ -1163,7 +1163,18 @@ Proof.
     simpl. rewrite subst_open_commute_typ.
     apply ty_rec_elim.
     apply H; eauto.
-  - admit.
+  - (* ty_let *)
+    simpl.
+    apply_fresh ty_let as z; eauto.
+    assert (subst_ctx x y G2 & z ~ subst_typ x y T = subst_ctx x y (G2 & z ~ T)) as B. {
+      unfold subst_ctx. rewrite map_concat. rewrite map_single. reflexivity.
+    }
+    rewrite <- concat_assoc. rewrite B.
+    apply H0 with (x0:=z); eauto.
+    rewrite concat_assoc. reflexivity.
+    rewrite concat_assoc. apply ok_push. assumption. eauto.
+    rewrite <- B. rewrite concat_assoc. apply weaken_ty_trm. assumption.
+    apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
   - admit.
   - admit.
   - admit.
