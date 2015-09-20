@@ -1937,35 +1937,37 @@ If S in SS and G |-! y: {A: S..S} then y.A in SS.
 If S in SS then rec(x: S) in SS.
 *)
 
-Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
-| pt_new : forall G x T ds,
-  possible_types G x (val_new T ds) (open_typ x T)
-| pt_rcd_trm : forall G x T ds a t T',
+Inductive ptmode: Set := pt_mono | pt_rec.
+
+Inductive possible_types: ptmode -> ctx -> var -> val -> typ -> Prop :=
+| pt_new : forall m G x T ds,
+  possible_types m G x (val_new T ds) (open_typ x T)
+| pt_rcd_trm : forall m G x T ds a t T',
   defs_has (open_defs x ds) (def_trm a t) ->
   ty_trm ty_general sub_general G t T' ->
-  possible_types G x (val_new T ds) (typ_rcd (dec_trm a T'))
-| pt_rcd_typ : forall G x T ds A T' S U,
+  possible_types m G x (val_new T ds) (typ_rcd (dec_trm a T'))
+| pt_rcd_typ : forall m G x T ds A T' S U,
   defs_has (open_defs x ds) (def_typ A T') ->
   subtyp ty_general sub_general G S T' ->
   subtyp ty_general sub_general G T' U ->
-  possible_types G x (val_new T ds) (typ_rcd (dec_typ A S U))
-| pt_lambda : forall L G x T t T' U,
+  possible_types m G x (val_new T ds) (typ_rcd (dec_typ A S U))
+| pt_lambda : forall L m G x T t T' U,
   subtyp ty_general sub_general G T' T ->
   (forall y, y \notin L ->
     ty_trm ty_general sub_general (G & y ~ T') (open_trm y t) (open_typ y U)) ->
-  possible_types G x (val_lambda T t) (typ_all T' U)
-| pt_and : forall G x v S1 S2,
-  possible_types G x v S1 ->
-  possible_types G x v S2 ->
-  possible_types G x v (typ_and S1 S2)
-| pt_sel : forall G x v y A S,
-  possible_types G x v S ->
+  possible_types m G x (val_lambda T t) (typ_all T' U)
+| pt_and : forall m G x v S1 S2,
+  possible_types m G x v S1 ->
+  possible_types m G x v S2 ->
+  possible_types m G x v (typ_and S1 S2)
+| pt_sel : forall m G x v y A S,
+  possible_types m G x v S ->
   ty_trm ty_general sub_general G (trm_var y) (typ_rcd (dec_typ A S S)) ->
-  possible_types G x v (typ_sel y A)
+  possible_types m G x v (typ_sel y A)
 | pt_bnd : forall G x v S S',
-  possible_types G x v S ->
+  possible_types pt_mono G x v S ->
   S = open_typ x S' ->
-  possible_types G x v (typ_bnd S')
+  possible_types pt_rec G x v (typ_bnd S')
 .
 
 (*
@@ -1978,12 +1980,12 @@ Let SS = Ts(G, x, v). We first show SS is closed wrt G |-# _ <: _.
 Assume T0 in SS and G |- T0 <: U0.s We show U0 in SS by an induction on subtyping derivations of G |-# T0 <: U0.
 *)
 
-Lemma possible_types_closure_tight: forall G s x v T0 U0,
+Lemma mono_possible_types_closure_tight: forall G s x v T0 U0,
   wf_sto G s ->
   binds x v s ->
-  possible_types G x v T0 ->
+  possible_types pt_mono G x v T0 ->
   subtyp ty_general sub_tight G T0 U0 ->
-  possible_types G x v U0.
+  possible_types pt_mono G x v U0.
 Proof.
   introv Hwf Bis HT0 Hsub. dependent induction Hsub.
   - (* Refl-<: *) assumption.
@@ -2026,7 +2028,6 @@ Proof.
   - (* Rec-<:-Rec *)
     inversion HT0; subst.
     admit.
-    admit. (* requires different induction principle *)
   - (* All-<:-All *)
     inversion HT0; subst.
     admit.
@@ -2035,7 +2036,7 @@ Proof.
     eapply ty_sub.
     intro Contra. inversion Contra.
     eapply narrow_typing.
-    eapply H8. eauto.
+    eapply H9. eauto.
     eapply subenv_last.
     eapply tight_to_general_subtyping. assumption.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
@@ -2043,14 +2044,106 @@ Proof.
     eapply H0. eauto.
 Qed.
 
-Lemma possible_types_closure: forall G s x v S T,
+Lemma mono_possible_types_closure: forall G s x v S T,
   wf_sto G s ->
   binds x v s ->
-  possible_types G x v S ->
+  possible_types pt_mono G x v S ->
   subtyp ty_general sub_general G S T ->
-  possible_types G x v T.
+  possible_types pt_mono G x v T.
 Proof.
   admit.
+Qed.
+
+Lemma possible_types_closure_tight: forall G s x v T0 U0,
+  wf_sto G s ->
+  binds x v s ->
+  possible_types pt_rec G x v T0 ->
+  subtyp ty_general sub_tight G T0 U0 ->
+  possible_types pt_rec G x v U0.
+Proof.
+  introv Hwf Bis HT0 Hsub. dependent induction Hsub.
+  - (* Refl-<: *) assumption.
+  - (* Trans-<: *)
+    apply IHHsub2; try assumption.
+    apply IHHsub1; assumption.
+  - (* And-<: *)
+    inversion HT0; subst.
+    admit.
+    assumption.
+  - (* And-<: *)
+    inversion HT0; subst.
+    admit.
+    assumption.
+  - (* <:-And *)
+    apply pt_and. apply IHHsub1; assumption. apply IHHsub2; assumption.
+  - (* Fld-<:-Fld *)
+    inversion HT0; subst.
+    admit.
+    eapply pt_rcd_trm.
+    eassumption.
+    apply ty_sub with (T:=T).
+    intro Contra. inversion Contra.
+    assumption.
+    apply tight_to_general_subtyping. assumption.
+  - (* Typ-<:-Typ *)
+    inversion HT0; subst.
+    admit.
+    eapply pt_rcd_typ.
+    eassumption.
+    eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
+    eapply subtyp_trans. eassumption. eapply tight_to_general_subtyping. eassumption.
+  - (* <:-Sel-tight *)
+    eapply pt_sel. eassumption. apply precise_to_general_typing. assumption.
+  - (* Sel-<:-tight *)
+    inversion HT0; subst.
+    admit.
+    assert (T = S) by admit.
+    subst. assumption.
+  - (* Rec-<:-Rec *)
+    inversion HT0; subst.
+    admit.
+    eapply pt_bnd.
+    eapply mono_possible_types_closure.
+    eauto. eauto. eauto.
+    pick_fresh z.
+    assert (z \notin L) as FrL by eauto.
+    specialize (H z FrL).
+    assert (ty_trm ty_general sub_general G (trm_var (avar_f x)) (open_typ x T)) as A by admit.
+    apply (proj54 (subst_rules x (open_typ z T))) with (G1:=G) (G2:=empty) (x0:=z) in H.
+    unfold subst_ctx in H. rewrite map_empty in H. rewrite concat_empty_r in H.
+    repeat rewrite subst_open_commute_typ in H.
+    assert (subst_fvar z x z = x) as B. {
+      unfold subst_fvar. rewrite If_l. reflexivity. reflexivity.
+    }
+    repeat rewrite B in H.
+    rewrite subst_fresh_typ in H. rewrite subst_fresh_typ in H.
+    apply H.
+    eauto. eauto.
+    rewrite concat_empty_r. reflexivity.
+    rewrite concat_empty_r. eauto.
+    eauto.
+    rewrite subst_open_commute_typ.
+    assert (subst_fvar z x z = x) as B. {
+      unfold subst_fvar. rewrite If_l. reflexivity. reflexivity.
+    }
+    rewrite B.
+    rewrite subst_fresh_typ.
+    unfold subst_ctx. rewrite map_empty. rewrite concat_empty_r. apply A.
+    eauto. eauto. eauto. eauto.
+  - (* All-<:-All *)
+    inversion HT0; subst.
+    admit.
+    apply_fresh pt_lambda as y.
+    eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
+    eapply ty_sub.
+    intro Contra. inversion Contra.
+    eapply narrow_typing.
+    eapply H9. eauto.
+    eapply subenv_last.
+    eapply tight_to_general_subtyping. assumption.
+    eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
+    eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
+    eapply H0. eauto.
 Qed.
 
 (*
@@ -2062,7 +2155,7 @@ If G ~ s and G |- x: T then, for some non-variable value v, s |- x = v and T in 
 Lemma possible_types_lemma: forall G s x T,
   wf_sto G s ->
   ty_trm ty_general sub_general G (trm_var (avar_f x)) T ->
-  exists v, binds x v s /\ possible_types G x v T.
+  exists v, binds x v s /\ possible_types pt_rec G x v T.
 Proof.
   admit.
 Qed.
