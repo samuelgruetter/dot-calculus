@@ -1055,6 +1055,16 @@ Proof.
   intros. destruct d; simpl; reflexivity.
 Qed.
 
+Lemma subst_defs_hasnt: forall x y l ds,
+  defs_hasnt ds l ->
+  defs_hasnt (subst_defs x y ds) l.
+Proof.
+  intros x y l ds. unfold defs_hasnt. induction ds; introv Eq.
+  - simpl. reflexivity.
+  - unfold get_def. simpl. rewrite <- subst_label_of_def.
+    simpl in Eq. case_if. apply (IHds Eq).
+Qed.
+
 (* ###################################################################### *)
 (** ** The substitution principle *)
 
@@ -1070,6 +1080,7 @@ Lemma subst_rules: forall y S,
   (forall G d D, ty_def G d D -> forall G1 G2 x,
     G = G1 & x ~ S & G2 ->
     ok (G1 & x ~ S & G2) ->
+    x \notin fv_ctx_types G1 ->
     ty_trm ty_general sub_general (G1 & (subst_ctx x y G2)) (trm_var (avar_f y)) (subst_typ x y S) ->
     ty_def (G1 & (subst_ctx x y G2)) (subst_def x y d) (subst_dec x y D)) /\
   (forall G ds T, ty_defs G ds T -> forall G1 G2 x,
@@ -1178,10 +1189,16 @@ Proof.
   - (* ty_sub *)
     eapply ty_sub; eauto.
     intro Contra. inversion Contra.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
+  - (* ty_def_typ *)
+    simpl. apply ty_def_typ; eauto.
+  - (* ty_def_trm *)
+    simpl. apply ty_def_trm; eauto.
+  - (* ty_defs_one *)
+    simpl. apply ty_defs_one; eauto.
+  - (* ty_defs_cons *)
+    simpl. apply ty_defs_cons; eauto.
+    rewrite <- subst_label_of_def.
+    apply subst_defs_hasnt. assumption.
   - admit.
   - admit.
   - admit.
