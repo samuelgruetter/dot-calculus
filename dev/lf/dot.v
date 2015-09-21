@@ -1805,7 +1805,12 @@ Proof.
   unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversion Bis.
   destruct Hex as [? [? [Bis' [Htyx EqTx]]]].
   unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversions Bis.
-  admit.
+  inversion Hty; subst.
+  - unfold binds in H3. unfold binds in Bi. rewrite H3 in Bi. inversions Bi.
+  - destruct T0; simpl in H3; inversions H3.
+    destruct d; simpl in H0; inversions H0.
+    admit.
+  - admit.
 Qed.
 
 (* ###################################################################### *)
