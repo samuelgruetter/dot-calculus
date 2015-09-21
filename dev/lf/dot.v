@@ -2061,6 +2061,32 @@ Proof.
   admit.
 Qed.
 
+Lemma possible_types_to_typing: forall G s x v T,
+  wf_sto G s ->
+  binds x v s ->
+  possible_types pt_mono G x v T ->
+  ty_trm ty_general sub_general G (trm_var (avar_f x)) T.
+Proof.
+  introv Hwf Bis H. dependent induction H.
+  - apply ty_rec_elim. apply precise_to_general_typing.
+    remember Hwf as Hwf'. clear HeqHwf'.
+    apply sto_binds_to_ctx_binds_raw with (x:=x) (v:=val_new T ds) in Hwf.
+    destruct Hwf as [G1 [G2 [T0 [EqG Hty]]]].
+    inversion Hty; subst.
+    apply ty_var. apply binds_middle_eq. apply wf_sto_to_ok_G in Hwf'.
+    apply ok_middle_inv in Hwf'. destruct Hwf'. assumption.
+    assert (exists x0, trm_val (val_new T ds) = trm_var (avar_f x0)) as Contra. {
+      apply H. reflexivity.
+    }
+    destruct Contra as [? Contra]. inversion Contra.
+    assumption.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+Qed.
+
 Lemma possible_types_closure_tight: forall G s x v T0 U0,
   wf_sto G s ->
   binds x v s ->
@@ -2117,7 +2143,9 @@ Proof.
     pick_fresh z.
     assert (z \notin L) as FrL by eauto.
     specialize (H z FrL).
-    assert (ty_trm ty_general sub_general G (trm_var (avar_f x)) (open_typ x T)) as A by admit.
+    assert (ty_trm ty_general sub_general G (trm_var (avar_f x)) (open_typ x T)) as A. {
+      eapply possible_types_to_typing; eauto.
+    }
     apply (proj54 (subst_rules x (open_typ z T))) with (G1:=G) (G2:=empty) (x0:=z) in H.
     unfold subst_ctx in H. rewrite map_empty in H. rewrite concat_empty_r in H.
     repeat rewrite subst_open_commute_typ in H.
