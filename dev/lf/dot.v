@@ -1962,7 +1962,7 @@ Inductive possible_types: ptmode -> ctx -> var -> val -> typ -> Prop :=
   possible_types m G x v (typ_and S1 S2)
 | pt_sel : forall m G x v y A S,
   possible_types m G x v S ->
-  ty_trm ty_general sub_general G (trm_var y) (typ_rcd (dec_typ A S S)) ->
+  ty_trm ty_precise sub_general G (trm_var y) (typ_rcd (dec_typ A S S)) ->
   possible_types m G x v (typ_sel y A)
 | pt_bnd : forall G x v S S',
   possible_types pt_mono G x v S ->
@@ -2019,11 +2019,13 @@ Proof.
     eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
     eapply subtyp_trans. eassumption. eapply tight_to_general_subtyping. eassumption.
   - (* <:-Sel-tight *)
-    eapply pt_sel. eassumption. apply precise_to_general_typing. assumption.
+    eapply pt_sel. eassumption. assumption.
   - (* Sel-<:-tight *)
     inversion HT0; subst.
     admit.
-    assert (T = S) by admit.
+    assert (T = S) as B. {
+      eapply unique_tight_bounds; eauto.
+    }
     subst. assumption.
   - (* Rec-<:-Rec *)
     inversion HT0; subst.
@@ -2093,11 +2095,13 @@ Proof.
     eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
     eapply subtyp_trans. eassumption. eapply tight_to_general_subtyping. eassumption.
   - (* <:-Sel-tight *)
-    eapply pt_sel. eassumption. apply precise_to_general_typing. assumption.
+    eapply pt_sel. eassumption. assumption.
   - (* Sel-<:-tight *)
     inversion HT0; subst.
     admit.
-    assert (T = S) by admit.
+    assert (T = S) as B. {
+      eapply unique_tight_bounds; eauto.
+    }
     subst. assumption.
   - (* Rec-<:-Rec *)
     inversion HT0; subst.
