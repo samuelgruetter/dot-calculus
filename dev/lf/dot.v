@@ -236,7 +236,7 @@ Inductive ty_trm : tymode -> submode -> ctx -> trm -> typ -> Prop :=
 | ty_let : forall L m2 G t u T U,
     ty_trm ty_general m2 G t T ->
     (forall x, x \notin L ->
-      ty_trm ty_general sub_general (G & x ~ T) u U) ->
+      ty_trm ty_general sub_general (G & x ~ T) (open_trm x u) U) ->
     wf_typ G U ->
     ty_trm ty_general m2 G (trm_let t u) U
 | ty_sub : forall m1 m2 G t T U,
@@ -1181,6 +1181,10 @@ Proof.
       unfold subst_ctx. rewrite map_concat. rewrite map_single. reflexivity.
     }
     rewrite <- concat_assoc. rewrite B.
+    assert (subst_fvar x y z = z) as A. {
+      unfold subst_fvar. rewrite If_r. reflexivity. eauto.
+    }
+    rewrite <- A at 2. rewrite <- subst_open_commute_trm.
     apply H0 with (x0:=z); eauto.
     rewrite concat_assoc. reflexivity.
     rewrite concat_assoc. apply ok_push. assumption. eauto.
@@ -2255,6 +2259,17 @@ Proof.
 Qed.
 
 (* ###################################################################### *)
+(** * Misc *)
+
+Lemma var_typing_implies_avar_f: forall G a T,
+  ty_trm ty_general sub_general G (trm_var a) T ->
+  exists x, a = avar_f x.
+Proof.
+  intros. dependent induction H; try solve [eexists; reflexivity].
+  apply IHty_trm.
+Qed.
+
+(* ###################################################################### *)
 (** * Safety *)
 
 Inductive normal_form: trm -> Prop :=
@@ -2306,6 +2321,28 @@ Proof.
     split.
     assumption.
     assumption.
-  - admit.
+  - (* Let *)
+    destruct t.
+    + (* var *)
+      assert (exists x, a = avar_f x) as A. {
+        eapply var_typing_implies_avar_f. eassumption.
+      }
+      destruct A as [x A]. subst a.
+      exists s (open_trm x u) G (@empty typ).
+      split.
+      apply red_let_var.
+      split.
+      rewrite concat_empty_r. reflexivity.
+      split.
+      pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H0 y FrL).
+      rewrite subst_intro_trm with (x:=y).
+      rewrite <- subst_fresh_typ with (x:=y) (y:=x).
+      eapply subst_ty_trm. eapply H0.
+      apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
+      rewrite subst_fresh_typ. assumption. eauto. eauto. eauto. eauto.
+    + admit.
+    + admit.
+    + admit.
+    + admit.
   - admit.
 Qed.
