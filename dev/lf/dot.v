@@ -534,6 +534,20 @@ Proof.
   rewrite <- EqG. assumption.
 Qed.
 
+Lemma weaken_wft: forall G1 G2 T,
+  wf_typ G1 T ->
+  ok (G1 & G2) ->
+  wf_typ (G1 & G2) T.
+Proof.
+  intros.
+    assert (G1 & G2 = G1 & G2 & empty) as EqG. {
+    rewrite concat_empty_r. reflexivity.
+  }
+  rewrite EqG. apply* weaken_rules.
+  rewrite concat_empty_r. reflexivity.
+  rewrite <- EqG. assumption.
+Qed.
+
 (* ###################################################################### *)
 (** ** Well-formed store *)
 
@@ -2367,7 +2381,16 @@ Proof.
       apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
       apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
       apply wf_sto_push. assumption. eauto. eauto. assumption.
-    + admit.
+    + specialize (IHty_trm Hwf). destruct IHty_trm as [IH | IH]. inversion IH.
+      destruct IH as [s' [t' [G' [G'' [IH1 [IH2 [IH3]]]]]]].
+      exists s' (trm_let t' u) G' G''.
+      split. apply red_let_tgt. assumption.
+      split. assumption. split.
+      apply ty_let with (L:=L \u dom G') (T:=T); eauto.
+      intros. rewrite IH2. eapply (proj51 weaken_rules). apply H0. auto. reflexivity.
+      rewrite <- IH2. apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
+      rewrite IH2. apply weaken_wft. assumption.
+      rewrite <- IH2. eapply wf_sto_to_ok_G. eassumption. eauto.
     + admit.
     + admit.
   - admit.
