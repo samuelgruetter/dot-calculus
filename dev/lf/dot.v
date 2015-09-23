@@ -188,7 +188,7 @@ Definition fv_ctx_types(G: ctx): vars := (fv_in_values (fun T => fv_typ T) G).
 Inductive red : trm -> sto -> trm -> sto -> Prop :=
 | red_sel : forall x m s t T ds,
     binds x (val_new T ds) s ->
-    defs_has ds (def_trm m t) ->
+    defs_has (open_defs x ds) (def_trm m t) ->
     red (trm_sel (avar_f x) m) s t s
 | red_app : forall f a s T t,
     binds f (val_lambda T t) s ->
@@ -2295,7 +2295,17 @@ Proof.
     intro Contra. inversion Contra.
     assumption. assumption.
     eauto. eauto. eauto. eauto.
-  - admit.
+  - (* Fld-E *)
+    lets C: (canonical_forms_2 Hwf H).
+    destruct C as [S [ds [t [Bis [Tyds [Has Ty]]]]]].
+    exists s t G (@empty typ).
+    split.
+    apply red_sel with (T:=S) (ds:=ds); try assumption.
+    split.
+    rewrite concat_empty_r. reflexivity.
+    split.
+    assumption.
+    assumption.
   - admit.
   - admit.
 Qed.
