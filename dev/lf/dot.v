@@ -2319,8 +2319,8 @@ Lemma safety: forall G s t T,
   ty_trm ty_general sub_general G t T ->
   (normal_form t \/ (exists s' t' G' G'', red t s t' s' /\ G' = G & G'' /\ ty_trm ty_general sub_general G' t' T /\ wf_sto G' s')).
 Proof.
-  introv Hwf H. dependent induction H; try solve [left; eauto]; right.
-  - (* All-E *)
+  introv Hwf H. dependent induction H; try solve [left; eauto].
+  - (* All-E *) right.
     lets C: (canonical_forms_1 Hwf H).
     destruct C as [L [T' [t [Bis [Hsub Hty]]]]].
     exists s (open_trm z t) G (@empty typ).
@@ -2338,7 +2338,7 @@ Proof.
     intro Contra. inversion Contra.
     assumption. assumption.
     eauto. eauto. eauto. eauto.
-  - (* Fld-E *)
+  - (* Fld-E *) right.
     lets C: (canonical_forms_2 Hwf H).
     destruct C as [S [ds [t [Bis [Tyds [Has Ty]]]]]].
     exists s t G (@empty typ).
@@ -2349,7 +2349,7 @@ Proof.
     split.
     assumption.
     assumption.
-  - (* Let *)
+  - (* Let *) right.
     destruct t.
     + (* var *)
       assert (exists x, a = avar_f x) as A. {
@@ -2411,5 +2411,14 @@ Proof.
       rewrite <- IH2. apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
       rewrite IH2. apply weaken_wft. assumption.
       rewrite <- IH2. eapply wf_sto_to_ok_G. eassumption. eauto.
-  - admit.
+  - specialize (IHty_trm Hwf). destruct IHty_trm as [IH | IH].
+    + left. assumption.
+    + right. destruct IH as [s' [t' [G' [G'' [IH1 [IH2 [IH3]]]]]]].
+      exists s' t' G' G''.
+      split; try split; try split; try assumption.
+      apply ty_sub with (T:=T).
+      intro Contra. inversion Contra.
+      assumption.
+      rewrite IH2. apply weaken_subtyp. assumption.
+      rewrite <- IH2. eapply wf_sto_to_ok_G. eassumption.
 Qed.
