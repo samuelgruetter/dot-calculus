@@ -2391,7 +2391,25 @@ Proof.
       rewrite <- IH2. apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
       rewrite IH2. apply weaken_wft. assumption.
       rewrite <- IH2. eapply wf_sto_to_ok_G. eassumption. eauto.
-    + admit.
-    + admit.
+    + specialize (IHty_trm Hwf). destruct IHty_trm as [IH | IH]. inversion IH.
+      destruct IH as [s' [t' [G' [G'' [IH1 [IH2 [IH3]]]]]]].
+      exists s' (trm_let t' u) G' G''.
+      split. apply red_let_tgt. assumption.
+      split. assumption. split.
+      apply ty_let with (L:=L \u dom G') (T:=T); eauto.
+      intros. rewrite IH2. eapply (proj51 weaken_rules). apply H0. auto. reflexivity.
+      rewrite <- IH2. apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
+      rewrite IH2. apply weaken_wft. assumption.
+      rewrite <- IH2. eapply wf_sto_to_ok_G. eassumption. eauto.
+    + specialize (IHty_trm Hwf). destruct IHty_trm as [IH | IH]. inversion IH.
+      destruct IH as [s' [t' [G' [G'' [IH1 [IH2 [IH3]]]]]]].
+      exists s' (trm_let t' u) G' G''.
+      split. apply red_let_tgt. assumption.
+      split. assumption. split.
+      apply ty_let with (L:=L \u dom G') (T:=T); eauto.
+      intros. rewrite IH2. eapply (proj51 weaken_rules). apply H0. auto. reflexivity.
+      rewrite <- IH2. apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
+      rewrite IH2. apply weaken_wft. assumption.
+      rewrite <- IH2. eapply wf_sto_to_ok_G. eassumption. eauto.
   - admit.
 Qed.
