@@ -1295,6 +1295,25 @@ Proof.
     apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
 Qed.
 
+Lemma subst_ty_trm: forall y S G x t T,
+    ty_trm ty_general sub_general (G & x ~ S) t T -> 
+    ok (G & x ~ S) ->
+    x \notin fv_ctx_types G ->
+    ty_trm ty_general sub_general G (trm_var (avar_f y)) (subst_typ x y S) ->
+    ty_trm ty_general sub_general G (subst_trm x y t) (subst_typ x y T).
+Proof.
+  intros.
+  apply (proj51 (subst_rules y S)) with (G1:=G) (G2:=empty) (x:=x) in H.
+  unfold subst_ctx in H. rewrite map_empty in H. rewrite concat_empty_r in H.
+  apply H.
+  rewrite concat_empty_r. reflexivity.
+  rewrite concat_empty_r. assumption.
+  assumption.
+  unfold subst_ctx. rewrite map_empty. rewrite concat_empty_r. assumption.
+  reflexivity.
+  reflexivity.
+Qed.
+
 (* ###################################################################### *)
 (** ** Some Lemmas *)
 
@@ -2268,8 +2287,14 @@ Proof.
     rewrite concat_empty_r. reflexivity.
     split.
     pick_fresh y. assert (y \notin L) as FrL by auto. specialize (Hty y FrL).
-    admit.
-    assumption.
+    rewrite subst_intro_typ with (x:=y). rewrite subst_intro_trm with (x:=y).
+    eapply subst_ty_trm. eapply Hty.
+    apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
+    rewrite subst_fresh_typ.
+    apply ty_sub with (T:=S).
+    intro Contra. inversion Contra.
+    assumption. assumption.
+    eauto. eauto. eauto. eauto.
   - admit.
   - admit.
   - admit.
