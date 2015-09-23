@@ -215,7 +215,7 @@ Inductive ty_trm : tymode -> submode -> ctx -> trm -> typ -> Prop :=
 | ty_all_intro : forall L m1 m2 G T t U,
     wf_typ G T ->
     (forall x, x \notin L ->
-      ty_trm m1 sub_general (G & x ~ T) t (open_typ x U)) ->
+      ty_trm ty_general sub_general (G & x ~ T) t (open_typ x U)) ->
     ty_trm m1 m2 G (trm_val (val_lambda T t)) (typ_all T U)
 | ty_all_elim : forall m2 G x z S T,
     ty_trm ty_general m2 G (trm_var (avar_f x)) (typ_all S T) ->
@@ -2269,6 +2269,20 @@ Proof.
   apply IHty_trm.
 Qed.
 
+Lemma val_typing: forall G v T,
+  ty_trm ty_general sub_general G (trm_val v) T ->
+  exists T', ty_trm ty_precise sub_general G (trm_val v) T' /\
+             subtyp ty_general sub_general G T' T.
+Proof.
+  intros. dependent induction H.
+  - exists (typ_all T U). split.
+    apply ty_all_intro with (L:=L); eauto. apply subtyp_refl.
+  - exists (typ_bnd T). split.
+    apply ty_new_intro with (L:=L); eauto. apply subtyp_refl.
+  - destruct IHty_trm as [T' [Hty Hsub]].
+    exists T'. split; eauto.
+Qed.
+
 (* ###################################################################### *)
 (** * Safety *)
 
@@ -2340,7 +2354,19 @@ Proof.
       eapply subst_ty_trm. eapply H0.
       apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
       rewrite subst_fresh_typ. assumption. eauto. eauto. eauto. eauto.
-    + admit.
+    + lets Hv: (val_typing H).
+      destruct Hv as [T' [Htyp Hsub]].
+      pick_fresh x. assert (x \notin L) as FrL by auto. specialize (H0 x FrL).
+      exists (s & x ~ v) (open_trm x u) (G & (x ~ T')) (x ~ T').
+      split.
+      apply red_let. eauto.
+      split. reflexivity. split.
+      apply narrow_typing with (G:=G & x ~ T).
+      assumption.
+      apply subenv_last. assumption.
+      apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
+      apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
+      apply wf_sto_push. assumption. eauto. eauto. assumption.
     + admit.
     + admit.
     + admit.
