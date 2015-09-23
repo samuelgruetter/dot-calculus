@@ -2235,3 +2235,42 @@ Proof.
   admit.
 Qed.
 
+(* ###################################################################### *)
+(** * Safety *)
+
+Inductive normal_form: trm -> Prop :=
+| nf_var: forall x, normal_form (trm_var x)
+| nf_val: forall v, normal_form (trm_val v).
+
+Hint Constructors normal_form.
+
+(*
+Let G |- t: T and G ~ s. Then either
+
+- t is a normal form, or
+- there exists a store s', term t' such that s | t -> s' | t', and for any such s', t' there exists an environment G'' such that, letting G' = G, G'' one has G' |- t': T and G' ~ s'.
+The proof is by a induction on typing derivations of G |- t: T.
+*)
+
+Lemma safety: forall G s t T,
+  wf_sto G s ->
+  ty_trm ty_general sub_general G t T ->
+  (normal_form t \/ (exists s' t' G' G'', red t s t' s' /\ G' = G & G'' /\ ty_trm ty_general sub_general G' t' T /\ wf_sto G' s')).
+Proof.
+  introv Hwf H. dependent induction H; try solve [left; eauto]; right.
+  - (* All-E *)
+    lets C: (canonical_forms_1 Hwf H).
+    destruct C as [L [T' [t [Bis [Hsub Hty]]]]].
+    exists s (open_trm z t) G (@empty typ).
+    split.
+    apply red_app with (T:=T'). assumption.
+    split.
+    rewrite concat_empty_r. reflexivity.
+    split.
+    pick_fresh y. assert (y \notin L) as FrL by auto. specialize (Hty y FrL).
+    admit.
+    assumption.
+  - admit.
+  - admit.
+  - admit.
+Qed.
