@@ -2121,7 +2121,10 @@ Proof.
     admit.
   - (* All-<:-All *)
     inversion HT0; subst.
-    admit.
+    assert (record_type (open_typ x T)) as B. {
+      eapply record_type_new; eassumption.
+    }
+    rewrite H7 in B. destruct B as [? B]. inversion B.
     apply_fresh pt_lambda as y.
     eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
     eapply ty_sub.
