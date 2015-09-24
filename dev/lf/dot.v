@@ -2118,7 +2118,10 @@ Proof.
     subst. assumption.
   - (* Rec-<:-Rec *)
     inversion HT0; subst.
-    admit.
+    assert (record_type (open_typ x T0)) as B. {
+      eapply record_type_new; eassumption.
+    }
+    rewrite H6 in B. destruct B as [? B]. inversion B.
   - (* All-<:-All *)
     inversion HT0; subst.
     assert (record_type (open_typ x T)) as B. {
