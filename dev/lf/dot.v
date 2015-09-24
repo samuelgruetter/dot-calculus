@@ -1974,6 +1974,39 @@ Proof.
 Qed.
 
 (* ###################################################################### *)
+(** * Misc *)
+
+Lemma sto_binds_to_ctx_binds: forall G s x v,
+  wf_sto G s -> binds x v s -> exists S, binds x S G.
+Proof.
+  introv Hwf Bis.
+  remember Hwf as Hwf'. clear HeqHwf'.
+  apply sto_binds_to_ctx_binds_raw with (x:=x) (v:=v) in Hwf.
+  destruct Hwf as [G1 [G2 [T [EqG Hty]]]].
+  subst.
+  exists T.
+  eapply binds_middle_eq. apply wf_sto_to_ok_G in Hwf'.
+  apply ok_middle_inv in Hwf'. destruct Hwf'. assumption.
+  assumption.
+Qed.
+
+Lemma record_type_new: forall G s x T ds,
+  wf_sto G s ->
+  binds x (val_new T ds) s ->
+  record_type (open_typ x T).
+Proof.
+  introv Hwf Bis.
+  destruct (sto_binds_to_ctx_binds Hwf Bis) as [S Bi].
+  destruct (corresponding_types Hwf Bi) as [Hlambda | Hnew].
+  destruct Hlambda as [? [? [? [Bis' ?]]]].
+  unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversions Bis.
+  destruct Hnew as [? [? [Bis' [? ?]]]]. subst.
+  unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversions Bis.
+  apply record_new_typing in H.
+  apply open_record_type. assumption.
+Qed.
+
+(* ###################################################################### *)
 (** ** Possible types *)
 
 (*
@@ -2075,7 +2108,10 @@ Proof.
     eapply pt_sel. eassumption. assumption.
   - (* Sel-<:-tight *)
     inversion HT0; subst.
-    admit.
+    assert (record_type (open_typ x T0)) as B. {
+      eapply record_type_new; eassumption.
+    }
+    rewrite H5 in B. destruct B as [? B]. inversion B.
     assert (T = S) as B. {
       eapply unique_tight_bounds; eauto.
     }
