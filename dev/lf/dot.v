@@ -213,7 +213,6 @@ Inductive ty_trm : tymode -> submode -> ctx -> trm -> typ -> Prop :=
     binds x T G ->
     ty_trm m1 m2 G (trm_var (avar_f x)) T
 | ty_all_intro : forall L m1 m2 G T t U,
-    wf_typ G T ->
     (forall x, x \notin L ->
       ty_trm ty_general sub_general (G & x ~ T) t (open_typ x U)) ->
     ty_trm m1 m2 G (trm_val (val_lambda T t)) (typ_all T U)
@@ -223,22 +222,26 @@ Inductive ty_trm : tymode -> submode -> ctx -> trm -> typ -> Prop :=
     ty_trm ty_general m2 G (trm_app (avar_f x) (avar_f z)) (open_typ z T)
 | ty_new_intro : forall L m1 m2 G T ds,
     (forall x, x \notin L ->
-      wf_typ (G & (x ~ open_typ x T)) (open_typ x T)) ->
-    (forall x, x \notin L ->
       ty_defs (G & (x ~ open_typ x T)) (open_defs x ds) (open_typ x T)) ->
     ty_trm m1 m2 G (trm_val (val_new T ds)) (typ_bnd T)
 | ty_new_elim : forall m2 G x m T,
     ty_trm ty_general m2 G (trm_var (avar_f x)) (typ_rcd (dec_trm m T)) ->
     ty_trm ty_general m2 G (trm_sel (avar_f x) m) T
-| ty_rec_elim : forall m1 m2 G x T,
-    ty_trm m1 m2 G (trm_var (avar_f x)) (typ_bnd T) ->
-    ty_trm m1 m2 G (trm_var (avar_f x)) (open_typ x T)
 | ty_let : forall L m2 G t u T U,
     ty_trm ty_general m2 G t T ->
     (forall x, x \notin L ->
       ty_trm ty_general sub_general (G & x ~ T) (open_trm x u) U) ->
-    wf_typ G U ->
     ty_trm ty_general m2 G (trm_let t u) U
+| ty_rec_intro : forall m2 G x T,
+    ty_trm ty_general m2 G (trm_var (avar_f x)) (open_typ x T) ->
+    ty_trm ty_general m2 G (trm_var (avar_f x)) (typ_bnd T)
+| ty_rec_elim : forall m1 m2 G x T,
+    ty_trm m1 m2 G (trm_var (avar_f x)) (typ_bnd T) ->
+    ty_trm m1 m2 G (trm_var (avar_f x)) (open_typ x T)
+| ty_and_intro : forall m2 G x T U,
+    ty_trm ty_general m2 G (trm_var (avar_f x)) T ->
+    ty_trm ty_general m2 G (trm_var (avar_f x)) U ->
+    ty_trm ty_general m2 G (trm_var (avar_f x)) (typ_and T U)
 | ty_sub : forall m1 m2 G t T U,
     (m1 = ty_precise -> exists x, t = trm_var (avar_f x)) ->
     ty_trm m1 m2 G t T ->
@@ -246,7 +249,6 @@ Inductive ty_trm : tymode -> submode -> ctx -> trm -> typ -> Prop :=
     ty_trm m1 m2 G t U
 with ty_def : ctx -> def -> dec -> Prop :=
 | ty_def_typ : forall G A T,
-    wf_typ G T ->
     ty_def G (def_typ A T) (dec_typ A T T)
 | ty_def_trm : forall G a t T,
     ty_trm ty_general sub_general G t T ->
@@ -295,41 +297,11 @@ with subtyp : tymode -> submode -> ctx -> typ -> typ -> Prop :=
 | subtyp_sel1_tight: forall G x A T,
     ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T T)) ->
     subtyp ty_general sub_tight G (typ_sel (avar_f x) A) T
-| subtyp_bnd: forall L m2 G T U,
-    (forall x, x \notin L ->
-       subtyp ty_general sub_general (G & x ~ (open_typ x T)) (open_typ x T) (open_typ x U)) ->
-    subtyp ty_general m2 G (typ_bnd T) (typ_bnd U)
 | subtyp_all: forall L m2 G S1 T1 S2 T2,
     subtyp ty_general m2 G S2 S1 ->
-    wf_typ G S2 ->
     (forall x, x \notin L ->
        subtyp ty_general sub_general (G & x ~ S2) (open_typ x T1) (open_typ x T2)) ->
-    subtyp ty_general m2 G (typ_all S1 T1) (typ_all S2 T2)
-
-with wf_typ : ctx -> typ -> Prop :=
-| wft_fld: forall G a T,
-     wf_typ G T ->
-     wf_typ G (typ_rcd (dec_trm a T))
-| wft_typ: forall G A T U,
-     wf_typ G T ->
-     wf_typ G U ->
-     wf_typ G (typ_rcd (dec_typ A T U))
-| wft_and: forall G T U,
-     wf_typ G T ->
-     wf_typ G U ->
-     wf_typ G (typ_and T U)
-| wft_sel: forall G x A T U,
-     ty_trm ty_general sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T U)) ->
-     wf_typ G (typ_sel (avar_f x) A)
-| wft_bnd: forall L G T,
-     (forall x, x \notin L ->
-        wf_typ (G & x ~ open_typ x T) (open_typ x T)) ->
-     wf_typ G (typ_bnd T)
-| wft_all: forall L G T U,
-     wf_typ G T ->
-     (forall x, x \notin L ->
-        wf_typ (G & x ~ T) U) ->
-     wf_typ G (typ_all T U).
+    subtyp ty_general m2 G (typ_all S1 T1) (typ_all S2 T2).
 
 Inductive wf_sto: ctx -> sto -> Prop :=
 | wf_sto_empty: wf_sto empty empty
@@ -369,9 +341,8 @@ Combined Scheme ts_mutind from ts_ty_trm_mut, ts_subtyp.
 Scheme rules_trm_mut    := Induction for ty_trm    Sort Prop
 with   rules_def_mut    := Induction for ty_def    Sort Prop
 with   rules_defs_mut   := Induction for ty_defs   Sort Prop
-with   rules_subtyp     := Induction for subtyp    Sort Prop
-with   rules_wf_typ     := Induction for wf_typ    Sort Prop.
-Combined Scheme rules_mutind from rules_trm_mut, rules_def_mut, rules_defs_mut, rules_subtyp, rules_wf_typ.
+with   rules_subtyp     := Induction for subtyp    Sort Prop.
+Combined Scheme rules_mutind from rules_trm_mut, rules_def_mut, rules_defs_mut, rules_subtyp.
 
 (* ###################################################################### *)
 (** ** Tactics *)
@@ -413,8 +384,7 @@ Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
 
 Hint Constructors
   ty_trm ty_def ty_defs
-  subtyp
-  wf_typ.
+  subtyp.
 
 Hint Constructors wf_sto.
 
