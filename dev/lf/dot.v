@@ -1254,7 +1254,7 @@ Proof.
   remember (trm_var (avar_f x)) as t.
   remember ty_precise as m1.
   remember sub_general as m2.
-  induction Hty; try solve [inversion Heqt].
+  induction Hty; try solve [inversion Heqt; inversion Heqm1].
   - inversions Heqt.
     unfold binds in Bi. unfold binds in H.
     rewrite H in Bi. inversion Bi.
@@ -1409,7 +1409,7 @@ Proof.
   inversion H; subst.
   + pick_fresh x.
    apply open_record_type_rev with (x:=x).
-   eapply record_defs_typing. eapply H6. eauto.
+   eapply record_defs_typing. eapply H4. eauto.
   + assert (exists x, trm_val (val_new S ds) = trm_var (avar_f x)) as Contra. {
       apply H0; eauto.
     }
@@ -1663,17 +1663,6 @@ Proof.
   intros. apply* tight_to_general.
 Qed.
 
-Lemma shape_var_new_typing: forall m2 G s S ds x T,
-  wf_sto G s ->
-  binds x (val_new S ds) s ->
-  binds x (typ_bnd S) G ->
-  ty_trm ty_general m2 G (trm_var (avar_f x)) T ->
-  (subtyp ty_general m2 G (typ_bnd S) T \/
-   subtyp ty_general m2 G (open_typ x S) T).
-Proof.
-  admit.
-Qed.
-
 (* If G ~ s, s |- x = new(x: T)d, and G |-# x: {A: S..U} then G |-# x.A <: U and G |-# S <: x.A. *)
 Lemma tight_bound_completeness: forall G s x T ds A S U,
   wf_sto G s ->
@@ -1759,11 +1748,7 @@ Lemma narrow_rules:
     m2 = sub_general ->
     ok G' ->
     subenv G' G ->
-    subtyp m1 m2 G' S U)
-/\ (forall G T, wf_typ G T -> forall G',
-    ok G' ->
-    subenv G' G ->
-    wf_typ G' T).
+    subtyp m1 m2 G' S U).
 Proof.
   apply rules_mutind; intros; eauto.
   - (* ty_var *)
@@ -1775,34 +1760,21 @@ Proof.
   - (* ty_all_intro *)
     subst.
     apply_fresh ty_all_intro as y; eauto.
-    eapply H0; eauto. apply subenv_push; eauto.
+    eapply H; eauto. apply subenv_push; eauto.
   - (* ty_new_intro *)
     subst.
     apply_fresh ty_new_intro as y; eauto.
     apply H; eauto. apply subenv_push; eauto.
-    apply H0; eauto. apply subenv_push; eauto.
   - (* ty_let *)
     subst.
     apply_fresh ty_let as y; eauto.
     apply H0 with (x:=y); eauto. apply subenv_push; eauto.
   - inversion H1 (* sub_tight *).
   - inversion H1 (* sub_tight *).
-  - (* subtyp_bnd *)
-    subst.
-    apply_fresh subtyp_bnd as y; eauto.
-    apply H; eauto. apply subenv_push; eauto.
   - (* subtyp_all *)
     subst.
     apply_fresh subtyp_all as y; eauto.
-    apply H1; eauto. apply subenv_push; eauto.
-  - (* wft_bnd *)
-    subst.
-    apply_fresh wft_bnd as y; eauto.
-    apply H; eauto. apply subenv_push; eauto.
-  - (* wft_all *)
-    subst.
-    apply_fresh wft_all as y; eauto.
-    apply H0 with (x:=y); eauto. apply subenv_push; eauto.
+    apply H0; eauto. apply subenv_push; eauto.
 Qed.
 
 Lemma narrow_typing: forall G G' t T,
