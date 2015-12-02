@@ -418,11 +418,7 @@ Lemma weaken_rules:
   (forall m1 m2 G T U, subtyp m1 m2 G T U -> forall G1 G2 G3,
     G = G1 & G3 ->
     ok (G1 & G2 & G3) ->
-    subtyp m1 m2 (G1 & G2 & G3) T U) /\
-  (forall G T, wf_typ G T -> forall G1 G2 G3,
-    G = G1 & G3 ->
-    ok (G1 & G2 & G3) ->
-    wf_typ (G1 & G2 & G3) T).
+    subtyp m1 m2 (G1 & G2 & G3) T U).
 Proof.
   apply rules_mutind; try solve [eauto].
   + intros. subst.
@@ -430,48 +426,26 @@ Proof.
   + intros. subst.
     apply_fresh ty_all_intro as z. eauto.
     assert (zL: z \notin L) by auto.
-    specialize (H0 z zL G1 G2 (G3 & z ~ T)).
-    repeat rewrite concat_assoc in H0.
-    apply* H0.
+    specialize (H z zL G1 G2 (G3 & z ~ T)).
+    repeat rewrite concat_assoc in H.
+    apply* H.
   + intros. subst.
     apply_fresh ty_new_intro as z; assert (zL: z \notin L) by auto.
     - specialize (H z zL G1 G2 (G3 & z ~ open_typ z T)).
       repeat rewrite concat_assoc in H.
       apply* H.
-    - specialize (H0 z zL G1 G2 (G3 & z ~ open_typ z T)).
-      repeat rewrite concat_assoc in H0.
-      apply* H0.
   + intros. subst.
     apply_fresh ty_let as z. eauto.
     assert (zL: z \notin L) by auto.
     specialize (H0 z zL G1 G2 (G3 & z ~ T)).
     repeat rewrite concat_assoc in H0.
     apply* H0.
-    eauto.
-  + intros. subst.
-    apply_fresh subtyp_bnd as z.
-    assert (zL: z \notin L) by auto.
-    specialize (H z zL G1 G2 (G3 & z ~ open_typ z T)).
-    repeat rewrite concat_assoc in H.
-    apply* H.
   + intros. subst.
     apply_fresh subtyp_all as z.
     eauto.
     eauto.
     assert (zL: z \notin L) by auto.
-    specialize (H1 z zL G1 G2 (G3 & z ~ S2)).
-    repeat rewrite concat_assoc in H1.
-    apply* H1.
-  + intros. subst.
-    apply_fresh wft_bnd as z.
-    assert (zL: z \notin L) by auto.
-    specialize (H z zL G1 G2 (G3 & z ~ open_typ z T)).
-    repeat rewrite concat_assoc in H.
-    apply* H.
-  + intros. subst.
-    apply_fresh wft_all as z. eauto.
-    assert (zL: z \notin L) by auto.
-    specialize (H0 z zL G1 G2 (G3 & z ~ T)).
+    specialize (H0 z zL G1 G2 (G3 & z ~ S2)).
     repeat rewrite concat_assoc in H0.
     apply* H0.
 Qed.
@@ -494,20 +468,6 @@ Lemma weaken_subtyp: forall m1 m2 G1 G2 S U,
   subtyp m1 m2 G1 S U ->
   ok (G1 & G2) ->
   subtyp m1 m2 (G1 & G2) S U.
-Proof.
-  intros.
-    assert (G1 & G2 = G1 & G2 & empty) as EqG. {
-    rewrite concat_empty_r. reflexivity.
-  }
-  rewrite EqG. apply* weaken_rules.
-  rewrite concat_empty_r. reflexivity.
-  rewrite <- EqG. assumption.
-Qed.
-
-Lemma weaken_wft: forall G1 G2 T,
-  wf_typ G1 T ->
-  ok (G1 & G2) ->
-  wf_typ (G1 & G2) T.
 Proof.
   intros.
     assert (G1 & G2 = G1 & G2 & empty) as EqG. {
