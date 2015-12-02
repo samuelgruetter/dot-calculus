@@ -1928,29 +1928,23 @@ Proof.
       eapply unique_tight_bounds; eauto.
     }
     subst. assumption.
-  - (* Rec-<:-Rec *)
-    inversion HT0; subst.
-    assert (record_type (open_typ x T0)) as B. {
-      eapply record_type_new; eassumption.
-    }
-    rewrite H6 in B. destruct B as [? B]. inversion B.
   - (* All-<:-All *)
     inversion HT0; subst.
     assert (record_type (open_typ x T)) as B. {
       eapply record_type_new; eassumption.
     }
-    rewrite H7 in B. destruct B as [? B]. inversion B.
+    rewrite H6 in B. destruct B as [? B]. inversion B.
     apply_fresh pt_lambda as y.
     eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
     eapply ty_sub.
     intro Contra. inversion Contra.
     eapply narrow_typing.
-    eapply H9. eauto.
+    eapply H8. eauto.
     eapply subenv_last.
     eapply tight_to_general_subtyping. assumption.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
-    eapply H0. eauto.
+    eapply H. eauto.
 Qed.
 
 Lemma mono_possible_types_closure: forall G s x v S T,
@@ -2036,39 +2030,6 @@ Proof.
       eapply unique_tight_bounds; eauto.
     }
     subst. assumption.
-  - (* Rec-<:-Rec *)
-    inversion HT0; subst.
-    admit.
-    eapply pt_bnd.
-    eapply mono_possible_types_closure.
-    eauto. eauto. eauto.
-    pick_fresh z.
-    assert (z \notin L) as FrL by eauto.
-    specialize (H z FrL).
-    assert (ty_trm ty_general sub_general G (trm_var (avar_f x)) (open_typ x T)) as A. {
-      eapply possible_types_to_typing; eauto.
-    }
-    apply (proj54 (subst_rules x (open_typ z T))) with (G1:=G) (G2:=empty) (x0:=z) in H.
-    unfold subst_ctx in H. rewrite map_empty in H. rewrite concat_empty_r in H.
-    repeat rewrite subst_open_commute_typ in H.
-    assert (subst_fvar z x z = x) as B. {
-      unfold subst_fvar. rewrite If_l. reflexivity. reflexivity.
-    }
-    repeat rewrite B in H.
-    rewrite subst_fresh_typ in H. rewrite subst_fresh_typ in H.
-    apply H.
-    eauto. eauto.
-    rewrite concat_empty_r. reflexivity.
-    rewrite concat_empty_r. eauto.
-    eauto.
-    rewrite subst_open_commute_typ.
-    assert (subst_fvar z x z = x) as B. {
-      unfold subst_fvar. rewrite If_l. reflexivity. reflexivity.
-    }
-    rewrite B.
-    rewrite subst_fresh_typ.
-    unfold subst_ctx. rewrite map_empty. rewrite concat_empty_r. apply A.
-    eauto. eauto. eauto. eauto.
   - (* All-<:-All *)
     inversion HT0; subst.
     admit.
@@ -2077,12 +2038,12 @@ Proof.
     eapply ty_sub.
     intro Contra. inversion Contra.
     eapply narrow_typing.
-    eapply H9. eauto.
+    eapply H8. eauto.
     eapply subenv_last.
     eapply tight_to_general_subtyping. assumption.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
-    eapply H0. eauto.
+    eapply H. eauto.
 Qed.
 
 (*
