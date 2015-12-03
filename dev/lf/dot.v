@@ -2215,6 +2215,24 @@ Proof.
   - inversion H0. inversion H1.
 Qed.
 
+Lemma wf_sto_val_new_in_G: forall G s x T ds,
+  wf_sto G s ->
+  binds x (val_new T ds) s ->
+  binds x (typ_bnd T) G.
+Proof.
+  introv Hwf Bis.
+  assert (exists S, binds x S G) as Bi. {
+    eapply sto_binds_to_ctx_binds; eauto.
+  }
+  destruct Bi as [S Bi].
+  destruct (corresponding_types Hwf Bi).
+  - destruct H as [? [? [? [Bis' _]]]].
+    unfold binds in Bis'. unfold binds in Bis. rewrite Bis in Bis'. inversion Bis'.
+  - destruct H as [T' [ds' [Bis' [Hty Heq]]]].
+    unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversions Bis.
+    assumption.
+Qed.
+
 (* If G ~ s, s |- x = new(x: T)d, and G |-# x: {A: S..U} then G |-# x.A <: U and G |-# S <: x.A. *)
 Lemma tight_bound_completeness: forall G s x T ds A S U,
   wf_sto G s ->
@@ -2248,7 +2266,9 @@ Proof.
     eapply HE; eauto.
   }
   assert (ty_trm ty_precise sub_general G (trm_var (avar_f x)) (open_typ x T)) as Htypx. {
-    admit.
+    eapply ty_rec_elim.
+    eapply ty_var.
+    eapply wf_sto_val_new_in_G; eauto.
   }
   assert (ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T1 T1))) as Htyp. {
     destruct Hsub as [Heq | Hsub].
