@@ -2545,11 +2545,13 @@ Proof.
   - apply new_intro_inversion in Hty. destruct Hty as [Heq Htype]. subst.
     eapply pt_bnd. eapply pt_new. reflexivity.
   - remember Hty as Hty'. clear HeqHty'. inversion Hty'; subst.
-    apply all_intro_inversion in Hty. destruct Hty as [T' Heq]. subst.
-    apply_fresh pt_lambda as y.
-    apply subtyp_refl.
-    apply H5.
-
+    + apply all_intro_inversion in Hty. destruct Hty as [T' Heq]. subst.
+      apply_fresh pt_lambda as y.
+      apply subtyp_refl.
+      apply H5. eauto.
+    + assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
+      specialize (H Heqm1). destruct H. inversion H.
+Qed.
 
 (*
 Lemma (Possible types)
