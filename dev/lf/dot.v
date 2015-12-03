@@ -1881,6 +1881,80 @@ Proof.
   admit.
 Qed.
 
+Lemma has_member_covariance: forall G s T1 T2 x A S2 U2,
+  wf_sto G s ->
+  subtyp ty_general sub_tight G T1 T2 ->
+  ty_trm ty_general sub_tight G (trm_var (avar_f x)) T1 ->
+  has_member G x T2 A S2 U2 ->
+  exists S1 U1, has_member G x T1 A S1 U1 /\
+                subtyp ty_general sub_tight G S2 S1 /\
+                subtyp ty_general sub_tight G U1 U2.
+Proof.
+  introv Hwf Hsub Hty Hmem.
+  generalize dependent U2.
+  generalize dependent S2.
+  dependent induction Hsub; subst; intros.
+  - (* refl *)
+    exists S2 U2. eauto.
+  - (* trans *)
+    assert (ty_trm ty_general sub_tight G (trm_var (avar_f x)) T) as HS. {
+      eapply ty_sub. intros Hp. subst. eexists; eauto.
+      eapply Hty.
+      eassumption.
+    }
+    specialize (IHHsub2 Hwf HS S2 U2 Hmem).
+    destruct IHHsub2 as [S3 [U3 [Hmem3 [Hsub31 Hsub32]]]].
+    specialize (IHHsub1 Hwf Hty S3 U3 Hmem3).
+    destruct IHHsub1 as [S1 [U1 [Hmem1 [Hsub11 Hsub12]]]].
+    exists S1 U1. split. apply Hmem1. split; eauto.
+  - (* and11 *)
+    exists S2 U2. split.
+    inversion Hmem; subst. apply has_any. assumption. eapply has_and1. assumption.
+    split; eauto.
+  - (* and12 *)
+    exists S2 U2. split.
+    inversion Hmem; subst. apply has_any. assumption. eapply has_and2. assumption.
+    split; eauto.
+  - (* and2 *)
+    apply has_member_inv in Hmem.
+    repeat destruct Hmem as [Hmem|Hmem].
+    + inversion Hmem.
+    + destruct Hmem as [T1 [T2 [Heq [Hmem | Hmem]]]]; inversions Heq.
+      * specialize (IHHsub1 Hwf Hty S2 U2 Hmem). apply IHHsub1.
+      * specialize (IHHsub2 Hwf Hty S2 U2 Hmem). apply IHHsub2.
+    + destruct Hmem as [T1' [Heq _]]. inversion Heq.
+    + destruct Hmem as [y [B [T' [Heq _]]]]. inversion Heq.
+  - (* fld *)
+    inversion Hmem; subst. inversion H0; subst.
+  - (* typ *)
+    apply has_member_inv in Hmem.
+    repeat destruct Hmem as [Hmem|Hmem].
+    + inversions Hmem.
+      exists S1 T1. split.
+      apply has_any. assumption. apply has_refl.
+      split; assumption.
+    + destruct Hmem as [T1' [T2' [Heq _]]]. inversion Heq.
+    + destruct Hmem as [T1' [Heq _]]. inversion Heq.
+    + destruct Hmem as [y [B [T' [Heq _]]]]. inversion Heq.
+  - (* sel2 *)
+    apply has_member_inv in Hmem.
+    repeat destruct Hmem as [Hmem|Hmem].
+    + inversion Hmem.
+    + destruct Hmem as [T1' [T2' [Heq _]]]. inversion Heq.
+    + destruct Hmem as [T1' [Heq _]]. inversion Heq.
+    + destruct Hmem as [y [B [T' [Heq [Htyb Hmem]]]]]. inversions Heq.
+      assert (T' = T) as HeqT. {
+        eapply unique_tight_bounds; eassumption.
+      }
+      subst. eauto.
+  - (* sel1 *)
+    exists S2 U2. split.
+    eapply has_any. assumption. eapply has_sel. eassumption. eassumption.
+    eauto.
+  - (* all *)
+    inversion Hmem; subst. inversion H2; subst.
+Qed.
+
 (* ###################################################################### *)
 (** * Misc *)
 
