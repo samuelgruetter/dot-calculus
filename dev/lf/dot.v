@@ -2512,7 +2512,36 @@ Proof.
     apply pt_and. apply IHHsub1; assumption. apply IHHsub2; assumption.
   - (* Fld-<:-Fld *)
     inversion HT0; subst.
-    admit.
+    induction T0; simpl in H3; try solve [inversion H3].
+    induction d; simpl in H3; try solve [inversion H3].
+    unfold open_typ in H3. simpl in H3. inversions H3.
+    lets Hty: (val_new_typing Hwf Bis). inversion Hty; subst.
+    pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H3 y FrL).
+    unfold open_typ in H3. simpl in H3. inversion H3; subst.
+    destruct ds; simpl in H; try solve [inversion H].
+    destruct ds; simpl in H; try solve [inversion H].
+    unfold open_defs in H. simpl in H. inversions H.
+    destruct d0; simpl in H2; inversion H2; subst.
+    inversion H2; subst.
+    assert (ty_trm ty_general sub_general G (open_trm x t1) (open_typ x t0)) as A. {
+      rewrite subst_intro_typ with (x:=y). rewrite subst_intro_trm with (x:=y).
+      eapply subst_ty_trm. eapply H4.
+      apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto. eauto.
+      simpl. rewrite <- subst_intro_typ with (x:=y).
+      lets Htyv: (var_new_typing Hwf Bis). unfold open_typ in Htyv. simpl in Htyv.
+      unfold open_typ. apply Htyv.
+      eauto.
+      apply notin_union_r1 in Fr. apply notin_union_r1 in Fr.
+      apply notin_union_r2 in Fr. unfold fv_defs in Fr.
+      apply notin_union_r2 in Fr. apply Fr.
+      eauto.
+    }
+    eapply pt_rcd_trm.
+    unfold open_defs. simpl. unfold defs_has. simpl.
+    rewrite If_l. reflexivity. reflexivity.
+    eapply ty_sub. intros Contra. inversion Contra. eapply A. eapply tight_to_general_subtyping. eapply Hsub.
+    assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
+    specialize (H Heqm1). destruct H. inversion H.
     eapply pt_rcd_trm.
     eassumption.
     apply ty_sub with (T:=T).
