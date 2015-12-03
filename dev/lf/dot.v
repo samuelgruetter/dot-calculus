@@ -1976,6 +1976,63 @@ Proof.
     inversion Hmem; subst. inversion H2; subst.
 Qed.
 
+Lemma has_member_monotonicity: forall G s x T0 ds T A S U,
+  wf_sto G s ->
+  binds x (val_new T0 ds) s ->
+  has_member G x T A S U ->
+  exists T1, has_member G x (typ_bnd T0) A T1 T1 /\
+             subtyp ty_general sub_tight G S T1 /\
+             subtyp ty_general sub_tight G T1 U.
+Proof.
+  introv Hwf Bis Hmem. inversion Hmem; subst.
+  generalize dependent U. generalize dependent S.
+  dependent induction H; intros.
+  - (* var *)
+    destruct (corresponding_types Hwf H).
+    destruct H1 as [S0 [U0 [t [Bis' _]]]]. unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversion Bis.
+    destruct H1 as [S0 [ds0 [Bis' [Hty Heq]]]]. unfold binds in Bis'. unfold binds in Bis. rewrite Bis in Bis'. inversions Bis'.
+    assert (S = U). {
+      eapply has_member_tightness. eassumption. eassumption.
+      eapply has_any.
+      eapply ty_var. eassumption.
+      eassumption.
+    }
+    subst.
+    exists U. eauto.
+  - (* rec_intro *)
+    apply has_member_inv in Hmem.
+    repeat destruct Hmem as [Hmem|Hmem].
+    + inversion Hmem.
+    + destruct Hmem as [T1' [T2' [Heq _]]]. inversion Heq.
+    + destruct Hmem as [T1' [Heq _]]. inversions Heq.
+      apply IHty_trm; eauto.
+      inversions H0. assumption.
+      inversions H0. inversions H4. assumption.
+    + destruct Hmem as [y [B [T' [Heq [Htyb Hmem]]]]]. inversion Heq.
+  - (* rec_elim *)
+    apply IHty_trm; eauto.
+    apply has_any. assumption. apply has_bnd. assumption.
+    apply has_bnd. assumption.
+  - (* and_intro *)
+    apply has_member_inv in Hmem.
+    repeat destruct Hmem as [Hmem|Hmem].
+    + inversion Hmem.
+    + destruct Hmem as [T1' [T2' [Heq [Hmem | Hmem]]]];
+      inversions Heq; inversions H1; inversions H9.
+      apply IHty_trm1; eauto.
+      apply IHty_trm2; eauto. apply has_any; assumption.
+      apply IHty_trm1; eauto. apply has_any; assumption.
+      apply IHty_trm2; eauto.
+    + destruct Hmem as [T1' [Heq _]]. inversion Heq.
+    + destruct Hmem as [y [B [T' [Heq [Htyb Hmem]]]]]. inversion Heq.
+  - (* sub *)
+    destruct (has_member_covariance Hwf H1 H0 Hmem) as [S' [U' [Hmem' [Hsub1' Hsub2']]]].
+    inversion Hmem'; subst.
+    specialize (IHty_trm Hwf Bis S' U' Hmem' H4).
+    destruct IHty_trm as [T1 [Hmem1 [Hsub1 Hsub2]]].
+    exists T1. eauto.
+Qed.
+
 (* ###################################################################### *)
 (** * Misc *)
 
