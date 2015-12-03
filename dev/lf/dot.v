@@ -1663,31 +1663,35 @@ Proof.
   intros. apply* tight_to_general.
 Qed.
 
-(* If G ~ s, s |- x = new(x: T)d, and G |-# x: {A: S..U} then G |-# x.A <: U and G |-# S <: x.A. *)
-Lemma tight_bound_completeness: forall G s x T ds A S U,
+
+Lemma sto_binds_to_ctx_binds: forall G s x v,
+  wf_sto G s -> binds x v s -> exists S, binds x S G.
+Proof.
+  introv Hwf Bis.
+  remember Hwf as Hwf'. clear HeqHwf'.
+  apply sto_binds_to_ctx_binds_raw with (x:=x) (v:=v) in Hwf.
+  destruct Hwf as [G1 [G2 [T [EqG Hty]]]].
+  subst.
+  exists T.
+  eapply binds_middle_eq. apply wf_sto_to_ok_G in Hwf'.
+  apply ok_middle_inv in Hwf'. destruct Hwf'. assumption.
+  assumption.
+Qed.
+
+Lemma record_type_new: forall G s x T ds,
   wf_sto G s ->
   binds x (val_new T ds) s ->
-  ty_trm ty_general sub_tight G (trm_var (avar_f x)) (typ_rcd (dec_typ A S U)) ->
-  subtyp ty_general sub_tight G (typ_sel (avar_f x) A) U /\
-  subtyp ty_general sub_tight G S (typ_sel (avar_f x) A).
+  record_type (open_typ x T).
 Proof.
-  introv Hwf Bis Hty.
-  assert (exists T, binds x T G) as Bi. {
-    eapply typing_implies_bound. eassumption.
-  }
-  destruct Bi as [Tx Bi].
-  apply corresponding_types with (x:=x) (T:=Tx) in Hwf; try assumption.
-  destruct Hwf as [Hex | Hex].
-  destruct Hex as [? [? [? [Bis' ?]]]].
-  unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversion Bis.
-  destruct Hex as [? [? [Bis' [Htyx EqTx]]]].
+  introv Hwf Bis.
+  destruct (sto_binds_to_ctx_binds Hwf Bis) as [S Bi].
+  destruct (corresponding_types Hwf Bi) as [Hlambda | Hnew].
+  destruct Hlambda as [? [? [? [Bis' ?]]]].
   unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversions Bis.
-  inversion Hty; subst.
-  - unfold binds in H3. unfold binds in Bi. rewrite H3 in Bi. inversions Bi.
-  - destruct T0; simpl in H3; inversions H3.
-    destruct d; simpl in H0; inversions H0.
-    admit.
-  - admit.
+  destruct Hnew as [? [? [Bis' [? ?]]]]. subst.
+  unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversions Bis.
+  apply record_new_typing in H.
+  apply open_record_type. assumption.
 Qed.
 
 (* ###################################################################### *)
@@ -1788,34 +1792,31 @@ Qed.
 (* ###################################################################### *)
 (** * Misc *)
 
-Lemma sto_binds_to_ctx_binds: forall G s x v,
-  wf_sto G s -> binds x v s -> exists S, binds x S G.
-Proof.
-  introv Hwf Bis.
-  remember Hwf as Hwf'. clear HeqHwf'.
-  apply sto_binds_to_ctx_binds_raw with (x:=x) (v:=v) in Hwf.
-  destruct Hwf as [G1 [G2 [T [EqG Hty]]]].
-  subst.
-  exists T.
-  eapply binds_middle_eq. apply wf_sto_to_ok_G in Hwf'.
-  apply ok_middle_inv in Hwf'. destruct Hwf'. assumption.
-  assumption.
-Qed.
-
-Lemma record_type_new: forall G s x T ds,
+(* If G ~ s, s |- x = new(x: T)d, and G |-# x: {A: S..U} then G |-# x.A <: U and G |-# S <: x.A. *)
+Lemma tight_bound_completeness: forall G s x T ds A S U,
   wf_sto G s ->
   binds x (val_new T ds) s ->
-  record_type (open_typ x T).
+  ty_trm ty_general sub_tight G (trm_var (avar_f x)) (typ_rcd (dec_typ A S U)) ->
+  subtyp ty_general sub_tight G (typ_sel (avar_f x) A) U /\
+  subtyp ty_general sub_tight G S (typ_sel (avar_f x) A).
 Proof.
-  introv Hwf Bis.
-  destruct (sto_binds_to_ctx_binds Hwf Bis) as [S Bi].
-  destruct (corresponding_types Hwf Bi) as [Hlambda | Hnew].
-  destruct Hlambda as [? [? [? [Bis' ?]]]].
+  introv Hwf Bis Hty.
+  assert (exists T, binds x T G) as Bi. {
+    eapply typing_implies_bound. eassumption.
+  }
+  destruct Bi as [Tx Bi].
+  apply corresponding_types with (x:=x) (T:=Tx) in Hwf; try assumption.
+  destruct Hwf as [Hex | Hex].
+  destruct Hex as [? [? [? [Bis' ?]]]].
+  unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversion Bis.
+  destruct Hex as [? [? [Bis' [Htyx EqTx]]]].
   unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversions Bis.
-  destruct Hnew as [? [? [Bis' [? ?]]]]. subst.
-  unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversions Bis.
-  apply record_new_typing in H.
-  apply open_record_type. assumption.
+  inversion Hty; subst.
+  - unfold binds in H3. unfold binds in Bi. rewrite H3 in Bi. inversions Bi.
+  - destruct T0; simpl in H3; inversions H3.
+    destruct d; simpl in H0; inversions H0.
+    admit.
+  - admit.
 Qed.
 
 (* ###################################################################### *)
