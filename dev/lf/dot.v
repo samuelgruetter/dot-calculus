@@ -264,8 +264,8 @@ with ty_defs : ctx -> defs -> typ -> Prop :=
     ty_defs G (defs_cons ds d) (typ_and T (typ_rcd D))
 
 with subtyp : tymode -> submode -> ctx -> typ -> typ -> Prop :=
-| subtyp_refl: forall m2 G T,
-    subtyp ty_general m2 G T T
+| subtyp_refl: forall m1 m2 G T,
+    subtyp m1 m2 G T T
 | subtyp_trans: forall m1 m2 G S T U,
     subtyp m1 m2 G S T ->
     subtyp m1 m2 G T U ->
@@ -1224,6 +1224,7 @@ Proof.
   remember ty_precise as m1.
   remember sub_general as m2.
   induction Hsub; try solve [inversion Heqm1].
+  - reflexivity.
   - specialize (IHHsub1 HeqT' Heqm1 Heqm2). subst.
     apply IHHsub2; reflexivity.
   - inversion HeqT'.
@@ -1239,6 +1240,7 @@ Proof.
   remember ty_precise as m1.
   remember sub_general as m2.
   induction Hsub; try solve [inversion Heqm1].
+  - reflexivity.
   - specialize (IHHsub1 HeqT' Heqm1 Heqm2). subst.
     apply IHHsub2; reflexivity.
   - inversion HeqT'.
@@ -1491,6 +1493,7 @@ Lemma record_subtyping: forall G T T',
   record_sub T T'.
 Proof.
   introv Hsub Hr. generalize dependent Hr. dependent induction Hsub.
+  - intros. apply rs_refl.
   - intros HS.
     apply record_sub_trans with (T2:=T).
     apply IHHsub1. apply HS.
