@@ -1852,6 +1852,35 @@ Proof.
   intros. inversion H; subst. apply has_member_rules_inv in H1. apply H1.
 Qed.
 
+Lemma val_new_typing: forall G s x T ds,
+  wf_sto G s ->
+  binds x (val_new T ds) s ->
+  ty_trm ty_precise sub_general G (trm_val (val_new T ds)) (typ_bnd T).
+Proof.
+  introv Hwf Bis.
+  assert (exists T, binds x T G) as Bi. {
+    eapply sto_binds_to_ctx_binds; eauto.
+  }
+  destruct Bi as [T0 Bi].
+  destruct (corresponding_types Hwf Bi).
+  - destruct H as [S [U [t [Bis' [Ht EqT]]]]].
+    false.
+  - destruct H as [T' [ds' [Bis' [Ht EqT]]]]. subst.
+    unfold binds in Bis. unfold binds in Bis'. rewrite Bis' in Bis.
+    inversion Bis. subst.
+    assumption.
+Qed.
+
+Lemma has_member_tightness: forall G s x T ds A S U,
+  wf_sto G s ->
+  binds x (val_new T ds) s ->
+  has_member G x (typ_bnd T) A S U ->
+  S = U.
+Proof.
+  (* seems plausible, but requires a bit more machinery *)
+  admit.
+Qed.
+
 (* ###################################################################### *)
 (** * Misc *)
 
