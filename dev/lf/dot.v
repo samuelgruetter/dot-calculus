@@ -2045,22 +2045,39 @@ Lemma tight_bound_completeness: forall G s x T ds A S U,
   subtyp ty_general sub_tight G S (typ_sel (avar_f x) A).
 Proof.
   introv Hwf Bis Hty.
-  assert (exists T, binds x T G) as Bi. {
-    eapply typing_implies_bound. eassumption.
+  assert (has_member G x (typ_rcd (dec_typ A S U)) A S U) as Hmem. {
+    apply has_any. assumption. apply has_refl.
   }
-  destruct Bi as [Tx Bi].
-  apply corresponding_types with (x:=x) (T:=Tx) in Hwf; try assumption.
-  destruct Hwf as [Hex | Hex].
-  destruct Hex as [? [? [? [Bis' ?]]]].
-  unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversion Bis.
-  destruct Hex as [? [? [Bis' [Htyx EqTx]]]].
-  unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversions Bis.
-  inversion Hty; subst.
-  - unfold binds in H3. unfold binds in Bi. rewrite H3 in Bi. inversions Bi.
-  - destruct T0; simpl in H3; inversions H3.
-    destruct d; simpl in H0; inversions H0.
+  apply has_member_monotonicity with (s:=s) (ds:=ds) (T0:=T) in Hmem.
+  destruct Hmem as [T1 [Hmem [Hsub1 Hsub2]]].
+  assert (has_member G x (open_typ x T) A T1 T1) as Hmemx. {
+    apply has_member_inv in Hmem.
+    repeat destruct Hmem as [Hmem|Hmem].
+    + inversion Hmem.
+    + destruct Hmem as [T1' [T2' [Heq _]]]. inversion Heq.
+    + destruct Hmem as [T1' [Heq Hmem]]. inversions Heq. assumption.
+    + destruct Hmem as [y [B [T' [Heq [Htyb Hmem]]]]]. inversion Heq.
+  }
+  assert (exists TA, has_member G x (typ_rcd (dec_typ A TA TA)) A T1 T1) as HmemA. {
     admit.
-  - admit.
+  }
+  destruct HmemA as [TA HmemA].
+  assert (TA = T1). {
+    apply has_member_inv in HmemA.
+    repeat destruct HmemA as [HmemA|HmemA].
+    + inversions HmemA. eauto.
+    + destruct HmemA as [T1' [T2' [Heq _]]]. inversion Heq.
+    + destruct HmemA as [T1' [Heq _]]. inversion Heq.
+    + destruct HmemA as [y [B [T' [Heq _]]]]. inversion Heq.
+  }
+  subst.
+  assert (ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T1 T1))) as Htyp. {
+    admit.
+  }
+  split.
+  eapply subtyp_trans. eapply subtyp_sel1_tight. eapply Htyp. eapply Hsub2.
+  eapply subtyp_trans. eapply Hsub1. eapply subtyp_sel2_tight. eapply Htyp.
+  eapply Hwf. eapply Bis.
 Qed.
 
 (* ###################################################################### *)
