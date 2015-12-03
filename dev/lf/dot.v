@@ -2384,23 +2384,60 @@ Lemma ty_defs_has: forall G ds T d,
   ty_defs G ds T ->
   defs_has ds d ->
   record_type T ->
-  exists D, record_sub T (typ_rcd D).
+  exists D, ty_def G d D /\ record_sub T (typ_rcd D).
 Proof.
   introv Hdefs Hhas Htype. generalize dependent d. generalize dependent ds.
   inversion Htype; subst. induction H; intros.
-  - exists D. apply rs_refl.
+  - exists D. split. inversion Hdefs; subst. inversion Hhas; subst.
+    case_if. inversions H1. assumption. apply rs_refl.
   - inversion Hdefs; subst.
     unfold defs_has in Hhas. unfold get_def in Hhas.
     case_if.
     + inversions Hhas.
-      exists D. eapply rs_dropl. eapply rs_refl.
-    + assert (exists D0, record_sub T (typ_rcd D0)) as A. {
+      exists D. split. inversions Hdefs; subst. assumption.
+      eapply rs_dropl. eapply rs_refl.
+    + assert (exists D0, ty_def G d D0 /\ record_sub T (typ_rcd D0)) as A. {
         eapply IHrecord_typ; eauto.
         exists ls. eassumption.
       }
-      destruct A as [D0 A].
-      exists D0. apply rs_drop. apply A.
+      destruct A as [D0 [A1 A2]].
+      exists D0. split. apply A1. apply rs_drop. apply A2.
 Qed.
+
+(*
+(*
+Lemma (Possible types realizability)
+
+If `G ~ s` and `x = v in s` and `T in Ts(G, x, v)` then `G |- x: T`.
+
+*Proof*: By induction on the formation rules (1)-(7). We distinguish
+ according to the last rule that was applied to form `Ts(G, x, v)`.
+*)
+Lemma possible_types_realizability: forall G s x v T,
+  wf_sto G s ->
+  binds x v s ->
+  possible_types G x v T ->
+  ty_trm ty_general sub_general G (trm_var (avar_f x)) T.
+Proof.
+  introv Hwf Bis Hpt. induction Hpt.
+  - eapply var_new_typing; eauto.
+  - lets Htyx: (var_new_typing Hwf Bis).
+    lets Htyv: (val_new_typing Hwf Bis).
+    apply new_intro_inversion in Htyv. destruct Htyv as [_ Htype].
+    assert (ty_defs G (open_defs x ds) (open_typ x T)) as Hdefs. {
+      lets Htyv: (val_new_typing Hwf Bis). inversion Htyv; subst.
+      - pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H5 y FrL).
+        rewrite subst_intro_typ with (x:=y). rewrite subst_intro_defs with (x:=y).
+        eapply subst_ty_defs. eassumption.
+        apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
+        rewrite <- subst_intro_typ with (x:=y). assumption. eauto. eauto. eauto.
+      - assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
+        specialize (H1 Heqm1). destruct H1. inversion H1.
+    }
+    apply open_record_type with (x:=x) in Htype.
+    lets Hsub: (ty_defs_has Hdefs H Htype).
+    destruct Hsub as [D [Hdef Hsub]].
+*)
 
 (*
 Lemma (Possible types closure)
