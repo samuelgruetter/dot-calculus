@@ -1663,6 +1663,27 @@ Proof.
   intros. apply* tight_to_general.
 Qed.
 
+Lemma precise_to_tight:
+  (forall m1 m2 G t T,
+     ty_trm m1 m2 G t T ->
+     m1 = ty_precise ->
+     m2 = sub_general ->
+     ty_trm ty_general sub_tight G t T) /\
+  (forall m1 m2 G S U,
+     subtyp m1 m2 G S U ->
+     m1 = ty_precise ->
+     m2 = sub_general ->
+     subtyp ty_general sub_tight G S U).
+Proof.
+  apply ts_mutind; intros; subst; eauto; inversion H0.
+Qed.
+
+Lemma precise_to_tight_typing: forall G t T,
+  ty_trm ty_precise sub_general G t T ->
+  ty_trm ty_general sub_tight G t T.
+Proof.
+  intros. apply* precise_to_tight.
+Qed.
 
 Lemma sto_binds_to_ctx_binds: forall G s x v,
   wf_sto G s -> binds x v s -> exists S, binds x S G.
