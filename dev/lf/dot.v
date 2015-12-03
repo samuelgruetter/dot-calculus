@@ -1172,6 +1172,23 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma subst_ty_defs: forall y S G x ds T,
+    ty_defs (G & x ~ S) ds T ->
+    ok (G & x ~ S) ->
+    x \notin fv_ctx_types G ->
+    ty_trm ty_general sub_general G (trm_var (avar_f y)) (subst_typ x y S) ->
+    ty_defs G (subst_defs x y ds) (subst_typ x y T).
+Proof.
+  intros.
+  apply (proj53 (subst_rules y S)) with (G1:=G) (G2:=empty) (x:=x) in H.
+  unfold subst_ctx in H. rewrite map_empty in H. rewrite concat_empty_r in H.
+  apply H.
+  rewrite concat_empty_r. reflexivity.
+  rewrite concat_empty_r. assumption.
+  assumption.
+  unfold subst_ctx. rewrite map_empty. rewrite concat_empty_r. assumption.
+Qed.
+
 (* ###################################################################### *)
 (** ** Some Lemmas *)
 
@@ -2296,6 +2313,15 @@ Proof.
     specialize (H Heqm1). destruct H. inversion H.
 Qed.
 
+Lemma new_intro_inversion: forall G T ds U,
+  ty_trm ty_precise sub_general G (trm_val (val_new T ds)) U ->
+  U = typ_bnd T /\ record_type T.
+Proof.
+  intros. inversion H; subst.
+  - apply record_new_typing in H. split; eauto.
+  - assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
+    specialize (H0 Heqm1). destruct H0. inversion H0.
+Qed.
 
 (* ###################################################################### *)
 (** ** Possible types *)
@@ -2314,38 +2340,67 @@ If S in SS and G |-! y: {A: S..S} then y.A in SS.
 If S in SS then rec(x: S) in SS.
 *)
 
-Inductive ptmode: Set := pt_mono | pt_rec.
-
-Inductive possible_types: ptmode -> ctx -> var -> val -> typ -> Prop :=
-| pt_new : forall m G x T ds,
-  possible_types m G x (val_new T ds) (open_typ x T)
-| pt_rcd_trm : forall m G x T ds a t T',
+Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
+| pt_new : forall G x T ds,
+  possible_types G x (val_new T ds) (open_typ x T)
+| pt_rcd_trm : forall G x T ds a t T',
   defs_has (open_defs x ds) (def_trm a t) ->
   ty_trm ty_general sub_general G t T' ->
-  possible_types m G x (val_new T ds) (typ_rcd (dec_trm a T'))
-| pt_rcd_typ : forall m G x T ds A T' S U,
+  possible_types G x (val_new T ds) (typ_rcd (dec_trm a T'))
+| pt_rcd_typ : forall G x T ds A T' S U,
   defs_has (open_defs x ds) (def_typ A T') ->
   subtyp ty_general sub_general G S T' ->
   subtyp ty_general sub_general G T' U ->
-  possible_types m G x (val_new T ds) (typ_rcd (dec_typ A S U))
-| pt_lambda : forall L m G x T t T' U,
+  possible_types G x (val_new T ds) (typ_rcd (dec_typ A S U))
+| pt_lambda : forall L G x T t T' U,
   subtyp ty_general sub_general G T' T ->
   (forall y, y \notin L ->
     ty_trm ty_general sub_general (G & y ~ T') (open_trm y t) (open_typ y U)) ->
-  possible_types m G x (val_lambda T t) (typ_all T' U)
-| pt_and : forall m G x v S1 S2,
-  possible_types m G x v S1 ->
-  possible_types m G x v S2 ->
-  possible_types m G x v (typ_and S1 S2)
-| pt_sel : forall m G x v y A S,
-  possible_types m G x v S ->
+  possible_types G x (val_lambda T t) (typ_all T' U)
+| pt_and : forall G x v S1 S2,
+  possible_types G x v S1 ->
+  possible_types G x v S2 ->
+  possible_types G x v (typ_and S1 S2)
+| pt_sel : forall G x v y A S,
+  possible_types G x v S ->
   ty_trm ty_precise sub_general G (trm_var y) (typ_rcd (dec_typ A S S)) ->
-  possible_types m G x v (typ_sel y A)
+  possible_types G x v (typ_sel y A)
 | pt_bnd : forall G x v S S',
-  possible_types pt_mono G x v S ->
+  possible_types G x v S ->
   S = open_typ x S' ->
-  possible_types pt_rec G x v (typ_bnd S')
+  possible_types G x v (typ_bnd S')
 .
+
+Lemma var_new_typing: forall G s x T ds,
+  wf_sto G s ->
+  binds x (val_new T ds) s ->
+  ty_trm ty_general sub_general G (trm_var (avar_f x)) (open_typ x T).
+Proof.
+  intros.
+  apply ty_rec_elim. apply ty_var. eapply wf_sto_val_new_in_G; eauto.
+Qed.
+
+Lemma ty_defs_has: forall G ds T d,
+  ty_defs G ds T ->
+  defs_has ds d ->
+  record_type T ->
+  exists D, record_sub T (typ_rcd D).
+Proof.
+  introv Hdefs Hhas Htype. generalize dependent d. generalize dependent ds.
+  inversion Htype; subst. induction H; intros.
+  - exists D. apply rs_refl.
+  - inversion Hdefs; subst.
+    unfold defs_has in Hhas. unfold get_def in Hhas.
+    case_if.
+    + inversions Hhas.
+      exists D. eapply rs_dropl. eapply rs_refl.
+    + assert (exists D0, record_sub T (typ_rcd D0)) as A. {
+        eapply IHrecord_typ; eauto.
+        exists ls. eassumption.
+      }
+      destruct A as [D0 A].
+      exists D0. apply rs_drop. apply A.
+Qed.
 
 (*
 Lemma (Possible types closure)
