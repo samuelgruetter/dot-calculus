@@ -2034,7 +2034,7 @@ Proof.
 Qed.
 
 (* ###################################################################### *)
-(** * Misc *)
+(** * Tight bound completeness *)
 
 (* If G ~ s, s |- x = new(x: T)d, and G |-# x: {A: S..U} then G |-# x.A <: U and G |-# S <: x.A. *)
 Lemma tight_bound_completeness: forall G s x T ds A S U,
@@ -2079,6 +2079,20 @@ Proof.
   eapply subtyp_trans. eapply Hsub1. eapply subtyp_sel2_tight. eapply Htyp.
   eapply Hwf. eapply Bis.
 Qed.
+
+(* ###################################################################### *)
+(** * Misc Inversions *)
+
+Lemma all_intro_inversion: forall G S t U,
+  ty_trm ty_precise sub_general G (trm_val (val_lambda S t)) U ->
+  exists T, U = typ_all S T.
+Proof.
+  intros. dependent induction H.
+  - eexists. reflexivity.
+  - assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
+    specialize (H Heqm1). destruct H. inversion H.
+Qed.
+
 
 (* ###################################################################### *)
 (** ** Possible types *)
