@@ -214,7 +214,7 @@ Inductive ty_trm : tymode -> submode -> ctx -> trm -> typ -> Prop :=
     ty_trm m1 m2 G (trm_var (avar_f x)) T
 | ty_all_intro : forall L m1 m2 G T t U,
     (forall x, x \notin L ->
-      ty_trm ty_general sub_general (G & x ~ T) t (open_typ x U)) ->
+      ty_trm ty_general sub_general (G & x ~ T) (open_trm x t) (open_typ x U)) ->
     ty_trm m1 m2 G (trm_val (val_lambda T t)) (typ_all T U)
 | ty_all_elim : forall m2 G x z S T,
     ty_trm ty_general m2 G (trm_var (avar_f x)) (typ_all S T) ->
@@ -1024,7 +1024,8 @@ Proof.
     assert (subst_fvar x y z = z) as A. {
       unfold subst_fvar. rewrite If_r. reflexivity. eauto.
     }
-    rewrite <- A at 2. rewrite <- subst_open_commute_typ.
+    rewrite <- A at 2. rewrite <- subst_open_commute_trm.
+    rewrite <- A at 3. rewrite <- subst_open_commute_typ.
     assert (subst_ctx x y G2 & z ~ subst_typ x y T = subst_ctx x y (G2 & z ~ T)) as B. {
       unfold subst_ctx. rewrite map_concat. rewrite map_single. reflexivity.
     }
