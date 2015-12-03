@@ -2450,12 +2450,12 @@ Let SS = Ts(G, x, v). We first show SS is closed wrt G |-# _ <: _.
 Assume T0 in SS and G |- T0 <: U0.s We show U0 in SS by an induction on subtyping derivations of G |-# T0 <: U0.
 *)
 
-Lemma mono_possible_types_closure_tight: forall G s x v T0 U0,
+Lemma possible_types_closure_tight: forall G s x v T0 U0,
   wf_sto G s ->
   binds x v s ->
-  possible_types pt_mono G x v T0 ->
+  possible_types G x v T0 ->
   subtyp ty_general sub_tight G T0 U0 ->
-  possible_types pt_mono G x v U0.
+  possible_types G x v U0.
 Proof.
   introv Hwf Bis HT0 Hsub. dependent induction Hsub.
   - (* Refl-<: *) assumption.
@@ -2495,7 +2495,7 @@ Proof.
     assert (record_type (open_typ x T0)) as B. {
       eapply record_type_new; eassumption.
     }
-    rewrite H5 in B. destruct B as [? B]. inversion B.
+    rewrite H4 in B. destruct B as [? B]. inversion B.
     assert (T = S) as B. {
       eapply unique_tight_bounds; eauto.
     }
@@ -2505,13 +2505,13 @@ Proof.
     assert (record_type (open_typ x T)) as B. {
       eapply record_type_new; eassumption.
     }
-    rewrite H6 in B. destruct B as [? B]. inversion B.
+    rewrite H5 in B. destruct B as [? B]. inversion B.
     apply_fresh pt_lambda as y.
     eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
     eapply ty_sub.
     intro Contra. inversion Contra.
     eapply narrow_typing.
-    eapply H8. eauto.
+    eapply H7. eauto.
     eapply subenv_last.
     eapply tight_to_general_subtyping. assumption.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
@@ -2519,104 +2519,37 @@ Proof.
     eapply H. eauto.
 Qed.
 
-Lemma mono_possible_types_closure: forall G s x v S T,
+Lemma possible_types_closure: forall G s x v S T,
   wf_sto G s ->
   binds x v s ->
-  possible_types pt_mono G x v S ->
+  possible_types G x v S ->
   subtyp ty_general sub_general G S T ->
-  possible_types pt_mono G x v T.
+  possible_types G x v T.
 Proof.
   admit.
 Qed.
 
-Lemma possible_types_to_typing: forall G s x v T,
-  wf_sto G s ->
-  binds x v s ->
-  possible_types pt_mono G x v T ->
-  ty_trm ty_general sub_general G (trm_var (avar_f x)) T.
-Proof.
-  introv Hwf Bis H. dependent induction H.
-  - apply ty_rec_elim. apply precise_to_general_typing.
-    remember Hwf as Hwf'. clear HeqHwf'.
-    apply sto_binds_to_ctx_binds_raw with (x:=x) (v:=val_new T ds) in Hwf.
-    destruct Hwf as [G1 [G2 [T0 [EqG Hty]]]].
-    inversion Hty; subst.
-    apply ty_var. apply binds_middle_eq. apply wf_sto_to_ok_G in Hwf'.
-    apply ok_middle_inv in Hwf'. destruct Hwf'. assumption.
-    assert (exists x0, trm_val (val_new T ds) = trm_var (avar_f x0)) as Contra. {
-      apply H. reflexivity.
-    }
-    destruct Contra as [? Contra]. inversion Contra.
-    assumption.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-Qed.
+(*
+Lemma (Possible types completeness for values)
 
-Lemma possible_types_closure_tight: forall G s x v T0 U0,
+If `G ~ s` and `x = v in s` and  `G |-! v: T` then `T in Ts(G, x, v)`.
+ *)
+
+Lemma possible_types_completeness_for_values: forall G s x v T,
   wf_sto G s ->
   binds x v s ->
-  possible_types pt_rec G x v T0 ->
-  subtyp ty_general sub_tight G T0 U0 ->
-  possible_types pt_rec G x v U0.
+  ty_trm ty_precise sub_general G (trm_val v) T ->
+  possible_types G x v T.
 Proof.
-  introv Hwf Bis HT0 Hsub. dependent induction Hsub.
-  - (* Refl-<: *) assumption.
-  - (* Trans-<: *)
-    apply IHHsub2; try assumption.
-    apply IHHsub1; assumption.
-  - (* And-<: *)
-    inversion HT0; subst.
-    admit.
-    assumption.
-  - (* And-<: *)
-    inversion HT0; subst.
-    admit.
-    assumption.
-  - (* <:-And *)
-    apply pt_and. apply IHHsub1; assumption. apply IHHsub2; assumption.
-  - (* Fld-<:-Fld *)
-    inversion HT0; subst.
-    admit.
-    eapply pt_rcd_trm.
-    eassumption.
-    apply ty_sub with (T:=T).
-    intro Contra. inversion Contra.
-    assumption.
-    apply tight_to_general_subtyping. assumption.
-  - (* Typ-<:-Typ *)
-    inversion HT0; subst.
-    admit.
-    eapply pt_rcd_typ.
-    eassumption.
-    eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
-    eapply subtyp_trans. eassumption. eapply tight_to_general_subtyping. eassumption.
-  - (* <:-Sel-tight *)
-    eapply pt_sel. eassumption. assumption.
-  - (* Sel-<:-tight *)
-    inversion HT0; subst.
-    admit.
-    assert (T = S) as B. {
-      eapply unique_tight_bounds; eauto.
-    }
-    subst. assumption.
-  - (* All-<:-All *)
-    inversion HT0; subst.
-    admit.
+  introv Hwf Bis Hty. destruct v as [S ds | S t].
+  - apply new_intro_inversion in Hty. destruct Hty as [Heq Htype]. subst.
+    eapply pt_bnd. eapply pt_new. reflexivity.
+  - remember Hty as Hty'. clear HeqHty'. inversion Hty'; subst.
+    apply all_intro_inversion in Hty. destruct Hty as [T' Heq]. subst.
     apply_fresh pt_lambda as y.
-    eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
-    eapply ty_sub.
-    intro Contra. inversion Contra.
-    eapply narrow_typing.
-    eapply H8. eauto.
-    eapply subenv_last.
-    eapply tight_to_general_subtyping. assumption.
-    eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
-    eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
-    eapply H. eauto.
-Qed.
+    apply subtyp_refl.
+    apply H5.
+
 
 (*
 Lemma (Possible types)
