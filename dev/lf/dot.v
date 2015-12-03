@@ -1815,6 +1815,43 @@ with has_member_rules: ctx -> var -> typ -> typ_label -> typ -> typ -> Prop :=
   has_member_rules G x (typ_sel (avar_f y) B) A S U
 .
 
+Scheme has_mut := Induction for has_member Sort Prop
+with hasr_mut := Induction for has_member_rules Sort Prop.
+Combined Scheme has_mutind from has_mut, hasr_mut.
+
+Lemma has_member_rules_inv: forall G x T A S U, has_member_rules G x T A S U ->
+  (T = typ_rcd (dec_typ A S U)) \/
+  (exists T1 T2, T = typ_and T1 T2 /\
+    (has_member G x T1 A S U \/
+     has_member G x T2 A S U)) \/
+  (exists T', T = typ_bnd T' /\
+    has_member G x (open_typ x T') A S U) \/
+  (exists y B T', T = typ_sel (avar_f y) B /\
+    ty_trm ty_precise sub_general G (trm_var (avar_f y)) (typ_rcd (dec_typ B T' T')) /\
+    has_member G x T' A S U).
+Proof.
+  intros. inversion H; subst.
+  - left. eauto.
+  - right. left. exists T1 T2. eauto.
+  - right. left. exists T1 T2. eauto.
+  - right. right. left. exists T0. eauto.
+  - right. right. right. exists y B T'. eauto.
+Qed.
+
+Lemma has_member_inv: forall G x T A S U, has_member G x T A S U ->
+  (T = typ_rcd (dec_typ A S U)) \/
+  (exists T1 T2, T = typ_and T1 T2 /\
+    (has_member G x T1 A S U \/
+     has_member G x T2 A S U)) \/
+  (exists T', T = typ_bnd T' /\
+    has_member G x (open_typ x T') A S U) \/
+  (exists y B T', T = typ_sel (avar_f y) B /\
+    ty_trm ty_precise sub_general G (trm_var (avar_f y)) (typ_rcd (dec_typ B T' T')) /\
+    has_member G x T' A S U).
+Proof.
+  intros. inversion H; subst. apply has_member_rules_inv in H1. apply H1.
+Qed.
+
 (* ###################################################################### *)
 (** * Misc *)
 
