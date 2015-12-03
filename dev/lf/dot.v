@@ -1279,12 +1279,19 @@ Proof.
   inversion Contra.
 Qed.
 
+Inductive record_dec : dec -> Prop :=
+| rd_typ : forall A T, record_dec (dec_typ A T T)
+| rd_trm : forall a T, record_dec (dec_trm a T)
+.
+
 Inductive record_typ : typ -> fset label -> Prop :=
 | rt_one : forall D l,
+  record_dec D ->
   l = label_of_dec D ->
   record_typ (typ_rcd D) \{l}
 | rt_cons: forall T ls D l,
   record_typ T ls ->
+  record_dec D ->
   l = label_of_dec D ->
   l \notin ls ->
   record_typ (typ_and T (typ_rcd D)) (union ls \{l})
@@ -1298,36 +1305,129 @@ Proof.
   intros. induction D; simpl; reflexivity.
 Qed.
 
+Lemma open_record_dec: forall D x,
+  record_dec D -> record_dec (open_dec x D).
+Proof.
+  intros. inversion H; unfold open_dec; simpl; constructor.
+Qed.
+
 Lemma open_record_typ: forall T x ls,
   record_typ T ls -> record_typ (open_typ x T) ls.
 Proof.
   intros. induction H.
   - unfold open_typ. simpl.
     apply rt_one.
+    apply open_record_dec. assumption.
     rewrite <- open_dec_preserves_label. assumption.
   - unfold open_typ. simpl.
     apply rt_cons; try assumption.
+    apply open_record_dec. assumption.
     rewrite <- open_dec_preserves_label. assumption.
 Qed.
 
+Lemma open_eq_avar: forall x i a1 a2,
+  x \notin fv_avar a1 -> x \notin fv_avar a2 ->
+  open_rec_avar i x a1 = open_rec_avar i x a2 ->
+  a1 = a2.
+Proof.
+  introv Fr1 Fr2 H. induction a1; induction a2; simpl in H; inversion H.
+  - case_if; case_if.
+    + reflexivity.
+    + inversion H. subst. reflexivity.
+  - case_if.
+    inversion H. subst. false.
+    apply notin_same in Fr2. assumption.
+  - case_if.
+    inversion H. subst. false.
+    apply notin_same in Fr1. assumption.
+  - subst. reflexivity.
+Qed.
+
+Lemma open_eq_typ_dec: forall x,
+  (forall T1, x \notin fv_typ T1 ->
+   forall T2, x \notin fv_typ T2 ->
+   forall i, open_rec_typ i x T1 = open_rec_typ i x T2 ->
+   T1 = T2) /\
+  (forall D1, x \notin fv_dec D1 ->
+   forall D2, x \notin fv_dec D2 ->
+   forall i, open_rec_dec i x D1 = open_rec_dec i x D2 ->
+   D1 = D2).
+Proof.
+  intros. apply typ_mutind; intros.
+  - simpl in H2. induction T2; simpl in H2; inversion H2.
+    f_equal. eapply H; eauto.
+  - simpl in H3; induction T2; simpl in H3; inversion H3.
+    f_equal.
+    eapply H; eauto using notin_union_r1.
+    eapply H0; eauto using notin_union_r2.
+  - simpl in H1; induction T2; simpl in H1; inversion H1.
+    f_equal. eapply open_eq_avar; eauto.
+  - simpl in H2. induction T2; simpl in H2; inversion H2.
+    f_equal.
+    eapply H; eauto.
+  - simpl in H3. induction T2; simpl in H3; inversion H3.
+    f_equal.
+    eapply H; eauto using notin_union_r1.
+    eapply H0; eauto using notin_union_r2.
+  - simpl in H3. induction D2; simpl in H3; inversion H3.
+    subst.
+    f_equal.
+    eapply H; eauto using notin_union_r1.
+    eapply H0; eauto using notin_union_r2.
+  - simpl in H2. induction D2; simpl in H2; inversion H2.
+    subst.
+    f_equal.
+    eapply H; eauto.
+Qed.
+
+Lemma open_eq_typ: forall x i T1 T2,
+  x \notin fv_typ T1 -> x \notin fv_typ T2 ->
+  open_rec_typ i x T1 = open_rec_typ i x T2 ->
+  T1 = T2.
+Proof.
+  introv Fr1 Fr2 Heq.
+  destruct (open_eq_typ_dec x) as [HT HD].
+  eapply HT; eauto.
+Qed.
+
+Lemma open_record_dec_rev: forall D x,
+  x \notin fv_dec D ->
+  record_dec (open_dec x D) -> record_dec D.
+Proof.
+  introv Fr H. remember (open_dec x D) as DX.
+  generalize dependent D.
+  inversion H; intros.
+  - destruct D; unfold open_dec in HeqDX; simpl in HeqDX; inversion HeqDX.
+    assert (t0 = t1) as Heq. {
+      eapply open_eq_typ; eauto using notin_union_r1, notin_union_r2.
+    }
+    subst. constructor.
+  - destruct D; unfold open_dec in HeqDX; simpl in HeqDX; inversion HeqDX.
+    subst. constructor.
+Qed.
+
 Lemma open_record_typ_rev: forall T x ls,
+   x \notin fv_typ T ->
   record_typ (open_typ x T) ls -> record_typ T ls.
 Proof.
-  intros. remember (open_typ x T) as TX.
+  introv Fr H. remember (open_typ x T) as TX.
   generalize dependent T.
   induction H; intros.
   - destruct T; unfold open_typ in HeqTX; simpl in HeqTX; inversion HeqTX.
     subst.
     rewrite <- open_dec_preserves_label.
     apply rt_one; eauto.
+    eapply open_record_dec_rev; eauto.
   - destruct T0; unfold open_typ in HeqTX; simpl in HeqTX; inversion HeqTX.
     subst.
-    destruct T0_2; unfold open_typ in H4; simpl in H4; inversion H4.
+    destruct T0_2; unfold open_typ in H5; simpl in H5; inversion H5.
     subst.
     rewrite <- open_dec_preserves_label.
     apply rt_cons; try assumption.
-    eapply IHrecord_typ. eauto. eauto.
-    rewrite <- open_dec_preserves_label in H1. apply H1.
+    eapply IHrecord_typ; eauto using notin_union_r1.
+    eapply open_record_dec_rev; eauto using notin_union_r2.
+    eauto.
+    rewrite <- open_dec_preserves_label in H2. apply H2.
 Qed.
 
 Lemma open_record_type: forall T x,
@@ -1338,10 +1438,10 @@ Proof.
 Qed.
 
 Lemma open_record_type_rev: forall T x,
+  x \notin fv_typ T ->
   record_type (open_typ x T) -> record_type T.
 Proof.
-  intros. destruct H as [ls H]. exists ls. eapply open_record_typ_rev.
-  eassumption.
+  introv Fr H. destruct H as [ls H]. exists ls. eapply open_record_typ_rev; eauto.
 Qed.
 
 Lemma label_same_typing: forall G d D,
@@ -1356,7 +1456,9 @@ Lemma record_defs_typing_rec: forall G ds S,
 Proof.
   intros. induction H.
   - eexists. split.
-    apply rt_one. reflexivity.
+    apply rt_one.
+    inversion H; subst; constructor.
+    reflexivity.
     apply label_same_typing in H. rewrite <- H.
     intros. split; intro A.
     + unfold defs_hasnt. simpl.
@@ -1366,7 +1468,9 @@ Proof.
       case_if. apply notin_singleton. eauto.
   - destruct IHty_defs as [ls [IH1 IH2]].
     eexists. split.
-    apply rt_cons; try eassumption. reflexivity.
+    apply rt_cons; try eassumption.
+    inversion H0; subst; constructor.
+    reflexivity.
     apply label_same_typing in H0. rewrite <- H0.
     specialize (IH2 (label_of_def d)).
     destruct IH2 as [IH2A IH2B].
@@ -1408,8 +1512,9 @@ Proof.
   intros.
   inversion H; subst.
   + pick_fresh x.
-   apply open_record_type_rev with (x:=x).
-   eapply record_defs_typing. eapply H4. eauto.
+    apply open_record_type_rev with (x:=x).
+    eauto.
+    eapply record_defs_typing. eapply H4. eauto.
   + assert (exists x, trm_val (val_new S ds) = trm_var (avar_f x)) as Contra. {
       apply H0; eauto.
     }
@@ -1440,7 +1545,7 @@ Proof.
   - exists ls. split. assumption. apply subset_refl.
   - inversion Htyp; subst.
     eexists. split.
-    eapply rt_one. reflexivity.
+    eapply rt_one. assumption. reflexivity.
     rewrite <- union_empty_l with (E:=\{ label_of_dec D}) at 1.
     apply subset_union_2. apply subset_empty_l. apply subset_refl.
   - inversion Htyp; subst.
@@ -1525,15 +1630,15 @@ Proof.
   introv Htype Hsub1 Hsub2.
   generalize dependent T2. generalize dependent T1. generalize dependent A.
   destruct Htype as [ls Htyp]. induction Htyp; intros; inversion Hsub1; inversion Hsub2; subst.
-  - inversion H4. subst. reflexivity.
-  - inversion H8. subst. reflexivity.
+  - inversion H5. subst. reflexivity.
+  - inversion H9. subst. reflexivity.
   - apply record_typ_sub_label_in with (D:=dec_typ A T2 T2) in Htyp.
-    simpl in Htyp. simpl in H0. unfold "\notin" in H0. unfold not in H0.
-    specialize (H0 Htyp). inversion H0.
+    simpl in Htyp. simpl in H1. unfold "\notin" in H1. unfold not in H1.
+    specialize (H1 Htyp). inversion H1.
     assumption.
   - apply record_typ_sub_label_in with (D:=dec_typ A T1 T1) in Htyp.
-    simpl in Htyp. simpl in H0. unfold "\notin" in H0. unfold not in H0.
-    specialize (H0 Htyp). inversion H0.
+    simpl in Htyp. simpl in H1. unfold "\notin" in H1. unfold not in H1.
+    specialize (H1 Htyp). inversion H1.
     assumption.
   - eapply IHHtyp; eassumption.
 Qed.
