@@ -2453,6 +2453,17 @@ Proof.
     destruct Hsub as [D [Hdef Hsub]].
 *)
 
+Lemma possible_types_closure_record: forall G s x v T0 U0,
+  wf_sto G s ->
+  binds x v s ->
+  possible_types G x v T0 ->
+  record_type T0 ->
+  record_sub T0 U0 ->
+  possible_types G x v U0.
+Proof.
+  admit.
+Qed.
+
 (*
 Lemma (Possible types closure)
 
@@ -2477,7 +2488,14 @@ Proof.
     apply IHHsub1; assumption.
   - (* And-<: *)
     inversion HT0; subst.
-    admit.
+    assert (record_type (open_typ x T0)) as Htype. {
+      eapply open_record_type.
+      eapply record_new_typing. eapply val_new_typing; eauto.
+    }
+    eapply possible_types_closure_record; eauto.
+    rewrite <- H3. assumption.
+    rewrite H3 in Htype. destruct Htype as [ls Htyp]. inversion Htyp; subst.
+    apply rs_drop. apply rs_refl.
     assumption.
   - (* And-<: *)
     inversion HT0; subst.
