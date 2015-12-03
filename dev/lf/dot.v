@@ -1997,14 +1997,63 @@ Proof.
     assumption.
 Qed.
 
+
+Lemma rcd_typ_eq_bounds: forall T A S U,
+  record_type T ->
+  record_sub T (typ_rcd (dec_typ A S U)) ->
+  S = U.
+Proof.
+  introv Htype Hsub.
+  generalize dependent U. generalize dependent S. generalize dependent A.
+  destruct Htype as [ls Htyp]. induction Htyp; intros; inversion Hsub; subst.
+  - inversion H; subst. reflexivity.
+  - inversion H; subst. reflexivity.
+  - apply IHHtyp with (A:=A); eauto.
+Qed.
+
+Lemma has_member_rcd_typ_sub_mut:
+  (forall G x T A S U,
+    has_member G x T A S U ->
+    record_type T ->
+    record_sub T (typ_rcd (dec_typ A S U))) /\
+  (forall G x T A S U,
+    has_member_rules G x T A S U ->
+    record_type T ->
+    record_sub T (typ_rcd (dec_typ A S U))).
+Proof.
+  apply has_mutind; intros.
+  - apply H; eauto.
+  - apply rs_refl.
+  - inversion H0; subst. inversion H1; subst. apply rs_drop.
+    apply H; eauto.
+    exists ls. assumption.
+  - inversion H0; subst. inversion H1; subst. inversion h; subst. inversion H3; subst.
+    eapply rs_dropl. eapply rs_refl.
+  - inversion H0. inversion H1.
+  - inversion H0. inversion H1.
+Qed.
+
 Lemma has_member_tightness: forall G s x T ds A S U,
   wf_sto G s ->
   binds x (val_new T ds) s ->
   has_member G x (typ_bnd T) A S U ->
   S = U.
 Proof.
-  (* seems plausible, but requires a bit more machinery *)
-  admit.
+  introv Hwf Bis Hmem.
+  assert (record_type T) as Htype. {
+    eapply record_new_typing. eapply val_new_typing; eauto.
+  }
+  assert (record_type (open_typ x T)) as Htypex. {
+    apply open_record_type. assumption.
+  }
+  assert (has_member G x (open_typ x T) A S U) as Hmemx. {
+    inversion Hmem; subst. inversion H0; subst. assumption.
+  }
+  assert (record_sub (open_typ x T) (typ_rcd (dec_typ A S U))) as Hsub. {
+    destruct has_member_rcd_typ_sub_mut as [HL _].
+    eapply HL; eauto.
+  }
+  eapply rcd_typ_eq_bounds. eapply Htypex. eapply Hsub.
 Qed.
 
 Lemma has_member_covariance: forall G s T1 T2 x A S2 U2,
