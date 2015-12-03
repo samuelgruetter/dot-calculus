@@ -1822,6 +1822,19 @@ Proof.
   assumption.
 Qed.
 
+Lemma ctx_binds_to_sto_binds: forall G s x T,
+  wf_sto G s -> binds x T G -> exists v, binds x v s.
+Proof.
+  introv Hwf Bi.
+  remember Hwf as Hwf'. clear HeqHwf'.
+  apply ctx_binds_to_sto_binds_raw with (x:=x) (T:=T) in Hwf.
+  destruct Hwf as [G1 [G2 [v [EqG [Bis Hty]]]]].
+  subst.
+  exists v.
+  assumption.
+  assumption.
+Qed.
+
 Lemma record_type_new: forall G s x T ds,
   wf_sto G s ->
   binds x (val_new T ds) s ->
@@ -2554,18 +2567,47 @@ Proof.
 Qed.
 
 (*
+Lemma (Possible types completeness)
+
+If `G ~ s` and `x = v in s` and  `G |- x: T` then `T in Ts(G, x, v)`.
+
 Lemma (Possible types)
 
-If G ~ s and G |- x: T then, for some non-variable value v, s |- x = v and T in Ts(G, x, v).
- *)
+If `G ~ s` and `G |- x: T` then, for some value `v`,
+`s(x) = v` and `T in Ts(G, x, v)`.
+*)
 
-Lemma possible_types_lemma: forall G s x T,
+Lemma possible_types_completeness: forall G s x T,
   wf_sto G s ->
   ty_trm ty_general sub_general G (trm_var (avar_f x)) T ->
-  exists v, binds x v s /\ possible_types pt_rec G x v T.
+  exists v, binds x v s /\ possible_types G x v T.
 Proof.
-  admit.
+  introv Hwf H. dependent induction H.
+  - assert (exists v, binds x v s /\ ty_trm ty_precise sub_general G (trm_val v) T) as A. {
+      destruct (ctx_binds_to_sto_binds_raw Hwf H) as [G1 [? [v [? [Bi Hty]]]]].
+      exists v. split. apply Bi. subst. rewrite <- concat_assoc.
+      eapply weaken_ty_trm. assumption. rewrite concat_assoc.
+      eapply wf_sto_to_ok_G. eassumption.
+    }
+    destruct A as [v [Bis Hty]].
+    exists v. split. apply Bis. eapply possible_types_completeness_for_values; eauto.
+  - specialize (IHty_trm Hwf).
+    destruct IHty_trm as [v [Bis Hp]].
+    exists v. split. assumption. eapply pt_bnd. eapply Hp. reflexivity.
+  - specialize (IHty_trm Hwf).
+    destruct IHty_trm as [v [Bis Hp]].
+    exists v. split. assumption. inversion Hp; subst.
+    + lets Htype: (record_type_new Hwf Bis). rewrite H4 in Htype. inversion Htype. inversion H0.
+    + assumption.
+  - specialize (IHty_trm1 Hwf). destruct IHty_trm1 as [v [Bis1 Hp1]].
+    specialize (IHty_trm2 Hwf). destruct IHty_trm2 as [v' [Bis2 Hp2]].
+    unfold binds in Bis1. unfold binds in Bis2. rewrite Bis2 in Bis1. inversions Bis1.
+    exists v. split. eauto. apply pt_and; assumption.
+  - specialize (IHty_trm Hwf). destruct IHty_trm as [v [Bis Hp]].
+    exists v. split. apply Bis. eapply possible_types_closure; eauto.
 Qed.
+
+Definition possible_types_lemma := possible_types_completeness.
 
 (*
 Lemma (Canonical forms 1)
