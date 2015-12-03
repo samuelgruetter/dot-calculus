@@ -2499,7 +2499,14 @@ Proof.
     assumption.
   - (* And-<: *)
     inversion HT0; subst.
-    admit.
+    assert (record_type (open_typ x T0)) as Htype. {
+      eapply open_record_type.
+      eapply record_new_typing. eapply val_new_typing; eauto.
+    }
+    eapply possible_types_closure_record; eauto.
+    rewrite <- H3. assumption.
+    rewrite H3 in Htype. destruct Htype as [ls Htyp]. inversion Htyp; subst.
+    eapply rs_dropl. apply rs_refl.
     assumption.
   - (* <:-And *)
     apply pt_and. apply IHHsub1; assumption. apply IHHsub2; assumption.
