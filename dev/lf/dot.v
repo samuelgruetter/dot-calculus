@@ -1946,6 +1946,14 @@ Proof.
   intros. apply* narrow_rules.
 Qed.
 
+Lemma narrow_subtyping: forall G G' S U,
+  subtyp ty_general sub_general G S U ->
+  subenv G' G -> ok G' ->
+  subtyp ty_general sub_general G' S U.
+Proof.
+  intros. apply* narrow_rules.
+Qed.
+
 (* ###################################################################### *)
 (** * Has member *)
 
@@ -2348,7 +2356,7 @@ For a variable x, non-variable value v, environment G, the set Ts(G, x, v) of po
 If v = new(x: T)d then T in SS.
 If v = new(x: T)d and {a = t} in d and G |- t: T' then {a: T'} in SS.
 If v = new(x: T)d and {A = T'} in d and G |- S <: T', G |- T' <: U then {A: S..U} in SS.
-If v = lambda(x: T)t and G |- T' <: T and G, x: T' |- t: U then all(x: T')U in SS.
+If v = lambda(x: S)t and G, x: S |- t: T and G |- S' <: S and G, x: S' |- T <: T' then all(x: S')T' in SS.
 If S1 in SS and S2 in SS then S1 & S2 in SS.
 If S in SS and G |-! y: {A: S..S} then y.A in SS.
 If S in SS then rec(x: S) in SS.
@@ -2366,11 +2374,13 @@ Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
   subtyp ty_general sub_general G S T' ->
   subtyp ty_general sub_general G T' U ->
   possible_types G x (val_new T ds) (typ_rcd (dec_typ A S U))
-| pt_lambda : forall L G x T t T' U,
-  subtyp ty_general sub_general G T' T ->
+| pt_lambda : forall L G x S t T S' T',
   (forall y, y \notin L ->
-    ty_trm ty_general sub_general (G & y ~ T') (open_trm y t) (open_typ y U)) ->
-  possible_types G x (val_lambda T t) (typ_all T' U)
+   ty_trm ty_general sub_general (G & y ~ S) (open_trm y t) (open_typ y T)) ->
+  subtyp ty_general sub_general G S' S ->
+  (forall y, y \notin L ->
+   subtyp ty_general sub_general (G & y ~ S') (open_typ y T) (open_typ y T')) ->
+  possible_types G x (val_lambda S t) (typ_all S' T')
 | pt_and : forall G x v S1 S2,
   possible_types G x v S1 ->
   possible_types G x v S2 ->
@@ -2611,16 +2621,14 @@ Proof.
     }
     rewrite H5 in B. destruct B as [? B]. inversion B.
     apply_fresh pt_lambda as y.
+    eapply H3; eauto.
     eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
-    eapply ty_sub.
-    intro Contra. inversion Contra.
-    eapply narrow_typing.
-    eapply H7. eauto.
-    eapply subenv_last.
-    eapply tight_to_general_subtyping. assumption.
+    eapply subtyp_trans.
+    eapply narrow_subtyping. eapply H8; eauto.
+    eapply subenv_last. eapply tight_to_general_subtyping. eapply Hsub.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
-    eapply H. eauto.
+    eapply H; eauto.
 Qed.
 
 (*
@@ -2641,8 +2649,9 @@ Proof.
   - remember Hty as Hty'. clear HeqHty'. inversion Hty'; subst.
     + apply all_intro_inversion in Hty. destruct Hty as [T' Heq]. subst.
       apply_fresh pt_lambda as y.
+      eapply H5; eauto.
       apply subtyp_refl.
-      apply H5. eauto.
+      apply subtyp_refl.
     + assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
       specialize (H Heqm1). destruct H. inversion H.
 Qed.
@@ -2807,13 +2816,13 @@ Qed.
 
 (*
 Lemma (Canonical forms 1)
-If G ~ s and G |- x: all(x: T)U then s(x) = lambda(x: T')t where G |- T <: T' and G, x: T' |- t: U.
+If G ~ s and G |- x: all(x: T)U then s(x) = lambda(x: T')t where G |- T <: T' and G, x: T |- t: U.
  *)
 Lemma canonical_forms_1: forall G s x T U,
   wf_sto G s ->
   ty_trm ty_general sub_general G (trm_var (avar_f x)) (typ_all T U) ->
   (exists L T' t, binds x (val_lambda T' t) s /\ subtyp ty_general sub_general G T T' /\
-  (forall y, y \notin L -> ty_trm ty_general sub_general (G & y ~ T') (open_trm y t) (open_typ y U))).
+  (forall y, y \notin L -> ty_trm ty_general sub_general (G & y ~ T) (open_trm y t) (open_typ y U))).
 Proof.
   introv Hwf Hty.
   lets Bi: (typing_implies_bound Hty). destruct Bi as [S Bi].
@@ -2821,11 +2830,17 @@ Proof.
   lets Hp: (possible_types_lemma Hwf Bis Hty).
   inversion Hp; subst.
   - admit.
-  - pick_fresh y. exists L. exists T0. exists t.
+  - pick_fresh y. exists L. exists S0. exists t.
     split. apply Bis. split. assumption.
     intros y0 Fr0.
-    (* this is where the custom lambda case in possible types seem wrong *)
-    admit.
+    eapply ty_sub.
+    intros Contra. inversion Contra.
+    eapply narrow_typing.
+    eapply H1; eauto.
+    apply subenv_last. apply H5.
+    apply ok_push. eapply wf_sto_to_ok_G; eauto. admit.
+    apply ok_push. eapply wf_sto_to_ok_G; eauto. admit.
+    eapply H6; eauto.
 Qed.
 
 (*
@@ -2906,7 +2921,7 @@ Proof.
     rewrite subst_fresh_typ.
     apply ty_sub with (T:=S).
     intro Contra. inversion Contra.
-    assumption. assumption.
+    assumption. apply subtyp_refl.
     eauto. eauto. eauto. eauto.
   - (* Fld-E *) right.
     lets C: (canonical_forms_2 Hwf H).
