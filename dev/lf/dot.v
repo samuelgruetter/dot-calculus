@@ -2460,6 +2460,50 @@ Proof.
   - repeat eexists. eassumption. assumption.
 Qed.
 
+Lemma pt_rcd_typ_inversion: forall G s x v A S U,
+  wf_sto G s ->
+  binds x v s ->
+  possible_types G x v (typ_rcd (dec_typ A S U)) ->
+  exists T ds T',
+    v = val_new T ds /\
+    defs_has (open_defs x ds) (def_typ A T') /\
+    subtyp ty_general sub_general G S T' /\
+    subtyp ty_general sub_general G T' U.
+Proof.
+  introv Hwf Bis Hp. inversion Hp; subst.
+  - induction T; simpl in H3; try solve [inversion H3].
+    induction d; simpl in H3; try solve [inversion H3].
+    unfold open_typ in H3. simpl in H3. inversions H3.
+    lets Hty: (val_new_typing Hwf Bis). inversion Hty; subst.
+    pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H3 y FrL).
+    unfold open_typ in H3. simpl in H3. inversion H3; subst.
+    destruct ds; simpl in H; try solve [inversion H].
+    destruct ds; simpl in H; try solve [inversion H].
+    unfold open_defs in H. simpl in H. inversions H.
+    destruct d0; simpl in H2; inversion H2; subst.
+    inversion H2; subst.
+    assert (t2 = t0). {
+      eapply open_eq_typ; eauto.
+      apply notin_union_r1 in Fr. apply notin_union_r1 in Fr.
+      apply notin_union_r2 in Fr.
+      unfold fv_defs in Fr. eauto. eauto.
+    }
+    assert (t2 = t1). {
+      eapply open_eq_typ; eauto.
+      apply notin_union_r1 in Fr. apply notin_union_r1 in Fr.
+      apply notin_union_r2 in Fr.
+      unfold fv_defs in Fr. eauto. eauto.
+    }
+    subst. subst. clear H5. clear H8.
+    repeat eexists.
+    unfold open_defs. simpl. unfold defs_has. simpl.
+    rewrite If_l. reflexivity. reflexivity.
+    eapply subtyp_refl. eapply subtyp_refl.
+    assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
+    specialize (H Heqm1). destruct H. inversion H.
+  - repeat eexists. eassumption. eassumption. eassumption.
+Qed.
+
 Lemma possible_types_closure_record: forall G s x v T0 U0,
   wf_sto G s ->
   binds x v s ->
@@ -2596,40 +2640,9 @@ Proof.
     assumption.
     apply tight_to_general_subtyping. assumption.
   - (* Typ-<:-Typ *)
-    inversion HT0; subst.
-    induction T; simpl in H3; try solve [inversion H3].
-    induction d; simpl in H3; try solve [inversion H3].
-    unfold open_typ in H3. simpl in H3. inversions H3.
-    lets Hty: (val_new_typing Hwf Bis). inversion Hty; subst.
-    pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H3 y FrL).
-    unfold open_typ in H3. simpl in H3. inversion H3; subst.
-    destruct ds; simpl in H; try solve [inversion H].
-    destruct ds; simpl in H; try solve [inversion H].
-    unfold open_defs in H. simpl in H. inversions H.
-    destruct d0; simpl in H2; inversion H2; subst.
-    inversion H2; subst.
-    assert (t2 = t0). {
-      eapply open_eq_typ; eauto.
-      apply notin_union_r1 in Fr. apply notin_union_r1 in Fr.
-      apply notin_union_r1 in Fr. apply notin_union_r1 in Fr.
-      apply notin_union_r2 in Fr.
-      unfold fv_defs in Fr. eauto. eauto.
-    }
-    assert (t2 = t1). {
-      eapply open_eq_typ; eauto.
-      apply notin_union_r1 in Fr. apply notin_union_r1 in Fr.
-      apply notin_union_r1 in Fr. apply notin_union_r1 in Fr.
-      apply notin_union_r2 in Fr.
-      unfold fv_defs in Fr. eauto. eauto.
-    }
-    subst. subst. clear H5. clear H8.
-    eapply pt_rcd_typ.
-    unfold open_defs. simpl. unfold defs_has. simpl.
-    rewrite If_l. reflexivity. reflexivity.
-    eapply tight_to_general_subtyping. eassumption.
-    eapply tight_to_general_subtyping. eassumption.
-    assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
-    specialize (H Heqm1). destruct H. inversion H.
+    apply pt_rcd_typ_inversion with (s:=s) in HT0; eauto.
+    destruct HT0 as [T [ds [T' [Heq [Hhas [Hsub1' Hsub2']]]]]].
+    subst.
     eapply pt_rcd_typ.
     eassumption.
     eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
