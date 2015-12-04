@@ -2829,7 +2829,8 @@ Proof.
   lets A: (ctx_binds_to_sto_binds_typing Hwf Bi). destruct A as [v [Bis Htyv]].
   lets Hp: (possible_types_lemma Hwf Bis Hty).
   inversion Hp; subst.
-  - admit.
+  - lets Htype: (record_type_new Hwf Bis). rewrite H3 in Htype.
+    destruct Htype as [ls Htyp]. inversion Htyp.
   - pick_fresh y. exists (dom G \u L). exists S0. exists t.
     split. apply Bis. split. assumption.
     intros y0 Fr0.
