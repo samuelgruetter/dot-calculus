@@ -2504,6 +2504,45 @@ Proof.
   - repeat eexists. eassumption. eassumption. eassumption.
 Qed.
 
+Lemma record_sub_and: forall T T1 T2,
+  record_type T ->
+  T = typ_and T1 T2 ->
+  record_sub T T1 /\ record_sub T T2.
+Proof.
+  introv Htype Heq. subst.
+  destruct Htype as [ls Htyp]. inversion Htyp; subst.
+  split.
+  - apply rs_drop. apply rs_refl.
+  - eapply rs_dropl. apply rs_refl.
+Qed.
+
+Lemma possible_types_closure_record: forall G s x T ds U,
+  wf_sto G s ->
+  binds x (val_new T ds) s ->
+  record_sub (open_typ x T) U ->
+  possible_types G x (val_new T ds) U.
+Proof.
+  admit.
+Qed.
+
+Lemma pt_and_inversion: forall G s x v T1 T2,
+  wf_sto G s ->
+  binds x v s ->
+  possible_types G x v (typ_and T1 T2) ->
+  possible_types G x v T1 /\ possible_types G x v T2.
+Proof.
+  introv Hwf Bis Hp. dependent induction Hp.
+  - assert (record_type (open_typ x0 T)) as Htype. {
+      eapply open_record_type.
+      eapply record_new_typing. eapply val_new_typing; eauto.
+    }
+    destruct (record_sub_and Htype x) as [Hsub1 Hsub2].
+    split;
+    eapply possible_types_closure_record; eauto.
+  - split; assumption.
+Qed.
+
+(*
 Lemma possible_types_closure_record: forall G s x v T0 U0,
   wf_sto G s ->
   binds x v s ->
@@ -2582,6 +2621,7 @@ Proof.
 
   - admit.
 Qed.
+*)
 
 (*
 Lemma (Possible types closure)
@@ -2606,26 +2646,12 @@ Proof.
     apply IHHsub2; try assumption.
     apply IHHsub1; assumption.
   - (* And-<: *)
-    inversion HT0; subst.
-    assert (record_type (open_typ x T0)) as Htype. {
-      eapply open_record_type.
-      eapply record_new_typing. eapply val_new_typing; eauto.
-    }
-    eapply possible_types_closure_record; eauto.
-    rewrite <- H3. assumption.
-    rewrite H3 in Htype. destruct Htype as [ls Htyp]. inversion Htyp; subst.
-    apply rs_drop. apply rs_refl.
+    apply pt_and_inversion with (s:=s) in HT0; eauto.
+    destruct HT0 as [HT HU].
     assumption.
   - (* And-<: *)
-    inversion HT0; subst.
-    assert (record_type (open_typ x T0)) as Htype. {
-      eapply open_record_type.
-      eapply record_new_typing. eapply val_new_typing; eauto.
-    }
-    eapply possible_types_closure_record; eauto.
-    rewrite <- H3. assumption.
-    rewrite H3 in Htype. destruct Htype as [ls Htyp]. inversion Htyp; subst.
-    eapply rs_dropl. apply rs_refl.
+    apply pt_and_inversion with (s:=s) in HT0; eauto.
+    destruct HT0 as [HT HU].
     assumption.
   - (* <:-And *)
     apply pt_and. apply IHHsub1; assumption. apply IHHsub2; assumption.
