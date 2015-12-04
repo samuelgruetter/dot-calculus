@@ -2337,6 +2337,14 @@ Proof.
     eapply proj1. eapply tight_bound_completeness; eauto.
 Qed.
 
+Lemma general_to_tight_subtyping: forall G s S U,
+   wf_sto G s ->
+  subtyp ty_general sub_general G S U ->
+  subtyp ty_general sub_tight G S U.
+Proof.
+  intros. apply* general_to_tight.
+Qed.
+
 (* ###################################################################### *)
 (** * Misc Inversions *)
 
@@ -2653,7 +2661,8 @@ Lemma possible_types_closure: forall G s x v S T,
   subtyp ty_general sub_general G S T ->
   possible_types G x v T.
 Proof.
-  admit.
+  intros. eapply possible_types_closure_tight; eauto.
+  eapply general_to_tight_subtyping; eauto.
 Qed.
 
 (*
