@@ -2830,7 +2830,7 @@ Proof.
   lets Hp: (possible_types_lemma Hwf Bis Hty).
   inversion Hp; subst.
   - admit.
-  - pick_fresh y. exists L. exists S0. exists t.
+  - pick_fresh y. exists (dom G \u L). exists S0. exists t.
     split. apply Bis. split. assumption.
     intros y0 Fr0.
     eapply ty_sub.
@@ -2838,8 +2838,8 @@ Proof.
     eapply narrow_typing.
     eapply H1; eauto.
     apply subenv_last. apply H5.
-    apply ok_push. eapply wf_sto_to_ok_G; eauto. admit.
-    apply ok_push. eapply wf_sto_to_ok_G; eauto. admit.
+    apply ok_push. eapply wf_sto_to_ok_G; eauto. eauto.
+    apply ok_push. eapply wf_sto_to_ok_G; eauto. eauto.
     eapply H6; eauto.
 Qed.
 
