@@ -2314,6 +2314,29 @@ Proof.
   eapply Hwf. eapply Bis.
 Qed.
 
+Lemma general_to_tight: forall G0 s0,
+  wf_sto G0 s0 ->
+  (forall m1 m2 G t T,
+     ty_trm m1 m2 G t T ->
+     G = G0 ->
+     m1 = ty_general ->
+     m2 = sub_general ->
+     ty_trm ty_general sub_tight G t T) /\
+  (forall m1 m2 G S U,
+     subtyp m1 m2 G S U ->
+     G = G0 ->
+     m1 = ty_general ->
+     m2 = sub_general ->
+     subtyp ty_general sub_tight G S U).
+Proof.
+  intros G0 s0 Hwf.
+  apply ts_mutind; intros; subst; eauto.
+  - assert (exists S ds, binds x (val_new S ds) s0) as Bis by admit. destruct Bis as [? [? Bis]].
+    eapply proj2. eapply tight_bound_completeness; eauto.
+  - assert (exists S ds, binds x (val_new S ds) s0) as Bis by admit. destruct Bis as [? [? Bis]].
+    eapply proj1. eapply tight_bound_completeness; eauto.
+Qed.
+
 (* ###################################################################### *)
 (** * Misc Inversions *)
 
