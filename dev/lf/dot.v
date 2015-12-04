@@ -2777,7 +2777,33 @@ Proof.
     exists v. split. apply Bis. eapply possible_types_closure; eauto.
 Qed.
 
-Definition possible_types_lemma := possible_types_completeness.
+Lemma possible_types_lemma: forall G s x v T,
+  wf_sto G s ->
+  binds x v s ->
+  ty_trm ty_general sub_general G (trm_var (avar_f x)) T ->
+  possible_types G x v T.
+Proof.
+  introv Hwf Bis Hty.
+  lets A: (possible_types_completeness Hwf Hty).
+  destruct A as [v' [Bis' Hp]].
+  unfold binds in Bis. unfold binds in Bis'. rewrite Bis' in Bis. inversions Bis.
+  assumption.
+Qed.
+
+Lemma ctx_binds_to_sto_binds_typing: forall G s x T,
+  wf_sto G s ->
+  binds x T G ->
+  exists v, binds x v s /\ ty_trm ty_precise sub_general G (trm_val v) T.
+Proof.
+  introv Hwf Bi.
+  lets A: (ctx_binds_to_sto_binds_raw Hwf Bi).
+  destruct A as [G1 [G2 [v [HeqG [Bis Hty]]]]].
+  exists v. split; eauto.
+  subst. rewrite <- concat_assoc.
+  apply weaken_ty_trm; eauto.
+  rewrite concat_assoc.
+  eapply wf_sto_to_ok_G; eauto.
+Qed.
 
 (*
 Lemma (Canonical forms 1)
@@ -2789,7 +2815,17 @@ Lemma canonical_forms_1: forall G s x T U,
   (exists L T' t, binds x (val_lambda T' t) s /\ subtyp ty_general sub_general G T T' /\
   (forall y, y \notin L -> ty_trm ty_general sub_general (G & y ~ T') (open_trm y t) (open_typ y U))).
 Proof.
-  admit.
+  introv Hwf Hty.
+  lets Bi: (typing_implies_bound Hty). destruct Bi as [S Bi].
+  lets A: (ctx_binds_to_sto_binds_typing Hwf Bi). destruct A as [v [Bis Htyv]].
+  lets Hp: (possible_types_lemma Hwf Bis Hty).
+  inversion Hp; subst.
+  - admit.
+  - pick_fresh y. exists L. exists T0. exists t.
+    split. apply Bis. split. assumption.
+    intros y0 Fr0.
+    (* this is where the custom lambda case in possible types seem wrong *)
+    admit.
 Qed.
 
 (*
