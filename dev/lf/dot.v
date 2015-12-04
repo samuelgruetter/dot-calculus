@@ -2855,7 +2855,15 @@ Lemma canonical_forms_2: forall G s x a T,
   ty_trm ty_general sub_general G (trm_var (avar_f x)) (typ_rcd (dec_trm a T)) ->
   (exists S ds t, binds x (val_new S ds) s /\ ty_defs G (open_defs x ds) (open_typ x S) /\ defs_has (open_defs x ds) (def_trm a t) /\ ty_trm ty_general sub_general G t T).
 Proof.
-  admit.
+  introv Hwf Hty.
+  lets Bi: (typing_implies_bound Hty). destruct Bi as [S Bi].
+  lets A: (ctx_binds_to_sto_binds_typing Hwf Bi). destruct A as [v [Bis Htyv]].
+  lets Hp: (possible_types_lemma Hwf Bis Hty).
+  inversion Hp; subst.
+  - admit.
+  - exists T0. exists ds. exists t.
+    split; try split; try split; try assumption.
+    admit.
 Qed.
 
 (* ###################################################################### *)
