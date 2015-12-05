@@ -2428,6 +2428,75 @@ Proof.
       exists D0. split. apply A1. apply rs_drop. apply A2.
 Qed.
 
+
+Lemma new_ty_defs: forall G s x T ds,
+  wf_sto G s ->
+  binds x (val_new T ds) s ->
+  ty_defs G (open_defs x ds) (open_typ x T).
+Proof.
+  introv Hwf Bis.
+  lets Htyv: (val_new_typing Hwf Bis).
+  inversion Htyv; subst.
+  pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H3 y FrL).
+  rewrite subst_intro_defs with (x:=y). rewrite subst_intro_typ with (x:=y).
+  eapply subst_ty_defs. eapply H3.
+  apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
+  rewrite <- subst_intro_typ with (x:=y).
+  eapply ty_rec_elim. apply ty_var. eapply wf_sto_val_new_in_G; eauto.
+  eauto. eauto. eauto.
+  assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
+  specialize (H Heqm1). destruct H as [? Contra]. inversion Contra.
+Qed.
+
+Lemma pt_piece_rcd: forall G s x T ds d D,
+  wf_sto G s ->
+  binds x (val_new T ds) s ->
+  defs_has (open_defs x ds) d ->
+  ty_def G d D ->
+  possible_types G x (val_new T ds) (typ_rcd D).
+Proof.
+  introv Hwf Bis Hhas Hdef.
+  inversion Hdef; subst; econstructor; eauto.
+Qed.
+
+Inductive record_has: typ -> dec -> Prop :=
+| rh_one : forall D,
+  record_has (typ_rcd D) D
+| rh_cons : forall T D D',
+  record_has T D' ->
+  record_has (typ_and T D) D'.
+
+Lemma defs_has_hasnt_neq: forall ds d1 d2,
+  defs_has ds d1 ->
+  defs_hasnt ds (label_of_def d2) ->
+  label_of_def d1 <> label_of_def d2.
+Proof.
+  introv Hhas Hhasnt.
+  unfold defs_has in Hhas.
+  unfold defs_hasnt in Hhasnt.
+  induction ds.
+  - simpl in Hhas. inversion Hhas.
+  - simpl in Hhasnt. simpl in Hhas. case_if; case_if.
+    + inversions Hhas. assumption.
+    + apply IHds; eauto.
+Qed.
+
+Lemma record_sub_ty_defs: forall G T ds D,
+  ty_defs G ds T ->
+  record_has T D ->
+  exists d, defs_has ds d /\ ty_def G d D.
+Proof.
+  introv Hdefs Hhas. induction Hdefs.
+  - inversion Hhas; subst. exists d. split.
+    unfold defs_has. simpl. rewrite If_l. reflexivity. reflexivity.
+    assumption.
+  - inversion Hhas; subst. specialize (IHHdefs H4). destruct IHHdefs as [d' [IH1 IH2]].
+    exists d'. split.
+    unfold defs_has. simpl. rewrite If_r. apply IH1.
+    apply not_eq_sym. eapply defs_has_hasnt_neq; eauto.
+    assumption.
+Qed.
+
 Lemma pt_rcd_trm_inversion: forall G s x v a T,
   wf_sto G s ->
   binds x v s ->
@@ -2524,25 +2593,6 @@ Proof.
   split.
   - apply rs_drop. apply rs_refl.
   - eapply rs_dropl. apply rs_refl.
-Qed.
-
-Lemma new_ty_defs: forall G s x T ds,
-  wf_sto G s ->
-  binds x (val_new T ds) s ->
-  ty_defs G (open_defs x ds) (open_typ x T).
-Proof.
-  introv Hwf Bis.
-  lets Htyv: (val_new_typing Hwf Bis).
-  inversion Htyv; subst.
-  pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H3 y FrL).
-  rewrite subst_intro_defs with (x:=y). rewrite subst_intro_typ with (x:=y).
-  eapply subst_ty_defs. eapply H3.
-  apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
-  rewrite <- subst_intro_typ with (x:=y).
-  eapply ty_rec_elim. apply ty_var. eapply wf_sto_val_new_in_G; eauto.
-  eauto. eauto. eauto.
-  assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
-  specialize (H Heqm1). destruct H as [? Contra]. inversion Contra.
 Qed.
 
 Lemma possible_types_closure_record: forall G s x T ds U,
