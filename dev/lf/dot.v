@@ -2864,7 +2864,16 @@ Proof.
   subst.
   exists S' ds t'.
   split; try split; try split; try assumption.
-  admit.
+  inversion Htyv; subst.
+  pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H5 y FrL).
+  rewrite subst_intro_defs with (x:=y). rewrite subst_intro_typ with (x:=y).
+  eapply subst_ty_defs. eapply H5.
+  apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
+  rewrite <- subst_intro_typ with (x:=y).
+  eapply ty_rec_elim. apply ty_var. apply Bi.
+  eauto. eauto. eauto.
+  assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
+  specialize (H Heqm1). destruct H as [? Contra]. inversion Contra.
 Qed.
 
 (* ###################################################################### *)
