@@ -2526,6 +2526,25 @@ Proof.
   - eapply rs_dropl. apply rs_refl.
 Qed.
 
+Lemma new_ty_defs: forall G s x T ds,
+  wf_sto G s ->
+  binds x (val_new T ds) s ->
+  ty_defs G (open_defs x ds) (open_typ x T).
+Proof.
+  introv Hwf Bis.
+  lets Htyv: (val_new_typing Hwf Bis).
+  inversion Htyv; subst.
+  pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H3 y FrL).
+  rewrite subst_intro_defs with (x:=y). rewrite subst_intro_typ with (x:=y).
+  eapply subst_ty_defs. eapply H3.
+  apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
+  rewrite <- subst_intro_typ with (x:=y).
+  eapply ty_rec_elim. apply ty_var. eapply wf_sto_val_new_in_G; eauto.
+  eauto. eauto. eauto.
+  assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
+  specialize (H Heqm1). destruct H as [? Contra]. inversion Contra.
+Qed.
+
 Lemma possible_types_closure_record: forall G s x T ds U,
   wf_sto G s ->
   binds x (val_new T ds) s ->
@@ -2864,16 +2883,7 @@ Proof.
   subst.
   exists S' ds t'.
   split; try split; try split; try assumption.
-  inversion Htyv; subst.
-  pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H5 y FrL).
-  rewrite subst_intro_defs with (x:=y). rewrite subst_intro_typ with (x:=y).
-  eapply subst_ty_defs. eapply H5.
-  apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
-  rewrite <- subst_intro_typ with (x:=y).
-  eapply ty_rec_elim. apply ty_var. apply Bi.
-  eauto. eauto. eauto.
-  assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
-  specialize (H Heqm1). destruct H as [? Contra]. inversion Contra.
+  eapply new_ty_defs; eauto.
 Qed.
 
 (* ###################################################################### *)
