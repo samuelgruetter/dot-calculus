@@ -2461,7 +2461,9 @@ Qed.
 Inductive record_has: typ -> dec -> Prop :=
 | rh_one : forall D,
   record_has (typ_rcd D) D
-| rh_cons : forall T D D',
+| rh_andl : forall T D,
+  record_has (typ_and T (typ_rcd D)) D
+| rh_and : forall T D D',
   record_has T D' ->
   record_has (typ_and T D) D'.
 
@@ -2489,11 +2491,15 @@ Proof.
   - inversion Hhas; subst. exists d. split.
     unfold defs_has. simpl. rewrite If_l. reflexivity. reflexivity.
     assumption.
-  - inversion Hhas; subst. specialize (IHHdefs H4). destruct IHHdefs as [d' [IH1 IH2]].
-    exists d'. split.
-    unfold defs_has. simpl. rewrite If_r. apply IH1.
-    apply not_eq_sym. eapply defs_has_hasnt_neq; eauto.
-    assumption.
+  - inversion Hhas; subst.
+    + exists d. split.
+      unfold defs_has. simpl. rewrite If_l. reflexivity. reflexivity.
+      assumption.
+    + specialize (IHHdefs H4). destruct IHHdefs as [d' [IH1 IH2]].
+      exists d'. split.
+      unfold defs_has. simpl. rewrite If_r. apply IH1.
+      apply not_eq_sym. eapply defs_has_hasnt_neq; eauto.
+      assumption.
 Qed.
 
 Lemma pt_rcd_has_piece: forall G s x T ds D,
