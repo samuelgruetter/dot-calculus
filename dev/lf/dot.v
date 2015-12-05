@@ -2481,7 +2481,7 @@ Proof.
     + apply IHds; eauto.
 Qed.
 
-Lemma record_sub_ty_defs: forall G T ds D,
+Lemma record_has_ty_defs: forall G T ds D,
   ty_defs G ds T ->
   record_has T D ->
   exists d, defs_has ds d /\ ty_def G d D.
