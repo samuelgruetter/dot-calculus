@@ -2859,11 +2859,12 @@ Proof.
   lets Bi: (typing_implies_bound Hty). destruct Bi as [S Bi].
   lets A: (ctx_binds_to_sto_binds_typing Hwf Bi). destruct A as [v [Bis Htyv]].
   lets Hp: (possible_types_lemma Hwf Bis Hty).
-  inversion Hp; subst.
-  - admit.
-  - exists T0. exists ds. exists t.
-    split; try split; try split; try assumption.
-    admit.
+  apply pt_rcd_trm_inversion with (s:=s) in Hp; eauto.
+  destruct Hp as [S' [ds [t' [Heq [Hdefs Htyd]]]]].
+  subst.
+  exists S' ds t'.
+  split; try split; try split; try assumption.
+  admit.
 Qed.
 
 (* ###################################################################### *)
