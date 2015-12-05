@@ -2428,7 +2428,6 @@ Proof.
       exists D0. split. apply A1. apply rs_drop. apply A2.
 Qed.
 
-
 Lemma new_ty_defs: forall G s x T ds,
   wf_sto G s ->
   binds x (val_new T ds) s ->
@@ -2495,6 +2494,18 @@ Proof.
     unfold defs_has. simpl. rewrite If_r. apply IH1.
     apply not_eq_sym. eapply defs_has_hasnt_neq; eauto.
     assumption.
+Qed.
+
+Lemma pt_rcd_has_piece: forall G s x T ds D,
+  wf_sto G s ->
+  binds x (val_new T ds) s ->
+  record_has (open_typ x T) D ->
+  possible_types G x (val_new T ds) (typ_rcd D).
+Proof.
+  introv Hwf Bis Hhas.
+  lets Hdefs: (new_ty_defs Hwf Bis).
+  destruct (record_has_ty_defs Hdefs Hhas) as [d [A B]].
+  eapply pt_piece_rcd; eauto.
 Qed.
 
 Lemma pt_rcd_trm_inversion: forall G s x v a T,
