@@ -2612,13 +2612,73 @@ Proof.
   - eapply rs_dropl. apply rs_refl.
 Qed.
 
+Lemma record_sub_has: forall T1 T2 D,
+  record_has T2 D ->
+  record_sub T1 T2 ->
+  record_has T1 D.
+Proof.
+  introv Hhas Hsub. induction Hsub.
+  - assumption.
+  - inversion Hhas; subst. apply rh_andl.
+  - apply rh_and. apply IHHsub. apply Hhas.
+  - inversion Hhas; subst.
+    + apply rh_andl.
+    + apply rh_and. apply IHHsub. assumption.
+Qed.
+
+Lemma pt_record_sub_has: forall G x v T1 T2,
+  (forall D, record_has T1 D -> possible_types G x v (typ_rcd D)) ->
+  record_sub T1 T2 ->
+  (forall D, record_has T2 D -> possible_types G x v (typ_rcd D)).
+Proof.
+  introv HP Hsub. intros D Hhas. apply HP; eauto using record_sub_has.
+Qed.
+
+Lemma pt_has_record: forall G x v T,
+  (forall D, record_has T D -> possible_types G x v (typ_rcd D)) ->
+  record_type T ->
+  possible_types G x v T.
+Proof.
+  introv HP Htype. destruct Htype as [ls Htyp]. induction Htyp.
+  - apply HP; eauto. apply rh_one.
+  - apply pt_and.
+    + apply IHHtyp; eauto.
+      intros D0 HH0. apply HP; eauto. apply rh_and; eauto.
+    + apply HP; eauto. apply rh_andl.
+Qed.
+
+Lemma pt_has_sub: forall G x v T U,
+  (forall D, record_has T D -> possible_types G x v (typ_rcd D)) ->
+  record_type T ->
+  record_sub T U ->
+  possible_types G x v U.
+Proof.
+  introv HP Htype Hsub. induction Hsub.
+  - apply pt_has_record; eauto.
+  - apply HP; eauto. apply rh_andl.
+  - apply IHHsub; eauto. eapply pt_record_sub_has; eauto.
+    apply rs_drop. apply rs_refl.
+    eapply record_type_sub_closed; eauto.
+    apply rs_drop. apply rs_refl.
+  - apply pt_and.
+    + apply IHHsub; eauto. eapply pt_record_sub_has; eauto.
+      apply rs_drop. apply rs_refl.
+      eapply record_type_sub_closed; eauto.
+      apply rs_drop. apply rs_refl.
+    + apply HP; eauto. apply rh_andl.
+Qed.
+
 Lemma possible_types_closure_record: forall G s x T ds U,
   wf_sto G s ->
   binds x (val_new T ds) s ->
   record_sub (open_typ x T) U ->
   possible_types G x (val_new T ds) U.
 Proof.
+  introv Hwf Bis Hsub.
+  apply pt_has_sub with (T:=open_typ x T).
   admit.
+  apply open_record_type. eapply record_new_typing; eauto. eapply val_new_typing; eauto.
+  assumption.
 Qed.
 
 Lemma pt_and_inversion: forall G s x v T1 T2,
