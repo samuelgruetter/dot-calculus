@@ -2676,7 +2676,7 @@ Lemma possible_types_closure_record: forall G s x T ds U,
 Proof.
   introv Hwf Bis Hsub.
   apply pt_has_sub with (T:=open_typ x T).
-  admit.
+  intros D Hhas. eapply pt_rcd_has_piece; eauto.
   apply open_record_type. eapply record_new_typing; eauto. eapply val_new_typing; eauto.
   assumption.
 Qed.
