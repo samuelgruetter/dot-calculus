@@ -22,6 +22,8 @@ Inductive avar : Set :=
   | avar_f : var -> avar. (* free var ("name"), refers to store or ctx *)
 
 Inductive typ : Set :=
+  | typ_top  : typ
+  | typ_bot  : typ
   | typ_rcd  : dec -> typ (* { D } *)
   | typ_and  : typ -> typ -> typ
   | typ_sel  : avar -> typ_label -> typ (* x.L *)
@@ -89,6 +91,8 @@ Definition open_rec_avar (k: nat) (u: var) (a: avar) : avar :=
 
 Fixpoint open_rec_typ (k: nat) (u: var) (T: typ): typ :=
   match T with
+  | typ_top        => typ_top
+  | typ_bot        => typ_bot
   | typ_rcd D      => typ_rcd (open_rec_dec k u D)
   | typ_and T1 T2  => typ_and (open_rec_typ k u T1) (open_rec_typ k u T2)
   | typ_sel x L    => typ_sel (open_rec_avar k u x) L
@@ -144,6 +148,8 @@ Definition fv_avar (a: avar) : vars :=
 
 Fixpoint fv_typ (T: typ) : vars :=
   match T with
+  | typ_top        => \{}
+  | typ_bot        => \{}
   | typ_rcd D      => (fv_dec D)
   | typ_and T U    => (fv_typ T) \u (fv_typ U)
   | typ_sel x L    => (fv_avar x)
@@ -264,6 +270,10 @@ with ty_defs : ctx -> defs -> typ -> Prop :=
     ty_defs G (defs_cons ds d) (typ_and T (typ_rcd D))
 
 with subtyp : tymode -> submode -> ctx -> typ -> typ -> Prop :=
+| subtyp_top: forall m2 G T,
+    subtyp ty_general m2 G T typ_top
+| subtyp_bot: forall m2 G T,
+    subtyp ty_general m2 G typ_bot T
 | subtyp_refl: forall m2 G T,
     subtyp ty_general m2 G T T
 | subtyp_trans: forall m1 m2 G S T U,
@@ -658,6 +668,8 @@ Definition subst_avar (z: var) (u: var) (a: avar) : avar :=
 
 Fixpoint subst_typ (z: var) (u: var) (T: typ) { struct T } : typ :=
   match T with
+  | typ_top        => typ_top
+  | typ_bot        => typ_bot
   | typ_rcd D      => typ_rcd (subst_dec z u D)
   | typ_and T1 T2  => typ_and (subst_typ z u T1) (subst_typ z u T2)
   | typ_sel x L    => typ_sel (subst_avar z u x) L
@@ -1113,6 +1125,10 @@ Proof.
     simpl. apply ty_defs_cons; eauto.
     rewrite <- subst_label_of_def.
     apply subst_defs_hasnt. assumption.
+  - (* subtyp_top *)
+    apply subtyp_top.
+  - (* subtyp_bot *)
+    apply subtyp_bot.
   - (* subtyp_refl *)
     apply subtyp_refl.
   - (* subtyp_trans *)
@@ -1372,6 +1388,10 @@ Lemma open_eq_typ_dec: forall x,
    D1 = D2).
 Proof.
   intros. apply typ_mutind; intros.
+  - simpl in H1. induction T2; simpl in H1; inversion H1.
+    reflexivity.
+  - simpl in H1. induction T2; simpl in H1; inversion H1.
+    reflexivity.
   - simpl in H2. induction T2; simpl in H2; inversion H2.
     f_equal. eapply H; eauto.
   - simpl in H3; induction T2; simpl in H3; inversion H3.
@@ -1978,6 +1998,8 @@ with has_member_rules: ctx -> var -> typ -> typ_label -> typ -> typ -> Prop :=
   ty_trm ty_precise sub_general G (trm_var (avar_f y)) (typ_rcd (dec_typ B T' T')) ->
   has_member G x T' A S U ->
   has_member_rules G x (typ_sel (avar_f y) B) A S U
+| has_bot  : forall G x A S U,
+  has_member_rules G x typ_bot A S U
 .
 
 Scheme has_mut := Induction for has_member Sort Prop
@@ -1993,14 +2015,16 @@ Lemma has_member_rules_inv: forall G x T A S U, has_member_rules G x T A S U ->
     has_member G x (open_typ x T') A S U) \/
   (exists y B T', T = typ_sel (avar_f y) B /\
     ty_trm ty_precise sub_general G (trm_var (avar_f y)) (typ_rcd (dec_typ B T' T')) /\
-    has_member G x T' A S U).
+    has_member G x T' A S U) \/
+  (T = typ_bot).
 Proof.
   intros. inversion H; subst.
   - left. eauto.
   - right. left. exists T1 T2. eauto.
   - right. left. exists T1 T2. eauto.
   - right. right. left. exists T0. eauto.
-  - right. right. right. exists y B T'. eauto.
+  - right. right. right. left. exists y B T'. eauto.
+  - right. right. right. right. reflexivity.
 Qed.
 
 Lemma has_member_inv: forall G x T A S U, has_member G x T A S U ->
@@ -2012,7 +2036,8 @@ Lemma has_member_inv: forall G x T A S U, has_member G x T A S U ->
     has_member G x (open_typ x T') A S U) \/
   (exists y B T', T = typ_sel (avar_f y) B /\
     ty_trm ty_precise sub_general G (trm_var (avar_f y)) (typ_rcd (dec_typ B T' T')) /\
-    has_member G x T' A S U).
+    has_member G x T' A S U) \/
+  (T = typ_bot).
 Proof.
   intros. inversion H; subst. apply has_member_rules_inv in H1. apply H1.
 Qed.
@@ -2070,6 +2095,7 @@ Proof.
     eapply rs_dropl. eapply rs_refl.
   - inversion H0. inversion H1.
   - inversion H0. inversion H1.
+  - destruct H as [ls H]. inversion H.
 Qed.
 
 Lemma has_member_tightness: forall G s x T ds A S U,
@@ -2108,6 +2134,12 @@ Proof.
   generalize dependent U2.
   generalize dependent S2.
   dependent induction Hsub; subst; intros.
+  - (* top *)
+    inversion Hmem; subst. inversion H0.
+  - (* bot *)
+    exists S2 U2. split.
+    apply has_any. assumption. apply has_bot.
+    split; apply subtyp_refl.
   - (* refl *)
     exists S2 U2. eauto.
   - (* trans *)
@@ -2138,6 +2170,7 @@ Proof.
       * specialize (IHHsub2 Hwf Hty S2 U2 Hmem). apply IHHsub2.
     + destruct Hmem as [T1' [Heq _]]. inversion Heq.
     + destruct Hmem as [y [B [T' [Heq _]]]]. inversion Heq.
+    + inversion Hmem.
   - (* fld *)
     inversion Hmem; subst. inversion H0; subst.
   - (* typ *)
@@ -2150,6 +2183,7 @@ Proof.
     + destruct Hmem as [T1' [T2' [Heq _]]]. inversion Heq.
     + destruct Hmem as [T1' [Heq _]]. inversion Heq.
     + destruct Hmem as [y [B [T' [Heq _]]]]. inversion Heq.
+    + inversion Hmem.
   - (* sel2 *)
     apply has_member_inv in Hmem.
     repeat destruct Hmem as [Hmem|Hmem].
@@ -2161,6 +2195,7 @@ Proof.
         eapply unique_tight_bounds; eassumption.
       }
       subst. eauto.
+    + inversion Hmem.
   - (* sel1 *)
     exists S2 U2. split.
     eapply has_any. assumption. eapply has_sel. eassumption. eassumption.
@@ -2202,6 +2237,7 @@ Proof.
       inversions H0. assumption.
       inversions H0. inversions H4. assumption.
     + destruct Hmem as [y [B [T' [Heq [Htyb Hmem]]]]]. inversion Heq.
+    + inversion Hmem.
   - (* rec_elim *)
     apply IHty_trm; eauto.
     apply has_any. assumption. apply has_bnd. assumption.
@@ -2218,6 +2254,7 @@ Proof.
       apply IHty_trm2; eauto.
     + destruct Hmem as [T1' [Heq _]]. inversion Heq.
     + destruct Hmem as [y [B [T' [Heq [Htyb Hmem]]]]]. inversion Heq.
+    + inversion Hmem.
   - (* sub *)
     destruct (has_member_covariance Hwf H1 H0 Hmem) as [S' [U' [Hmem' [Hsub1' Hsub2']]]].
     inversion Hmem'; subst.
@@ -2252,6 +2289,7 @@ Proof.
     right. eapply subtyp_and12.
   - inversion H0. inversion H1.
   - inversion H0. inversion H1.
+  - destruct H as [ls H]. inversion H.
 Qed.
 
 Lemma wf_sto_val_new_in_G: forall G s x T ds,
@@ -2293,6 +2331,7 @@ Proof.
     + destruct Hmem as [T1' [T2' [Heq _]]]. inversion Heq.
     + destruct Hmem as [T1' [Heq Hmem]]. inversions Heq. assumption.
     + destruct Hmem as [y [B [T' [Heq [Htyb Hmem]]]]]. inversion Heq.
+    + inversion Hmem.
   }
   assert (record_type T) as Htype. {
     eapply record_new_typing. eapply val_new_typing; eauto.
@@ -2363,6 +2402,8 @@ If S in SS then rec(x: S) in SS.
 *)
 
 Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
+| pt_top : forall G x v,
+  possible_types G x v typ_top
 | pt_new : forall G x T ds,
   possible_types G x (val_new T ds) (open_typ x T)
 | pt_rcd_trm : forall G x T ds a t T',
@@ -2716,6 +2757,10 @@ Lemma possible_types_closure_tight: forall G s x v T0 U0,
   possible_types G x v U0.
 Proof.
   introv Hwf Bis HT0 Hsub. dependent induction Hsub.
+  - (* Top *) apply pt_top.
+  - (* Bot *) inversion HT0; subst.
+    lets Htype: (open_record_type x (record_new_typing (val_new_typing Hwf Bis))).
+    destruct Htype as [ls Htyp]. rewrite H3 in Htyp. inversion Htyp.
   - (* Refl-<: *) assumption.
   - (* Trans-<: *)
     apply IHHsub2; try assumption.
