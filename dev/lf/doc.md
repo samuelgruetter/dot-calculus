@@ -1,7 +1,10 @@
-# The DOT Calculus with Recursive Types
+# The DOT Calculus
 
 A minimally complete version of dependent object types. The calculus comprises functions,
 labeled types and terms combined through intersections, recursive bindings, and nothing else.
+
+The [meta theory](#meta-theory) establishes type safety, a result that has also been fully mechanized.
+Here is [the corresponding Coq script](dot_top_bot.v).
 
 ## Abstract Syntax
 
