@@ -193,6 +193,7 @@ Shorthand syntax for self bounds: In type of `x`, expand
                        A = T   ===  A: T .. T
                            A   ===  A: Bot .. Top
 
+<!---
 ## Examples
 
     let scala_units =
@@ -309,6 +310,7 @@ Generally, we can encode:
   - functors
   - objects
   - classes
+-->
 
 ## Meta Theory
 
