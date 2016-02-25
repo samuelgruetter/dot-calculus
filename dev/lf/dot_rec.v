@@ -311,7 +311,11 @@ with subtyp : tymode -> submode -> ctx -> ctx -> typ -> typ -> Prop :=
     subtyp ty_general m2 G J S2 S1 ->
     (forall x, x \notin L ->
        subtyp ty_general sub_general (G & x ~ S2) J (open_typ x T1) (open_typ x T2)) ->
-    subtyp ty_general m2 G J (typ_all S1 T1) (typ_all S2 T2).
+    subtyp ty_general m2 G J (typ_all S1 T1) (typ_all S2 T2)
+| subtyp_bnd: forall L m2 G J T1 T2,
+    (forall x, x \notin L ->
+       subtyp ty_general m2 G (J & x ~ (typ_bnd T1)) (open_typ x T1) (open_typ x T2)) ->
+    subtyp ty_general m2 G J (typ_bnd T1) (typ_bnd T2).
 
 Inductive wf_sto: ctx -> sto -> Prop :=
 | wf_sto_empty: wf_sto empty empty
@@ -1018,7 +1022,7 @@ Lemma subst_rules: forall y S,
     ty_trm ty_general sub_general (G1 & (subst_ctx x y G2)) (trm_var (avar_f y)) (subst_typ x y S) ->
     m1 = ty_general ->
     m2 = sub_general ->
-    subtyp m1 m2 (G1 & (subst_ctx x y G2)) J (subst_typ x y T) (subst_typ x y U)).
+    subtyp m1 m2 (G1 & (subst_ctx x y G2)) (subst_ctx x y J) (subst_typ x y T) (subst_typ x y U)).
 Proof.
   intros y S. apply rules_mutind; intros; subst.
   - (* ty_var *)
@@ -1115,6 +1119,9 @@ Proof.
   - (* ty_sub *)
     eapply ty_sub; eauto.
     intro Contra. inversion Contra.
+    assert (subst_ctx x y empty = empty) as HE by
+    solve [unfold subst_ctx; rewrite map_empty; reflexivity].
+    rewrite <- HE. eauto.
   - (* ty_def_typ *)
     simpl. apply ty_def_typ; eauto.
   - (* ty_def_trm *)
@@ -1168,6 +1175,19 @@ Proof.
     rewrite concat_assoc. apply ok_push. assumption. eauto.
     rewrite <- B. rewrite concat_assoc. apply weaken_ty_trm. assumption.
     apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
+  - (* subtyp_bnd *)
+    simpl. apply_fresh subtyp_bnd as z; eauto.
+    assert (z \notin L) as FrL by eauto.
+    assert (subst_fvar x y z = z) as A. {
+      unfold subst_fvar. rewrite If_r. reflexivity. eauto.
+    }
+    rewrite <- A at 2. rewrite <- A at 3.
+    rewrite <- subst_open_commute_typ. rewrite <- subst_open_commute_typ.
+    assert (subst_ctx x y J & z ~ typ_bnd (subst_typ x y T1) = subst_ctx x y (J & z ~ (typ_bnd T1))) as B. {
+      unfold subst_ctx. rewrite map_concat. rewrite map_single. reflexivity.
+    }
+    rewrite B.
+    apply H; eauto.
 Qed.
 
 Lemma subst_ty_trm: forall y S G x t T,
@@ -2203,6 +2223,9 @@ Proof.
     eauto.
   - (* all *)
     inversion Hmem; subst. inversion H2; subst.
+  - (* bnd *)
+    inversion Hmem; subst.
+    admit.
 Qed.
 
 Lemma has_member_monotonicity: forall G s x T0 ds T A S U,
@@ -2822,6 +2845,8 @@ Proof.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply H; eauto.
+  - (* Rec-<:-Rec *)
+    admit.
 Qed.
 
 (*
@@ -2929,6 +2954,7 @@ Proof.
     }
     destruct Bis as [? [? Bis]].
     eapply proj1. eapply tight_bound_completeness; eauto.
+  - admit.
 Qed.
 
 Lemma general_to_tight_subtyping: forall G s S U,
