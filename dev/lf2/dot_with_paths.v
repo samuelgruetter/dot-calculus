@@ -585,6 +585,33 @@ Proof.
       subst. exists G1 (G2 & x ~ T) T0'. rewrite concat_assoc. auto.
 Qed.
 
+Lemma sto_binds_to_ctx_binds: forall G s x v,
+  wf_sto G s -> binds x v s -> exists S, binds x S G.
+Proof.
+  introv Hwf Bis.
+  remember Hwf as Hwf'. clear HeqHwf'.
+  apply sto_binds_to_ctx_binds_raw with (x:=x) (v:=v) in Hwf.
+  destruct Hwf as [G1 [G2 [T [EqG Hty]]]].
+  subst.
+  exists T.
+  eapply binds_middle_eq. apply wf_sto_to_ok_G in Hwf'.
+  apply ok_middle_inv in Hwf'. destruct Hwf'. assumption.
+  assumption.
+Qed.
+
+Lemma ctx_binds_to_sto_binds: forall G s x T,
+  wf_sto G s -> binds x T G -> exists v, binds x v s.
+Proof.
+  introv Hwf Bi.
+  remember Hwf as Hwf'. clear HeqHwf'.
+  apply ctx_binds_to_sto_binds_raw with (x:=x) (T:=T) in Hwf.
+  destruct Hwf as [G1 [G2 [v [EqG [Bis Hty]]]]].
+  subst.
+  exists v.
+  assumption.
+  assumption.
+Qed.
+
 Lemma invert_wf_sto_concat: forall s G1 G2,
   wf_sto (G1 & G2) s ->
   exists s1 s2, s = s1 & s2 /\ wf_sto G1 s1.
@@ -646,6 +673,20 @@ Proof.
   intros. remember (trm_var (avar_b a)) as t. induction H; try solve [inversion Heqt].
   eapply IHty_trm. auto.
 Qed.
+
+
+(* ###################################################################### *)
+(** ** Generalizing "store binds" to paths *)
+
+Inductive sto_binds: sto -> pth -> val -> Prop :=
+| sto_binds_var: forall x v s,
+    binds x v s ->
+    sto_binds s (pth_var (avar_f x)) v
+| sto_binds_sel: forall s p T ds a v,
+    sto_binds s p (val_new T ds) ->
+    defs_has (open_defs p ds) (def_val a v) ->
+    sto_binds s (pth_sel p a) v.
+
 
 (* ###################################################################### *)
 (** ** Extra Rec *)
@@ -1973,33 +2014,6 @@ Proof.
   intros. apply* precise_to_tight.
 Qed.
 
-Lemma sto_binds_to_ctx_binds: forall G s x v,
-  wf_sto G s -> binds x v s -> exists S, binds x S G.
-Proof.
-  introv Hwf Bis.
-  remember Hwf as Hwf'. clear HeqHwf'.
-  apply sto_binds_to_ctx_binds_raw with (x:=x) (v:=v) in Hwf.
-  destruct Hwf as [G1 [G2 [T [EqG Hty]]]].
-  subst.
-  exists T.
-  eapply binds_middle_eq. apply wf_sto_to_ok_G in Hwf'.
-  apply ok_middle_inv in Hwf'. destruct Hwf'. assumption.
-  assumption.
-Qed.
-
-Lemma ctx_binds_to_sto_binds: forall G s x T,
-  wf_sto G s -> binds x T G -> exists v, binds x v s.
-Proof.
-  introv Hwf Bi.
-  remember Hwf as Hwf'. clear HeqHwf'.
-  apply ctx_binds_to_sto_binds_raw with (x:=x) (T:=T) in Hwf.
-  destruct Hwf as [G1 [G2 [v [EqG [Bis Hty]]]]].
-  subst.
-  exists v.
-  assumption.
-  assumption.
-Qed.
-
 Lemma record_type_new: forall G s x T ds,
   wf_sto G s ->
   binds x (val_new T ds) s ->
@@ -2357,6 +2371,7 @@ Proof.
     inversion Hmem; subst. inversion H2; subst.
 Qed.
 
+(*
 Lemma has_member_monotonicity_orig: forall G s x T0 ds T A S U,
   wf_sto G s ->
   binds x (val_new T0 ds) s ->
@@ -2458,6 +2473,7 @@ Proof.
   - inversion H0. inversion H1.
   - destruct H as [ls H]. inversion H.
 Qed.
+*)
 
 Lemma wf_sto_val_new_in_G: forall G s x T ds,
   wf_sto G s ->
@@ -2477,6 +2493,7 @@ Proof.
     assumption.
 Qed.
 
+(*
 (* If G ~ s, s |- x = new(x: T)d, and G |-# x: {A: S..U} then G |-# x.A <: U and G |-# S <: x.A. *)
 Lemma tight_bound_completeness: forall G s x T ds A S U,
   wf_sto G s ->
@@ -2527,6 +2544,7 @@ Proof.
   eapply subtyp_trans. eapply Hsub1. eapply subtyp_sel2_tight. eapply Htyp.
   eapply Hwf. eapply Bis.
 Qed.
+*)
 
 (* ###################################################################### *)
 (** * Misc Inversions *)
@@ -2593,10 +2611,10 @@ Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
   possible_types G x v S1 ->
   possible_types G x v S2 ->
   possible_types G x v (typ_and S1 S2)
-| pt_sel : forall G x v y A S,
+| pt_sel : forall G x v p A S,
   possible_types G x v S ->
-  ty_trm ty_precise sub_general G (trm_var y) (typ_rcd (dec_typ A S S)) ->
-  possible_types G x v (typ_sel y A)
+  ty_pth ty_precise sub_general G p (typ_rcd (dec_typ A S S)) ->
+  possible_types G x v (typ_sel p A)
 | pt_bnd : forall G x v S S',
   possible_types G x v S ->
   S = open_typ x S' ->
@@ -3065,7 +3083,6 @@ Proof.
   inversion Hpt; subst; repeat eexists; eauto.
 Qed.
 
-
 Lemma general_to_tight: forall G0 s0,
   wf_sto G0 s0 ->
   (forall m1 m2 G t T,
@@ -3079,10 +3096,17 @@ Lemma general_to_tight: forall G0 s0,
      G = G0 ->
      m1 = ty_general ->
      m2 = sub_general ->
-     subtyp ty_general sub_tight G S U).
+     subtyp ty_general sub_tight G S U) /\
+  (forall m1 m2 G p T,
+     ty_pth m1 m2 G p T ->
+     G = G0 ->
+     m1 = ty_general ->
+     m2 = sub_general ->
+     ty_pth ty_general sub_tight G p T).
 Proof.
   intros G0 s0 Hwf.
   apply ts_mutind; intros; subst; eauto.
+Admitted. (* TODO how can we even state the assertion below??
   - assert (exists S ds, binds x (val_new S ds) s0) as Bis. {
       eapply tight_ty_rcd_typ__new; eauto.
     }
@@ -3094,6 +3118,7 @@ Proof.
     destruct Bis as [? [? Bis]].
     eapply proj1. eapply tight_bound_completeness; eauto.
 Qed.
+*)
 
 Lemma general_to_tight_subtyping: forall G s S U,
    wf_sto G s ->
