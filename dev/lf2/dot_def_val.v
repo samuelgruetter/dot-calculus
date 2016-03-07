@@ -11,11 +11,11 @@ Require Import Coq.Program.Equality.
 (** ** Syntax *)
 
 Parameter typ_label: Set.
-Parameter trm_label: Set.
+Parameter val_label: Set.
 
 Inductive label: Set :=
 | label_typ: typ_label -> label
-| label_trm: trm_label -> label.
+| label_val: val_label -> label.
 
 Inductive avar : Set :=
   | avar_b : nat -> avar  (* bound var (de Bruijn index) *)
@@ -31,12 +31,12 @@ Inductive typ : Set :=
   | typ_all  : typ -> typ -> typ (* all(x: S)T *)
 with dec : Set :=
   | dec_typ  : typ_label -> typ -> typ -> dec (* A: S..U *)
-  | dec_trm  : trm_label -> typ -> dec (* a: T *).
+  | dec_val  : val_label -> typ -> dec (* a: T *).
 
 Inductive trm : Set :=
   | trm_var  : avar -> trm
   | trm_val  : val -> trm
-  | trm_sel  : avar -> trm_label -> trm
+  | trm_sel  : avar -> val_label -> trm
   | trm_app  : avar -> avar -> trm
   | trm_let  : trm -> trm -> trm (* let x = t in u *)
 with val : Set :=
@@ -44,7 +44,7 @@ with val : Set :=
   | val_lambda : typ -> trm -> val
 with def : Set :=
   | def_typ  : typ_label -> typ -> def
-  | def_trm  : trm_label -> trm -> def
+  | def_val  : val_label -> val -> def
 with defs : Set :=
   | defs_nil : defs
   | defs_cons : defs -> def -> defs.
@@ -60,12 +60,12 @@ Definition sto := env val.
 
 Definition label_of_def(d: def): label := match d with
 | def_typ L _ => label_typ L
-| def_trm m _ => label_trm m
+| def_val m _ => label_val m
 end.
 
 Definition label_of_dec(D: dec): label := match D with
 | dec_typ L _ _ => label_typ L
-| dec_trm m _ => label_trm m
+| dec_val m _ => label_val m
 end.
 
 Fixpoint get_def(l: label)(ds: defs): option def :=
@@ -102,7 +102,7 @@ Fixpoint open_rec_typ (k: nat) (u: var) (T: typ): typ :=
 with open_rec_dec (k: nat) (u: var) (D: dec): dec :=
   match D with
   | dec_typ L T U => dec_typ L (open_rec_typ k u T) (open_rec_typ k u U)
-  | dec_trm m T => dec_trm m (open_rec_typ k u T)
+  | dec_val m T => dec_val m (open_rec_typ k u T)
   end.
 
 Fixpoint open_rec_trm (k: nat) (u: var) (t: trm): trm :=
@@ -121,7 +121,7 @@ with open_rec_val (k: nat) (u: var) (v: val): val :=
 with open_rec_def (k: nat) (u: var) (d: def): def :=
   match d with
   | def_typ L T => def_typ L (open_rec_typ k u T)
-  | def_trm m e => def_trm m (open_rec_trm k u e)
+  | def_val m e => def_val m (open_rec_val k u e)
   end
 with open_rec_defs (k: nat) (u: var) (ds: defs): defs :=
   match ds with
@@ -159,7 +159,7 @@ Fixpoint fv_typ (T: typ) : vars :=
 with fv_dec (D: dec) : vars :=
   match D with
   | dec_typ L T U => (fv_typ T) \u (fv_typ U)
-  | dec_trm m T   => (fv_typ T)
+  | dec_val m T   => (fv_typ T)
   end.
 
 Fixpoint fv_trm (t: trm) : vars :=
@@ -178,7 +178,7 @@ with fv_val (v: val) : vars :=
 with fv_def (d: def) : vars :=
   match d with
   | def_typ _ T     => (fv_typ T)
-  | def_trm _ t     => (fv_trm t)
+  | def_val _ t     => (fv_val t)
   end
 with fv_defs(ds: defs) : vars :=
   match ds with
@@ -192,10 +192,10 @@ Definition fv_ctx_types(G: ctx): vars := (fv_in_values (fun T => fv_typ T) G).
 (** ** Operational Semantics *)
 
 Inductive red : trm -> sto -> trm -> sto -> Prop :=
-| red_sel : forall x m s t T ds,
+| red_sel : forall x m s v T ds,
     binds x (val_new T ds) s ->
-    defs_has (open_defs x ds) (def_trm m t) ->
-    red (trm_sel (avar_f x) m) s t s
+    defs_has (open_defs x ds) (def_val m v) ->
+    red (trm_sel (avar_f x) m) s (trm_val v) s
 | red_app : forall f a s T t,
     binds f (val_lambda T t) s ->
     red (trm_app (avar_f f) (avar_f a)) s (open_trm a t) s
@@ -231,7 +231,7 @@ Inductive ty_trm : tymode -> submode -> ctx -> trm -> typ -> Prop :=
       ty_defs (G & (x ~ open_typ x T)) (open_defs x ds) (open_typ x T)) ->
     ty_trm m1 m2 G (trm_val (val_new T ds)) (typ_bnd T)
 | ty_new_elim : forall m2 G x m T,
-    ty_trm ty_general m2 G (trm_var (avar_f x)) (typ_rcd (dec_trm m T)) ->
+    ty_trm ty_general m2 G (trm_var (avar_f x)) (typ_rcd (dec_val m T)) ->
     ty_trm ty_general m2 G (trm_sel (avar_f x) m) T
 | ty_let : forall L m2 G t u T U,
     ty_trm ty_general m2 G t T ->
@@ -256,9 +256,9 @@ Inductive ty_trm : tymode -> submode -> ctx -> trm -> typ -> Prop :=
 with ty_def : ctx -> def -> dec -> Prop :=
 | ty_def_typ : forall G A T,
     ty_def G (def_typ A T) (dec_typ A T T)
-| ty_def_trm : forall G a t T,
-    ty_trm ty_general sub_general G t T ->
-    ty_def G (def_trm a t) (dec_trm a T)
+| ty_def_trm : forall G a v T,
+    ty_trm ty_general sub_general G (trm_val v) T ->
+    ty_def G (def_val a v) (dec_val a T)
 with ty_defs : ctx -> defs -> typ -> Prop :=
 | ty_defs_one : forall G d D,
     ty_def G d D ->
@@ -290,7 +290,7 @@ with subtyp : tymode -> submode -> ctx -> typ -> typ -> Prop :=
     subtyp ty_general m2 G S (typ_and T U)
 | subtyp_fld: forall m2 G a T U,
     subtyp ty_general m2 G T U ->
-    subtyp ty_general m2 G (typ_rcd (dec_trm a T)) (typ_rcd (dec_trm a U))
+    subtyp ty_general m2 G (typ_rcd (dec_val a T)) (typ_rcd (dec_val a U))
 | subtyp_typ: forall m2 G A S1 T1 S2 T2,
     subtyp ty_general m2 G S2 S1 ->
     subtyp ty_general m2 G T1 T2 ->
@@ -679,7 +679,7 @@ Fixpoint subst_typ (z: var) (u: var) (T: typ) { struct T } : typ :=
 with subst_dec (z: var) (u: var) (D: dec) { struct D } : dec :=
   match D with
   | dec_typ L T U => dec_typ L (subst_typ z u T) (subst_typ z u U)
-  | dec_trm L U => dec_trm L (subst_typ z u U)
+  | dec_val L U => dec_val L (subst_typ z u U)
   end.
 
 Fixpoint subst_trm (z: var) (u: var) (t: trm) : trm :=
@@ -698,7 +698,7 @@ with subst_val (z: var) (u: var) (v: val) : val :=
 with subst_def (z: var) (u: var) (d: def) : def :=
   match d with
   | def_typ L T => def_typ L (subst_typ z u T)
-  | def_trm L t => def_trm L (subst_trm z u t)
+  | def_val L v => def_val L (subst_val z u v)
   end
 with subst_defs (z: var) (u: var) (ds: defs) : defs :=
   match ds with
@@ -1315,7 +1315,7 @@ Qed.
 
 Inductive record_dec : dec -> Prop :=
 | rd_typ : forall A T, record_dec (dec_typ A T T)
-| rd_trm : forall a T, record_dec (dec_trm a T)
+| rd_val : forall a T, record_dec (dec_val a T)
 .
 
 Inductive record_typ : typ -> fset label -> Prop :=
@@ -2406,10 +2406,10 @@ Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
   possible_types G x v typ_top
 | pt_new : forall G x T ds,
   possible_types G x (val_new T ds) (open_typ x T)
-| pt_rcd_trm : forall G x T ds a t T',
-  defs_has (open_defs x ds) (def_trm a t) ->
-  ty_trm ty_general sub_general G t T' ->
-  possible_types G x (val_new T ds) (typ_rcd (dec_trm a T'))
+| pt_rcd_val : forall G x T ds a v T',
+  defs_has (open_defs x ds) (def_val a v) ->
+  ty_trm ty_general sub_general G (trm_val v) T' ->
+  possible_types G x (val_new T ds) (typ_rcd (dec_val a T'))
 | pt_rcd_typ : forall G x T ds A T' S U,
   defs_has (open_defs x ds) (def_typ A T') ->
   subtyp ty_general sub_general G S T' ->
@@ -2558,11 +2558,11 @@ Qed.
 Lemma pt_rcd_trm_inversion: forall G s x v a T,
   wf_sto G s ->
   binds x v s ->
-  possible_types G x v (typ_rcd (dec_trm a T)) ->
+  possible_types G x v (typ_rcd (dec_val a T)) ->
   exists S ds t,
     v = val_new S ds /\
-    defs_has (open_defs x ds) (def_trm a t) /\
-    ty_trm ty_general sub_general G t T.
+    defs_has (open_defs x ds) (def_val a t) /\
+    ty_trm ty_general sub_general G (trm_val t) T.
 Proof.
   introv Hwf Bis Hp. inversion Hp; subst.
   - induction T0; simpl in H3; try solve [inversion H3].
@@ -2576,7 +2576,7 @@ Proof.
     unfold open_defs in H. simpl in H. inversions H.
     destruct d0; simpl in H2; inversion H2; subst.
     inversion H2; subst.
-    assert (ty_trm ty_general sub_general G (open_trm x t1) (open_typ x t0)) as A. {
+    assert (ty_trm ty_general sub_general G (open_trm x (trm_val v0)) (open_typ x t)) as A. {
       rewrite subst_intro_typ with (x:=y). rewrite subst_intro_trm with (x:=y).
       eapply subst_ty_trm. eapply H4.
       apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto. eauto.
@@ -2779,7 +2779,7 @@ Proof.
     apply pt_rcd_trm_inversion with (s:=s) in HT0; eauto.
     destruct HT0 as [S [ds [t [Heq [Hhas Hty]]]]].
     subst.
-    eapply pt_rcd_trm.
+    eapply pt_rcd_val.
     eassumption.
     apply ty_sub with (T:=T).
     intro Contra. inversion Contra.
@@ -3043,8 +3043,11 @@ If G ~ s and G |- x: {a: T} then s(x) = new(x: S)d for some type S, definition d
 *)
 Lemma canonical_forms_2: forall G s x a T,
   wf_sto G s ->
-  ty_trm ty_general sub_general G (trm_var (avar_f x)) (typ_rcd (dec_trm a T)) ->
-  (exists S ds t, binds x (val_new S ds) s /\ ty_defs G (open_defs x ds) (open_typ x S) /\ defs_has (open_defs x ds) (def_trm a t) /\ ty_trm ty_general sub_general G t T).
+  ty_trm ty_general sub_general G (trm_var (avar_f x)) (typ_rcd (dec_val a T)) ->
+  (exists S ds v, binds x (val_new S ds) s /\
+                  ty_defs G (open_defs x ds) (open_typ x S) /\
+                  defs_has (open_defs x ds) (def_val a v) /\
+                  ty_trm ty_general sub_general G (trm_val v) T).
 Proof.
   introv Hwf Hty.
   lets Bi: (typing_implies_bound Hty). destruct Bi as [S Bi].
@@ -3127,7 +3130,7 @@ Proof.
   - (* Fld-E *) right.
     lets C: (canonical_forms_2 Hwf H).
     destruct C as [S [ds [t [Bis [Tyds [Has Ty]]]]]].
-    exists s t G (@empty typ).
+    exists s (trm_val t) G (@empty typ).
     split.
     apply red_sel with (T:=S) (ds:=ds); try assumption.
     split.
