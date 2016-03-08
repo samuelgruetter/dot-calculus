@@ -311,7 +311,16 @@ with subtyp : tymode -> submode -> ctx -> typ -> typ -> Prop :=
     subtyp ty_general m2 G S2 S1 ->
     (forall x, x \notin L ->
        subtyp ty_general sub_general (G & x ~ S2) (open_typ x T1) (open_typ x T2)) ->
-    subtyp ty_general m2 G (typ_all S1 T1) (typ_all S2 T2).
+    subtyp ty_general m2 G (typ_all S1 T1) (typ_all S2 T2)
+| subtyp_rec1: forall L m2 G T S,
+    (forall x, x \notin L ->
+       subtyp ty_general sub_general (G & x ~ (open_typ x T)) (open_typ x T) S) ->
+    subtyp ty_general m2 G (typ_bnd T) S
+| subtyp_rec2: forall L m2 G T S,
+    (forall x, x \notin L ->
+       subtyp ty_general sub_general (G & x ~ (open_typ x T)) (open_typ x T) (open_typ x S)) ->
+    subtyp ty_general m2 G (typ_bnd T) (typ_bnd S)
+.
 
 Inductive wf_sto: ctx -> sto -> Prop :=
 | wf_sto_empty: wf_sto empty empty
@@ -430,34 +439,39 @@ Lemma weaken_rules:
     ok (G1 & G2 & G3) ->
     subtyp m1 m2 (G1 & G2 & G3) T U).
 Proof.
-  apply rules_mutind; try solve [eauto].
-  + intros. subst.
-    eapply ty_var. eapply binds_weaken; eauto.
-  + intros. subst.
-    apply_fresh ty_all_intro as z. eauto.
+  apply rules_mutind; try solve [eauto]; intros; subst.
+  + eapply ty_var. eapply binds_weaken; eauto.
+  + apply_fresh ty_all_intro as z. eauto.
     assert (zL: z \notin L) by auto.
     specialize (H z zL G1 G2 (G3 & z ~ T)).
     repeat rewrite concat_assoc in H.
     apply* H.
-  + intros. subst.
-    apply_fresh ty_new_intro as z; assert (zL: z \notin L) by auto.
+  + apply_fresh ty_new_intro as z; assert (zL: z \notin L) by auto.
     - specialize (H z zL G1 G2 (G3 & z ~ open_typ z T)).
       repeat rewrite concat_assoc in H.
       apply* H.
-  + intros. subst.
-    apply_fresh ty_let as z. eauto.
+  + apply_fresh ty_let as z. eauto.
     assert (zL: z \notin L) by auto.
     specialize (H0 z zL G1 G2 (G3 & z ~ T)).
     repeat rewrite concat_assoc in H0.
     apply* H0.
-  + intros. subst.
-    apply_fresh subtyp_all as z.
+  + apply_fresh subtyp_all as z.
     eauto.
     eauto.
     assert (zL: z \notin L) by auto.
     specialize (H0 z zL G1 G2 (G3 & z ~ S2)).
     repeat rewrite concat_assoc in H0.
     apply* H0.
+  + apply_fresh subtyp_rec1 as z.
+    assert (zL: z \notin L) by auto.
+    specialize (H z zL G1 G2 (G3 & z ~ open_typ z T)).
+    repeat rewrite concat_assoc in H.
+    apply* H.
+  + apply_fresh subtyp_rec2 as z.
+    assert (zL: z \notin L) by auto.
+    specialize (H z zL G1 G2 (G3 & z ~ open_typ z T)).
+    repeat rewrite concat_assoc in H.
+    apply* H.
 Qed.
 
 Lemma weaken_ty_trm:  forall m1 m2 G1 G2 t T,
@@ -655,6 +669,20 @@ Proof.
     eapply H0; eauto.
     rewrite concat_assoc. reflexivity.
     rewrite concat_assoc. reflexivity.
+  - (* subtyp_rec1 *)
+    subst.
+    apply_fresh subtyp_rec1 as y.
+    assert (y \notin L) as FrL by eauto.
+    specialize (H y FrL).
+    specialize (H G1 (G2 & y ~ open_typ y T) x S0).
+    apply H; rewrite concat_assoc; reflexivity.
+  - (* subtyp_rec2 *)
+    subst.
+    apply_fresh subtyp_rec2 as y.
+    assert (y \notin L) as FrL by eauto.
+    specialize (H y FrL).
+    specialize (H G1 (G2 & y ~ open_typ y T) x S0).
+    apply H; rewrite concat_assoc; reflexivity.
 Qed.
 
 (* ###################################################################### *)
@@ -987,6 +1015,19 @@ Proof.
     simpl in Eq. case_if. apply (IHds Eq).
 Qed.
 
+Lemma concat_subst_ctx: forall x y G1 G2,
+  subst_ctx x y G1 & subst_ctx x y G2 = subst_ctx x y (G1 & G2).
+Proof.
+  intros. unfold subst_ctx. rewrite map_concat. reflexivity.
+Qed.
+
+Lemma subst_ctx_single: forall x y z T,
+  subst_ctx x y (z ~ T) = z ~ (subst_typ x y T).
+Proof.
+  intros. unfold subst_ctx. rewrite map_single. reflexivity.
+Qed.
+
+
 (* ###################################################################### *)
 (** ** The substitution principle *)
 
@@ -1167,6 +1208,36 @@ Proof.
     rewrite concat_assoc. reflexivity.
     rewrite concat_assoc. apply ok_push. assumption. eauto.
     rewrite <- B. rewrite concat_assoc. apply weaken_ty_trm. assumption.
+    apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
+  - (* subtyp_rec1 *)
+    simpl. apply_fresh subtyp_rec1 as z.
+    assert (z \notin L) as FrL by eauto.
+    specialize (H z FrL G1 (G2 & z ~ open_typ z T) x).
+    rewrite concat_assoc in H. specialize (H eq_refl).
+    assert (subst_fvar x y z = z) as A. {
+      unfold subst_fvar. rewrite If_r. reflexivity. eauto.
+    }
+    rewrite <- A at 2. rewrite <- A at 3.
+    rewrite <- subst_open_commute_typ.
+    rewrite <- concat_subst_ctx in H. rewrite concat_assoc in H.
+    rewrite subst_ctx_single in H.
+    apply* H.
+    apply weaken_ty_trm; [assumption | idtac].
+    apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
+  - (* subtyp_rec2 *)
+    simpl. apply_fresh subtyp_rec2 as z.
+    assert (z \notin L) as FrL by eauto.
+    specialize (H z FrL G1 (G2 & z ~ open_typ z T) x).
+    rewrite concat_assoc in H. specialize (H eq_refl).
+    assert (subst_fvar x y z = z) as A. {
+      unfold subst_fvar. rewrite If_r. reflexivity. eauto.
+    }
+    rewrite <- A at 2. rewrite <- A at 3. rewrite <- A at 4.
+    do 2 rewrite <- subst_open_commute_typ.
+    rewrite <- concat_subst_ctx in H. rewrite concat_assoc in H.
+    rewrite subst_ctx_single in H.
+    apply* H.
+    apply weaken_ty_trm; [assumption | idtac].
     apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
 Qed.
 
@@ -1956,6 +2027,10 @@ Proof.
     subst.
     apply_fresh subtyp_all as y; eauto.
     apply H0; eauto. apply subenv_push; eauto.
+  - (* subtyp_rec1 *)
+    subst. apply_fresh subtyp_rec1 as y. apply* H. apply* subenv_push.
+  - (* subtyp_rec2 *)
+    subst. apply_fresh subtyp_rec2 as y. apply* H. apply* subenv_push.
 Qed.
 
 Lemma narrow_typing: forall G G' t T,
@@ -2201,7 +2276,19 @@ Proof.
     eapply has_any. assumption. eapply has_sel. eassumption. eassumption.
     eauto.
   - (* all *)
-    inversion Hmem; subst. inversion H2; subst.
+    inversion Hmem; subst. inversion H2.
+  - (* rec1 *)
+    (* TODO here we cannot use IH because we said that when the env grows, we don't need to be
+       sub_tight any more! *)
+    admit.
+    (*
+    lets Hmem2: Hmem.
+    apply has_member_inv in Hmem.
+    repeat destruct Hmem as [Hmem|Hmem].
+    + subst. exists S2 U2. repeat split; auto. has_member_rules G x (typ_bnd T) A S2 U2
+    *)
+  - (* rec2 *)
+    admit. (* TODO same here *)
 Qed.
 
 Lemma has_member_monotonicity: forall G s x T0 ds T A S U,
@@ -2820,6 +2907,11 @@ Proof.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply H; eauto.
+  - (* bnd-<: *)
+    (* TODO: IH needs wf_sto for a bigger env *)
+    admit.
+  - (* bnd-<:-bind *)
+    admit.
 Qed.
 
 (*
