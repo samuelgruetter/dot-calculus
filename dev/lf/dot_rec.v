@@ -17,9 +17,16 @@ Inductive label: Set :=
 | label_typ: typ_label -> label
 | label_trm: trm_label -> label.
 
+Inductive bound_in : Set :=
+| in_sto : bound_in
+| in_ctx : bound_in.
+
 Inductive avar : Set :=
-  | avar_b : nat -> avar  (* bound var (de Bruijn index) *)
-  | avar_f : var -> avar. (* free var ("name"), refers to store or ctx *)
+  | avar_b : nat -> avar
+  | avar_f : bound_in -> var -> avar.
+
+Definition avar_s x := avar_f in_sto x.
+Definition avar_c x := avar_f in_ctx x.
 
 Inductive typ : Set :=
   | typ_top  : typ
@@ -83,13 +90,13 @@ Definition defs_hasnt(ds: defs)(l: label) := get_def l ds = None.
 (** Opening replaces in some syntax a bound variable with dangling index (k)
    by a free variable x. *)
 
-Definition open_rec_avar (k: nat) (u: var) (a: avar) : avar :=
+Definition open_rec_avar (k: nat) (u: avar) (a: avar) : avar :=
   match a with
-  | avar_b i => If k = i then avar_f u else avar_b i
-  | avar_f x => avar_f x
+  | avar_b i => If k = i then u else avar_b i
+  | avar_f b x => avar_f b x
   end.
 
-Fixpoint open_rec_typ (k: nat) (u: var) (T: typ): typ :=
+Fixpoint open_rec_typ (k: nat) (u: avar) (T: typ): typ :=
   match T with
   | typ_top        => typ_top
   | typ_bot        => typ_bot
@@ -99,13 +106,13 @@ Fixpoint open_rec_typ (k: nat) (u: var) (T: typ): typ :=
   | typ_bnd T      => typ_bnd (open_rec_typ (S k) u T)
   | typ_all T1 T2  => typ_all (open_rec_typ k u T1) (open_rec_typ (S k) u T2)
   end
-with open_rec_dec (k: nat) (u: var) (D: dec): dec :=
+with open_rec_dec (k: nat) (u: avar) (D: dec): dec :=
   match D with
   | dec_typ L T U => dec_typ L (open_rec_typ k u T) (open_rec_typ k u U)
   | dec_trm m T => dec_trm m (open_rec_typ k u T)
   end.
 
-Fixpoint open_rec_trm (k: nat) (u: var) (t: trm): trm :=
+Fixpoint open_rec_trm (k: nat) (u: avar) (t: trm): trm :=
   match t with
   | trm_var a      => trm_var (open_rec_avar k u a)
   | trm_val v      => trm_val (open_rec_val k u v)
@@ -113,17 +120,17 @@ Fixpoint open_rec_trm (k: nat) (u: var) (t: trm): trm :=
   | trm_app f a    => trm_app (open_rec_avar k u f) (open_rec_avar k u a)
   | trm_let t1 t2  => trm_let (open_rec_trm k u t1) (open_rec_trm (S k) u t2)
   end
-with open_rec_val (k: nat) (u: var) (v: val): val :=
+with open_rec_val (k: nat) (u: avar) (v: val): val :=
   match v with
   | val_new T ds => val_new (open_rec_typ (S k) u T) (open_rec_defs (S k) u ds)
   | val_lambda T e => val_lambda (open_rec_typ k u T) (open_rec_trm (S k) u e)
   end
-with open_rec_def (k: nat) (u: var) (d: def): def :=
+with open_rec_def (k: nat) (u: avar) (d: def): def :=
   match d with
   | def_typ L T => def_typ L (open_rec_typ k u T)
   | def_trm m e => def_trm m (open_rec_trm k u e)
   end
-with open_rec_defs (k: nat) (u: var) (ds: defs): defs :=
+with open_rec_defs (k: nat) (u: avar) (ds: defs): defs :=
   match ds with
   | defs_nil => defs_nil
   | defs_cons tl d => defs_cons (open_rec_defs k u tl) (open_rec_def k u d)
@@ -143,7 +150,7 @@ Definition open_defs u l := open_rec_defs  0 u l.
 Definition fv_avar (a: avar) : vars :=
   match a with
   | avar_b i => \{}
-  | avar_f x => \{x}
+  | avar_f b x => \{x}
   end.
 
 Fixpoint fv_typ (T: typ) : vars :=
@@ -194,16 +201,16 @@ Definition fv_ctx_types(G: ctx): vars := (fv_in_values (fun T => fv_typ T) G).
 Inductive red : trm -> sto -> trm -> sto -> Prop :=
 | red_sel : forall x m s t T ds,
     binds x (val_new T ds) s ->
-    defs_has (open_defs x ds) (def_trm m t) ->
-    red (trm_sel (avar_f x) m) s t s
+    defs_has (open_defs (avar_s x) ds) (def_trm m t) ->
+    red (trm_sel (avar_s x) m) s t s
 | red_app : forall f a s T t,
     binds f (val_lambda T t) s ->
-    red (trm_app (avar_f f) (avar_f a)) s (open_trm a t) s
+    red (trm_app (avar_s f) (avar_s a)) s (open_trm (avar_s a) t) s
 | red_let : forall v t s x,
     x # s ->
-    red (trm_let (trm_val v) t) s (open_trm x t) (s & x ~ v)
+    red (trm_let (trm_val v) t) s (open_trm (avar_s x) t) (s & x ~ v)
 | red_let_var : forall t s x,
-    red (trm_let (trm_var (avar_f x)) t) s (open_trm x t) s
+    red (trm_let (trm_var (avar_s x)) t) s (open_trm (avar_s x) t) s
 | red_let_tgt : forall t0 t s t0' s',
     red t0 s t0' s' ->
     red (trm_let t0 t) s (trm_let t0' t) s'.
@@ -211,111 +218,120 @@ Inductive red : trm -> sto -> trm -> sto -> Prop :=
 (* ###################################################################### *)
 (** ** Typing *)
 
-Inductive tymode: Set := ty_precise | ty_general.
-Inductive submode: Set := sub_tight | sub_general.
+Inductive restricted_by : var -> ctx -> ctx -> Prop :=
+| lim_ctx : forall x T G G1 G2,
+              G = G1 & (x ~ T) & G2 ->
+              restricted_by x G (G1 & (x ~ T)).
 
-Inductive ty_trm : tymode -> submode -> ctx -> trm -> typ -> Prop :=
-| ty_var : forall m1 m2 G x T,
+Inductive ty_trm : sto -> ctx -> trm -> typ -> Prop :=
+| ty_var_s : forall s G x v T,
+    binds x v s ->
+    ty_trm s G (trm_val v) T ->
+    ty_trm s G (trm_var (avar_s x)) T
+| ty_var_c : forall s G x T,
     binds x T G ->
-    ty_trm m1 m2 G (trm_var (avar_f x)) T
-| ty_all_intro : forall L m1 m2 G T t U,
+    ty_trm s G (trm_var (avar_c x)) T
+| ty_all_intro : forall L s G T t U,
     (forall x, x \notin L ->
-      ty_trm ty_general sub_general (G & x ~ T) (open_trm x t) (open_typ x U)) ->
-    ty_trm m1 m2 G (trm_val (val_lambda T t)) (typ_all T U)
-| ty_all_elim : forall m2 G x z S T,
-    ty_trm ty_general m2 G (trm_var (avar_f x)) (typ_all S T) ->
-    ty_trm ty_general m2 G (trm_var (avar_f z)) S ->
-    ty_trm ty_general m2 G (trm_app (avar_f x) (avar_f z)) (open_typ z T)
-| ty_new_intro : forall L m1 m2 G T ds,
+      ty_trm s (G & x ~ T) (open_trm (avar_c x) t) (open_typ (avar_c x) U)) ->
+    ty_trm s G (trm_val (val_lambda T t)) (typ_all T U)
+| ty_all_elim : forall s G bx x bz z S T,
+    ty_trm s G (trm_var (avar_f bx x)) (typ_all S T) ->
+    ty_trm s G (trm_var (avar_f bz z)) S ->
+    ty_trm s G (trm_app (avar_f bx x) (avar_f bz z)) (open_typ (avar_f bz z) T)
+| ty_new_intro : forall L s G T ds,
     (forall x, x \notin L ->
-      ty_defs (G & (x ~ open_typ x T)) (open_defs x ds) (open_typ x T)) ->
-    ty_trm m1 m2 G (trm_val (val_new T ds)) (typ_bnd T)
-| ty_new_elim : forall m2 G x m T,
-    ty_trm ty_general m2 G (trm_var (avar_f x)) (typ_rcd (dec_trm m T)) ->
-    ty_trm ty_general m2 G (trm_sel (avar_f x) m) T
-| ty_let : forall L m2 G t u T U,
-    ty_trm ty_general m2 G t T ->
+      ty_defs s (G & (x ~ open_typ (avar_c x) T)) (open_defs (avar_c x) ds) (open_typ (avar_c x) T)) ->
+    ty_trm s G (trm_val (val_new T ds)) (typ_bnd T)
+| ty_new_elim : forall s G bx x m T,
+    ty_trm s G (trm_var (avar_f bx x)) (typ_rcd (dec_trm m T)) ->
+    ty_trm s G (trm_sel (avar_f bx x) m) T
+| ty_let : forall L s G t u T U,
+    ty_trm s G t T ->
     (forall x, x \notin L ->
-      ty_trm ty_general sub_general (G & x ~ T) (open_trm x u) U) ->
-    ty_trm ty_general m2 G (trm_let t u) U
-| ty_rec_intro : forall m2 G x T,
-    ty_trm ty_general m2 G (trm_var (avar_f x)) (open_typ x T) ->
-    ty_trm ty_general m2 G (trm_var (avar_f x)) (typ_bnd T)
-| ty_rec_elim : forall m1 m2 G x T,
-    ty_trm m1 m2 G (trm_var (avar_f x)) (typ_bnd T) ->
-    ty_trm m1 m2 G (trm_var (avar_f x)) (open_typ x T)
-| ty_and_intro : forall m2 G x T U,
-    ty_trm ty_general m2 G (trm_var (avar_f x)) T ->
-    ty_trm ty_general m2 G (trm_var (avar_f x)) U ->
-    ty_trm ty_general m2 G (trm_var (avar_f x)) (typ_and T U)
-| ty_sub : forall m1 m2 G t T U,
-    (m1 = ty_precise -> exists x, t = trm_var (avar_f x)) ->
-    ty_trm m1 m2 G t T ->
-    subtyp m1 m2 G empty T U ->
-    ty_trm m1 m2 G t U
-with ty_def : ctx -> def -> dec -> Prop :=
-| ty_def_typ : forall G A T,
-    ty_def G (def_typ A T) (dec_typ A T T)
-| ty_def_trm : forall G a t T,
-    ty_trm ty_general sub_general G t T ->
-    ty_def G (def_trm a t) (dec_trm a T)
-with ty_defs : ctx -> defs -> typ -> Prop :=
-| ty_defs_one : forall G d D,
-    ty_def G d D ->
-    ty_defs G (defs_cons defs_nil d) (typ_rcd D)
-| ty_defs_cons : forall G ds d T D,
-    ty_defs G ds T ->
-    ty_def G d D ->
+      ty_trm s (G & x ~ T) (open_trm (avar_c x) u) U) ->
+    ty_trm s G (trm_let t u) U
+| ty_rec_intro : forall s G bx x T,
+    ty_trm s G (trm_var (avar_f bx x)) (open_typ (avar_f bx x) T) ->
+    ty_trm s G (trm_var (avar_f bx x)) (typ_bnd T)
+| ty_rec_elim : forall s G bx x T,
+    ty_trm s G (trm_var (avar_f bx x)) (typ_bnd T) ->
+    ty_trm s G (trm_var (avar_f bx x)) (open_typ (avar_f bx x) T)
+| ty_and_intro : forall s G bx x T U,
+    ty_trm s G (trm_var (avar_f bx x)) T ->
+    ty_trm s G (trm_var (avar_f bx x)) U ->
+    ty_trm s G (trm_var (avar_f bx x)) (typ_and T U)
+| ty_sub : forall s G t T U,
+    ty_trm s G t T ->
+    subtyp s G T U ->
+    ty_trm s G t U
+with ty_def : sto -> ctx -> def -> dec -> Prop :=
+| ty_def_typ : forall s G A T,
+    ty_def s G (def_typ A T) (dec_typ A T T)
+| ty_def_trm : forall s G a t T,
+    ty_trm s G t T ->
+    ty_def s G (def_trm a t) (dec_trm a T)
+with ty_defs : sto -> ctx -> defs -> typ -> Prop :=
+| ty_defs_one : forall s G d D,
+    ty_def s G d D ->
+    ty_defs s G (defs_cons defs_nil d) (typ_rcd D)
+| ty_defs_cons : forall s G ds d T D,
+    ty_defs s G ds T ->
+    ty_def s G d D ->
     defs_hasnt ds (label_of_def d) ->
-    ty_defs G (defs_cons ds d) (typ_and T (typ_rcd D))
+    ty_defs s G (defs_cons ds d) (typ_and T (typ_rcd D))
 
-with subtyp : tymode -> submode -> ctx -> ctx -> typ -> typ -> Prop :=
-| subtyp_top: forall m2 G J T,
-    subtyp ty_general m2 G J T typ_top
-| subtyp_bot: forall m2 G J T,
-    subtyp ty_general m2 G J typ_bot T
-| subtyp_refl: forall m2 G J T,
-    subtyp ty_general m2 G J T T
-| subtyp_trans: forall m1 m2 G J S T U,
-    subtyp m1 m2 G J S T ->
-    subtyp m1 m2 G J T U ->
-    subtyp m1 m2 G J S U
-| subtyp_and11: forall m1 m2 G J T U,
-    subtyp m1 m2 G J (typ_and T U) T
-| subtyp_and12: forall m1 m2 G J T U,
-    subtyp m1 m2 G J (typ_and T U) U
-| subtyp_and2: forall m2 G J S T U,
-    subtyp ty_general m2 G J S T ->
-    subtyp ty_general m2 G J S U ->
-    subtyp ty_general m2 G J S (typ_and T U)
-| subtyp_fld: forall m2 G J a T U,
-    subtyp ty_general m2 G J T U ->
-    subtyp ty_general m2 G J (typ_rcd (dec_trm a T)) (typ_rcd (dec_trm a U))
-| subtyp_typ: forall m2 G J A S1 T1 S2 T2,
-    subtyp ty_general m2 G J S2 S1 ->
-    subtyp ty_general m2 G J T1 T2 ->
-    subtyp ty_general m2 G J (typ_rcd (dec_typ A S1 T1)) (typ_rcd (dec_typ A S2 T2))
-| subtyp_sel2: forall G J x A S T,
-    ty_trm ty_general sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A S T)) ->
-    subtyp ty_general sub_general G J S (typ_sel (avar_f x) A)
-| subtyp_sel1: forall G J x A S T,
-    ty_trm ty_general sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A S T)) ->
-    subtyp ty_general sub_general G J (typ_sel (avar_f x) A) T
-| subtyp_sel2_tight: forall G J x A T,
-    ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T T)) ->
-    subtyp ty_general sub_tight G J T (typ_sel (avar_f x) A)
-| subtyp_sel1_tight: forall G J x A T,
-    ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T T)) ->
-    subtyp ty_general sub_tight G J (typ_sel (avar_f x) A) T
-| subtyp_all: forall L m2 G J S1 T1 S2 T2,
-    subtyp ty_general m2 G J S2 S1 ->
+with subtyp : sto -> ctx -> typ -> typ -> Prop :=
+| subtyp_top: forall s G T,
+    subtyp s G T typ_top
+| subtyp_bot: forall s G T,
+    subtyp s G typ_bot T
+| subtyp_refl: forall s G T,
+    subtyp s G T T
+| subtyp_trans: forall s G S T U,
+    subtyp s G S T ->
+    subtyp s G T U ->
+    subtyp s G S U
+| subtyp_and11: forall s G T U,
+    subtyp s G (typ_and T U) T
+| subtyp_and12: forall s G T U,
+    subtyp s G (typ_and T U) U
+| subtyp_and2: forall s G S T U,
+    subtyp s G S T ->
+    subtyp s G S U ->
+    subtyp s G S (typ_and T U)
+| subtyp_fld: forall s G a T U,
+    subtyp s G T U ->
+    subtyp s G (typ_rcd (dec_trm a T)) (typ_rcd (dec_trm a U))
+| subtyp_typ: forall s G A S1 T1 S2 T2,
+    subtyp s G S2 S1 ->
+    subtyp s G T1 T2 ->
+    subtyp s G (typ_rcd (dec_typ A S1 T1)) (typ_rcd (dec_typ A S2 T2))
+| subtyp_sel2: forall s G G' x A S T,
+    restricted_by x G G' ->
+    ty_trm s G' (trm_var (avar_c x)) (typ_rcd (dec_typ A S T)) ->
+    subtyp s G S (typ_sel (avar_c x) A)
+| subtyp_sel1: forall s G G' x A S T,
+    restricted_by x G G' ->
+    ty_trm s G' (trm_var (avar_c x)) (typ_rcd (dec_typ A S T)) ->
+    subtyp s G (typ_sel (avar_c x) A) T
+| subtyp_sel2_tight: forall s G x A S ds T,
+    binds x (val_new S ds) s ->
+    defs_has (open_defs (avar_s x) ds) (def_typ A T) ->
+    subtyp s G T (typ_sel (avar_s x) A)
+| subtyp_sel1_tight: forall s G x A S ds T,
+    binds x (val_new S ds) s ->
+    defs_has (open_defs (avar_s x) ds) (def_typ A T) ->
+    subtyp s G (typ_sel (avar_s x) A) T
+| subtyp_all: forall L s G S1 T1 S2 T2,
+    subtyp s G S2 S1 ->
     (forall x, x \notin L ->
-       subtyp ty_general sub_general (G & x ~ S2) J (open_typ x T1) (open_typ x T2)) ->
-    subtyp ty_general m2 G J (typ_all S1 T1) (typ_all S2 T2)
-| subtyp_bnd: forall L m2 G J T1 T2,
+       subtyp s (G & x ~ S2) (open_typ (avar_c x) T1) (open_typ (avar_c x) T2)) ->
+    subtyp s G (typ_all S1 T1) (typ_all S2 T2)
+| subtyp_bnd: forall L s G T1 T2,
     (forall x, x \notin L ->
-       subtyp ty_general m2 G (J & x ~ (typ_bnd T1)) (open_typ x T1) (open_typ x T2)) ->
-    subtyp ty_general m2 G J (typ_bnd T1) (typ_bnd T2).
+       subtyp s (G & x ~ (typ_bnd T1)) (open_typ (avar_c x) T1) (open_typ (avar_c x) T2)) ->
+    subtyp s G (typ_bnd T1) (typ_bnd T2).
 
 Inductive wf_sto: ctx -> sto -> Prop :=
 | wf_sto_empty: wf_sto empty empty
@@ -323,7 +339,7 @@ Inductive wf_sto: ctx -> sto -> Prop :=
     wf_sto G s ->
     x # G ->
     x # s ->
-    ty_trm ty_precise sub_general G (trm_val v) T ->
+    ty_trm s empty (trm_val v) T ->
     wf_sto (G & x ~ T) (s & x ~ v).
 
 (* ###################################################################### *)
