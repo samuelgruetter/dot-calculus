@@ -435,6 +435,15 @@ Qed.
 (* ###################################################################### *)
 (** ** Weakening *)
 
+Lemma ok_restricted_by: forall x G G',
+  ok G ->
+  restricted_by x G G' ->
+  ok G'.
+Proof.
+  introv Hok r. destruct r. subst.
+  eauto.
+Qed.
+
 Lemma weaken_restricted_by: forall x G' G1 G2 G3,
   restricted_by x (G1 & G3) G' ->
   ok (G1 & G2 & G3) ->                                 
@@ -496,9 +505,17 @@ Proof.
     eapply subtyp_sel2. eassumption. eassumption.
     destruct H2 as [G3' [Heq r]].
     eapply subtyp_sel2. eapply r. eapply H. eapply Heq.
-    rewrite Heq in H0. admit.
+    rewrite Heq in H0. eapply ok_restricted_by; eauto.
     eauto.
-  + admit.
+  + intros. subst.
+    inversion r; subst.
+    apply weaken_restricted_by with (G2:=G2) in r.
+    destruct r.
+    eapply subtyp_sel1. eassumption. eassumption.
+    destruct H2 as [G3' [Heq r]].
+    eapply subtyp_sel1. eapply r. eapply H. eapply Heq.
+    rewrite Heq in H0. eapply ok_restricted_by; eauto.
+    eauto.
   + intros. subst.
     apply_fresh subtyp_all as z.
     eauto.
@@ -507,7 +524,12 @@ Proof.
     specialize (H0 z zL G1 G2 (G3 & z ~ S2)).
     repeat rewrite concat_assoc in H0.
     apply* H0.
-  + admit.
+  + intros. subst.
+    apply_fresh subtyp_bnd as z.
+    assert (zL: z \notin L) by auto.
+    specialize (H z zL G1 G2 (G3 & z ~ typ_bnd T1)).
+    repeat rewrite concat_assoc in H.
+    apply* H.
 Qed.
 
 Lemma weaken_ty_trm:  forall m1 m2 G1 G2 t T,
