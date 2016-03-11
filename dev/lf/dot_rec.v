@@ -647,6 +647,32 @@ Proof.
   rewrite <- EqG. assumption.
 Qed.
 
+Lemma weaken_sto_rules:
+  (forall m s G t T, ty_trm m s G t T -> forall s',
+    ok (s & s') ->
+    ty_trm m (s & s') G t T) /\
+  (forall s G d D, ty_def s G d D -> forall s',
+    ok (s & s') ->
+    ty_def (s & s') G d D) /\
+  (forall s G ds T, ty_defs s G ds T -> forall s',
+    ok (s & s') ->
+    ty_defs (s & s') G ds T) /\
+  (forall m s G T U, subtyp m s G T U -> forall s',
+    ok (s & s') ->
+    subtyp m (s & s') G T U).
+Proof.
+  apply rules_mutind; eauto 4 using binds_concat_left_ok.
+Qed.
+
+Lemma weaken_sto_ty_trm:  forall m s s' G t T,
+    ty_trm m s G t T ->
+    ok (s & s') ->
+    ty_trm m (s & s') G t T.
+Proof.
+  intros.
+  apply* weaken_sto_rules.
+Qed.
+
 (* ###################################################################### *)
 (** ** Well-formed store *)
 
