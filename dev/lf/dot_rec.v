@@ -619,10 +619,10 @@ Proof.
     apply* H.
 Qed.
 
-Lemma weaken_ty_trm:  forall m1 m2 G1 G2 t T,
-    ty_trm m1 m2 G1 t T ->
+Lemma weaken_ty_trm:  forall m s G1 G2 t T,
+    ty_trm m s G1 t T ->
     ok (G1 & G2) ->
-    ty_trm m1 m2 (G1 & G2) t T.
+    ty_trm m s (G1 & G2) t T.
 Proof.
   intros.
     assert (G1 & G2 = G1 & G2 & empty) as EqG. {
@@ -633,10 +633,10 @@ Proof.
   rewrite <- EqG. assumption.
 Qed.
 
-Lemma weaken_subtyp: forall m1 m2 G1 G2 J S U,
-  subtyp m1 m2 G1 J S U ->
+Lemma weaken_subtyp: forall m s G1 G2 S U,
+  subtyp m s G1 S U ->
   ok (G1 & G2) ->
-  subtyp m1 m2 (G1 & G2) J S U.
+  subtyp m s (G1 & G2) S U.
 Proof.
   intros.
     assert (G1 & G2 = G1 & G2 & empty) as EqG. {
