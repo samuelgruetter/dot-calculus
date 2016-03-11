@@ -693,37 +693,33 @@ Proof. intros. induction H; jauto. Qed.
 
 Hint Resolve wf_sto_to_ok_s wf_sto_to_ok_G.
 
-(*
 Lemma ctx_binds_to_sto_binds_raw: forall s G x T,
   wf_sto G s ->
   binds x T G ->
-  exists G1 G2 v, G = G1 & (x ~ T) & G2 /\ binds x v s /\ ty_trm ty_precise sub_general G1 (trm_val v) T.
+  exists s1 s2 v,  s = s1 & (x ~ v) & s2 /\ ty_trm ty_precise s1 empty (trm_val v) T.
 Proof.
   introv Wf Bi. gen x T Bi. induction Wf; intros.
   + false* binds_empty_inv.
   + unfolds binds. rewrite get_push in *. case_if.
-    - inversions Bi. exists G (@empty typ) v.
+    - inversions Bi. exists s (@empty val) v.
       rewrite concat_empty_r. auto.
-    - specialize (IHWf _ _ Bi). destruct IHWf as [G1 [G2 [ds' [Eq [Bi' Tyds]]]]].
-      subst. exists G1 (G2 & x ~ T) ds'. rewrite concat_assoc. auto.
+    - specialize (IHWf _ _ Bi). destruct IHWf as [s1 [s2 [v' [Eq Ty]]]].
+      subst. exists s1 (s2 & x ~ v) v'. rewrite concat_assoc. auto.
 Qed.
- *)
 
-(*
 Lemma sto_binds_to_ctx_binds_raw: forall s G x v,
   wf_sto G s ->
   binds x v s ->
-  exists G1 G2 T, G = G1 & (x ~ T) & G2 /\ ty_trm ty_precise sub_general G1 (trm_val v) T.
+  exists s1 s2 T, s = s1 & (x ~ v) & s2 /\ binds x T G /\ ty_trm ty_precise s1 empty (trm_val v) T.
 Proof.
   introv Wf Bi. gen x v Bi. induction Wf; intros.
   + false* binds_empty_inv.
   + unfolds binds. rewrite get_push in *. case_if.
-    - inversions Bi. exists G (@empty typ) T.
+    - inversions Bi. exists s (@empty val) T.
       rewrite concat_empty_r. auto.
-    - specialize (IHWf _ _ Bi). destruct IHWf as [G1 [G2 [T0' [Eq Ty]]]].
-      subst. exists G1 (G2 & x ~ T) T0'. rewrite concat_assoc. auto.
+    - specialize (IHWf _ _ Bi). destruct IHWf as [s1 [s2 [T' [Eq Ty]]]].
+      subst. exists s1 (s2 & x ~ v) T'. rewrite concat_assoc. auto.
 Qed.
- *)
 
 Lemma invert_wf_sto_concat: forall s G1 G2,
   wf_sto (G1 & G2) s ->
