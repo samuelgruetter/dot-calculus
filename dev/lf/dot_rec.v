@@ -1533,10 +1533,10 @@ Lemma corresponding_types: forall G s x T,
   wf_sto G s ->
   binds x T G ->
   ((exists S U t, binds x (val_lambda S t) s /\
-                  ty_trm ty_precise sub_general G (trm_val (val_lambda S t)) (typ_all S U) /\
+                  ty_trm ty_precise s empty (trm_val (val_lambda S t)) (typ_all S U) /\
                   T = typ_all S U) \/
    (exists S ds, binds x (val_new S ds) s /\
-                 ty_trm ty_precise sub_general G (trm_val (val_new S ds)) (typ_bnd S) /\
+                 ty_trm ty_precise s empty (trm_val (val_new S ds)) (typ_bnd S) /\
                  T = typ_bnd S)).
 Proof.
   introv H Bi. induction H.
@@ -1545,11 +1545,11 @@ Proof.
     + inversions Bi. inversion H2; subst.
       * left. exists T0. exists U. exists t.
         split. auto. split.
-        apply weaken_ty_trm. assumption. apply ok_push. eapply wf_sto_to_ok_G. eassumption. assumption.
+        apply weaken_sto_ty_trm. assumption. apply ok_push. eapply wf_sto_to_ok_s. eassumption. assumption.
         reflexivity.
       * right. exists T0. exists ds.
         split. auto. split.
-        apply weaken_ty_trm. assumption. apply ok_push. eapply wf_sto_to_ok_G. eassumption. assumption.
+        apply weaken_sto_ty_trm. assumption. apply ok_push. eapply wf_sto_to_ok_s. eassumption. assumption.
         reflexivity.
       * assert (exists x, trm_val v = trm_var (avar_f x)) as A. {
           apply H3. reflexivity.
@@ -1560,12 +1560,12 @@ Proof.
       * destruct IH as [S [U [t [IH1 [IH2 IH3]]]]].
         left. exists S. exists U. exists t.
         split. assumption. split.
-        apply weaken_ty_trm. assumption. apply ok_push. eapply wf_sto_to_ok_G. eassumption. assumption.
+        apply weaken_sto_ty_trm. assumption. apply ok_push. eapply wf_sto_to_ok_s. eassumption. assumption.
         assumption.
       * destruct IH as [S [ds [IH1 [IH2 IH3]]]].
         right. exists S. exists ds.
         split. assumption. split.
-        apply weaken_ty_trm. assumption. apply ok_push. eapply wf_sto_to_ok_G. eassumption. assumption.
+        apply weaken_sto_ty_trm. assumption. apply ok_push. eapply wf_sto_to_ok_s. eassumption. assumption.
         assumption.
 Qed.
 
