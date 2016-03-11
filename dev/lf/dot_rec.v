@@ -1265,7 +1265,8 @@ Qed.
 (* ###################################################################### *)
 (** ** The substitution principle *)
 
-Lemma subst_rules: forall y S,
+Lemma subst_rules: forall y S yv,
+  y = in_ctx yv ->
   (forall m s G t T, ty_trm m s G t T -> forall G1 G2 x,
     G = G1 & x ~ S & G2 ->
     ok (G1 & x ~ S & G2) ->
@@ -1293,7 +1294,7 @@ Lemma subst_rules: forall y S,
     m = ty_general ->
     subtyp m s (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_typ x y U)).
 Proof.
-  intros y S. apply rules_mutind; intros; subst.
+  intros y S yv Eqy. apply rules_mutind; intros; subst G; try subst m.
   - (* ty_var_s *)
     simpl.
     apply ty_var_s with (v:=v); eauto.
@@ -1415,21 +1416,31 @@ Proof.
   - (* subtyp_typ *)
     eapply subtyp_typ; eauto.
   - (* subtyp_sel2 *)
+    subst y.
     simpl.
-    eapply subtyp_sel2; eauto.
-    eapply H; eauto.
+    assert (
+        avar_f (If x = x0 then in_ctx yv else in_ctx x) =
+        avar_f (in_ctx (If x = x0 then yv else x))) as RA. {
+      case_if; eauto.
+    }
+    rewrite RA.
+    apply subtyp_sel2 with (G':=G') (T:=T); eauto.
+    admit.
+    admit.
   - (* subtyp_sel1 *)
-    eapply subtyp_sel1; eauto.
-    eapply H; eauto.
-  - (* subtyp_sel2_tight *) inversion H5.
-  - (* subtyp_sel1_tight *) inversion H5.
+    admit.
+  - (* subtyp_sel2_tight *)
+    simpl. eapply subtyp_sel2_tight; eauto.
+    admit.
+  - (* subtyp_sel1_tight *)
+    admit.
   - (* subtyp_all *)
     simpl. apply_fresh subtyp_all as z; eauto.
     assert (z \notin L) as FrL by eauto.
-    assert (subst_fvar x y z = z) as A. {
+    assert (subst_fvar x y (in_ctx z) = (in_ctx z)) as A. {
       unfold subst_fvar. rewrite If_r. reflexivity. eauto.
     }
-    rewrite <- A at 2. rewrite <- A at 3.
+    rewrite <- A.
     rewrite <- subst_open_commute_typ. rewrite <- subst_open_commute_typ.
     assert (subst_ctx x y G2 & z ~ subst_typ x y S2 = subst_ctx x y (G2 & z ~ S2)) as B. {
       unfold subst_ctx. rewrite map_concat. rewrite map_single. reflexivity.
@@ -1443,16 +1454,22 @@ Proof.
   - (* subtyp_bnd *)
     simpl. apply_fresh subtyp_bnd as z; eauto.
     assert (z \notin L) as FrL by eauto.
-    assert (subst_fvar x y z = z) as A. {
+    assert (subst_fvar x y (in_ctx z) = (in_ctx z)) as A. {
       unfold subst_fvar. rewrite If_r. reflexivity. eauto.
     }
-    rewrite <- A at 2. rewrite <- A at 3.
+    rewrite <- A.
     rewrite <- subst_open_commute_typ. rewrite <- subst_open_commute_typ.
-    assert (subst_ctx x y J & z ~ typ_bnd (subst_typ x y T1) = subst_ctx x y (J & z ~ (typ_bnd T1))) as B. {
-      unfold subst_ctx. rewrite map_concat. rewrite map_single. reflexivity.
+    assert (G1 & subst_ctx x y G2 & z ~ typ_bnd (subst_typ x y T1) = G1 & subst_ctx x y (G2 & z ~ (typ_bnd T1))) as B. {
+      unfold subst_ctx. rewrite map_concat. rewrite map_single.
+      rewrite concat_assoc. reflexivity.
     }
     rewrite B.
-    apply H; eauto.
+    apply H; eauto using concat_assoc.
+    rewrite concat_assoc. apply ok_push; eauto.
+    rewrite <- B.
+    apply weaken_ty_trm. assumption.
+    apply ok_push. eapply ok_remove. apply ok_concat_map. eassumption.
+    unfold subst_ctx. eauto.
 Qed.
 
 Lemma subst_ty_trm: forall y S G x t T,
