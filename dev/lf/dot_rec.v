@@ -444,6 +444,69 @@ Proof.
   eauto.
 Qed.
 
+Lemma binds_exists: forall {V} x (T:V) G,
+  binds x T G ->
+  ok G ->
+  exists G1 G2, G = G1 & (x ~ T) & G2.
+Proof.
+  introv Bi Hok. induction Hok.
+  - false. eapply binds_empty_inv. eassumption.
+  - apply binds_push_inv in Bi.
+    destruct Bi as [[Heqx Heqv] | [Neqx Bi]].
+    + subst. exists E. exists (@empty V). rewrite concat_empty_r. reflexivity.
+    + specialize (IHHok Bi). destruct IHHok as [G1 [G2 EqE]].
+      subst. exists G1. exists (G2 & x0 ~ v).
+      rewrite concat_assoc. reflexivity.
+Qed.
+
+Lemma concat_ok_eq: forall {V} G1 G2 G1' G2' x (T:V),
+  G1 & x ~ T & G2 = G1' & x ~ T & G2' ->
+  ok (G1 & x ~ T & G2) ->
+  G1 = G1' /\ G2 = G2'.
+Proof.
+  introv Eq Hok.
+  assert (ok G1) as Hok1. {
+    apply ok_remove in Hok. eauto.
+  }
+  assert (ok G1') as Hok1'. {
+    rewrite Eq in Hok. apply ok_remove in Hok. eauto.
+  }
+  assert (ok G2) as Hok2. {
+    apply ok_remove in Hok. eauto.
+  }
+  assert (ok G2') as Hok2'. {
+    rewrite Eq in Hok. apply ok_remove in Hok. eauto.
+  }
+  assert (ok (G1' & x ~ T & G2')) as Hok'. {
+    rewrite Eq in Hok. eauto.
+  }
+  generalize dependent G2'.
+  generalize dependent G1'.
+  induction Hok2; intros; inversion Hok2'; subst.
+  - rewrite concat_empty_r in Eq. rewrite concat_empty_r in Eq.
+    eapply eq_push_inv  in Eq. destruct Eq as [? [? Eq]]. eauto.
+  - rewrite concat_empty_r in Eq. rewrite concat_assoc in Eq.
+    eapply eq_push_inv in Eq. destruct Eq as [? [? Eq]]. subst.
+    eapply ok_middle_inv in Hok'. destruct Hok' as [? Contra].
+    eapply fresh_push_eq_inv in Contra. inversion Contra.
+  - rewrite concat_empty_r in Eq. rewrite concat_assoc in Eq.
+    eapply eq_push_inv in Eq. destruct Eq as [? [? Eq]]. subst.
+    rewrite concat_empty_r in Hok'. eapply ok_remove in Hok'.
+    assert (G1 & x ~ T & x ~ T = G1 & x ~ T & (empty & x ~ T)) as A. {
+      rewrite concat_empty_l. reflexivity.
+    }
+    rewrite A in Hok'. eapply ok_middle_inv in Hok'. destruct Hok' as [_ Contra].
+    eapply fresh_push_eq_inv in Contra. inversion Contra.
+  - rewrite concat_assoc in Eq. rewrite concat_assoc in Eq.
+    eapply eq_push_inv in Eq. destruct Eq as [? [? Eq]]. subst.
+    assert (G1 = G1' /\ E = E0) as A. {
+      eapply IHHok2; eauto.
+      rewrite concat_assoc in Hok. eauto.
+      rewrite concat_assoc in Hok'. eauto.
+    }
+    destruct A as [? ?]. subst. split; eauto.
+Qed.
+
 Lemma weaken_restricted_by: forall x G' G1 G2 G3,
   restricted_by x (G1 & G3) G' ->
   ok (G1 & G2 & G3) ->                                 
