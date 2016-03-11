@@ -974,75 +974,82 @@ Proof.
     reflexivity.
 Qed.
 
-Definition subst_fvar(x y z: var): var := If z = x then y else z.
-
-Lemma subst_open_commute_avar: forall x y u,
+Lemma subst_open_commute_avar: forall x y u b yv,
+  y = avar_f b yv ->
   (forall a: avar, forall n: Datatypes.nat,
     subst_avar x y (open_rec_avar n u a)
-    = open_rec_avar n (subst_fvar x y u) (subst_avar  x y a)).
+    = open_rec_avar n (subst_avar x y u) (subst_avar  x y a)).
 Proof.
-  intros. unfold subst_fvar, subst_avar, open_avar, open_rec_avar. destruct a.
+  intros. unfold subst_avar, open_avar, open_rec_avar. destruct a.
   + repeat case_if; auto.
-  + case_var*.
+  + subst. destruct b0. case_var*. unfold avar_c. reflexivity.
 Qed.
 
 (* "open and then substitute" = "substitute and then open" *)
-Lemma subst_open_commute_typ_dec: forall x y u,
+Lemma subst_open_commute_typ_dec: forall x y u b yv,
+  y = avar_f b yv ->
   (forall t : typ, forall n: nat,
      subst_typ x y (open_rec_typ n u t)
-     = open_rec_typ n (subst_fvar x y u) (subst_typ x y t)) /\
+     = open_rec_typ n (subst_avar x y u) (subst_typ x y t)) /\
   (forall D : dec, forall n: nat,
      subst_dec x y (open_rec_dec n u D)
-     = open_rec_dec n (subst_fvar x y u) (subst_dec x y D)).
+     = open_rec_dec n (subst_avar x y u) (subst_dec x y D)).
 Proof.
-  intros. apply typ_mutind; intros; simpl; f_equal*. apply subst_open_commute_avar.
+  intros. apply typ_mutind; intros; simpl; f_equal*.
+  eapply subst_open_commute_avar; eauto.
 Qed.
 
-Lemma subst_open_commute_typ: forall x y u T,
-  subst_typ x y (open_typ u T) = open_typ (subst_fvar x y u) (subst_typ x y T).
+Lemma subst_open_commute_typ: forall x y u T b yv,
+  y = avar_f b yv ->
+  subst_typ x y (open_typ u T) = open_typ (subst_avar x y u) (subst_typ x y T).
 Proof.
   intros. apply* subst_open_commute_typ_dec.
 Qed.
 
-Lemma subst_open_commute_dec: forall x y u D,
-  subst_dec x y (open_dec u D) = open_dec (subst_fvar x y u) (subst_dec x y D).
+Lemma subst_open_commute_dec: forall x y u D b yv,
+  y = avar_f b yv ->
+  subst_dec x y (open_dec u D) = open_dec (subst_avar x y u) (subst_dec x y D).
 Proof.
   intros. apply* subst_open_commute_typ_dec.
 Qed.
 
 (* "open and then substitute" = "substitute and then open" *)
-Lemma subst_open_commute_trm_val_def_defs: forall x y u,
+Lemma subst_open_commute_trm_val_def_defs: forall x y u b yv,
+  y = avar_f b yv ->
   (forall t : trm, forall n: Datatypes.nat,
      subst_trm x y (open_rec_trm n u t)
-     = open_rec_trm n (subst_fvar x y u) (subst_trm x y t)) /\
+     = open_rec_trm n (subst_avar x y u) (subst_trm x y t)) /\
   (forall v : val, forall n: Datatypes.nat,
      subst_val x y (open_rec_val n u v)
-     = open_rec_val n (subst_fvar x y u) (subst_val x y v)) /\
+     = open_rec_val n (subst_avar x y u) (subst_val x y v)) /\
   (forall d : def , forall n: Datatypes.nat,
      subst_def x y (open_rec_def n u d)
-     = open_rec_def n (subst_fvar x y u) (subst_def x y d)) /\
+     = open_rec_def n (subst_avar x y u) (subst_def x y d)) /\
   (forall ds: defs, forall n: Datatypes.nat,
      subst_defs x y (open_rec_defs n u ds)
-     = open_rec_defs n (subst_fvar x y u) (subst_defs x y ds)).
+     = open_rec_defs n (subst_avar x y u) (subst_defs x y ds)).
 Proof.
   intros. apply trm_mutind; intros; simpl; f_equal*;
     (apply* subst_open_commute_avar || apply* subst_open_commute_typ_dec).
 Qed.
 
-Lemma subst_open_commute_trm: forall x y u t,
-  subst_trm x y (open_trm u t) = open_trm (subst_fvar x y u) (subst_trm x y t).
+Lemma subst_open_commute_trm: forall x y u t b yv,
+  y = avar_f b yv ->
+  subst_trm x y (open_trm u t) = open_trm (subst_avar x y u) (subst_trm x y t).
 Proof.
   intros. apply* subst_open_commute_trm_val_def_defs.
 Qed.
 
-Lemma subst_open_commute_val: forall x y u v,
-  subst_val x y (open_val u v) = open_val (subst_fvar x y u) (subst_val x y v).
+Lemma subst_open_commute_val: forall x y u v b yv,
+  y = avar_f b yv ->
+  subst_val x y (open_val u v) = open_val (subst_avar x y u) (subst_val x y v).
 Proof.
   intros. apply* subst_open_commute_trm_val_def_defs.
 Qed.
 
-Lemma subst_open_commute_defs: forall x y u ds,
-  subst_defs x y (open_defs u ds) = open_defs (subst_fvar x y u) (subst_defs x y ds).
+Lemma subst_open_commute_defs: forall x y u ds b yv,
+  y = avar_f b yv ->
+  subst_defs x y (open_defs u ds) = open_defs (subst_avar x y u) (subst_defs x y ds).
 Proof.
   intros. apply* subst_open_commute_trm_val_def_defs.
 Qed.
