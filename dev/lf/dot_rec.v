@@ -863,13 +863,14 @@ Qed.
 (* ###################################################################### *)
 (** ** Substitution *)
 
-Definition subst_avar (z: var) (u: var) (a: avar) : avar :=
+Definition subst_avar (z: var) (u: avar) (a: avar) : avar :=
   match a with
   | avar_b i => avar_b i
-  | avar_f x => (avar_f (If x = z then u else x))
+  | avar_f in_ctx x => avar_c x
+  | avar_f in_sto x => (If x = z then u else avar_s x)
   end.
 
-Fixpoint subst_typ (z: var) (u: var) (T: typ) { struct T } : typ :=
+Fixpoint subst_typ (z: var) (u: avar) (T: typ) { struct T } : typ :=
   match T with
   | typ_top        => typ_top
   | typ_bot        => typ_bot
@@ -879,13 +880,13 @@ Fixpoint subst_typ (z: var) (u: var) (T: typ) { struct T } : typ :=
   | typ_bnd T      => typ_bnd (subst_typ z u T)
   | typ_all T U    => typ_all (subst_typ z u T) (subst_typ z u U)
   end
-with subst_dec (z: var) (u: var) (D: dec) { struct D } : dec :=
+with subst_dec (z: var) (u: avar) (D: dec) { struct D } : dec :=
   match D with
   | dec_typ L T U => dec_typ L (subst_typ z u T) (subst_typ z u U)
   | dec_trm L U => dec_trm L (subst_typ z u U)
   end.
 
-Fixpoint subst_trm (z: var) (u: var) (t: trm) : trm :=
+Fixpoint subst_trm (z: var) (u: avar) (t: trm) : trm :=
   match t with
   | trm_var x        => trm_var (subst_avar z u x)
   | trm_val v        => trm_val (subst_val z u v)
@@ -893,23 +894,23 @@ Fixpoint subst_trm (z: var) (u: var) (t: trm) : trm :=
   | trm_app x1 x2    => trm_app (subst_avar z u x1) (subst_avar z u x2)
   | trm_let t1 t2    => trm_let (subst_trm z u t1) (subst_trm z u t2)
   end
-with subst_val (z: var) (u: var) (v: val) : val :=
+with subst_val (z: var) (u: avar) (v: val) : val :=
   match v with
   | val_new T ds     => val_new (subst_typ z u T) (subst_defs z u ds)
   | val_lambda T t   => val_lambda (subst_typ z u T) (subst_trm z u t)
   end
-with subst_def (z: var) (u: var) (d: def) : def :=
+with subst_def (z: var) (u: avar) (d: def) : def :=
   match d with
   | def_typ L T => def_typ L (subst_typ z u T)
   | def_trm L t => def_trm L (subst_trm z u t)
   end
-with subst_defs (z: var) (u: var) (ds: defs) : defs :=
+with subst_defs (z: var) (u: avar) (ds: defs) : defs :=
   match ds with
   | defs_nil => defs_nil
   | defs_cons rest d => defs_cons (subst_defs z u rest) (subst_def z u d)
   end.
 
-Definition subst_ctx (z: var) (u: var) (G: ctx) : ctx := map (subst_typ z u) G.
+Definition subst_ctx (z: var) (u: avar) (G: ctx) : ctx := map (subst_typ z u) G.
 
 (* ###################################################################### *)
 (** ** Lemmas for var-by-var substitution *)
@@ -917,7 +918,7 @@ Definition subst_ctx (z: var) (u: var) (G: ctx) : ctx := map (subst_typ z u) G.
 Lemma subst_fresh_avar: forall x y,
   (forall a: avar, x \notin fv_avar a -> subst_avar x y a = a).
 Proof.
-  intros. destruct* a. simpl. case_var*. simpls. notin_false.
+  intros. destruct* a. destruct* b. simpl. case_var*. simpls. notin_false.
 Qed.
 
 Lemma subst_fresh_typ_dec: forall x y,
@@ -927,8 +928,8 @@ Proof.
   intros x y. apply typ_mutind; intros; simpls; f_equal*. apply* subst_fresh_avar.
 Qed.
 
-Definition subst_fresh_typ(x y: var) := proj1 (subst_fresh_typ_dec x y).
-Definition subst_fresh_dec(x y: var) := proj2 (subst_fresh_typ_dec x y).
+Definition subst_fresh_typ x y := proj1 (subst_fresh_typ_dec x y).
+Definition subst_fresh_dec x y := proj2 (subst_fresh_typ_dec x y).
 
 Lemma subst_fresh_trm_val_def_defs: forall x y,
   (forall t : trm , x \notin fv_trm  t  -> subst_trm  x y t  = t ) /\
@@ -940,10 +941,10 @@ Proof.
     (apply* subst_fresh_avar || apply* subst_fresh_typ_dec).
 Qed.
 
-Definition subst_fresh_trm (x y: var) := proj41 (subst_fresh_trm_val_def_defs x y).
-Definition subst_fresh_val (x y: var) := proj42 (subst_fresh_trm_val_def_defs x y).
-Definition subst_fresh_def (x y: var) := proj43 (subst_fresh_trm_val_def_defs x y).
-Definition subst_fresh_defs(x y: var) := proj44 (subst_fresh_trm_val_def_defs x y).
+Definition subst_fresh_trm  x y := proj41 (subst_fresh_trm_val_def_defs x y).
+Definition subst_fresh_val  x y := proj42 (subst_fresh_trm_val_def_defs x y).
+Definition subst_fresh_def  x y := proj43 (subst_fresh_trm_val_def_defs x y).
+Definition subst_fresh_defs x y := proj44 (subst_fresh_trm_val_def_defs x y).
 
 Lemma invert_fv_ctx_types_push: forall x z T G,
   x \notin fv_ctx_types (G & z ~ T) -> x \notin fv_typ T /\ x \notin (fv_ctx_types G).
