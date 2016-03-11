@@ -1265,7 +1265,7 @@ Qed.
 (* ###################################################################### *)
 (** ** The substitution principle *)
 
-Lemma exists_bound_restricts_by: forall x T G,
+Lemma exists_bound_restricted_by: forall x T G,
   binds x T G ->
   exists G', restricted_by x G G'.
 Proof.
@@ -1281,6 +1281,7 @@ Proof.
       rewrite concat_assoc. reflexivity.
 Qed.
 
+(*
 Lemma subst_rules: forall y S yv,
   y = in_ctx yv ->
   (forall m s G t T, ty_trm m s G t T -> forall G1 G2 x,
@@ -1523,6 +1524,7 @@ Proof.
   assumption.
   unfold subst_ctx. rewrite map_empty. rewrite concat_empty_r. assumption.
 Qed.
+ *)
 
 (* ###################################################################### *)
 (** ** Some Lemmas *)
