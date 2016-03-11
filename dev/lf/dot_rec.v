@@ -519,8 +519,32 @@ Proof.
   rewrite H. apply binds_middle_eq.
   rewrite H in Hok13.
   apply ok_middle_inv in Hok13. destruct Hok13. assumption.
-  admit.
-  admit.
+  right.
+  assert (exists G3a G3b, G3 = G3a & (x ~ T) & G3b) as E3. {
+    apply binds_exists; eauto.
+  }
+  destruct E3 as [G3a [G3b Eq3]]. subst.
+  assert (G1 & G3a = G0 /\ G3b = G4) as A. {
+    eapply concat_ok_eq.
+    repeat rewrite concat_assoc in H. eapply H.
+    repeat rewrite concat_assoc in Hok13. eapply Hok13.
+  }
+  destruct A as [A1 A2]. subst.
+  exists (G3a & x ~ T). split. rewrite concat_assoc. reflexivity.
+  repeat rewrite concat_assoc. apply lim_ctx with (G2:=G4). reflexivity.
+  left. destruct H0 as [NoBi3 Bi1].
+  assert (exists G1a G1b, G1 = G1a & (x ~ T) & G1b) as E1. {
+    apply binds_exists; eauto.
+  }
+  destruct E1 as [G1a [G1b Eq1]]. subst.
+  assert (G1a = G0 /\ G1b & G3 = G4) as A. {
+    eapply concat_ok_eq.
+    repeat rewrite concat_assoc. eapply H.
+    repeat rewrite concat_assoc. eapply Hok13.
+  }
+  destruct A as [A1 A2]. subst.
+  apply lim_ctx with (G2:=G1b & G2 & G3).
+  repeat rewrite concat_assoc. reflexivity.
 Qed.
 
 Lemma weaken_rules:
