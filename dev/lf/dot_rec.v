@@ -1565,67 +1565,70 @@ Proof.
         assumption.
 Qed.
 
-Lemma unique_rec_subtyping: forall G J S T,
-  subtyp ty_precise sub_general G J (typ_bnd S) T ->
-  T = typ_bnd S.
-Proof.
-  introv Hsub.
-  remember (typ_bnd S) as T'.
-  remember ty_precise as m1.
-  remember sub_general as m2.
-  induction Hsub; try solve [inversion Heqm1].
-  - specialize (IHHsub1 HeqT' Heqm1 Heqm2). subst.
-    apply IHHsub2; reflexivity.
-  - inversion HeqT'.
-  - inversion HeqT'.
-Qed.
-
-Lemma unique_all_subtyping: forall G J S U T,
-  subtyp ty_precise sub_general G J (typ_all S U) T ->
+Lemma unique_all_subtyping: forall s G S U T,
+  subtyp ty_precise s G (typ_all S U) T ->
   T = typ_all S U.
 Proof.
   introv Hsub.
   remember (typ_all S U) as T'.
-  remember ty_precise as m1.
-  remember sub_general as m2.
-  induction Hsub; try solve [inversion Heqm1].
-  - specialize (IHHsub1 HeqT' Heqm1 Heqm2). subst.
+  remember ty_precise as m.
+  induction Hsub; try solve [inversion Heqm].
+  - specialize (IHHsub1 HeqT' Heqm). subst.
     apply IHHsub2; reflexivity.
   - inversion HeqT'.
   - inversion HeqT'.
 Qed.
 
-Lemma unique_lambda_typing: forall G x S U T,
-  binds x (typ_all S U) G ->
-  ty_trm ty_precise sub_general G (trm_var (avar_f x)) T ->
-  T = typ_all S U.
+Lemma lambda_val_typing: forall s G v T S U,
+  wf_sto G s ->
+  ty_trm ty_precise s empty (trm_val v) (typ_all S U) ->
+  ty_trm ty_precise s empty (trm_val v) T ->
+  exists S' U', T = typ_all S' U'.
 Proof.
-  introv Bi Hty.
-  remember (trm_var (avar_f x)) as t.
-  remember ty_precise as m1.
-  remember sub_general as m2.
-  induction Hty; try solve [inversion Heqt; inversion Heqm1].
-  - inversions Heqt.
-    unfold binds in Bi. unfold binds in H.
-    rewrite H in Bi. inversion Bi.
-    reflexivity.
-  - specialize (IHHty Bi Heqt Heqm1 Heqm2).
-    inversion IHHty.
-  - specialize (IHHty Bi Heqt Heqm1 Heqm2).
-    rewrite IHHty in H0. rewrite Heqm1 in H0. rewrite Heqm2 in H0.
-    apply unique_all_subtyping in H0.
-    apply H0.
+  introv Hwf Ty1 Ty2.
+  inversion Ty2; subst; inversion Ty1; subst;
+  try solve [eexists; eexists; reflexivity];
+  try solve [assert (ty_precise = ty_precise) as C by reflexivity; destruct (H C) as [? Contra]; inversion Contra].
 Qed.
 
-Lemma lambda_not_rcd: forall G x S U A T,
+Lemma lambda_typing: forall s G x S U T,
+  wf_sto G s ->
   binds x (typ_all S U) G ->
-  ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T T)) ->
+  ty_trm ty_precise s empty (trm_var (avar_s x)) T ->
+  exists S' U', T = typ_all S' U'.
+Proof.
+  introv Hwf Bi Hty.
+  remember (trm_var (avar_s x)) as t.
+  remember ty_precise as m.
+  remember empty as G0.
+  induction Hty; try solve [inversion Heqt; inversion Heqm].
+  - inversions Heqt.
+    destruct (ctx_binds_to_sto_binds_raw Hwf Bi) as [s1 [s2 [v0 [Eqs Tyv]]]].
+    subst.
+    apply binds_middle_eq_inv in H. subst.
+    eapply lambda_val_typing; eauto.
+    rewrite <- concat_assoc. apply weaken_sto_ty_trm. eapply Tyv.
+    rewrite concat_assoc. eapply wf_sto_to_ok_s. eassumption.
+    eapply wf_sto_to_ok_s. eassumption.
+  - specialize (IHHty Hwf Heqt Heqm HeqG0). destruct IHHty as [? [? Contra]].
+    inversion Contra.
+  - specialize (IHHty Hwf Heqt Heqm HeqG0). destruct IHHty as [S' [U' IHHty]].
+    rewrite IHHty in H0. rewrite Heqm in H0. rewrite HeqG0 in H0.
+    apply unique_all_subtyping in H0. subst.
+    exists S'. eexists U'. reflexivity.
+Qed.
+
+Lemma lambda_not_rcd: forall s G x S U A T,
+  wf_sto G s ->
+  binds x (typ_all S U) G ->
+  ty_trm ty_precise s empty (trm_var (avar_s x)) (typ_rcd (dec_typ A T T)) ->
   False.
 Proof.
-  introv Bi Hty.
-  assert (typ_rcd (dec_typ A T T) = typ_all S U) as Contra. {
-    eapply unique_lambda_typing; eassumption.
+  introv Hwf Bi Hty.
+  assert (exists S U, typ_rcd (dec_typ A T T) = typ_all S U) as Contra. {
+    eapply lambda_typing; eassumption.
   }
+  destruct Contra as [? [? Contra]].
   inversion Contra.
 Qed.
 
