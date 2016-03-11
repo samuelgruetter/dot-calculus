@@ -686,6 +686,7 @@ Proof. intros. induction H; jauto. Qed.
 
 Hint Resolve wf_sto_to_ok_s wf_sto_to_ok_G.
 
+(*
 Lemma ctx_binds_to_sto_binds_raw: forall s G x T,
   wf_sto G s ->
   binds x T G ->
@@ -699,7 +700,9 @@ Proof.
     - specialize (IHWf _ _ Bi). destruct IHWf as [G1 [G2 [ds' [Eq [Bi' Tyds]]]]].
       subst. exists G1 (G2 & x ~ T) ds'. rewrite concat_assoc. auto.
 Qed.
+ *)
 
+(*
 Lemma sto_binds_to_ctx_binds_raw: forall s G x v,
   wf_sto G s ->
   binds x v s ->
@@ -713,6 +716,7 @@ Proof.
     - specialize (IHWf _ _ Bi). destruct IHWf as [G1 [G2 [T0' [Eq Ty]]]].
       subst. exists G1 (G2 & x ~ T) T0'. rewrite concat_assoc. auto.
 Qed.
+ *)
 
 Lemma invert_wf_sto_concat: forall s G1 G2,
   wf_sto (G1 & G2) s ->
@@ -756,16 +760,28 @@ Proof.
     - auto.
 Qed.
 
-Lemma typing_implies_bound: forall m1 m2 G x T,
-  ty_trm m1 m2 G (trm_var (avar_f x)) T ->
+Lemma typing_implies_ctx_bound: forall m s G x T,
+  ty_trm m s G (trm_var (avar_c x)) T ->
   exists S, binds x S G.
 Proof.
-  intros. remember (trm_var (avar_f x)) as t.
+  intros. remember (trm_var (avar_c x)) as t.
   induction H;
     try solve [inversion Heqt];
     try solve [inversion Heqt; eapply IHty_trm; eauto];
     try solve [inversion Heqt; eapply IHty_trm1; eauto].
   - inversion Heqt. subst. exists T. assumption.
+Qed.
+
+Lemma typing_implies_sto_bound: forall m s G x T,
+  ty_trm m s G (trm_var (avar_s x)) T ->
+  exists v, binds x v s.
+Proof.
+  intros. remember (trm_var (avar_s x)) as t.
+  induction H;
+    try solve [inversion Heqt];
+    try solve [inversion Heqt; eapply IHty_trm; eauto];
+    try solve [inversion Heqt; eapply IHty_trm1; eauto].
+  - inversion Heqt. subst. exists v. assumption.
 Qed.
 
 Lemma typing_bvar_implies_false: forall m1 m2 G a T,
@@ -779,6 +795,7 @@ Qed.
 (* ###################################################################### *)
 (** ** Extra Rec *)
 
+(*
 Lemma extra_bnd_rules:
   (forall m1 m2 G t T, ty_trm m1 m2 G t T -> forall G1 G2 x S G',
     G = G1 & (x ~ open_typ x S) & G2 ->
@@ -841,6 +858,7 @@ Proof.
     rewrite concat_assoc. reflexivity.
     rewrite concat_assoc. reflexivity.
 Qed.
+ *)
 
 (* ###################################################################### *)
 (** ** Substitution *)
