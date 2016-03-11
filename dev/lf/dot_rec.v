@@ -1265,6 +1265,22 @@ Qed.
 (* ###################################################################### *)
 (** ** The substitution principle *)
 
+Lemma exists_bound_restricts_by: forall x T G,
+  binds x T G ->
+  exists G', restricted_by x G G'.
+Proof.
+  intros x T.
+  apply (env_ind (fun G => binds x T G -> exists G', restricted_by x G G')).
+  - intro Bi. false. eapply binds_empty_inv; eauto.
+  - introv IH Bi.
+    apply binds_push_inv in Bi. destruct Bi as [[? ?] | [Neq Bi]].
+    + subst. eexists. apply lim_ctx with (G2:=empty).
+      rewrite concat_empty_r. reflexivity.
+    + specialize (IH Bi). destruct IH as [G' IH].
+      exists G'. inversion IH; subst. eapply lim_ctx with (G2:=G2 & x0 ~ v).
+      rewrite concat_assoc. reflexivity.
+Qed.
+
 Lemma subst_rules: forall y S yv,
   y = in_ctx yv ->
   (forall m s G t T, ty_trm m s G t T -> forall G1 G2 x,
