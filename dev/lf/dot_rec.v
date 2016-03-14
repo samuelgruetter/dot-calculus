@@ -2692,22 +2692,22 @@ Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
 | pt_top : forall G x v,
   possible_types G x v typ_top
 | pt_new : forall G x T ds,
-  possible_types G x (val_new T ds) (open_typ x T)
+  possible_types G x (val_new T ds) (open_typ (in_sto x) T)
 | pt_rcd_trm : forall G x T ds a t T',
-  defs_has (open_defs x ds) (def_trm a t) ->
-  ty_trm ty_general sub_general G t T' ->
+  defs_has (open_defs (in_sto x) ds) (def_trm a t) ->
+  ty_trm ty_general G empty t T' ->
   possible_types G x (val_new T ds) (typ_rcd (dec_trm a T'))
 | pt_rcd_typ : forall G x T ds A T' S U,
-  defs_has (open_defs x ds) (def_typ A T') ->
-  subtyp ty_general sub_general G empty S T' ->
-  subtyp ty_general sub_general G empty T' U ->
+  defs_has (open_defs (in_sto x) ds) (def_typ A T') ->
+  subtyp ty_general G empty S T' ->
+  subtyp ty_general G empty T' U ->
   possible_types G x (val_new T ds) (typ_rcd (dec_typ A S U))
 | pt_lambda : forall L G x S t T S' T',
   (forall y, y \notin L ->
-   ty_trm ty_general sub_general (G & y ~ S) (open_trm y t) (open_typ y T)) ->
-  subtyp ty_general sub_general G empty S' S ->
+   ty_trm ty_general G (y ~ S) (open_trm (in_ctx y) t) (open_typ (in_ctx y) T)) ->
+  subtyp ty_general G empty S' S ->
   (forall y, y \notin L ->
-   subtyp ty_general sub_general (G & y ~ S') empty (open_typ y T) (open_typ y T')) ->
+   subtyp ty_general G (y ~ S') (open_typ (in_ctx y) T) (open_typ (in_ctx y) T')) ->
   possible_types G x (val_lambda S t) (typ_all S' T')
 | pt_and : forall G x v S1 S2,
   possible_types G x v S1 ->
@@ -2715,28 +2715,28 @@ Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
   possible_types G x v (typ_and S1 S2)
 | pt_sel : forall G x v y A S,
   possible_types G x v S ->
-  ty_trm ty_precise sub_general G (trm_var y) (typ_rcd (dec_typ A S S)) ->
+  ty_trm ty_precise G empty (trm_var y) (typ_rcd (dec_typ A S S)) ->
   possible_types G x v (typ_sel y A)
 | pt_bnd : forall G x v S S',
   possible_types G x v S ->
-  S = open_typ x S' ->
+  S = open_typ (in_sto x) S' ->
   possible_types G x v (typ_bnd S')
 .
 
-Lemma var_new_typing: forall G s x T ds,
-  wf_sto G s ->
+Lemma var_new_typing: forall Gs G s x T ds,
+  wf_sto Gs s ->
   binds x (val_new T ds) s ->
-  ty_trm ty_general sub_general G (trm_var (avar_f x)) (open_typ x T).
+  ty_trm ty_general Gs G (trm_var (avar_s x)) (open_typ (in_sto x) T).
 Proof.
   intros.
-  apply ty_rec_elim. apply ty_var. eapply wf_sto_val_new_in_G; eauto.
+  apply ty_rec_elim. apply ty_var_s. eapply wf_sto_val_new_in_G; eauto.
 Qed.
 
-Lemma ty_defs_has: forall G ds T d,
-  ty_defs G ds T ->
+Lemma ty_defs_has: forall Gs G ds T d,
+  ty_defs Gs G ds T ->
   defs_has ds d ->
   record_type T ->
-  exists D, ty_def G d D /\ record_sub T (typ_rcd D).
+  exists D, ty_def Gs G d D /\ record_sub T (typ_rcd D).
 Proof.
   introv Hdefs Hhas Htype. generalize dependent d. generalize dependent ds.
   inversion Htype; subst. induction H; intros.
@@ -2748,7 +2748,7 @@ Proof.
     + inversions Hhas.
       exists D. split. inversions Hdefs; subst. assumption.
       eapply rs_dropl. eapply rs_refl.
-    + assert (exists D0, ty_def G d D0 /\ record_sub T (typ_rcd D0)) as A. {
+    + assert (exists D0, ty_def Gs G d D0 /\ record_sub T (typ_rcd D0)) as A. {
         eapply IHrecord_typ; eauto.
         exists ls. eassumption.
       }
@@ -2756,31 +2756,32 @@ Proof.
       exists D0. split. apply A1. apply rs_drop. apply A2.
 Qed.
 
-Lemma new_ty_defs: forall G s x T ds,
-  wf_sto G s ->
+Lemma new_ty_defs: forall Gs s x T ds,
+  wf_sto Gs s ->
   binds x (val_new T ds) s ->
-  ty_defs G (open_defs x ds) (open_typ x T).
+  ty_defs Gs empty (open_defs (in_sto x) ds) (open_typ (in_sto x) T).
 Proof.
   introv Hwf Bis.
   lets Htyv: (val_new_typing Hwf Bis).
   inversion Htyv; subst.
   pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H3 y FrL).
   rewrite subst_intro_defs with (x:=y). rewrite subst_intro_typ with (x:=y).
-  eapply subst_ty_defs. eapply H3.
+  (* eapply subst_ty_defs. eapply H3.
   apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
   rewrite <- subst_intro_typ with (x:=y).
-  eapply ty_rec_elim. apply ty_var. eapply wf_sto_val_new_in_G; eauto.
+  eapply ty_rec_elim. apply ty_var. eapply wf_sto_val_new_in_G; eauto.*)
+  admit.
   eauto. eauto. eauto.
   assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
   specialize (H Heqm1). destruct H as [? Contra]. inversion Contra.
 Qed.
 
-Lemma pt_piece_rcd: forall G s x T ds d D,
-  wf_sto G s ->
+Lemma pt_piece_rcd: forall Gs s x T ds d D,
+  wf_sto Gs s ->
   binds x (val_new T ds) s ->
-  defs_has (open_defs x ds) d ->
-  ty_def G d D ->
-  possible_types G x (val_new T ds) (typ_rcd D).
+  defs_has (open_defs (in_sto x) ds) d ->
+  ty_def Gs empty d D ->
+  possible_types Gs x (val_new T ds) (typ_rcd D).
 Proof.
   introv Hwf Bis Hhas Hdef.
   inversion Hdef; subst; econstructor; eauto.
@@ -2810,10 +2811,10 @@ Proof.
     + apply IHds; eauto.
 Qed.
 
-Lemma record_has_ty_defs: forall G T ds D,
-  ty_defs G ds T ->
+Lemma record_has_ty_defs: forall Gs G T ds D,
+  ty_defs Gs G ds T ->
   record_has T D ->
-  exists d, defs_has ds d /\ ty_def G d D.
+  exists d, defs_has ds d /\ ty_def Gs G d D.
 Proof.
   introv Hdefs Hhas. induction Hdefs.
   - inversion Hhas; subst. exists d. split.
@@ -2830,11 +2831,11 @@ Proof.
       assumption.
 Qed.
 
-Lemma pt_rcd_has_piece: forall G s x T ds D,
-  wf_sto G s ->
+Lemma pt_rcd_has_piece: forall Gs s x T ds D,
+  wf_sto Gs s ->
   binds x (val_new T ds) s ->
-  record_has (open_typ x T) D ->
-  possible_types G x (val_new T ds) (typ_rcd D).
+  record_has (open_typ (in_sto x) T) D ->
+  possible_types Gs x (val_new T ds) (typ_rcd D).
 Proof.
   introv Hwf Bis Hhas.
   lets Hdefs: (new_ty_defs Hwf Bis).
@@ -2842,14 +2843,14 @@ Proof.
   eapply pt_piece_rcd; eauto.
 Qed.
 
-Lemma pt_rcd_trm_inversion: forall G s x v a T,
-  wf_sto G s ->
+Lemma pt_rcd_trm_inversion: forall Gs s x v a T,
+  wf_sto Gs s ->
   binds x v s ->
-  possible_types G x v (typ_rcd (dec_trm a T)) ->
+  possible_types Gs x v (typ_rcd (dec_trm a T)) ->
   exists S ds t,
     v = val_new S ds /\
-    defs_has (open_defs x ds) (def_trm a t) /\
-    ty_trm ty_general sub_general G t T.
+    defs_has (open_defs (in_sto x) ds) (def_trm a t) /\
+    ty_trm ty_general Gs empty t T.
 Proof.
   introv Hwf Bis Hp. inversion Hp; subst.
   - induction T0; simpl in H3; try solve [inversion H3].
