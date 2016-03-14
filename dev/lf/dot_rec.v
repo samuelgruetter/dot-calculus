@@ -2557,11 +2557,11 @@ Lemma has_member_rcd_typ_sub2_mut:
   (forall G x T A S U,
     has_member G x T A S U ->
     record_type T ->
-    T = (typ_rcd (dec_typ A S U)) \/ subtyp ty_precise sub_general G empty T (typ_rcd (dec_typ A S U)))  /\
+    T = (typ_rcd (dec_typ A S U)) \/ subtyp ty_precise G empty T (typ_rcd (dec_typ A S U)))  /\
   (forall G x T A S U,
     has_member_rules G x T A S U ->
     record_type T ->
-    T = (typ_rcd (dec_typ A S U)) \/ subtyp ty_precise sub_general G empty T (typ_rcd (dec_typ A S U))).
+    T = (typ_rcd (dec_typ A S U)) \/ subtyp ty_precise G empty T (typ_rcd (dec_typ A S U))).
 Proof.
   apply has_mutind; intros.
   - apply H; eauto.
@@ -2601,9 +2601,9 @@ Qed.
 Lemma tight_bound_completeness: forall G s x T ds A S U,
   wf_sto G s ->
   binds x (val_new T ds) s ->
-  ty_trm ty_general sub_tight G (trm_var (avar_f x)) (typ_rcd (dec_typ A S U)) ->
-  subtyp ty_general sub_tight G empty (typ_sel (avar_f x) A) U /\
-  subtyp ty_general sub_tight G empty S (typ_sel (avar_f x) A).
+  ty_trm ty_general G empty (trm_var (avar_s x)) (typ_rcd (dec_typ A S U)) ->
+  subtyp ty_general G empty (typ_sel (avar_s x) A) U /\
+  subtyp ty_general G empty S (typ_sel (avar_s x) A).
 Proof.
   introv Hwf Bis Hty.
   assert (has_member G x (typ_rcd (dec_typ A S U)) A S U) as Hmem. {
@@ -2611,7 +2611,7 @@ Proof.
   }
   apply has_member_monotonicity with (s:=s) (ds:=ds) (T0:=T) in Hmem.
   destruct Hmem as [T1 [Hmem [Hsub1 Hsub2]]].
-  assert (has_member G x (open_typ x T) A T1 T1) as Hmemx. {
+  assert (has_member G x (open_typ (in_sto x) T) A T1 T1) as Hmemx. {
     apply has_member_inv in Hmem.
     repeat destruct Hmem as [Hmem|Hmem].
     + inversion Hmem.
@@ -2623,19 +2623,19 @@ Proof.
   assert (record_type T) as Htype. {
     eapply record_new_typing. eapply val_new_typing; eauto.
   }
-  assert (record_type (open_typ x T)) as Htypex. {
+  assert (record_type (open_typ (in_sto x) T)) as Htypex. {
     apply open_record_type. assumption.
   }
-  assert (open_typ x T = (typ_rcd (dec_typ A T1 T1)) \/ subtyp ty_precise sub_general G empty (open_typ x T) (typ_rcd (dec_typ A T1 T1))) as Hsub. {
+  assert (open_typ (in_sto x) T = (typ_rcd (dec_typ A T1 T1)) \/ subtyp ty_precise G empty (open_typ (in_sto x) T) (typ_rcd (dec_typ A T1 T1))) as Hsub. {
     destruct has_member_rcd_typ_sub2_mut as [HE _].
     eapply HE; eauto.
   }
-  assert (ty_trm ty_precise sub_general G (trm_var (avar_f x)) (open_typ x T)) as Htypx. {
+  assert (ty_trm ty_precise G empty (trm_var (avar_s x)) (open_typ (in_sto x) T)) as Htypx. {
     eapply ty_rec_elim.
-    eapply ty_var.
+    eapply ty_var_s.
     eapply wf_sto_val_new_in_G; eauto.
   }
-  assert (ty_trm ty_precise sub_general G (trm_var (avar_f x)) (typ_rcd (dec_typ A T1 T1))) as Htyp. {
+  assert (ty_trm ty_precise G empty (trm_var (avar_s x)) (typ_rcd (dec_typ A T1 T1))) as Htyp. {
     destruct Hsub as [Heq | Hsub].
     - rewrite Heq in Htypx. apply Htypx.
     - eapply ty_sub.
