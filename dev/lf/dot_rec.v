@@ -2862,16 +2862,16 @@ Proof.
     destruct ds; simpl in H; try solve [inversion H].
     destruct ds; simpl in H; try solve [inversion H].
     unfold open_defs in H. simpl in H. inversions H.
-    destruct d0; simpl in H2; inversion H2; subst.
-    inversion H2; subst.
-    assert (ty_trm ty_general sub_general G (open_trm x t1) (open_typ x t0)) as A. {
+    destruct d0; simpl in H4; inversion H4; subst.
+    assert (ty_trm ty_general Gs empty (open_trm (in_sto x) t1) (open_typ (in_sto x) t0)) as A. {
       rewrite subst_intro_typ with (x:=y). rewrite subst_intro_trm with (x:=y).
-      eapply subst_ty_trm. eapply H4.
+      (*eapply subst_ty_trm. eapply H4.
       apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto. eauto.
       simpl. rewrite <- subst_intro_typ with (x:=y).
       lets Htyv: (var_new_typing Hwf Bis). unfold open_typ in Htyv. simpl in Htyv.
       unfold open_typ. apply Htyv.
-      eauto.
+      eauto.*)
+      admit.
       apply notin_union_r1 in Fr. apply notin_union_r2 in Fr.
       unfold fv_defs in Fr. apply notin_union_r2 in Fr. apply Fr.
       eauto.
@@ -2885,15 +2885,15 @@ Proof.
   - repeat eexists. eassumption. assumption.
 Qed.
 
-Lemma pt_rcd_typ_inversion: forall G s x v A S U,
-  wf_sto G s ->
+Lemma pt_rcd_typ_inversion: forall Gs s x v A S U,
+  wf_sto Gs s ->
   binds x v s ->
-  possible_types G x v (typ_rcd (dec_typ A S U)) ->
+  possible_types Gs x v (typ_rcd (dec_typ A S U)) ->
   exists T ds T',
     v = val_new T ds /\
-    defs_has (open_defs x ds) (def_typ A T') /\
-    subtyp ty_general sub_general G empty S T' /\
-    subtyp ty_general sub_general G empty T' U.
+    defs_has (open_defs (in_sto x) ds) (def_typ A T') /\
+    subtyp ty_general Gs empty S T' /\
+    subtyp ty_general Gs empty T' U.
 Proof.
   introv Hwf Bis Hp. inversion Hp; subst.
   - induction T; simpl in H3; try solve [inversion H3].
@@ -2905,21 +2905,20 @@ Proof.
     destruct ds; simpl in H; try solve [inversion H].
     destruct ds; simpl in H; try solve [inversion H].
     unfold open_defs in H. simpl in H. inversions H.
-    destruct d0; simpl in H2; inversion H2; subst.
-    inversion H2; subst.
+    destruct d0; simpl in H4; inversion H4; subst.
     assert (t2 = t0). {
-      eapply open_eq_typ; eauto.
+      apply open_eq_typ with (v:=(in_ctx y)) (x:=y) (i:=0); eauto.
       apply notin_union_r1 in Fr. apply notin_union_r1 in Fr.
       apply notin_union_r2 in Fr.
-      unfold fv_defs in Fr. eauto. eauto.
+      unfold fv_defs in Fr. eauto.
     }
     assert (t2 = t1). {
-      eapply open_eq_typ; eauto.
+      apply open_eq_typ with (v:=(in_ctx y)) (x:=y) (i:=0); eauto.
       apply notin_union_r1 in Fr. apply notin_union_r1 in Fr.
       apply notin_union_r2 in Fr.
-      unfold fv_defs in Fr. eauto. eauto.
+      unfold fv_defs in Fr. eauto.
     }
-    subst. subst. clear H5. clear H8.
+    subst. subst.
     repeat eexists.
     unfold open_defs. simpl. unfold defs_has. simpl.
     rewrite If_l. reflexivity. reflexivity.
@@ -2997,27 +2996,27 @@ Proof.
     + apply HP; eauto. apply rh_andl.
 Qed.
 
-Lemma possible_types_closure_record: forall G s x T ds U,
-  wf_sto G s ->
+Lemma possible_types_closure_record: forall Gs s x T ds U,
+  wf_sto Gs s ->
   binds x (val_new T ds) s ->
-  record_sub (open_typ x T) U ->
-  possible_types G x (val_new T ds) U.
+  record_sub (open_typ (in_sto x) T) U ->
+  possible_types Gs x (val_new T ds) U.
 Proof.
   introv Hwf Bis Hsub.
-  apply pt_has_sub with (T:=open_typ x T).
+  apply pt_has_sub with (T:=open_typ (in_sto x) T).
   intros D Hhas. eapply pt_rcd_has_piece; eauto.
   apply open_record_type. eapply record_new_typing; eauto. eapply val_new_typing; eauto.
   assumption.
 Qed.
 
-Lemma pt_and_inversion: forall G s x v T1 T2,
-  wf_sto G s ->
+Lemma pt_and_inversion: forall Gs s x v T1 T2,
+  wf_sto Gs s ->
   binds x v s ->
-  possible_types G x v (typ_and T1 T2) ->
-  possible_types G x v T1 /\ possible_types G x v T2.
+  possible_types Gs x v (typ_and T1 T2) ->
+  possible_types Gs x v T1 /\ possible_types Gs x v T2.
 Proof.
   introv Hwf Bis Hp. dependent induction Hp.
-  - assert (record_type (open_typ x0 T)) as Htype. {
+  - assert (record_type (open_typ (in_sto x0) T)) as Htype. {
       eapply open_record_type.
       eapply record_new_typing. eapply val_new_typing; eauto.
     }
