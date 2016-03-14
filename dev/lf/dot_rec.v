@@ -2395,14 +2395,14 @@ Proof.
   eapply rcd_typ_eq_bounds. eapply Htypex. eapply Hsub.
 Qed.
 
-Lemma has_member_covariance: forall G s T1 T2 x A S2 U2,
-  wf_sto G s ->
-  subtyp ty_general sub_tight G empty T1 T2 ->
-  ty_trm ty_general sub_tight G (trm_var (avar_f x)) T1 ->
-  has_member G x T2 A S2 U2 ->
-  exists S1 U1, has_member G x T1 A S1 U1 /\
-                subtyp ty_general sub_tight G empty S2 S1 /\
-                subtyp ty_general sub_tight G empty U1 U2.
+Lemma has_member_covariance: forall Gs s T1 T2 x A S2 U2,
+  wf_sto Gs s ->
+  subtyp ty_general Gs empty T1 T2 ->
+  ty_trm ty_general Gs empty (trm_var (avar_s x)) T1 ->
+  has_member Gs x T2 A S2 U2 ->
+  exists S1 U1, has_member Gs x T1 A S1 U1 /\
+                subtyp ty_general Gs empty S2 S1 /\
+                subtyp ty_general Gs empty U1 U2.
 Proof.
   introv Hwf Hsub Hty Hmem.
   generalize dependent U2.
@@ -2418,8 +2418,9 @@ Proof.
   - (* refl *)
     exists S2 U2. eauto.
   - (* trans *)
-    assert (ty_trm ty_general sub_tight G (trm_var (avar_f x)) T) as HS. {
-      eapply ty_sub. intros Hp. subst. eexists; eauto.
+    assert (ty_trm ty_general Gs empty (trm_var (avar_s x)) T) as HS. {
+      eapply ty_sub.
+      intros Hp. inversion Hp.
       eapply Hty.
       eassumption.
     }
@@ -2460,6 +2461,12 @@ Proof.
     + destruct Hmem as [y [B [T' [Heq _]]]]. inversion Heq.
     + inversion Hmem.
   - (* sel2 *)
+    inversion H; subst.
+    false. eapply empty_middle_inv. eassumption.
+  - (* sel1 *)
+    inversion H; subst.
+    false. eapply empty_middle_inv. eassumption.
+  - (* sel2 tight *)
     apply has_member_inv in Hmem.
     repeat destruct Hmem as [Hmem|Hmem].
     + inversion Hmem.
