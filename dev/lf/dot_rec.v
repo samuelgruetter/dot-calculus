@@ -3554,17 +3554,39 @@ Proof.
     + lets Hv: (val_typing H).
       destruct Hv as [T' [Htyp Hsub]].
       pick_fresh x. assert (x \notin L) as FrL by auto. specialize (H0 x FrL).
-      exists (s & x ~ v) (open_trm (in_sto x) u) (Gs & (x ~ T')) (x ~ T').
+      pick_fresh y.
+      exists (s & y ~ v) (open_trm (in_sto y) u) (Gs & (y ~ T')) (y ~ T').
       split.
       apply red_let. eauto.
       split. reflexivity. split.
-      (*apply narrow_typing with (G:=G & x ~ T).
-      assumption.
-      apply subenv_last. assumption.
-      apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
-      apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.*)
-      admit.
-      apply wf_sto_push. assumption. eauto. eauto. assumption.
+      assert (subst_trm x (in_sto y) (open_trm (in_ctx x) u)=open_trm (in_sto y) u) as A. {
+        rewrite subst_open_commute_trm. simpl. rewrite If_l.
+        rewrite subst_fresh_trm.
+        reflexivity.
+        eauto. eauto.
+      }
+      rewrite <- A.
+      assert (subst_typ x (in_sto y) U=U) as B. {
+        rewrite subst_fresh_typ.
+        reflexivity. eauto.
+      }
+      rewrite <- B.
+      eapply subst_ty_trm.
+      eapply wf_sto_push. eassumption. eauto. eauto. eassumption.
+      eapply weaken_sto_ty_trm. rewrite concat_empty_l in H0. eapply H0.
+      eapply ok_push; eauto.
+      admit. eauto.
+      assert (subst_typ x (in_sto y) T=T) as C. {
+        rewrite subst_fresh_typ.
+        reflexivity. eauto.
+      }
+      rewrite C.
+      eapply ty_sub.
+      intros Contra. inversion Contra.
+      eapply ty_var_s. eauto.
+      eapply weaken_sto_subtyp. eapply Hsub.
+      eapply ok_push; eauto.
+      eapply wf_sto_push. eassumption. eauto. eauto. eassumption.
     + specialize (IHty_trm Hwf). destruct IHty_trm as [IH | IH]; eauto. inversion IH.
       destruct IH as [s' [t' [G' [G'' [IH1 [IH2 [IH3]]]]]]].
       exists s' (trm_let t' u) G' G''.
