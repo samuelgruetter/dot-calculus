@@ -653,6 +653,20 @@ Proof.
   rewrite <- EqG. assumption.
 Qed.
 
+Lemma weaken_subtyp: forall m1 m2 G1 G2 S U,
+  subtyp m1 m2 G1 S U ->
+  ok (G1 & G2) ->
+  subtyp m1 m2 (G1 & G2) S U.
+Proof.
+  intros.
+    assert (G1 & G2 = G1 & G2 & empty) as EqG. {
+    rewrite concat_empty_r. reflexivity.
+  }
+  rewrite EqG. apply* weaken_rules.
+  rewrite concat_empty_r. reflexivity.
+  rewrite <- EqG. assumption.
+Qed.
+
 Lemma weaken_sto_rules:
   (forall m Gs G t T, ty_trm m Gs G t T -> forall Gs',
     ok (Gs & Gs') ->
@@ -1882,17 +1896,32 @@ Qed.
 (* ###################################################################### *)
 (** ** Narrowing *)
 
-(*
-Definition subenv(G1 G2: ctx) :=
-  forall x T2, binds x T2 G2 ->
-    binds x T2 G1 \/
-    exists T1,
-      binds x T1 G1 /\ subtyp ty_general sub_general G1 empty T1 T2.
+Inductive subenv_rec(Gs: ctx): ctx -> ctx -> Prop :=
+| se_empty: subenv_rec Gs empty empty
+| se_push: forall G1 G2 T1 T2 x,
+  subenv_rec Gs G1 G2 ->
+  x # G1 -> x # G2 ->
+  subtyp ty_general Gs (G1 & (x ~ T1)) T1 T2 ->
+  subenv_rec Gs (G1 & (x ~ T1)) (G2 & (x ~ T2)).
 
-Lemma subenv_push: forall G G' x T,
-  subenv G' G ->
+Definition subenv(Gs G1 G2: ctx) :=
+  forall x T2, binds x T2 G2 ->
+   binds x T2 G1 \/
+   exists T1, binds x T1 G1 /\ subtyp ty_general Gs G1 T1 T2.
+
+Lemma subenv_rec__ok: forall Gs G' G,
+  subenv_rec Gs G' G ->
+  ok G' /\ ok G.
+Proof.
+  introv SE. dependent induction SE; eauto.
+  destruct IHSE as [? ?].
+  split; apply ok_push; assumption.
+ Qed.
+
+Lemma subenv_push: forall Gs G G' x T,
+  subenv Gs G' G ->
   ok (G' & x ~ T) ->
-  subenv (G' & x ~ T) (G & x ~ T).
+  subenv Gs (G' & x ~ T) (G & x ~ T).
 Proof.
   intros.
   unfold subenv. intros xb Tb Bi. apply binds_push_inv in Bi.
@@ -1906,10 +1935,36 @@ Proof.
       exists T'. split. eauto. apply weaken_subtyp. assumption. eauto.
 Qed.
 
-Lemma subenv_last: forall G x S U,
-  subtyp ty_general sub_general G empty S U ->
+Lemma subenv_rec__subenv: forall Gs G1 G2,
+  subenv_rec Gs G1 G2 ->
+  subenv Gs G1 G2.
+Proof.
+  introv SE.
+  destruct (subenv_rec__ok SE) as [Hok1 Hok2].
+  dependent induction SE.
+  - unfold subenv. introv Bi. apply binds_empty_inv in Bi. inversion Bi.
+  - unfold subenv. introv Bi.
+    apply binds_push_inv in Bi.
+    destruct Bi as [Bi | Bi].
+    + destruct Bi as [? ?]. subst.
+      right. exists T1. split; eauto.
+    + destruct Bi as [Ne Bi].
+      assert (binds x0 T0 G1 \/
+             (exists T3, binds x0 T3 G1 /\ subtyp ty_general Gs G1 T3 T0)) as A. {
+        eapply IHSE; eauto.
+      }
+      destruct A as [Bi1 | Bi1].
+      * left. eapply binds_concat_left_ok; eauto.
+      * destruct Bi1 as [T1' [Bi1' H1']].
+        right. exists T1'. split.
+        eapply binds_concat_left_ok; eauto.
+        eapply weaken_subtyp. eapply H1'. assumption.
+Qed.
+
+Lemma subenv_last: forall Gs G x S U,
+  subtyp ty_general Gs G S U ->
   ok (G & x ~ S) ->
-  subenv (G & x ~ S) (G & x ~ U).
+  subenv Gs (G & x ~ S) (G & x ~ U).
 Proof.
   intros. unfold subenv. intros y T Bi.
   apply binds_push_inv in Bi. destruct Bi as [Bi | Bi].
@@ -1918,71 +1973,114 @@ Proof.
   - destruct Bi. left. eauto.
 Qed.
 
-Lemma narrow_rules:
-  (forall m1 m2 G t T, ty_trm m1 m2 G t T -> forall G',
-    m1 = ty_general ->
-    m2 = sub_general ->
-    ok G' ->
-    subenv G' G ->
-    ty_trm m1 m2 G' t T)
-/\ (forall G d D, ty_def G d D -> forall G',
-    ok G' ->
-    subenv G' G ->
-    ty_def G' d D)
-/\ (forall G ds T, ty_defs G ds T -> forall G',
-    ok G' ->
-    subenv G' G ->
-    ty_defs G' ds T)
-/\ (forall m1 m2 G J S U, subtyp m1 m2 G J S U -> forall G',
-    m1 = ty_general ->
-    m2 = sub_general ->
-    ok G' ->
-    subenv G' G ->
-    subtyp m1 m2 G' J S U).
+Lemma restricted_by_skip: forall x y T G G',
+  ok (G & y ~ T) ->
+  x <> y ->
+  restricted_by x (G & y ~ T) G' ->
+  restricted_by x G G'.
 Proof.
-  apply rules_mutind; intros; eauto.
+  admit.
+Qed.
+
+Lemma narrow_restricted_by: forall Gs G0 G,
+  subenv_rec Gs G0 G -> forall x G',
+  restricted_by x G G' ->
+  exists G0', subenv_rec Gs G0' G' /\ restricted_by x G G'.
+Proof.
+  introv SE.
+  destruct (subenv_rec__ok SE) as [Hok1 Hok2].
+  dependent induction SE; intros.
+  - inversion H; subst. eapply empty_middle_inv in H0. inversion H0.
+  - destruct (classicT (x0 = x)) as [Eq | Ne].
+    + subst. inversion H2; subst.
+      assert (G2 = G0 /\ empty = G3 /\ T2 = T) as A. {
+        eapply concat_ok_eq.
+        rewrite concat_empty_r. eapply H3.
+        rewrite concat_empty_r.
+        eauto.
+      }
+      destruct A as [? [? ?]]. subst.
+      exists (G1 & x ~ T1). split; eauto.
+      eapply se_push; eauto.
+    + assert (exists G0', subenv_rec Gs G0' G' /\ restricted_by x0 G2 G') as A. {
+        eapply IHSE; eauto.
+        eapply restricted_by_skip; eauto.
+      }
+      destruct A as [G0' [A1 A2]].
+      exists G0'. split; eauto.
+Qed.
+
+Lemma narrow_rules:
+  (forall m Gs G t T, ty_trm m Gs G t T -> forall G',
+    m = ty_general ->
+    ok G' ->
+    subenv_rec Gs G' G ->
+    ty_trm m Gs G' t T)
+/\ (forall Gs G d D, ty_def Gs G d D -> forall G',
+    ok G' ->
+    subenv_rec Gs G' G ->
+    ty_def Gs G' d D)
+/\ (forall Gs G ds T, ty_defs Gs G ds T -> forall G',
+    ok G' ->
+    subenv_rec Gs G' G ->
+    ty_defs Gs G' ds T)
+/\ (forall m Gs G S U, subtyp m Gs G S U -> forall G',
+    m = ty_general ->
+    ok G' ->
+    subenv_rec Gs G' G ->
+    subtyp m Gs G' S U).
+Proof.
+  apply rules_mutind; intros; eauto 4.
   - (* ty_var *)
-    subst. unfold subenv in H2. specialize (H2 x T b).
-    destruct H2.
+    subst.
+    eapply subenv_rec__subenv in H1. unfold subenv in H1. specialize (H1 x T b).
+    destruct H1.
     + eauto.
     + destruct H as [T' [Bi Hsub]].
       eapply ty_sub; eauto.
+      intros Contra. inversion Contra.
   - (* ty_all_intro *)
     subst.
     apply_fresh ty_all_intro as y; eauto.
-    eapply H; eauto. apply subenv_push; eauto.
+    eapply H; eauto.
+    eapply se_push; eauto.
   - (* ty_new_intro *)
     subst.
     apply_fresh ty_new_intro as y; eauto.
-    apply H; eauto. apply subenv_push; eauto.
+    apply H; eauto.
+    eapply se_push; eauto.
   - (* ty_let *)
     subst.
     apply_fresh ty_let as y; eauto.
-    apply H0 with (x:=y); eauto. apply subenv_push; eauto.
-  - inversion H1 (* sub_tight *).
-  - inversion H1 (* sub_tight *).
+    apply H0 with (x:=y); eauto.
+    eapply se_push; eauto.
+  - admit.
+  - admit.
   - (* subtyp_all *)
     subst.
-    apply_fresh subtyp_all as y; eauto.
-    apply H0; eauto. apply subenv_push; eauto.
+    apply_fresh subtyp_all as y; eauto 4.
+    apply H0; eauto. eapply se_push; eauto.
+  - (* subtyp_bnd *)
+    subst.
+    apply_fresh subtyp_bnd as y; eauto 4.
+    apply H; eauto. eapply se_push; eauto.
 Qed.
 
-Lemma narrow_typing: forall G G' t T,
-  ty_trm ty_general sub_general G t T ->
-  subenv G' G -> ok G' ->
-  ty_trm ty_general sub_general G' t T.
+Lemma narrow_typing: forall Gs G G' t T,
+  ty_trm ty_general Gs G t T ->
+  subenv_rec Gs G' G -> ok G' ->
+  ty_trm ty_general Gs G' t T.
 Proof.
   intros. apply* narrow_rules.
 Qed.
 
-Lemma narrow_subtyping: forall G G' J S U,
-  subtyp ty_general sub_general G J S U ->
-  subenv G' G -> ok G' ->
-  subtyp ty_general sub_general G' J S U.
+Lemma narrow_subtyping: forall Gs G G' S U,
+  subtyp ty_general Gs G S U ->
+  subenv_rec Gs G' G -> ok G' ->
+  subtyp ty_general Gs G' S U.
 Proof.
   intros. apply* narrow_rules.
 Qed.
-*)
 
 (* ###################################################################### *)
 (** * Has member *)
