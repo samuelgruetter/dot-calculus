@@ -477,10 +477,10 @@ Proof.
       rewrite concat_assoc. reflexivity.
 Qed.
 
-Lemma concat_ok_eq: forall {V} G1 G2 G1' G2' x (T:V),
-  G1 & x ~ T & G2 = G1' & x ~ T & G2' ->
+Lemma concat_ok_eq: forall {V} G1 G2 G1' G2' x (T:V) (T':V),
+  G1 & x ~ T & G2 = G1' & x ~ T' & G2' ->
   ok (G1 & x ~ T & G2) ->
-  G1 = G1' /\ G2 = G2'.
+  G1 = G1' /\ G2 = G2' /\ T = T'.
 Proof.
   introv Eq Hok.
   assert (ok G1) as Hok1. {
@@ -495,7 +495,7 @@ Proof.
   assert (ok G2') as Hok2'. {
     rewrite Eq in Hok. apply ok_remove in Hok. eauto.
   }
-  assert (ok (G1' & x ~ T & G2')) as Hok'. {
+  assert (ok (G1' & x ~ T' & G2')) as Hok'. {
     rewrite Eq in Hok. eauto.
   }
   generalize dependent G2'.
@@ -510,19 +510,19 @@ Proof.
   - rewrite concat_empty_r in Eq. rewrite concat_assoc in Eq.
     eapply eq_push_inv in Eq. destruct Eq as [? [? Eq]]. subst.
     rewrite concat_empty_r in Hok'. eapply ok_remove in Hok'.
-    assert (G1 & x ~ T & x ~ T = G1 & x ~ T & (empty & x ~ T)) as A. {
+    assert (G1 & x ~ T & x ~ T' = G1 & x ~ T & (empty & x ~ T')) as A. {
       rewrite concat_empty_l. reflexivity.
     }
     rewrite A in Hok'. eapply ok_middle_inv in Hok'. destruct Hok' as [_ Contra].
     eapply fresh_push_eq_inv in Contra. inversion Contra.
   - rewrite concat_assoc in Eq. rewrite concat_assoc in Eq.
     eapply eq_push_inv in Eq. destruct Eq as [? [? Eq]]. subst.
-    assert (G1 = G1' /\ E = E0) as A. {
+    assert (G1 = G1' /\ E = E0 /\ T = T') as A. {
       eapply IHHok2; eauto.
       rewrite concat_assoc in Hok. eauto.
       rewrite concat_assoc in Hok'. eauto.
     }
-    destruct A as [? ?]. subst. split; eauto.
+    destruct A as [? [? ?]]. subst. split; eauto.
 Qed.
 
 Lemma weaken_restricted_by: forall x G' G1 G2 G3,
@@ -542,12 +542,12 @@ Proof.
     apply binds_exists; eauto.
   }
   destruct E3 as [G3a [G3b Eq3]]. subst.
-  assert (G1 & G3a = G0 /\ G3b = G4) as A. {
+  assert (G1 & G3a = G0 /\ G3b = G4 /\ T = T) as A. {
     eapply concat_ok_eq.
     repeat rewrite concat_assoc in H. eapply H.
     repeat rewrite concat_assoc in Hok13. eapply Hok13.
   }
-  destruct A as [A1 A2]. subst.
+  destruct A as [A1 [A2 ?]]. subst.
   exists (G3a & x ~ T). split. rewrite concat_assoc. reflexivity.
   repeat rewrite concat_assoc. apply lim_ctx with (G2:=G4). reflexivity.
   left. destruct H0 as [NoBi3 Bi1].
@@ -555,12 +555,12 @@ Proof.
     apply binds_exists; eauto.
   }
   destruct E1 as [G1a [G1b Eq1]]. subst.
-  assert (G1a = G0 /\ G1b & G3 = G4) as A. {
+  assert (G1a = G0 /\ G1b & G3 = G4 /\ T = T) as A. {
     eapply concat_ok_eq.
     repeat rewrite concat_assoc. eapply H.
     repeat rewrite concat_assoc. eapply Hok13.
   }
-  destruct A as [A1 A2]. subst.
+  destruct A as [A1 [A2 ?]]. subst.
   apply lim_ctx with (G2:=G1b & G2 & G3).
   repeat rewrite concat_assoc. reflexivity.
 Qed.
@@ -1332,6 +1332,22 @@ Proof.
   - eapply precise_fresh_subtyp; eauto.
 Qed.
 
+Lemma restricted_by_first: forall x T G2 G',
+  ok (x ~ T & G2) ->
+  restricted_by x (x ~ T & G2) G' ->
+  G' = x ~ T.
+Proof.
+  introv Hok r. inversion r; subst.
+  lets Hok': (ok_restricted_by Hok r).
+  assert (empty = G1 /\ G2 = G0 /\ T = T0) as A. {
+    eapply concat_ok_eq.
+    rewrite concat_empty_l. eapply H.
+    rewrite concat_empty_l. eapply Hok.
+  }
+  destruct A as [A1 [A2 AT]]. subst.
+  rewrite concat_empty_l. reflexivity.
+Qed.
+
 Lemma subst_rules: forall y S,
    (forall m Gs G t T, ty_trm m Gs G t T -> forall G2 x,
     G = x ~ S & G2 ->
@@ -1482,13 +1498,13 @@ Proof.
   - (* subtyp_typ *)
     eapply subtyp_typ; eauto.
   - (* subtyp_sel2 *)
-    admit.
-    (*
-    subst y.
     simpl.
+    case_if.
+    + eapply subtyp_sel2_tight.
+
     assert (
-        avar_f (If x = x0 then in_ctx yv else in_ctx x) =
-        avar_f (in_ctx (If x = x0 then yv else x))) as RA. {
+        avar_f (If x = x0 then in_sto y else in_sto x) =
+        avar_f (in_sto (If x = x0 then y else x))) as RA. {
       case_if; eauto.
     }
     rewrite RA.
