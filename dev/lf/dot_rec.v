@@ -3401,14 +3401,11 @@ Proof.
     intros y0 Fr0.
     eapply ty_sub.
     intros Contra. inversion Contra.
-    instantiate (1:=(open_typ (in_ctx y) T0)). admit. admit.
-    (*
     eapply narrow_typing.
     eapply H1; eauto.
-    apply subenv_last. apply H5.
-    apply ok_push. eapply wf_sto_to_ok_G; eauto. eauto.
-    apply ok_push. eapply wf_sto_to_ok_G; eauto. eauto.
-    eapply H6; eauto.*)
+    apply subenv_last_only. apply H5.
+    rewrite <- concat_empty_l. apply ok_push; eauto.
+    eapply H6; eauto.
 Qed.
 
 (*
