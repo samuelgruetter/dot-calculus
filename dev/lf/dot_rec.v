@@ -2316,13 +2316,13 @@ Proof.
   intros. inversion H; subst. apply has_member_rules_inv in H1. apply H1.
 Qed.
 
-Lemma val_new_typing: forall G s x T ds,
-  wf_sto G s ->
+Lemma val_new_typing: forall Gs s x T ds,
+  wf_sto Gs s ->
   binds x (val_new T ds) s ->
-  ty_trm ty_precise sub_general G (trm_val (val_new T ds)) (typ_bnd T).
+  ty_trm ty_precise Gs empty (trm_val (val_new T ds)) (typ_bnd T).
 Proof.
   introv Hwf Bis.
-  assert (exists T, binds x T G) as Bi. {
+  assert (exists T, binds x T Gs) as Bi. {
     eapply sto_binds_to_ctx_binds; eauto.
   }
   destruct Bi as [T0 Bi].
@@ -2382,13 +2382,13 @@ Proof.
   assert (record_type T) as Htype. {
     eapply record_new_typing. eapply val_new_typing; eauto.
   }
-  assert (record_type (open_typ x T)) as Htypex. {
+  assert (record_type (open_typ (in_sto x) T)) as Htypex. {
     apply open_record_type. assumption.
   }
-  assert (has_member G x (open_typ x T) A S U) as Hmemx. {
+  assert (has_member G x (open_typ (in_sto x) T) A S U) as Hmemx. {
     inversion Hmem; subst. inversion H0; subst. assumption.
   }
-  assert (record_sub (open_typ x T) (typ_rcd (dec_typ A S U))) as Hsub. {
+  assert (record_sub (open_typ (in_sto x) T) (typ_rcd (dec_typ A S U))) as Hsub. {
     destruct has_member_rcd_typ_sub_mut as [HL _].
     eapply HL; eauto.
   }
