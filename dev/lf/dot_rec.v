@@ -1867,15 +1867,15 @@ Proof.
   exists ls. apply A1.
 Qed.
 
-Lemma record_new_typing: forall G S ds,
-  ty_trm ty_precise sub_general G (trm_val (val_new S ds)) (typ_bnd S) ->
+Lemma record_new_typing: forall s G S ds,
+  ty_trm ty_precise s G (trm_val (val_new S ds)) (typ_bnd S) ->
   record_type S.
 Proof.
   intros.
   inversion H; subst.
   + pick_fresh x.
-    apply open_record_type_rev with (x:=x).
-    eauto.
+    apply open_record_type_rev with (v:= in_ctx x).
+    unfold var_of. eauto.
     eapply record_defs_typing. eapply H4. eauto.
   + assert (exists x, trm_val (val_new S ds) = trm_var (avar_f x)) as Contra. {
       apply H0; eauto.
