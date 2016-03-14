@@ -2146,6 +2146,7 @@ Qed.
 (* ###################################################################### *)
 (** ** Narrowing *)
 
+(*
 Definition subenv(G1 G2: ctx) :=
   forall x T2, binds x T2 G2 ->
     binds x T2 G1 \/
@@ -2245,6 +2246,7 @@ Lemma narrow_subtyping: forall G G' J S U,
 Proof.
   intros. apply* narrow_rules.
 Qed.
+*)
 
 (* ###################################################################### *)
 (** * Has member *)
