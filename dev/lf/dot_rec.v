@@ -3304,18 +3304,26 @@ Qed.
 (* ###################################################################### *)
 (** * Misc *)
 
-Lemma var_typing_implies_avar_f: forall G a T,
-  ty_trm ty_general sub_general G (trm_var a) T ->
+Lemma var_typing_implies_avar_f: forall Gs G a T,
+  ty_trm ty_general Gs G (trm_var a) T ->
   exists x, a = avar_f x.
 Proof.
   intros. dependent induction H; try solve [eexists; reflexivity].
   apply IHty_trm.
 Qed.
 
-Lemma val_typing: forall G v T,
-  ty_trm ty_general sub_general G (trm_val v) T ->
-  exists T', ty_trm ty_precise sub_general G (trm_val v) T' /\
-             subtyp ty_general sub_general G empty T' T.
+Lemma var_typing_implies_avar_s: forall Gs v T,
+  ty_trm ty_general Gs empty (trm_var (avar_f v)) T ->
+  avar_f v = avar_s (var_of v).
+Proof.
+  intros. dependent induction H; eauto.
+  false. apply* binds_empty_inv.
+Qed.
+
+Lemma val_typing: forall Gs G v T,
+  ty_trm ty_general Gs G (trm_val v) T ->
+  exists T', ty_trm ty_precise Gs G (trm_val v) T' /\
+             subtyp ty_general Gs G T' T.
 Proof.
   intros. dependent induction H.
   - exists (typ_all T U). split.
@@ -3345,14 +3353,18 @@ The proof is by a induction on typing derivations of G |- t: T.
 
 Lemma safety: forall G s t T,
   wf_sto G s ->
-  ty_trm ty_general sub_general G t T ->
-  (normal_form t \/ (exists s' t' G' G'', red t s t' s' /\ G' = G & G'' /\ ty_trm ty_general sub_general G' t' T /\ wf_sto G' s')).
+  ty_trm ty_general G empty t T ->
+  (normal_form t \/ (exists s' t' G' G'', red t s t' s' /\ G' = G & G'' /\ ty_trm ty_general G' empty t' T /\ wf_sto G' s')).
 Proof.
   introv Hwf H. dependent induction H; try solve [left; eauto].
   - (* All-E *) right.
+    lets Ax: (var_typing_implies_avar_s H).
+    lets Az: (var_typing_implies_avar_s H0).
+    rewrite Ax in H. rewrite Ax. rewrite Az.
+    destruct z as [vz | vz]. simpl.
     lets C: (canonical_forms_1 Hwf H).
     destruct C as [L [T' [t [Bis [Hsub Hty]]]]].
-    exists s (open_trm z t) G (@empty typ).
+    exists s (open_trm (in_sto vz) t) Gs (@empty typ).
     split.
     apply red_app with (T:=T'). assumption.
     split.
@@ -3360,17 +3372,22 @@ Proof.
     split.
     pick_fresh y. assert (y \notin L) as FrL by auto. specialize (Hty y FrL).
     rewrite subst_intro_typ with (x:=y). rewrite subst_intro_trm with (x:=y).
+    (*
     eapply subst_ty_trm. eapply Hty.
     apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
     rewrite subst_fresh_typ.
     apply ty_sub with (T:=S).
     intro Contra. inversion Contra.
-    assumption. apply subtyp_refl.
-    eauto. eauto. eauto. eauto.
+    assumption. apply subtyp_refl.*)
+    admit.
+    eauto. eauto. eauto.
+    simpl in Az. unfold avar_s in Az. inversions Az.
   - (* Fld-E *) right.
+    lets Ax: (var_typing_implies_avar_s H).
+    rewrite Ax in H. rewrite Ax.
     lets C: (canonical_forms_2 Hwf H).
     destruct C as [S [ds [t [Bis [Tyds [Has Ty]]]]]].
-    exists s t G (@empty typ).
+    exists s t Gs (@empty typ).
     split.
     apply red_sel with (T:=S) (ds:=ds); try assumption.
     split.
@@ -3385,7 +3402,10 @@ Proof.
         eapply var_typing_implies_avar_f. eassumption.
       }
       destruct A as [x A]. subst a.
-      exists s (open_trm x u) G (@empty typ).
+      lets Ax: (var_typing_implies_avar_s H).
+      rewrite Ax in H. rewrite Ax.
+      destruct x as [vx | vx].
+      exists s (open_trm (in_sto vx) u) Gs (@empty typ).
       split.
       apply red_let_var.
       split.
@@ -3393,30 +3413,38 @@ Proof.
       split.
       pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H0 y FrL).
       rewrite subst_intro_trm with (x:=y).
-      rewrite <- subst_fresh_typ with (x:=y) (y:=x).
+      rewrite <- subst_fresh_typ with (x:=y) (y:=(in_sto vx)).
+      (*
       eapply subst_ty_trm. eapply H0.
       apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
-      rewrite subst_fresh_typ. assumption. eauto. eauto. eauto. eauto.
+      rewrite subst_fresh_typ. assumption. eauto. eauto. eauto. eauto.*)
+      admit.
+      eauto. eauto. eauto.
+      simpl in Ax. unfold avar_s in Ax. inversions Ax.
     + lets Hv: (val_typing H).
       destruct Hv as [T' [Htyp Hsub]].
       pick_fresh x. assert (x \notin L) as FrL by auto. specialize (H0 x FrL).
-      exists (s & x ~ v) (open_trm x u) (G & (x ~ T')) (x ~ T').
+      exists (s & x ~ v) (open_trm (in_sto x) u) (Gs & (x ~ T')) (x ~ T').
       split.
       apply red_let. eauto.
       split. reflexivity. split.
-      apply narrow_typing with (G:=G & x ~ T).
+      (*apply narrow_typing with (G:=G & x ~ T).
       assumption.
       apply subenv_last. assumption.
       apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
-      apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
+      apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.*)
+      admit.
       apply wf_sto_push. assumption. eauto. eauto. assumption.
-    + specialize (IHty_trm Hwf). destruct IHty_trm as [IH | IH]. inversion IH.
+    + specialize (IHty_trm Hwf). destruct IHty_trm as [IH | IH]; eauto. inversion IH.
       destruct IH as [s' [t' [G' [G'' [IH1 [IH2 [IH3]]]]]]].
       exists s' (trm_let t' u) G' G''.
       split. apply red_let_tgt. assumption.
       split. assumption. split.
       apply ty_let with (L:=L \u dom G') (T:=T); eauto.
-      intros. rewrite IH2. eapply (proj51 weaken_rules). apply H0. auto. reflexivity.
+      intros. rewrite IH2. eapply weaken_sto_ty_trm. apply H0. auto.
+      subst. eassumption.
+
+      eapply (proj51 weaken_rules). apply H0. auto. reflexivity.
       rewrite <- IH2. apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
       rewrite IH2.
       rewrite <- IH2. eauto.
