@@ -2793,7 +2793,16 @@ Proof.
       unfold subst_ctx in Hg. rewrite map_empty in Hg.
       assert (avar_f (in_sto y) = (avar_s y)) as C by eauto.
       rewrite C in Hg.
-      admit.
+      assert (empty & (subst_ctx x0 (in_sto y) G2) = subst_ctx x0 (in_sto y) G2) as D. {
+        rewrite concat_empty_l. reflexivity.
+      }
+      rewrite <- D.
+      eapply weaken_subtyp.
+      eapply proj2. eapply tight_bound_completeness.
+      eassumption.
+      instantiate (1:=defs_nil). instantiate (1:=typ_top). admit.
+      eapply Hg.
+      rewrite concat_empty_l. unfold subst_ctx. apply ok_map. eauto.
       reflexivity.
     + admit.
   - (* subtyp_sel1 *)
