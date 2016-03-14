@@ -666,32 +666,35 @@ Proof.
 Qed.
 
 Lemma weaken_sto_rules:
-  (forall m Gs G t T, ty_trm m Gs G t T -> forall Gs' s s',
-    wf_sto (Gs & Gs') (s & s') ->
+  (forall m Gs G t T, ty_trm m Gs G t T -> forall Gs',
+    ok (Gs & Gs') ->
     ty_trm m (Gs & Gs') G t T) /\
-  (forall Gs G d D, ty_def Gs G d D -> forall Gs' s s',
-    wf_sto (Gs & Gs') (s & s') ->
+  (forall Gs G d D, ty_def Gs G d D -> forall Gs',
+    ok (Gs & Gs') ->
     ty_def (Gs & Gs') G d D) /\
-  (forall Gs G ds T, ty_defs Gs G ds T -> forall Gs' s s',
-    wf_sto (Gs & Gs') (s & s') ->
+  (forall Gs G ds T, ty_defs Gs G ds T -> forall Gs',
+    ok (Gs & Gs') ->
     ty_defs (Gs & Gs') G ds T) /\
-  (forall m Gs G T U, subtyp m Gs G T U -> forall Gs' s s',
-    wf_sto (Gs & Gs') (s & s') ->
+  (forall m Gs G T U, subtyp m Gs G T U -> forall Gs',
+    ok (Gs & Gs') ->
     subtyp m (Gs & Gs') G T U).
 Proof.
-  apply rules_mutind; eauto 4.
-  intros.
-  eapply ty_var_s.
-  eapply binds_concat_left_ok.
-  eapply wf_sto_to_ok_G.
-  eassumption.
-  eassumption.
+  apply rules_mutind; eauto 4 using binds_concat_left_ok.
 Qed.
 
-Lemma weaken_sto_ty_trm:  forall m s s' Gs Gs' G t T,
+Lemma weaken_sto_ty_trm:  forall m Gs Gs' G t T,
     ty_trm m Gs G t T ->
-    wf_sto (Gs & Gs') (s & s') ->
+    ok (Gs & Gs') ->
     ty_trm m (Gs & Gs') G t T.
+Proof.
+  intros.
+  apply* weaken_sto_rules.
+Qed.
+
+Lemma weaken_sto_subtyp:  forall m Gs Gs' G S U,
+    subtyp m Gs G S U ->
+    ok (Gs & Gs') ->
+    subtyp m (Gs & Gs') G S U.
 Proof.
   intros.
   apply* weaken_sto_rules.
@@ -1549,12 +1552,12 @@ Proof.
       * left. exists T0. exists U. exists t.
         split. auto. split.
         eapply weaken_sto_ty_trm. assumption.
-        eapply wf_sto_push. eassumption. assumption. assumption. eassumption.
+        apply ok_push. eapply wf_sto_to_ok_G. eassumption. assumption.
         reflexivity.
       * right. exists T0. exists ds.
         split. auto. split.
         eapply weaken_sto_ty_trm. assumption.
-        apply wf_sto_push. eassumption. assumption. assumption. eassumption.
+        apply ok_push. eapply wf_sto_to_ok_G. eassumption. assumption.
         reflexivity.
       * assert (exists x, trm_val v = trm_var (avar_f x)) as A. {
           apply H3. reflexivity.
@@ -1566,13 +1569,13 @@ Proof.
         left. exists S. exists U. exists t.
         split. assumption. split.
         eapply weaken_sto_ty_trm. assumption.
-        apply wf_sto_push. eassumption. assumption. assumption. eassumption.
+        apply ok_push. eapply wf_sto_to_ok_G. eassumption. assumption.
         assumption.
       * destruct IH as [S [ds [IH1 [IH2 IH3]]]].
         right. exists S. exists ds.
         split. assumption. split.
         eapply weaken_sto_ty_trm. assumption.
-        apply wf_sto_push. eassumption. assumption. assumption. eassumption.
+        apply ok_push. eapply wf_sto_to_ok_G. eassumption. assumption.
         assumption.
 Qed.
 
@@ -3167,8 +3170,8 @@ Proof.
   - assert (exists v, binds x v s /\ ty_trm ty_precise Gs empty (trm_val v) T) as A. {
       destruct (ctx_binds_to_sto_binds_raw Hwf H) as [G1 [? [v [? [Bi Hty]]]]].
       exists v. split. apply Bi. subst. rewrite <- concat_assoc.
-      inversion Hwf; subst. apply binds_empty_inv in Bi. inversion Bi.
-      eapply weaken_sto_ty_trm with (s:=s0). assumption. rewrite concat_assoc. eapply Hwf.
+      eapply weaken_sto_ty_trm. assumption.
+      rewrite concat_assoc. eapply wf_sto_to_ok_G. eassumption.
     }
     destruct A as [v [Bis Hty]].
     exists v. split. apply Bis. eapply possible_types_completeness_for_values; eauto.
@@ -3243,7 +3246,8 @@ Proof.
   subst. rewrite <- concat_assoc.
   inversion Hwf; subst.
   apply binds_empty_inv in Bis. inversion Bis.
-  eapply weaken_sto_ty_trm with (s:=s0). assumption. rewrite concat_assoc. eapply Hwf.
+  eapply weaken_sto_ty_trm. assumption.
+  rewrite concat_assoc. eapply wf_sto_to_ok_G. eassumption.
 Qed.
 
 (*
@@ -3442,40 +3446,30 @@ Proof.
       split. assumption. split.
       apply ty_let with (L:=L \u dom G') (T:=T); eauto.
       intros. rewrite IH2. eapply weaken_sto_ty_trm. apply H0. auto.
-      subst. eassumption.
-
-      eapply (proj51 weaken_rules). apply H0. auto. reflexivity.
-      rewrite <- IH2. apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
-      rewrite IH2.
-      rewrite <- IH2. eauto.
-    + specialize (IHty_trm Hwf). destruct IHty_trm as [IH | IH]. inversion IH.
+      eapply wf_sto_to_ok_G. subst. eassumption. eassumption.
+    + specialize (IHty_trm Hwf). destruct IHty_trm as [IH | IH]; eauto. inversion IH.
       destruct IH as [s' [t' [G' [G'' [IH1 [IH2 [IH3]]]]]]].
       exists s' (trm_let t' u) G' G''.
       split. apply red_let_tgt. assumption.
       split. assumption. split.
       apply ty_let with (L:=L \u dom G') (T:=T); eauto.
-      intros. rewrite IH2. eapply (proj51 weaken_rules). apply H0. auto. reflexivity.
-      rewrite <- IH2. apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
-      rewrite IH2.
-      rewrite <- IH2. eauto.
-    + specialize (IHty_trm Hwf). destruct IHty_trm as [IH | IH]. inversion IH.
+      intros. rewrite IH2. eapply weaken_sto_ty_trm. apply H0. auto.
+      eapply wf_sto_to_ok_G. subst. eassumption. eassumption.
+    + specialize (IHty_trm Hwf). destruct IHty_trm as [IH | IH]; eauto. inversion IH.
       destruct IH as [s' [t' [G' [G'' [IH1 [IH2 [IH3]]]]]]].
       exists s' (trm_let t' u) G' G''.
       split. apply red_let_tgt. assumption.
       split. assumption. split.
       apply ty_let with (L:=L \u dom G') (T:=T); eauto.
-      intros. rewrite IH2. eapply (proj51 weaken_rules). apply H0. auto. reflexivity.
-      rewrite <- IH2. apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
-      rewrite IH2.
-      rewrite <- IH2. eauto.
-  - specialize (IHty_trm Hwf). destruct IHty_trm as [IH | IH].
-    + left. assumption.
+      intros. rewrite IH2. eapply weaken_sto_ty_trm. apply H0. auto.
+      eapply wf_sto_to_ok_G. subst. eassumption. eassumption.
+  - specialize (IHty_trm Hwf). destruct IHty_trm as [IH | IH]; eauto.
     + right. destruct IH as [s' [t' [G' [G'' [IH1 [IH2 [IH3]]]]]]].
       exists s' t' G' G''.
       split; try split; try split; try assumption.
       apply ty_sub with (T:=T).
       intro Contra. inversion Contra.
       assumption.
-      rewrite IH2. apply weaken_subtyp. assumption.
-      rewrite <- IH2. eapply wf_sto_to_ok_G. eassumption.
+      rewrite IH2. apply weaken_sto_subtyp. assumption.
+      eapply wf_sto_to_ok_G. subst. eassumption.
 Qed.
