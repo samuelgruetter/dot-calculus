@@ -2839,11 +2839,10 @@ Proof.
   inversion Htyv; subst.
   pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H3 y FrL).
   rewrite subst_intro_defs with (x:=y). rewrite subst_intro_typ with (x:=y).
-  (* eapply subst_ty_defs. eapply H3.
-  apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
+  rewrite concat_empty_l in H3.
+  eapply subst_ty_defs; eauto.
   rewrite <- subst_intro_typ with (x:=y).
-  eapply ty_rec_elim. apply ty_var. eapply wf_sto_val_new_in_G; eauto.*)
-  admit.
+  eapply ty_rec_elim. apply ty_var_s. eapply wf_sto_val_new_in_G; eauto.
   eauto. eauto. eauto.
   assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
   specialize (H Heqm1). destruct H as [? Contra]. inversion Contra.
