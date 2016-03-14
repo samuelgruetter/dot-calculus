@@ -3160,31 +3160,32 @@ If `G ~ s` and `G |- x: T` then, for some value `v`,
 
 Lemma possible_types_completeness_tight: forall Gs s x T,
   wf_sto Gs s ->
-  ty_trm ty_general Gs empty (trm_var (avar_f x)) T ->
+  ty_trm ty_general Gs empty (trm_var (avar_s x)) T ->
   exists v, binds x v s /\ possible_types Gs x v T.
 Proof.
   introv Hwf H. dependent induction H.
-  - assert (exists v, binds x v s /\ ty_trm ty_precise sub_general G (trm_val v) T) as A. {
+  - assert (exists v, binds x v s /\ ty_trm ty_precise Gs empty (trm_val v) T) as A. {
       destruct (ctx_binds_to_sto_binds_raw Hwf H) as [G1 [? [v [? [Bi Hty]]]]].
       exists v. split. apply Bi. subst. rewrite <- concat_assoc.
-      eapply weaken_ty_trm. assumption. rewrite concat_assoc.
-      eapply wf_sto_to_ok_G. eassumption.
+      inversion Hwf; subst. apply binds_empty_inv in Bi. inversion Bi.
+      eapply weaken_sto_ty_trm with (s:=s0). assumption. rewrite concat_assoc. eapply Hwf.
     }
     destruct A as [v [Bis Hty]].
     exists v. split. apply Bis. eapply possible_types_completeness_for_values; eauto.
-  - specialize (IHty_trm Hwf).
+  - specialize (IHty_trm x Hwf).
     destruct IHty_trm as [v [Bis Hp]].
+    eauto. eauto.
     exists v. split. assumption. eapply pt_bnd. eapply Hp. reflexivity.
-  - specialize (IHty_trm Hwf).
-    destruct IHty_trm as [v [Bis Hp]].
+  - specialize (IHty_trm x Hwf).
+    destruct IHty_trm as [v [Bis Hp]]; eauto.
     exists v. split. assumption. inversion Hp; subst.
     + lets Htype: (record_type_new Hwf Bis). rewrite H4 in Htype. inversion Htype. inversion H0.
     + assumption.
-  - specialize (IHty_trm1 Hwf). destruct IHty_trm1 as [v [Bis1 Hp1]].
-    specialize (IHty_trm2 Hwf). destruct IHty_trm2 as [v' [Bis2 Hp2]].
+  - specialize (IHty_trm1 x Hwf). destruct IHty_trm1 as [v [Bis1 Hp1]]; eauto.
+    specialize (IHty_trm2 x Hwf). destruct IHty_trm2 as [v' [Bis2 Hp2]]; eauto.
     unfold binds in Bis1. unfold binds in Bis2. rewrite Bis2 in Bis1. inversions Bis1.
     exists v. split. eauto. apply pt_and; assumption.
-  - specialize (IHty_trm Hwf). destruct IHty_trm as [v [Bis Hp]].
+  - specialize (IHty_trm x Hwf). destruct IHty_trm as [v [Bis Hp]]; eauto.
     exists v. split. apply Bis. eapply possible_types_closure_tight; eauto.
 Qed.
 
