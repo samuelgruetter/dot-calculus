@@ -1501,8 +1501,33 @@ Proof.
     simpl.
     case_if.
     + eapply subtyp_sel2_tight.
+      assert (G' = x0 ~ S) as B. {
+        eapply restricted_by_first; eauto.
+      }
+      subst.
+      assert (ty_trm ty_general Gs (subst_ctx x0 (in_sto y) empty)
+        (subst_trm x0 (in_sto y) (trm_var (avar_c x0)))
+        (subst_typ x0 (in_sto y) (typ_rcd (dec_typ A S0 T)))) as Hg. {
+        eapply H; eauto.
+        rewrite concat_empty_r. reflexivity.
+        rewrite concat_empty_r. eauto.
+      }
+      simpl in Hg. rewrite If_l in Hg.
+      unfold subst_ctx in Hg. rewrite map_empty in Hg.
+      assert (avar_f (in_sto y) = (avar_s y)) as C by eauto.
+      rewrite C in Hg.
+(*
+x0 \notin fv_ctx_types Gs
+x0 # Gs
+ty_trm ty_general Gs empty (trm_var (avar_s y)) (subst_typ x0 (in_sto y) S)
+ty_trm ty_general Gs empty (trm_var (avar_s y))
+  (typ_rcd (dec_typ A (subst_typ x0 (in_sto y) S0)
+                      (subst_typ x0 (in_sto y) T0)))
+subtyp ty_general G empty (typ_sel (avar_s x) A) U /\
+subtyp ty_general G empty S (typ_sel (avar_s x) A).
+*)
 
-    assert (
+      assert (
         avar_f (If x = x0 then in_sto y else in_sto x) =
         avar_f (in_sto (If x = x0 then y else x))) as RA. {
       case_if; eauto.
