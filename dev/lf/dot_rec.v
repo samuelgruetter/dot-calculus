@@ -2253,7 +2253,7 @@ Qed.
 
 Inductive has_member: ctx -> var -> typ -> typ_label -> typ -> typ -> Prop :=
 | has_any : forall G x T A S U,
-  ty_trm ty_general sub_tight G (trm_var (avar_f x)) T ->
+  ty_trm ty_general G empty (trm_var (avar_s x)) T ->
   has_member_rules G x T A S U ->
   has_member G x T A S U
 with has_member_rules: ctx -> var -> typ -> typ_label -> typ -> typ -> Prop :=
@@ -2266,12 +2266,12 @@ with has_member_rules: ctx -> var -> typ -> typ_label -> typ -> typ -> Prop :=
   has_member G x T2 A S U ->
   has_member_rules G x (typ_and T1 T2) A S U
 | has_bnd : forall G x T A S U,
-  has_member G x (open_typ x T) A S U ->
+  has_member G x (open_typ (in_sto x) T) A S U ->
   has_member_rules G x (typ_bnd T) A S U
 | has_sel : forall G x y B T' A S U,
-  ty_trm ty_precise sub_general G (trm_var (avar_f y)) (typ_rcd (dec_typ B T' T')) ->
+  ty_trm ty_precise G empty (trm_var (avar_s y)) (typ_rcd (dec_typ B T' T')) ->
   has_member G x T' A S U ->
-  has_member_rules G x (typ_sel (avar_f y) B) A S U
+  has_member_rules G x (typ_sel (avar_s y) B) A S U
 | has_bot  : forall G x A S U,
   has_member_rules G x typ_bot A S U
 .
@@ -2286,9 +2286,9 @@ Lemma has_member_rules_inv: forall G x T A S U, has_member_rules G x T A S U ->
     (has_member G x T1 A S U \/
      has_member G x T2 A S U)) \/
   (exists T', T = typ_bnd T' /\
-    has_member G x (open_typ x T') A S U) \/
-  (exists y B T', T = typ_sel (avar_f y) B /\
-    ty_trm ty_precise sub_general G (trm_var (avar_f y)) (typ_rcd (dec_typ B T' T')) /\
+    has_member G x (open_typ (in_sto x) T') A S U) \/
+  (exists y B T', T = typ_sel (avar_s y) B /\
+    ty_trm ty_precise G empty (trm_var (avar_s y)) (typ_rcd (dec_typ B T' T')) /\
     has_member G x T' A S U) \/
   (T = typ_bot).
 Proof.
@@ -2307,9 +2307,9 @@ Lemma has_member_inv: forall G x T A S U, has_member G x T A S U ->
     (has_member G x T1 A S U \/
      has_member G x T2 A S U)) \/
   (exists T', T = typ_bnd T' /\
-    has_member G x (open_typ x T') A S U) \/
-  (exists y B T', T = typ_sel (avar_f y) B /\
-    ty_trm ty_precise sub_general G (trm_var (avar_f y)) (typ_rcd (dec_typ B T' T')) /\
+    has_member G x (open_typ (in_sto x) T') A S U) \/
+  (exists y B T', T = typ_sel (avar_s y) B /\
+    ty_trm ty_precise G empty (trm_var (avar_s y)) (typ_rcd (dec_typ B T' T')) /\
     has_member G x T' A S U) \/
   (T = typ_bot).
 Proof.
