@@ -986,6 +986,21 @@ Proof.
   apply notin_union in N. exact N.
 Qed.
 
+Lemma fv_ctx_types_push: forall x z T G,
+  x \notin fv_typ T -> x \notin (fv_ctx_types G) ->
+  x \notin fv_ctx_types (G & z ~ T).
+Proof.
+  introv A B.
+  unfold fv_ctx_types in *.
+  unfold fv_in_values in *.
+  rewrite <- cons_to_push in *.
+  rewrite values_def in *.
+  unfold LibList.map in *.
+  do 2 rewrite LibList.fold_right_cons in *.
+  simpl in *.
+  apply notin_union. split; assumption.
+Qed.
+
 Lemma subst_fresh_ctx: forall x y G,
   x \notin fv_ctx_types G -> subst_ctx x y G = G.
 Proof.
@@ -3575,7 +3590,8 @@ Proof.
       eapply wf_sto_push. eassumption. eauto. eauto. eassumption.
       eapply weaken_sto_ty_trm. rewrite concat_empty_l in H0. eapply H0.
       eapply ok_push; eauto.
-      admit. eauto.
+      eapply fv_ctx_types_push. eauto. eauto.
+      eauto.
       assert (subst_typ x (in_sto y) T=T) as C. {
         rewrite subst_fresh_typ.
         reflexivity. eauto.
