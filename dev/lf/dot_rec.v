@@ -1284,30 +1284,78 @@ Proof.
       rewrite concat_assoc. reflexivity.
 Qed.
 
+Lemma precise_fresh_subtyp: forall Gs S U,
+  subtyp ty_precise Gs empty S U -> forall y,
+    y \notin fv_ctx_types Gs ->
+    y \notin fv_typ S ->
+    y \notin fv_typ U.
+Proof.
+  introv Hsub. dependent induction Hsub; intros; eauto;
+  try solve [simpl in H0; apply notin_union_r in H0; destruct H0; assumption].
+Qed.
+
+Lemma fresh_fv_typ: forall x y,
+  y <> x ->
+  (forall T, y \notin fv_typ T -> forall i,
+    y \notin fv_typ (open_rec_typ i (in_sto x) T)) /\
+  (forall d, y \notin fv_dec d -> forall i,
+    y \notin fv_dec (open_rec_dec i (in_sto x) d)).
+Proof.
+  intros. apply typ_mutind; intros; simpl; eauto; try solve [
+    simpl in H2; eapply notin_union_r in H2; destruct H2;
+    apply notin_union_l; eauto].
+  - simpl. unfold open_rec_avar. destruct a.
+    case_if.
+    + simpl. unfold fv_fvar. simpl. apply notin_singleton. assumption.
+    + simpl. eauto.
+    + simpl. simpl in H0. assumption.
+Qed.
+
+Lemma precise_fresh_ty_trm: forall Gs x T,
+  ty_trm ty_precise Gs empty (trm_var (avar_s x)) T -> forall y,
+    y \notin fv_ctx_types Gs -> y # Gs ->
+    y \notin fv_typ T.
+Proof.
+  introv Hty. dependent induction Hty; intros; eauto.
+  - eapply fv_ctx_types_binds; eauto.
+  - destruct (typing_implies_sto_bound Hty) as [Tx Bi].
+    assert (x <> y) as A. {
+      destruct (classicT (x = y)) as [Eq | Ne].
+      + subst. false. eapply binds_fresh_inv; eauto.
+      + assumption.
+    }
+    assert (y \notin fv_typ (typ_bnd T)) as B. {
+      eapply IHHty; eauto.
+      unfold avar_s. reflexivity.
+    }
+    eapply fresh_fv_typ; eauto.
+  - eapply precise_fresh_subtyp; eauto.
+Qed.
+
 Lemma subst_rules: forall y S,
    (forall m Gs G t T, ty_trm m Gs G t T -> forall G2 x,
     G = x ~ S & G2 ->
     ok (x ~ S & G2) ->
-    x \notin fv_ctx_types Gs ->
+    x \notin fv_ctx_types Gs -> x # Gs ->
     ty_trm ty_general Gs empty (trm_var (avar_s y)) (subst_typ x (in_sto y) S) ->
     m = ty_general ->
     ty_trm m Gs (subst_ctx x (in_sto y) G2) (subst_trm x (in_sto y) t) (subst_typ x (in_sto y) T)) /\
   (forall Gs G d D, ty_def Gs G d D -> forall G2 x,
     G = x ~ S & G2 ->
     ok (x ~ S & G2) ->
-    x \notin fv_ctx_types Gs ->
+    x \notin fv_ctx_types Gs -> x # Gs ->
     ty_trm ty_general Gs empty (trm_var (avar_s y)) (subst_typ x (in_sto y) S) ->
     ty_def Gs (subst_ctx x (in_sto y) G2) (subst_def x (in_sto y) d) (subst_dec x (in_sto y) D)) /\
   (forall Gs G ds T, ty_defs Gs G ds T -> forall G2 x,
     G = x ~ S & G2 ->
     ok (x ~ S & G2) ->
-    x \notin fv_ctx_types Gs ->
+    x \notin fv_ctx_types Gs -> x # Gs ->
     ty_trm ty_general Gs empty (trm_var (avar_s y)) (subst_typ x (in_sto y) S) ->
     ty_defs Gs (subst_ctx x (in_sto y) G2) (subst_defs x (in_sto y) ds) (subst_typ x (in_sto y) T)) /\
   (forall m Gs G T U, subtyp m Gs G T U -> forall G2 x,
     G = x ~ S & G2 ->
     ok (x ~ S & G2) ->
-    x \notin fv_ctx_types Gs ->
+    x \notin fv_ctx_types Gs -> x # Gs ->
     ty_trm ty_general Gs empty (trm_var (avar_s y)) (subst_typ x (in_sto y) S) ->
     m = ty_general ->
     subtyp m Gs (subst_ctx x (in_sto y) G2) (subst_typ x (in_sto y) T) (subst_typ x (in_sto y) U)).
@@ -1451,9 +1499,22 @@ Proof.
     admit.
   - (* subtyp_sel2_tight *)
     simpl. eapply subtyp_sel2_tight; eauto.
-    admit.
+    lets B: (precise_fresh_ty_trm t H2 H3); eauto.
+    simpl in B. apply notin_union_r in B. destruct B as [B ?].
+    assert (subst_typ x0 (in_sto y) T = T) as C. {
+      apply subst_fresh_typ.
+      assumption.
+    }
+    rewrite C. assumption.
   - (* subtyp_sel1_tight *)
-    admit.
+    simpl. eapply subtyp_sel1_tight; eauto.
+    lets B: (precise_fresh_ty_trm t H2 H3); eauto.
+    simpl in B. apply notin_union_r in B. destruct B as [B ?].
+    assert (subst_typ x0 (in_sto y) T = T) as C. {
+      apply subst_fresh_typ.
+      assumption.
+    }
+    rewrite C. assumption.
   - (* subtyp_all *)
     simpl. apply_fresh subtyp_all as z; eauto.
     assert (z \notin L) as FrL by eauto.
