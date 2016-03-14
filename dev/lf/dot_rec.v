@@ -2804,7 +2804,16 @@ Proof.
       eapply Hg.
       rewrite concat_empty_l. unfold subst_ctx. apply ok_map. eauto.
       reflexivity.
-    + admit.
+    + assert (exists GA2 GB2, G2 = GA2 & GB2 /\ G' = x0 ~ S & GA2) as B. {
+        admit.
+      }
+      destruct B as [GA2 [GB2 [Heq2 Heq']]]. subst.
+      eapply subtyp_sel2.
+      instantiate (1:=(subst_ctx x0 (in_sto y) GA2)). admit.
+      specialize (H s GA2 x0). simpl in H. rewrite If_r in H.
+      eapply H; eauto.
+      rewrite concat_assoc in H2. eauto.
+      assumption.
   - (* subtyp_sel1 *)
     admit.
   - (* subtyp_sel2_tight *)
