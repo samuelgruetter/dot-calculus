@@ -2478,7 +2478,7 @@ Proof.
       }
       subst. eauto.
     + inversion Hmem.
-  - (* sel1 *)
+  - (* sel1 tight *)
     exists S2 U2. split.
     eapply has_any. assumption. eapply has_sel. eassumption. eassumption.
     eauto.
