@@ -1738,6 +1738,23 @@ Proof.
     eapply rs_dropl. apply rs_refl.
 Qed.
 
+Lemma record_subtyping_inv: forall Gs G T T',
+  record_sub T T' ->
+  subtyp ty_general Gs G T T'.
+Proof.
+  introv Hsub. dependent induction Hsub.
+  - apply subtyp_refl.
+  - apply subtyp_and12.
+  - apply subtyp_trans with (T:=T).
+    apply subtyp_and11.
+    apply IHHsub.
+  - apply subtyp_and2.
+    eapply subtyp_trans with (T:=T).
+    apply subtyp_and11.
+    apply IHHsub.
+    apply subtyp_and12.
+Qed.
+
 Lemma record_typ_sub_label_in: forall T D ls,
   record_typ T ls ->
   record_sub T (typ_rcd D) ->
