@@ -2489,13 +2489,13 @@ Proof.
     admit.
 Qed.
 
-Lemma has_member_monotonicity: forall G s x T0 ds T A S U,
-  wf_sto G s ->
+Lemma has_member_monotonicity: forall Gs s x T0 ds T A S U,
+  wf_sto Gs s ->
   binds x (val_new T0 ds) s ->
-  has_member G x T A S U ->
-  exists T1, has_member G x (typ_bnd T0) A T1 T1 /\
-             subtyp ty_general sub_tight G empty S T1 /\
-             subtyp ty_general sub_tight G empty T1 U.
+  has_member Gs x T A S U ->
+  exists T1, has_member Gs x (typ_bnd T0) A T1 T1 /\
+             subtyp ty_general Gs empty S T1 /\
+             subtyp ty_general Gs empty T1 U.
 Proof.
   introv Hwf Bis Hmem. inversion Hmem; subst.
   generalize dependent U. generalize dependent S.
@@ -2507,7 +2507,7 @@ Proof.
     assert (S = U). {
       eapply has_member_tightness. eassumption. eassumption.
       eapply has_any.
-      eapply ty_var. eassumption.
+      eapply ty_var_s. eassumption.
       eassumption.
     }
     subst.
@@ -2543,7 +2543,9 @@ Proof.
   - (* sub *)
     destruct (has_member_covariance Hwf H1 H0 Hmem) as [S' [U' [Hmem' [Hsub1' Hsub2']]]].
     inversion Hmem'; subst.
-    specialize (IHty_trm Hwf Bis S' U' Hmem' H4).
+    assert (@empty typ ~= @empty typ) as HE by reflexivity.
+    assert (trm_var (avar_s x) = trm_var (avar_s x)) as HEx by reflexivity.
+    specialize (IHty_trm x Hwf Bis HE HEx S' U' Hmem' H4).
     destruct IHty_trm as [T1 [Hmem1 [Hsub1 Hsub2]]].
     exists T1. eauto.
 Qed.
