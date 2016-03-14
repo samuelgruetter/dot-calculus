@@ -1943,7 +1943,27 @@ Proof.
   eapply subenv_last; eauto.
 Qed.
 
-Lemma restricted_by_skip: forall x y T G G',
+Lemma notin_subenv: forall Gs G' G,
+  subenv Gs G' G -> forall x,
+  x # G' ->
+  x # G.
+Proof.
+  introv SE. dependent induction SE; introv N; eauto.
+Qed.
+
+Lemma ok_subenv: forall Gs G' G,
+  subenv Gs G' G ->
+  ok G' ->
+  ok G.
+Proof.
+  introv SE. dependent induction SE; introv Hok.
+  - assumption.
+  - apply ok_push_inv in Hok. destruct Hok as [Hok ?].
+    apply ok_push. apply IHSE. assumption.
+    eapply notin_subenv; eauto.
+Qed.
+
+Lemma restricted_by_same: forall x y T G G',
   ok (G & y ~ T) ->
   x <> y ->
   restricted_by x (G & y ~ T) G' ->
@@ -1952,13 +1972,21 @@ Proof.
   admit.
 Qed.
 
+Lemma restricted_by_skip: forall x y T G G',
+  x <> y ->
+  restricted_by x G G' ->
+  restricted_by x (G & y ~ T) G'.
+Proof.
+  admit.
+Qed.
+
 Lemma narrow_restricted_by: forall Gs G0 G,
-  ok G ->
+  ok G0 ->
   subenv Gs G0 G -> forall x G',
   restricted_by x G G' ->
-  exists G0', subenv Gs G0' G' /\ restricted_by x G G'.
+  exists G0', subenv Gs G0' G' /\ restricted_by x G0 G0'.
 Proof.
-  introv Hok SE.
+  introv Hok SE. eapply ok_subenv in Hok; eauto.
   dependent induction SE; intros.
   - exists G'. split. apply se_refl. assumption.
   - destruct (classicT (x0 = x)) as [Eq | Ne].
@@ -1972,12 +2000,15 @@ Proof.
       destruct A as [? [? ?]]. subst.
       exists (G1 & x ~ T1). split; eauto.
       eapply se_push; eauto.
-    + assert (exists G0', subenv Gs G0' G' /\ restricted_by x0 G2 G') as A. {
+      apply lim_ctx with (G2:=empty). rewrite concat_empty_r. reflexivity.
+    + assert (exists G0', subenv Gs G0' G' /\ restricted_by x0 G1 G0') as A. {
         eapply IHSE; eauto.
-        eapply restricted_by_skip; eauto.
+        eapply restricted_by_same; eauto.
       }
       destruct A as [G0' [A1 A2]].
       exists G0'. split; eauto.
+      eapply restricted_by_skip.
+      eauto. eauto.
 Qed.
 
 Lemma narrow_rules:
@@ -2030,7 +2061,15 @@ Proof.
     apply_fresh ty_let as y; eauto.
     apply H0 with (x:=y); eauto.
     eapply se_push; eauto.
-  - admit.
+  - (* subtyp_sel2 *)
+    assert (exists G0', subenv Gs G0' G' /\ restricted_by x G'0 G0') as B. {
+      apply narrow_restricted_by with (Gs:=Gs) (G:=G) (G0:=G'0); auto.
+    }
+    destruct B as [G0' [SE' r']].
+    eapply subtyp_sel2.
+    eapply r'.
+    eapply H; eauto.
+    eapply ok_restricted_by; eauto.
   - admit.
   - (* subtyp_all *)
     subst.
