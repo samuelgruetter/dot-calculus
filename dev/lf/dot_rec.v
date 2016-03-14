@@ -2937,13 +2937,13 @@ Proof.
     destruct d0; simpl in H4; inversion H4; subst.
     assert (ty_trm ty_general Gs empty (open_trm (in_sto x) t1) (open_typ (in_sto x) t0)) as A. {
       rewrite subst_intro_typ with (x:=y). rewrite subst_intro_trm with (x:=y).
-      (*eapply subst_ty_trm. eapply H4.
-      apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto. eauto.
+      rewrite concat_empty_l in H2.
+      eapply subst_ty_trm; eauto.
       simpl. rewrite <- subst_intro_typ with (x:=y).
-      lets Htyv: (var_new_typing Hwf Bis). unfold open_typ in Htyv. simpl in Htyv.
+      lets Htyv: (var_new_typing (@empty typ) Hwf Bis).
+      unfold open_typ in Htyv. simpl in Htyv.
       unfold open_typ. apply Htyv.
-      eauto.*)
-      admit.
+      eauto.
       apply notin_union_r1 in Fr. apply notin_union_r2 in Fr.
       unfold fv_defs in Fr. apply notin_union_r2 in Fr. apply Fr.
       eauto.
