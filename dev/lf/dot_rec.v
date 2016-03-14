@@ -1913,6 +1913,21 @@ Proof.
   apply weaken_subtyp; eauto.
 Qed.
 
+Lemma subenv_last_only: forall Gs x S U,
+  subtyp ty_general Gs empty S U ->
+  subenv Gs (x ~ S) (x ~ U).
+Proof.
+  intros.
+  assert ((@empty typ) & (x ~ S) = (x ~ S)) as A. {
+    rewrite concat_empty_l. reflexivity.
+  }
+  assert ((@empty typ) & (x ~ U) = (x ~ U)) as B. {
+    rewrite concat_empty_l. reflexivity.
+  }
+  rewrite <- A. rewrite <- B.
+  eapply subenv_last; eauto.
+Qed.
+
 Lemma restricted_by_skip: forall x y T G G',
   ok (G & y ~ T) ->
   x <> y ->
@@ -3224,15 +3239,14 @@ Proof.
     apply_fresh pt_lambda as y.
     eapply H3; eauto.
     eapply subtyp_trans. eassumption. eassumption.
+    assert (y ~ S2 = empty & (y ~ S2)) as C. {
+      rewrite concat_empty_l. eauto.
+    }
     eapply subtyp_trans.
-    instantiate (1:=(open_typ (in_ctx y) T1)). admit. admit.
-    (*
     eapply narrow_subtyping. eapply H8; eauto.
-    eapply subenv_last. eapply tight_to_general_subtyping. eapply Hsub.
-    eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
-    eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
-    eapply H; eauto.
-    *)
+    eapply subenv_last_only. eapply Hsub.
+    rewrite <- concat_empty_l. eapply ok_push; eauto.
+    rewrite C. eapply H; eauto.
   - (* Rec-<:-Rec *)
     admit.
 Qed.
