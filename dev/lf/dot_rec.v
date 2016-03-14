@@ -3545,12 +3545,11 @@ Proof.
       pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H0 y FrL).
       rewrite subst_intro_trm with (x:=y).
       rewrite <- subst_fresh_typ with (x:=y) (y:=(in_sto vx)).
-      (*
-      eapply subst_ty_trm. eapply H0.
-      apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
-      rewrite subst_fresh_typ. assumption. eauto. eauto. eauto. eauto.*)
-      admit.
-      eauto. eauto. eauto.
+      eapply subst_ty_trm.
+      eassumption.
+      rewrite concat_empty_l in H0. eapply H0.
+      eauto. eauto.
+      rewrite subst_fresh_typ. assumption. eauto. eauto. eauto. eauto.
       simpl in Ax. unfold avar_s in Ax. inversions Ax.
     + lets Hv: (val_typing H).
       destruct Hv as [T' [Htyp Hsub]].
