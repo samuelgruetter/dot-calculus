@@ -3036,18 +3036,18 @@ Let SS = Ts(G, x, v). We first show SS is closed wrt G |-# _ <: _.
 Assume T0 in SS and G |- T0 <: U0.s We show U0 in SS by an induction on subtyping derivations of G |-# T0 <: U0.
 *)
 
-Lemma possible_types_closure_tight: forall G s x v T0 U0,
-  wf_sto G s ->
+Lemma possible_types_closure_tight: forall Gs s x v T0 U0,
+  wf_sto Gs s ->
   binds x v s ->
-  possible_types G x v T0 ->
-  subtyp ty_general sub_tight G empty T0 U0 ->
-  possible_types G x v U0.
+  possible_types Gs x v T0 ->
+  subtyp ty_general Gs empty T0 U0 ->
+  possible_types Gs x v U0.
 Proof.
   introv Hwf Bis HT0 Hsub. dependent induction Hsub;
   assert (@empty typ ~= @empty typ) as HE by reflexivity.
   - (* Top *) apply pt_top.
   - (* Bot *) inversion HT0; subst.
-    lets Htype: (open_record_type x (record_new_typing (val_new_typing Hwf Bis))).
+    lets Htype: (open_record_type (in_sto x) (record_new_typing (val_new_typing Hwf Bis))).
     destruct Htype as [ls Htyp]. rewrite H3 in Htyp. inversion Htyp.
   - (* Refl-<: *) assumption.
   - (* Trans-<: *)
@@ -3072,20 +3072,24 @@ Proof.
     apply ty_sub with (T:=T).
     intro Contra. inversion Contra.
     assumption.
-    apply tight_to_general_subtyping. assumption.
+    assumption.
   - (* Typ-<:-Typ *)
     apply pt_rcd_typ_inversion with (s:=s) in HT0; eauto.
     destruct HT0 as [T [ds [T' [Heq [Hhas [Hsub1' Hsub2']]]]]].
     subst.
     eapply pt_rcd_typ.
     eassumption.
-    eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
-    eapply subtyp_trans. eassumption. eapply tight_to_general_subtyping. eassumption.
+    eapply subtyp_trans. eassumption. eassumption.
+    eapply subtyp_trans. eassumption. eassumption.
+  - (* <:-Sel *)
+    inversion H; subst. false. eapply empty_middle_inv. eassumption.
+  - (* Sel-<: *)
+    inversion H; subst. false. eapply empty_middle_inv. eassumption.
   - (* <:-Sel-tight *)
     eapply pt_sel. eassumption. assumption.
   - (* Sel-<:-tight *)
     inversion HT0; subst.
-    assert (record_type (open_typ x T0)) as B. {
+    assert (record_type (open_typ (in_sto x) T0)) as B. {
       eapply record_type_new; eassumption.
     }
     rewrite H4 in B. destruct B as [? B]. inversion B.
@@ -3095,19 +3099,22 @@ Proof.
     subst. assumption.
   - (* All-<:-All *)
     inversion HT0; subst.
-    assert (record_type (open_typ x T)) as B. {
+    assert (record_type (open_typ (in_sto x) T)) as B. {
       eapply record_type_new; eassumption.
     }
     rewrite H5 in B. destruct B as [? B]. inversion B.
     apply_fresh pt_lambda as y.
     eapply H3; eauto.
-    eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
+    eapply subtyp_trans. eassumption. eassumption.
     eapply subtyp_trans.
+    instantiate (1:=(open_typ (in_ctx y) T1)). admit. admit.
+    (*
     eapply narrow_subtyping. eapply H8; eauto.
     eapply subenv_last. eapply tight_to_general_subtyping. eapply Hsub.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply H; eauto.
+    *)
   - (* Rec-<:-Rec *)
     admit.
 Qed.
@@ -3118,11 +3125,11 @@ Lemma (Possible types completeness for values)
 If `G ~ s` and `x = v in s` and  `G |-! v: T` then `T in Ts(G, x, v)`.
  *)
 
-Lemma possible_types_completeness_for_values: forall G s x v T,
-  wf_sto G s ->
+Lemma possible_types_completeness_for_values: forall Gs s x v T,
+  wf_sto Gs s ->
   binds x v s ->
-  ty_trm ty_precise sub_general G (trm_val v) T ->
-  possible_types G x v T.
+  ty_trm ty_precise Gs empty (trm_val v) T ->
+  possible_types Gs x v T.
 Proof.
   introv Hwf Bis Hty. destruct v as [S ds | S t].
   - apply new_intro_inversion in Hty. destruct Hty as [Heq Htype]. subst.
@@ -3130,7 +3137,10 @@ Proof.
   - remember Hty as Hty'. clear HeqHty'. inversion Hty'; subst.
     + apply all_intro_inversion in Hty. destruct Hty as [T' Heq]. subst.
       apply_fresh pt_lambda as y.
-      eapply H5; eauto.
+      assert (y ~ S = empty & y ~ S) as A. {
+        rewrite concat_empty_l. reflexivity.
+      }
+      rewrite A. eapply H5; eauto.
       apply subtyp_refl.
       apply subtyp_refl.
     + assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
@@ -3148,10 +3158,10 @@ If `G ~ s` and `G |- x: T` then, for some value `v`,
 `s(x) = v` and `T in Ts(G, x, v)`.
 *)
 
-Lemma possible_types_completeness_tight: forall G s x T,
-  wf_sto G s ->
-  ty_trm ty_general sub_tight G (trm_var (avar_f x)) T ->
-  exists v, binds x v s /\ possible_types G x v T.
+Lemma possible_types_completeness_tight: forall Gs s x T,
+  wf_sto Gs s ->
+  ty_trm ty_general Gs empty (trm_var (avar_f x)) T ->
+  exists v, binds x v s /\ possible_types Gs x v T.
 Proof.
   introv Hwf H. dependent induction H.
   - assert (exists v, binds x v s /\ ty_trm ty_precise sub_general G (trm_val v) T) as A. {
