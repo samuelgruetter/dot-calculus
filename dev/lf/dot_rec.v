@@ -2081,78 +2081,23 @@ Proof.
 Qed.
 
 Lemma precise_to_general:
-  (forall m1 m2 G t T,
-     ty_trm m1 m2 G t T ->
-     m1 = ty_precise ->
-     m2 = sub_general ->
-     ty_trm ty_general sub_general G t T) /\
-  (forall m1 m2 G J S U,
-     subtyp m1 m2 G J S U ->
-     m1 = ty_precise ->
-     m2 = sub_general ->
-     subtyp ty_general sub_general G J S U).
+  (forall m Gs G t T,
+     ty_trm m Gs G t T ->
+     m = ty_precise ->
+     ty_trm ty_general Gs G t T) /\
+  (forall m Gs G S U,
+     subtyp m Gs G S U ->
+     m = ty_precise ->
+     subtyp ty_general Gs G S U).
 Proof.
   apply ts_mutind; intros; subst; eauto.
 Qed.
 
-Lemma precise_to_general_typing: forall G t T,
-  ty_trm ty_precise sub_general G t T ->
-  ty_trm ty_general sub_general G t T.
+Lemma precise_to_general_typing: forall Gs G t T,
+  ty_trm ty_precise Gs G t T ->
+  ty_trm ty_general Gs G t T.
 Proof.
   intros. apply* precise_to_general.
-Qed.
-
-Lemma tight_to_general:
-  (forall m1 m2 G t T,
-     ty_trm m1 m2 G t T ->
-     m1 = ty_general ->
-     m2 = sub_tight ->
-     ty_trm ty_general sub_general G t T) /\
-  (forall m1 m2 G J S U,
-     subtyp m1 m2 G J S U ->
-     m1 = ty_general ->
-     m2 = sub_tight ->
-     subtyp ty_general sub_general G J S U).
-Proof.
-  apply ts_mutind; intros; subst; eauto.
-  - apply precise_to_general in t; eauto.
-  - apply precise_to_general in t; eauto.
-Qed.
-
-Lemma tight_to_general_typing: forall G t T,
-  ty_trm ty_general sub_tight G t T ->
-  ty_trm ty_general sub_general G t T.
-Proof.
-  intros. apply* tight_to_general.
-Qed.
-
-Lemma tight_to_general_subtyping: forall G J S U,
-  subtyp ty_general sub_tight G J S U ->
-  subtyp ty_general sub_general G J S U.
-Proof.
-  intros. apply* tight_to_general.
-Qed.
-
-Lemma precise_to_tight:
-  (forall m1 m2 G t T,
-     ty_trm m1 m2 G t T ->
-     m1 = ty_precise ->
-     m2 = sub_general ->
-     ty_trm ty_general sub_tight G t T) /\
-  (forall m1 m2 G J S U,
-     subtyp m1 m2 G J S U ->
-     m1 = ty_precise ->
-     m2 = sub_general ->
-     subtyp ty_general sub_tight G J S U).
-Proof.
-  apply ts_mutind; intros; subst; eauto; inversion H0.
-Qed.
-
-Lemma precise_to_tight_typing: forall G t T,
-  ty_trm ty_precise sub_general G t T ->
-  ty_trm ty_general sub_tight G t T.
-Proof.
-  intros. apply* precise_to_tight.
 Qed.
 
 Lemma sto_binds_to_ctx_binds: forall G s x v,
@@ -2185,7 +2130,7 @@ Qed.
 Lemma record_type_new: forall G s x T ds,
   wf_sto G s ->
   binds x (val_new T ds) s ->
-  record_type (open_typ x T).
+  record_type (open_typ (in_sto x) T).
 Proof.
   introv Hwf Bis.
   destruct (sto_binds_to_ctx_binds Hwf Bis) as [S Bi].
