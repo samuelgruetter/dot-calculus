@@ -1963,13 +1963,20 @@ Proof.
     eapply notin_subenv; eauto.
 Qed.
 
-Lemma restricted_by_same: forall x y T G G',
-  ok (G & y ~ T) ->
+Lemma restricted_by_same: forall y T G,
+  ok (G & y ~ T) -> forall x G',
   x <> y ->
   restricted_by x (G & y ~ T) G' ->
   restricted_by x G G'.
 Proof.
-  admit.
+  introv Hok N r. inversion r; subst.
+  assert (exists G2A G2B, G2 = G2A & G2B /\ G = G1 & x ~ T0 & G2A) as A. {
+    admit.
+  }
+  destruct A as [G2A [G2B [Eq2 Eq]]].
+  subst.
+  apply lim_ctx with (G2:=G2A).
+  reflexivity.
 Qed.
 
 Lemma restricted_by_skip: forall x y T G G',
@@ -1977,7 +1984,9 @@ Lemma restricted_by_skip: forall x y T G G',
   restricted_by x G G' ->
   restricted_by x (G & y ~ T) G'.
 Proof.
-  admit.
+  introv N r. inversion r; subst.
+  apply lim_ctx with (G2:=(G2 & y ~ T)).
+  rewrite concat_assoc. reflexivity.
 Qed.
 
 Lemma narrow_restricted_by: forall Gs G0 G,
