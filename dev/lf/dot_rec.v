@@ -2651,8 +2651,8 @@ Qed.
 (* ###################################################################### *)
 (** * Misc Inversions *)
 
-Lemma all_intro_inversion: forall G S t U,
-  ty_trm ty_precise sub_general G (trm_val (val_lambda S t)) U ->
+Lemma all_intro_inversion: forall Gs G S t U,
+  ty_trm ty_precise Gs G (trm_val (val_lambda S t)) U ->
   exists T, U = typ_all S T.
 Proof.
   intros. dependent induction H.
@@ -2661,8 +2661,8 @@ Proof.
     specialize (H Heqm1). destruct H. inversion H.
 Qed.
 
-Lemma new_intro_inversion: forall G T ds U,
-  ty_trm ty_precise sub_general G (trm_val (val_new T ds)) U ->
+Lemma new_intro_inversion: forall Gs G T ds U,
+  ty_trm ty_precise Gs G (trm_val (val_new T ds)) U ->
   U = typ_bnd T /\ record_type T.
 Proof.
   intros. inversion H; subst.
