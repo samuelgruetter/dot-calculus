@@ -2070,7 +2070,15 @@ Proof.
     eapply r'.
     eapply H; eauto.
     eapply ok_restricted_by; eauto.
-  - admit.
+  - (* subtyp_sel1 *)
+    assert (exists G0', subenv Gs G0' G' /\ restricted_by x G'0 G0') as B. {
+      apply narrow_restricted_by with (Gs:=Gs) (G:=G) (G0:=G'0); auto.
+    }
+    destruct B as [G0' [SE' r']].
+    eapply subtyp_sel1.
+    eapply r'.
+    eapply H; eauto.
+    eapply ok_restricted_by; eauto.
   - (* subtyp_all *)
     subst.
     apply_fresh subtyp_all as y; eauto 4.
