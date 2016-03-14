@@ -2584,8 +2584,10 @@ Proof.
         rewrite concat_empty_l. assumption.
       }
       subst.
-      apply weaken_ty_trm.
-      assumption.
+      assert ((subst_ctx x0 (in_sto y) G2)=empty & (subst_ctx x0 (in_sto y) G2)) as B. {
+        rewrite concat_empty_l. reflexivity.
+      }
+      rewrite B. apply weaken_ty_trm; eauto. rewrite concat_empty_l.
       apply ok_map. eauto.
     + rewrite <- concat_empty_l in b. rewrite concat_assoc in b.
       apply binds_subst in b. rewrite concat_empty_l in b.
