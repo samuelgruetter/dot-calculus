@@ -147,11 +147,13 @@ Definition open_defs u l := open_rec_defs  0 u l.
 (* ###################################################################### *)
 (** ** Free variables *)
 
-Definition fv_fvar (v: fvar) : vars :=
+Definition var_of (v: fvar): var :=
   match v with
-  | in_sto x => \{x}
-  | in_ctx x => \{x}
+  | in_sto x => x
+  | in_ctx x => x
   end.
+
+Definition fv_fvar (v: fvar) : vars := \{var_of v}.
 
 Definition fv_avar (a: avar) : vars :=
   match a with
@@ -927,7 +929,7 @@ Definition subst_sto (z: var) (u: fvar) (s: sto) : sto := map (subst_val z u) s.
 Lemma subst_fresh_fvar: forall x y,
   (forall v: fvar, x \notin fv_fvar v -> subst_fvar x y v = v).
 Proof.
-  intros. destruct* v. simpl. case_var*. simpls. notin_false.
+  intros. unfold fv_fvar in *. destruct* v. simpl. case_var*. simpls. notin_false.
 Qed.
 
 Lemma subst_fresh_avar: forall x y,
@@ -1678,12 +1680,13 @@ Proof.
     rewrite <- open_dec_preserves_label. assumption.
 Qed.
 
-Lemma open_eq_avar: forall x i a1 a2,
+Lemma open_eq_avar: forall v x i a1 a2,
+  x = var_of v ->
   x \notin fv_avar a1 -> x \notin fv_avar a2 ->
-  open_rec_avar i x a1 = open_rec_avar i x a2 ->
+  open_rec_avar i v a1 = open_rec_avar i v a2 ->
   a1 = a2.
 Proof.
-  introv Fr1 Fr2 H. induction a1; induction a2; simpl in H; inversion H.
+  introv Eq Fr1 Fr2 H. induction a1; induction a2; simpl in H; inversion H.
   - case_if; case_if.
     + reflexivity.
     + inversion H. subst. reflexivity.
@@ -1696,17 +1699,18 @@ Proof.
   - subst. reflexivity.
 Qed.
 
-Lemma open_eq_typ_dec: forall x,
+Lemma open_eq_typ_dec: forall v x,
+  x = var_of v ->
   (forall T1, x \notin fv_typ T1 ->
    forall T2, x \notin fv_typ T2 ->
-   forall i, open_rec_typ i x T1 = open_rec_typ i x T2 ->
+   forall i, open_rec_typ i v T1 = open_rec_typ i v T2 ->
    T1 = T2) /\
   (forall D1, x \notin fv_dec D1 ->
    forall D2, x \notin fv_dec D2 ->
-   forall i, open_rec_dec i x D1 = open_rec_dec i x D2 ->
+   forall i, open_rec_dec i v D1 = open_rec_dec i v D2 ->
    D1 = D2).
 Proof.
-  intros. apply typ_mutind; intros.
+  introv Eq. apply typ_mutind; intros.
   - simpl in H1. induction T2; simpl in H1; inversion H1.
     reflexivity.
   - simpl in H1. induction T2; simpl in H1; inversion H1.
@@ -1737,21 +1741,22 @@ Proof.
     eapply H; eauto.
 Qed.
 
-Lemma open_eq_typ: forall x i T1 T2,
+Lemma open_eq_typ: forall v x i T1 T2,
+  x = var_of v ->
   x \notin fv_typ T1 -> x \notin fv_typ T2 ->
-  open_rec_typ i x T1 = open_rec_typ i x T2 ->
+  open_rec_typ i v T1 = open_rec_typ i v T2 ->
   T1 = T2.
 Proof.
-  introv Fr1 Fr2 Heq.
-  destruct (open_eq_typ_dec x) as [HT HD].
+  introv Eq Fr1 Fr2 Heq.
+  destruct (open_eq_typ_dec v Eq) as [HT HD].
   eapply HT; eauto.
 Qed.
 
-Lemma open_record_dec_rev: forall D x,
-  x \notin fv_dec D ->
-  record_dec (open_dec x D) -> record_dec D.
+Lemma open_record_dec_rev: forall v D,
+  (var_of v) \notin fv_dec D ->
+  record_dec (open_dec v D) -> record_dec D.
 Proof.
-  introv Fr H. remember (open_dec x D) as DX.
+  introv Fr H. remember (open_dec v D) as DX.
   generalize dependent D.
   inversion H; intros.
   - destruct D; unfold open_dec in HeqDX; simpl in HeqDX; inversion HeqDX.
@@ -1763,11 +1768,11 @@ Proof.
     subst. constructor.
 Qed.
 
-Lemma open_record_typ_rev: forall T x ls,
-   x \notin fv_typ T ->
-  record_typ (open_typ x T) ls -> record_typ T ls.
+Lemma open_record_typ_rev: forall v T ls,
+   (var_of v) \notin fv_typ T ->
+  record_typ (open_typ v T) ls -> record_typ T ls.
 Proof.
-  introv Fr H. remember (open_typ x T) as TX.
+  introv Fr H. remember (open_typ v T) as TX.
   generalize dependent T.
   induction H; intros.
   - destruct T; unfold open_typ in HeqTX; simpl in HeqTX; inversion HeqTX.
@@ -1787,28 +1792,28 @@ Proof.
     rewrite <- open_dec_preserves_label in H2. apply H2.
 Qed.
 
-Lemma open_record_type: forall T x,
-  record_type T -> record_type (open_typ x T).
+Lemma open_record_type: forall v T,
+  record_type T -> record_type (open_typ v T).
 Proof.
   intros. destruct H as [ls H]. exists ls. eapply open_record_typ.
   eassumption.
 Qed.
 
-Lemma open_record_type_rev: forall T x,
-  x \notin fv_typ T ->
-  record_type (open_typ x T) -> record_type T.
+Lemma open_record_type_rev: forall v T,
+  (var_of v) \notin fv_typ T ->
+  record_type (open_typ v T) -> record_type T.
 Proof.
   introv Fr H. destruct H as [ls H]. exists ls. eapply open_record_typ_rev; eauto.
 Qed.
 
-Lemma label_same_typing: forall G d D,
-  ty_def G d D -> label_of_def d = label_of_dec D.
+Lemma label_same_typing: forall s G d D,
+  ty_def s G d D -> label_of_def d = label_of_dec D.
 Proof.
   intros. inversion H; subst; simpl; reflexivity.
 Qed.
 
-Lemma record_defs_typing_rec: forall G ds S,
-  ty_defs G ds S ->
+Lemma record_defs_typing_rec: forall s G ds S,
+  ty_defs s G ds S ->
   exists ls, record_typ S ls /\ forall l, l \notin ls <-> defs_hasnt ds l.
 Proof.
   intros. induction H.
@@ -1851,8 +1856,8 @@ Proof.
         apply notin_singleton. eauto.
 Qed.
 
-Lemma record_defs_typing: forall G ds S,
-  ty_defs G ds S ->
+Lemma record_defs_typing: forall s G ds S,
+  ty_defs s G ds S ->
   record_type S.
 Proof.
   intros.
