@@ -3502,15 +3502,16 @@ Proof.
     split.
     pick_fresh y. assert (y \notin L) as FrL by auto. specialize (Hty y FrL).
     rewrite subst_intro_typ with (x:=y). rewrite subst_intro_trm with (x:=y).
-    (*
-    eapply subst_ty_trm. eapply Hty.
-    apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
+    eapply subst_ty_trm.
+    eassumption.
+    eapply Hty.
+    eauto. eauto.
     rewrite subst_fresh_typ.
     apply ty_sub with (T:=S).
     intro Contra. inversion Contra.
-    assumption. apply subtyp_refl.*)
-    admit.
+    assumption. apply subtyp_refl.
     eauto. eauto. eauto.
+    assumption.
     simpl in Az. unfold avar_s in Az. inversions Az.
   - (* Fld-E *) right.
     lets Ax: (var_typing_implies_avar_s H).
