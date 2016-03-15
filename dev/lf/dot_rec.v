@@ -1987,8 +1987,15 @@ Lemma restricted_by_same: forall y T G,
   restricted_by x G G'.
 Proof.
   introv Hok N r. inversion r; subst.
+  assert (ok G2) as Hok2. {
+    rewrite H in Hok. eauto.
+  }
   assert (exists G2A G2B, G2 = G2A & G2B /\ G = G1 & x ~ T0 & G2A) as A. {
-    admit.
+    induction Hok2.
+    + rewrite concat_empty_r in H. apply eq_push_inv in H. destruct H as [? [? ?]]. subst.
+      false.
+    + rewrite concat_assoc in H. apply eq_push_inv in H. destruct H as [? [? ?]]. subst.
+      exists E (x0 ~ v). split; eauto.
   }
   destruct A as [G2A [G2B [Eq2 Eq]]].
   subst.
