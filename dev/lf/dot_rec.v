@@ -652,10 +652,10 @@ Proof.
   rewrite <- EqG. assumption.
 Qed.
 
-Lemma weaken_subtyp: forall m1 m2 G1 G2 S U,
-  subtyp m1 m2 G1 S U ->
+Lemma weaken_subtyp: forall m1 Gs G1 G2 S U,
+  subtyp m1 Gs G1 S U ->
   ok (G1 & G2) ->
-  subtyp m1 m2 (G1 & G2) S U.
+  subtyp m1 Gs (G1 & G2) S U.
 Proof.
   intros.
     assert (G1 & G2 = G1 & G2 & empty) as EqG. {
@@ -798,8 +798,8 @@ Proof.
   - inversion Heqt. subst. exists T. assumption.
 Qed.
 
-Lemma typing_bvar_implies_false: forall m1 m2 G a T,
-  ty_trm m1 m2 G (trm_var (avar_b a)) T ->
+Lemma typing_bvar_implies_false: forall m1 Gs G a T,
+  ty_trm m1 Gs G (trm_var (avar_b a)) T ->
   False.
 Proof.
   intros. remember (trm_var (avar_b a)) as t. induction H; try solve [inversion Heqt].
