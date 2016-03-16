@@ -1388,13 +1388,13 @@ Proof.
     apply H0.
 Qed.
 
-Lemma lambda_not_rcd: forall G Gs x S U A T,
+Lemma lambda_not_rcd: forall G Gs x S U A T1 T2,
   binds x (typ_all S U) G ->
-  ty_trm ty_precise G Gs (trm_var (avar_s x)) (typ_rcd (dec_typ A T T)) ->
+  ty_trm ty_precise G Gs (trm_var (avar_s x)) (typ_rcd (dec_typ A T1 T2)) ->
   False.
 Proof.
   introv Bi Hty.
-  assert (typ_rcd (dec_typ A T T) = typ_all S U) as Contra. {
+  assert (typ_rcd (dec_typ A T1 T2) = typ_all S U) as Contra. {
     eapply unique_lambda_typing; eassumption.
   }
   inversion Contra.
@@ -1790,6 +1790,18 @@ Proof.
   - eapply IHHtyp; eassumption.
 Qed.
 
+Lemma rcd_typ_eq: forall T A T1 T2,
+  record_type T ->
+  record_sub T (typ_rcd (dec_typ A T1 T2)) ->
+  T1 = T2.
+Proof.
+  introv Htype Hsub.
+  generalize dependent T2. generalize dependent T1. generalize dependent A.
+  destruct Htype as [ls Htyp].
+  induction Htyp; intros; inversion Hsub; subst; eauto;
+  try solve [inversion H; subst; reflexivity].
+Qed.
+
 Lemma record_type_sub_not_rec: forall S T v,
   record_sub (open_typ v S) (typ_bnd T) ->
   record_type S ->
@@ -1863,6 +1875,35 @@ Proof.
     eassumption.
 Qed.
 
+Lemma tight_bounds_eq: forall Gs s x T1 T2 A,
+  wf_sto Gs s ->
+  ty_trm ty_precise Gs empty (trm_var (avar_s x)) (typ_rcd (dec_typ A T1 T2)) ->
+  T1 = T2.
+Proof.
+  introv Hwf Hty.
+  assert (exists T, binds x T Gs) as Bi. {
+    eapply typing_implies_sto_bound. eassumption.
+  }
+  destruct Bi as [T Bi].
+  destruct (corresponding_types Hwf Bi).
+  - destruct H as [S [U [t [Bis [Ht EqT]]]]].
+    false.
+    eapply lambda_not_rcd.
+    subst. eassumption. eassumption.
+  - destruct H as [S [ds [Bis [Ht EqT]]]]. subst.
+    assert (record_type S) as Htype. {
+      eapply record_new_typing. eassumption.
+    }
+    destruct (shape_new_typing Bi Htype Hty) as [Contra1 | A1].
+    inversion Contra1.
+    assert (record_type (open_typ (in_sto x) S)) as HXtype. {
+      apply open_record_type. assumption.
+    }
+    eapply rcd_typ_eq.
+    apply HXtype.
+    eassumption.
+Qed.
+
 Lemma precise_to_general:
   (forall m Gs G t T,
      ty_trm m Gs G t T ->
@@ -1913,6 +1954,13 @@ Proof.
   - apply_fresh subtyp_all as z; eauto; try discriminate.
 
   - apply_fresh subtyp_bnd as z; eauto; try discriminate.
+Qed.
+
+Lemma tight_to_general_subtyping: forall Gs G S U,
+  subtyp ty_tight Gs G S U ->
+  subtyp ty_general Gs G S U.
+Proof.
+  intros. apply* tight_to_general.
 Qed.
 
 Lemma sto_binds_to_ctx_binds: forall G s x v,
@@ -2992,7 +3040,7 @@ Lemma possible_types_closure_tight: forall Gs s x v T0 U0,
   wf_sto Gs s ->
   binds x v s ->
   possible_types Gs x v T0 ->
-  subtyp ty_general Gs empty T0 U0 ->
+  subtyp ty_tight Gs empty T0 U0 ->
   possible_types Gs x v U0.
 Proof.
   introv Hwf Bis HT0 Hsub. dependent induction Hsub;
@@ -3024,28 +3072,38 @@ Proof.
     apply ty_sub with (T:=T).
     intro Contra. false.
     assumption.
-    assumption.
+    apply tight_to_general_subtyping. assumption.
   - (* Typ-<:-Typ *)
     apply pt_rcd_typ_inversion with (s:=s) in HT0; eauto.
     destruct HT0 as [T [ds [T' [Heq [Hhas [Hsub1' Hsub2']]]]]].
     subst.
     eapply pt_rcd_typ.
     eassumption.
-    eapply subtyp_trans. eassumption. eassumption.
-    eapply subtyp_trans. eassumption. eassumption.
+    eapply subtyp_trans. apply tight_to_general_subtyping. eassumption. eassumption.
+    eapply subtyp_trans. eassumption. apply tight_to_general_subtyping. eassumption.
   - (* <:-Sel *)
     inversion H0; subst. false. eapply empty_middle_inv. eassumption.
   - (* Sel-<: *)
     inversion H0; subst. false. eapply empty_middle_inv. eassumption.
   - (* <:-Sel sto *)
+    destruct H0 as [[Contra ?] | [? ?]]. inversion Contra. subst.
+    assert (S = T) as B. {
+      eapply tight_bounds_eq; eauto.
+    }
+    subst.
     eapply pt_sel. eassumption. assumption.
-  - (* Sel-<:-tight *)
+  - (* Sel-<: sto *)
+    destruct H0 as [[Contra ?] | [? ?]]. inversion Contra. subst.
     inversion HT0; subst.
     assert (record_type (open_typ (in_sto x) T0)) as B. {
       eapply record_type_new; eassumption.
     }
-    rewrite H4 in B. destruct B as [? B]. inversion B.
-    assert (T = S) as B. {
+    rewrite H6 in B. destruct B as [? B]. inversion B.
+    assert (S = T) as B. {
+      eapply tight_bounds_eq; eauto.
+    }
+    subst.
+    assert (S0 = T) as B. {
       eapply unique_tight_bounds; eauto.
     }
     subst. assumption.
@@ -3054,18 +3112,18 @@ Proof.
     assert (record_type (open_typ (in_sto x) T)) as B. {
       eapply record_type_new; eassumption.
     }
-    rewrite H5 in B. destruct B as [? B]. inversion B.
+    rewrite H6 in B. destruct B as [? B]. inversion B.
     apply_fresh pt_lambda as y.
-    eapply H3; eauto.
+    eapply H4; eauto.
     eapply subtyp_trans. eassumption. eassumption.
     assert (y ~ S2 = empty & (y ~ S2)) as C. {
       rewrite concat_empty_l. eauto.
     }
     eapply subtyp_trans.
-    eapply narrow_subtyping. eapply H8; eauto.
+    eapply narrow_subtyping. eapply H9; eauto.
     eapply subenv_last_only. eapply Hsub.
     rewrite <- concat_empty_l. eapply ok_push; eauto.
-    rewrite C. eapply H; eauto.
+    rewrite C. eauto.
   - (* Rec-<:-Rec *)
     admit.
 Qed.
