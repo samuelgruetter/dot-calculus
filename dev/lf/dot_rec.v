@@ -227,7 +227,8 @@ Inductive red : trm -> sto -> trm -> sto -> Prop :=
 (* ###################################################################### *)
 (** ** Typing *)
 
-Inductive tymode: Set := ty_precise | ty_tight | ty_general.
+Inductive tymode: Set := ty_precise | ty_general | ty_tight: nat -> tymode.
+(* ty_tight bounds the number of unpacking *)
 
 Inductive restricted_by : var -> ctx -> ctx -> Prop :=
 | lim_ctx : forall x T G G1 G2,
@@ -261,9 +262,12 @@ Inductive ty_trm : tymode -> ctx -> ctx -> trm -> typ -> Prop :=
     (forall x, x \notin L ->
       ty_trm ty_general Gs (G & x ~ T) (open_trm (in_ctx x) u) U) ->
     ty_trm ty_general Gs G (trm_let t u) U
-| ty_rec_intro : forall m Gs G x T, m <> ty_precise ->
-    ty_trm m Gs G (trm_var (avar_f x)) (open_typ x T) ->
-    ty_trm m Gs G (trm_var (avar_f x)) (typ_bnd T)
+| ty_rec_intro : forall Gs G x T,
+    ty_trm ty_general Gs G (trm_var (avar_f x)) (open_typ x T) ->
+    ty_trm ty_general Gs G (trm_var (avar_f x)) (typ_bnd T)
+| ty_rec_intro_tight : forall n Gs G x T,
+    ty_trm (ty_tight n) Gs G (trm_var (avar_f x)) (open_typ x T) ->
+    ty_trm (ty_tight (S n)) Gs G (trm_var (avar_f x)) (typ_bnd T)
 | ty_rec_elim : forall m Gs G x T,
     ty_trm m Gs G (trm_var (avar_f x)) (typ_bnd T) ->
     ty_trm m Gs G (trm_var (avar_f x)) (open_typ x T)
@@ -327,11 +331,11 @@ with subtyp : tymode -> ctx -> ctx -> typ -> typ -> Prop :=
     ty_trm m Gs G' (trm_var (avar_c x)) (typ_rcd (dec_typ A S T)) ->
     subtyp m Gs G (typ_sel (avar_c x) A) T
 | subtyp_sel2_s: forall m mt Gs G x A S T, m <> ty_precise ->
-    ((m = ty_general /\ mt = ty_general) \/ (m = ty_tight /\ mt = ty_precise)) ->
+    ((m = ty_general /\ mt = ty_general) \/ (m <> ty_general /\ mt = ty_precise)) ->
     ty_trm mt Gs G (trm_var (avar_s x)) (typ_rcd (dec_typ A S T)) ->
     subtyp m Gs G S (typ_sel (avar_s x) A)
 | subtyp_sel1_s: forall m mt Gs G x A S T, m <> ty_precise ->
-    ((m = ty_general /\ mt = ty_general) \/ (m = ty_tight /\ mt = ty_precise)) ->
+    ((m = ty_general /\ mt = ty_general) \/ (m <> ty_general /\ mt = ty_precise)) ->
     ty_trm mt Gs G (trm_var (avar_s x)) (typ_rcd (dec_typ A S T)) ->
     subtyp m Gs G (typ_sel (avar_s x) A) T
 | subtyp_all: forall L m Gs G S1 T1 S2 T2, m <> ty_precise ->
@@ -1927,16 +1931,16 @@ Qed.
 
 Lemma tight_to_general:
   (forall m Gs G t T,
-     ty_trm m Gs G t T ->
-     m = ty_tight ->
+     ty_trm m Gs G t T -> forall n,
+     m = ty_tight n ->
      ty_trm ty_general Gs G t T) /\
   (forall m Gs G S U,
-     subtyp m Gs G S U ->
-     m = ty_tight ->
+     subtyp m Gs G S U -> forall n,
+     m = ty_tight n ->
      subtyp ty_general Gs G S U).
 Proof.
   apply ts_mutind; intros; subst; eauto;
-  try solve [econstructor; eauto; discriminate].
+  try solve [econstructor; eauto; try discriminate; try reflexivity].
   eapply subtyp_and2; eauto; discriminate.
   eapply subtyp_fld; eauto; discriminate.
   eapply subtyp_typ; eauto; discriminate.
@@ -1956,8 +1960,8 @@ Proof.
   - apply_fresh subtyp_bnd as z; eauto; try discriminate.
 Qed.
 
-Lemma tight_to_general_subtyping: forall Gs G S U,
-  subtyp ty_tight Gs G S U ->
+Lemma tight_to_general_subtyping: forall n Gs G S U,
+  subtyp (ty_tight n) Gs G S U ->
   subtyp ty_general Gs G S U.
 Proof.
   intros. apply* tight_to_general.
@@ -2146,7 +2150,7 @@ Lemma narrow_rules:
     subenv Gs G' G ->
     subtyp m Gs G' S U).
 Proof.
-  apply rules_mutind; intros; eauto 4.
+  apply rules_mutind; intros; eauto 4; try solve [false].
   - (* ty_var *)
     subst.
     generalize dependent T. dependent induction H1.
@@ -2205,14 +2209,14 @@ Proof.
     discriminate.
     left. split; reflexivity.
     eapply H; eauto.
-    inversion Contra.
+    false.
   - (* subtyp_sel1_s *) subst.
     destruct o as [[? ?] | [Contra ?]]. subst.
     eapply subtyp_sel1_s.
     discriminate.
     left. split; reflexivity.
     eapply H; eauto.
-    inversion Contra.
+    false.
   - (* subtyp_all *)
     subst.
     apply_fresh subtyp_all as y; eauto 4.
@@ -2429,7 +2433,7 @@ Lemma subst_rules: forall y S,
     m = ty_general ->
     subtyp m Gs (subst_ctx x (in_sto y) G2) (subst_typ x (in_sto y) T) (subst_typ x (in_sto y) U)).
 Proof.
-  intros y S. apply rules_mutind; intros; subst G; try subst m.
+  intros y S. apply rules_mutind; intros; subst G; try subst m; try solve [false].
   - (* ty_var_s *)
     simpl.
     assert (subst_typ x0 (in_sto y) T = T) as A. {
@@ -2511,7 +2515,6 @@ Proof.
     rewrite concat_assoc. apply ok_push. assumption. eauto.
   - (* ty_rec_intro *)
     simpl. apply ty_rec_intro.
-    discriminate.
     rewrite <- subst_open_commute_typ.
     eapply H; eauto.
   - (* ty_rec_elim *)
@@ -2596,7 +2599,7 @@ Proof.
     destruct o as [[? ?] | [Contra ?]]. subst.
     simpl. eapply subtyp_sel2_s; eauto.
     simpl in H. eapply H; eauto 4.
-    inversion Contra.
+    false.
 (*
     lets B: (precise_fresh_ty_trm t H3 H4); eauto.
     simpl in B. apply notin_union_r in B. destruct B as [B ?].
@@ -2610,7 +2613,7 @@ Proof.
     destruct o as [[? ?] | [Contra ?]]. subst.
     simpl. eapply subtyp_sel1_s; eauto.
     simpl in H. eapply H; eauto 4.
-    inversion Contra.
+    false.
   - (* subtyp_all *)
     simpl. apply_fresh subtyp_all as z; eauto.
     assert (z \notin L) as FrL by eauto.
@@ -3076,12 +3079,12 @@ Qed.
 Tight substitution
 *)
 
-Lemma subst_tight_subtyp: forall n Gs s x x0 v T1 T2,
+Lemma subst_tight_subtyp: forall n nt Gs s x x0 v T1 T2,
   wf_sto Gs s ->
   binds x v s ->
   possible_types n Gs x v (typ_bnd T1) ->
-  subtyp ty_tight Gs (empty & x0 ~ typ_bnd T1) (open_typ (in_ctx x0) T1) (open_typ (in_ctx x0) T2) ->
-  subtyp ty_tight Gs empty (open_typ (in_sto x) T1) (open_typ (in_sto x) T2).
+  subtyp (ty_tight nt) Gs (empty & x0 ~ typ_bnd T1) (open_typ (in_ctx x0) T1) (open_typ (in_ctx x0) T2) ->
+  subtyp (ty_tight nt) Gs empty (open_typ (in_sto x) T1) (open_typ (in_sto x) T2).
 Proof.
   admit.
 Qed.
@@ -3101,7 +3104,7 @@ Lemma possible_types_closure_tight_aux: forall m, forall n Gs s x v T0 U0,
   wf_sto Gs s ->
   binds x v s ->
   possible_types n Gs x v T0 ->
-  subtyp ty_tight Gs empty T0 U0 ->
+  subtyp (ty_tight n) Gs empty T0 U0 ->
   possible_types n Gs x v U0.
 Proof.
   intros m. induction m;
@@ -3136,15 +3139,15 @@ Proof.
     apply ty_sub with (T:=T).
     intro Contra. false.
     assumption.
-    apply tight_to_general_subtyping. assumption.
+    eapply tight_to_general_subtyping. eassumption.
   - (* Typ-<:-Typ *)
     apply pt_rcd_typ_inversion with (s:=s) in HT0; eauto.
     destruct HT0 as [T [ds [T' [Heq [Hhas [Hsub1' Hsub2']]]]]].
     subst.
     eapply pt_rcd_typ.
     eassumption.
-    eapply subtyp_trans. apply tight_to_general_subtyping. eassumption. eassumption.
-    eapply subtyp_trans. eassumption. apply tight_to_general_subtyping. eassumption.
+    eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
+    eapply subtyp_trans. eassumption. eapply tight_to_general_subtyping. eassumption.
   - (* <:-Sel *)
     inversion H0; subst. false. eapply empty_middle_inv. eassumption.
   - (* Sel-<: *)
@@ -3226,15 +3229,15 @@ Proof.
     apply ty_sub with (T:=T).
     intro Contra. false.
     assumption.
-    apply tight_to_general_subtyping. assumption.
+    eapply tight_to_general_subtyping. eassumption.
   - (* Typ-<:-Typ *)
     apply pt_rcd_typ_inversion with (s:=s) in HT0; eauto.
     destruct HT0 as [T [ds [T' [Heq [Hhas [Hsub1' Hsub2']]]]]].
     subst.
     eapply pt_rcd_typ.
     eassumption.
-    eapply subtyp_trans. apply tight_to_general_subtyping. eassumption. eassumption.
-    eapply subtyp_trans. eassumption. apply tight_to_general_subtyping. eassumption.
+    eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
+    eapply subtyp_trans. eassumption. eapply tight_to_general_subtyping. eassumption.
   - (* <:-Sel *)
     inversion H0; subst. false. eapply empty_middle_inv. eassumption.
   - (* Sel-<: *)
