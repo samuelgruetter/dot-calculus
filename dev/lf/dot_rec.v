@@ -3187,10 +3187,11 @@ Lemma possible_types_completeness_for_values: forall Gs s x v T,
   wf_sto Gs s ->
   binds x v s ->
   ty_trm ty_precise Gs empty (trm_val v) T ->
-  possible_types Gs x v T.
+  possible_types 1 Gs x v T.
 Proof.
   introv Hwf Bis Hty. destruct v as [S ds | S t].
   - apply new_intro_inversion in Hty. destruct Hty as [Heq Htype]. subst.
+    assert (0+0+1=1) as B by omega. rewrite <- B.
     eapply pt_bnd. eapply pt_new. reflexivity.
   - remember Hty as Hty'. clear HeqHty'. inversion Hty'; subst.
     + apply all_intro_inversion in Hty. destruct Hty as [T' Heq]. subst.
@@ -3219,7 +3220,7 @@ If `G ~ s` and `G |- x: T` then, for some value `v`,
 Lemma possible_types_completeness_tight: forall Gs s x T,
   wf_sto Gs s ->
   ty_trm ty_tight Gs empty (trm_var (avar_s x)) T ->
-  exists v, binds x v s /\ possible_types Gs x v T.
+  exists v, binds x v s /\ exists n, possible_types n Gs x v T.
 Proof.
   introv Hwf H. dependent induction H.
   - assert (exists v, binds x v s /\ ty_trm ty_precise Gs empty (trm_val v) T) as A. {
@@ -3229,22 +3230,31 @@ Proof.
       rewrite concat_assoc. eapply wf_sto_to_ok_G. eassumption.
     }
     destruct A as [v [Bis Hty]].
-    exists v. split. apply Bis. eapply possible_types_completeness_for_values; eauto.
+    exists v. split. apply Bis.
+    exists 1. eapply possible_types_completeness_for_values; eauto.
   - specialize (IHty_trm x Hwf).
     destruct IHty_trm as [v [Bis Hp]].
     eauto. eauto.
-    exists v. split. assumption. eapply pt_bnd. eapply Hp. reflexivity.
+    exists v. split. assumption.
+    destruct Hp as [n1 Hp].
+    exists (0+n1+1). eapply pt_bnd. eapply Hp. reflexivity.
   - specialize (IHty_trm x Hwf).
     destruct IHty_trm as [v [Bis Hp]]; eauto.
-    exists v. split. assumption. inversion Hp; subst.
-    + lets Htype: (record_type_new Hwf Bis). rewrite H4 in Htype. inversion Htype. inversion H0.
-    + assumption.
+    exists v. split. assumption.
+    destruct Hp as [n1 Hp].
+    inversion Hp; subst.
+    + lets Htype: (record_type_new Hwf Bis). rewrite H5 in Htype. inversion Htype. inversion H0.
+    + eexists. eassumption.
   - specialize (IHty_trm1 x Hwf). destruct IHty_trm1 as [v [Bis1 Hp1]]; eauto.
     specialize (IHty_trm2 x Hwf). destruct IHty_trm2 as [v' [Bis2 Hp2]]; eauto.
     unfold binds in Bis1. unfold binds in Bis2. rewrite Bis2 in Bis1. inversions Bis1.
-    exists v. split. eauto. apply pt_and; assumption.
+    exists v. split. eauto.
+    destruct Hp1 as [n1 Hp1]. destruct Hp2 as [n2 Hp2].
+    exists (0+max n1 n2). apply pt_and; assumption.
   - specialize (IHty_trm x Hwf). destruct IHty_trm as [v [Bis Hp]]; eauto.
-    exists v. split. apply Bis. eapply possible_types_closure_tight; eauto.
+    exists v. split. apply Bis.
+    destruct Hp as [n1 Hp].
+    exists n1. eapply possible_types_closure_tight; eauto.
 Qed.
 
 Lemma tight_ty_rcd_typ__new: forall Gs s x A S U,
@@ -3254,15 +3264,16 @@ Lemma tight_ty_rcd_typ__new: forall Gs s x A S U,
 Proof.
   introv Hwf Hty.
   destruct (possible_types_completeness_tight Hwf Hty) as [v [Bis Hpt]].
+  destruct Hpt as [n1 Hpt].
   inversion Hpt; subst; repeat eexists; eauto.
 Qed.
 
-Lemma possible_types_closure: forall Gs s x v S T,
+Lemma possible_types_closure: forall n Gs s x v S T,
   wf_sto Gs s ->
   binds x v s ->
-  possible_types Gs x v S ->
+  possible_types n Gs x v S ->
   subtyp ty_general Gs empty S T ->
-  possible_types Gs x v T.
+  possible_types n Gs x v T.
 Proof.
   intros. eapply possible_types_closure_tight; eauto.
   admit.
@@ -3271,7 +3282,7 @@ Qed.
 Lemma possible_types_completeness: forall Gs s x T,
   wf_sto Gs s ->
   ty_trm ty_general Gs empty (trm_var (avar_s x)) T ->
-  exists v, binds x v s /\ possible_types Gs x v T.
+  exists v, binds x v s /\ exists n, possible_types n Gs x v T.
 Proof.
   intros.
   eapply possible_types_completeness_tight; eauto.
@@ -3282,7 +3293,7 @@ Lemma possible_types_lemma: forall Gs s x v T,
   wf_sto Gs s ->
   binds x v s ->
   ty_trm ty_general Gs empty (trm_var (avar_s x)) T ->
-  possible_types Gs x v T.
+  exists n, possible_types n Gs x v T.
 Proof.
   introv Hwf Bis Hty.
   lets A: (possible_types_completeness Hwf Hty).
@@ -3320,9 +3331,9 @@ Proof.
   introv Hwf Hty.
   lets Bi: (typing_implies_sto_bound Hty). destruct Bi as [S Bi].
   lets A: (ctx_binds_to_sto_binds_typing Hwf Bi). destruct A as [v [Bis Htyv]].
-  lets Hp: (possible_types_lemma Hwf Bis Hty).
+  lets Hp: (possible_types_lemma Hwf Bis Hty). destruct Hp as [n1 Hp].
   inversion Hp; subst.
-  - lets Htype: (record_type_new Hwf Bis). rewrite H3 in Htype.
+  - lets Htype: (record_type_new Hwf Bis). rewrite H4 in Htype.
     destruct Htype as [ls Htyp]. inversion Htyp.
   - pick_fresh y. exists (dom Gs \u L). exists S0. exists t.
     split. apply Bis. split. assumption.
@@ -3331,9 +3342,9 @@ Proof.
     intros Contra. false.
     eapply narrow_typing.
     eapply H1; eauto.
-    apply subenv_last_only. apply H5.
+    apply subenv_last_only. apply H6.
     rewrite <- concat_empty_l. apply ok_push; eauto.
-    eapply H6; eauto.
+    eapply H7; eauto.
 Qed.
 
 (*
@@ -3350,7 +3361,7 @@ Proof.
   introv Hwf Hty.
   lets Bi: (typing_implies_sto_bound Hty). destruct Bi as [S Bi].
   lets A: (ctx_binds_to_sto_binds_typing Hwf Bi). destruct A as [v [Bis Htyv]].
-  lets Hp: (possible_types_lemma Hwf Bis Hty).
+  lets Hp: (possible_types_lemma Hwf Bis Hty). destruct Hp as [n1 Hp].
   apply pt_rcd_trm_inversion with (s:=s) in Hp; eauto.
   destruct Hp as [S' [ds [t' [Heq [Hdefs Htyd]]]]].
   subst.
