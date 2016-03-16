@@ -320,11 +320,11 @@ with subtyp : tymode -> ctx -> ctx -> typ -> typ -> Prop :=
     subtyp m Gs G (typ_rcd (dec_typ A S1 T1)) (typ_rcd (dec_typ A S2 T2))
 | subtyp_sel2_c: forall m Gs G G' x A S T, m <> ty_precise ->
     restricted_by x G G' ->
-    ty_trm ty_general Gs G' (trm_var (avar_c x)) (typ_rcd (dec_typ A S T)) ->
+    ty_trm m Gs G' (trm_var (avar_c x)) (typ_rcd (dec_typ A S T)) ->
     subtyp m Gs G S (typ_sel (avar_c x) A)
 | subtyp_sel1_c: forall m Gs G G' x A S T, m <> ty_precise ->
     restricted_by x G G' ->
-    ty_trm ty_general Gs G' (trm_var (avar_c x)) (typ_rcd (dec_typ A S T)) ->
+    ty_trm m Gs G' (trm_var (avar_c x)) (typ_rcd (dec_typ A S T)) ->
     subtyp m Gs G (typ_sel (avar_c x) A) T
 | subtyp_sel2_s: forall m mt Gs G x A S T, m <> ty_precise ->
     ((m = ty_general /\ mt = ty_general) \/ (m = ty_tight /\ mt = ty_precise)) ->
@@ -3073,6 +3073,20 @@ Proof.
 Qed.
 
 (*
+Tight substitution
+*)
+
+Lemma subst_tight_subtyp: forall n Gs s x x0 v T1 T2,
+  wf_sto Gs s ->
+  binds x v s ->
+  possible_types n Gs x v (typ_bnd T1) ->
+  subtyp ty_tight Gs (empty & x0 ~ typ_bnd T1) (open_typ (in_ctx x0) T1) (open_typ (in_ctx x0) T2) ->
+  subtyp ty_tight Gs empty (open_typ (in_sto x) T1) (open_typ (in_sto x) T2).
+Proof.
+  admit.
+Qed.
+
+(*
 Lemma (Possible types closure)
 
 If G ~ s and G |- x: T and s |- x = v then Ts(G, x, v) is closed wrt G |- _ <: _.
@@ -3082,15 +3096,18 @@ Let SS = Ts(G, x, v). We first show SS is closed wrt G |-# _ <: _.
 Assume T0 in SS and G |- T0 <: U0.s We show U0 in SS by an induction on subtyping derivations of G |-# T0 <: U0.
 *)
 
-Lemma possible_types_closure_tight: forall n Gs s x v T0 U0,
+Lemma possible_types_closure_tight_aux: forall m, forall n Gs s x v T0 U0,
+  n <= m ->
   wf_sto Gs s ->
   binds x v s ->
   possible_types n Gs x v T0 ->
   subtyp ty_tight Gs empty T0 U0 ->
   possible_types n Gs x v U0.
 Proof.
-  introv Hwf Bis HT0 Hsub. dependent induction Hsub;
+  intros m. induction m;
+  introv LE Hwf Bis HT0 Hsub; dependent induction Hsub;
   assert (@empty typ ~= @empty typ) as HE by reflexivity.
+
   - (* Top *) apply pt_top.
   - (* Bot *) inversion HT0; subst.
     lets Htype: (open_record_type (in_sto x) (record_new_typing (val_new_typing Hwf Bis))).
@@ -3174,7 +3191,116 @@ Proof.
     rewrite <- concat_empty_l. eapply ok_push; eauto.
     rewrite C. eauto.
   - (* Rec-<:-Rec *)
-    admit.
+    inversion LE. subst. inversion HT0; subst.
+    assert (record_type (open_typ (in_sto x) T)) as B. {
+      eapply record_type_new; eassumption.
+    }
+    rewrite H7 in B. destruct B as [? B]. inversion B.
+    omega.
+
+  - (* Top *) apply pt_top.
+  - (* Bot *) inversion HT0; subst.
+    lets Htype: (open_record_type (in_sto x) (record_new_typing (val_new_typing Hwf Bis))).
+    destruct Htype as [ls Htyp]. rewrite H5 in Htyp. inversion Htyp.
+  - (* Refl-<: *) assumption.
+  - (* Trans-<: *)
+    apply IHHsub2; try assumption.
+    apply IHHsub1; assumption.
+  - (* And-<: *)
+    apply pt_and_inversion with (s:=s) in HT0; eauto.
+    destruct HT0 as [HT HU].
+    assumption.
+  - (* And-<: *)
+    apply pt_and_inversion with (s:=s) in HT0; eauto.
+    destruct HT0 as [HT HU].
+    assumption.
+  - (* <:-And *)
+    rewrite <- (max_and n).
+    apply pt_and. apply IHHsub1; assumption. apply IHHsub2; assumption.
+  - (* Fld-<:-Fld *)
+    apply pt_rcd_trm_inversion with (s:=s) in HT0; eauto.
+    destruct HT0 as [S [ds [t [Heq [Hhas Hty]]]]].
+    subst.
+    eapply pt_rcd_trm.
+    eassumption.
+    apply ty_sub with (T:=T).
+    intro Contra. false.
+    assumption.
+    apply tight_to_general_subtyping. assumption.
+  - (* Typ-<:-Typ *)
+    apply pt_rcd_typ_inversion with (s:=s) in HT0; eauto.
+    destruct HT0 as [T [ds [T' [Heq [Hhas [Hsub1' Hsub2']]]]]].
+    subst.
+    eapply pt_rcd_typ.
+    eassumption.
+    eapply subtyp_trans. apply tight_to_general_subtyping. eassumption. eassumption.
+    eapply subtyp_trans. eassumption. apply tight_to_general_subtyping. eassumption.
+  - (* <:-Sel *)
+    inversion H0; subst. false. eapply empty_middle_inv. eassumption.
+  - (* Sel-<: *)
+    inversion H0; subst. false. eapply empty_middle_inv. eassumption.
+  - (* <:-Sel sto *)
+    destruct H0 as [[Contra ?] | [? ?]]. inversion Contra. subst.
+    assert (S = T) as B. {
+      eapply tight_bounds_eq; eauto.
+    }
+    subst.
+    rewrite <- (LibNat.plus_zero_l n).
+    eapply pt_sel. eassumption. assumption.
+  - (* Sel-<: sto *)
+    destruct H0 as [[Contra ?] | [? ?]]. inversion Contra. subst.
+    inversion HT0; subst.
+    assert (record_type (open_typ (in_sto x) T0)) as B. {
+      eapply record_type_new; eassumption.
+    }
+    rewrite H7 in B. destruct B as [? B]. inversion B.
+    assert (S = T) as B. {
+      eapply tight_bounds_eq; eauto.
+    }
+    subst.
+    assert (S0 = T) as B. {
+      eapply unique_tight_bounds; eauto.
+    }
+    subst.
+    eapply pt_monotonic; eauto; try omega.
+  - (* All-<:-All *)
+    inversion HT0; subst.
+    assert (record_type (open_typ (in_sto x) T)) as B. {
+      eapply record_type_new; eassumption.
+    }
+    rewrite H7 in B. destruct B as [? B]. inversion B.
+    apply_fresh pt_lambda as y.
+    eapply H4; eauto.
+    eapply subtyp_trans. eassumption. eassumption.
+    assert (y ~ S2 = empty & (y ~ S2)) as C. {
+      rewrite concat_empty_l. eauto.
+    }
+    eapply subtyp_trans.
+    eapply narrow_subtyping. eapply H10; eauto.
+    eapply subenv_last_only. eapply Hsub.
+    rewrite <- concat_empty_l. eapply ok_push; eauto.
+    rewrite C. eauto.
+  - (* Rec-<:-Rec *)
+    inversion HT0; subst.
+    assert (record_type (open_typ (in_sto x) T)) as B. {
+      eapply record_type_new; eassumption.
+    }
+    rewrite H7 in B. destruct B as [? B]. inversion B.
+    pick_fresh z.
+    eapply pt_bnd. eapply IHm. omega. eassumption. assumption.
+    eassumption.
+    eapply subst_tight_subtyp. eassumption. eassumption. eassumption.
+    eapply (H0 z). eauto. reflexivity.
+Qed.
+
+Lemma possible_types_closure_tight: forall n Gs s x v T0 U0,
+  wf_sto Gs s ->
+  binds x v s ->
+  possible_types n Gs x v T0 ->
+  subtyp ty_tight Gs empty T0 U0 ->
+  possible_types n Gs x v U0.
+Proof.
+  intros. eapply possible_types_closure_tight_aux; eauto.
 Qed.
 
 (*
