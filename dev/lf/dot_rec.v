@@ -2688,39 +2688,39 @@ If S in SS and G |-! y: {A: S..S} then y.A in SS.
 If S in SS then rec(x: S) in SS.
 *)
 
-Inductive possible_types: ctx -> var -> val -> typ -> Prop :=
-| pt_top : forall G x v,
-  possible_types G x v typ_top
-| pt_new : forall G x T ds,
-  possible_types G x (val_new T ds) (open_typ (in_sto x) T)
-| pt_rcd_trm : forall G x T ds a t T',
+Inductive possible_types: nat -> ctx -> var -> val -> typ -> Prop :=
+| pt_top : forall n G x v,
+  possible_types n G x v typ_top
+| pt_new : forall n G x T ds,
+  possible_types n G x (val_new T ds) (open_typ (in_sto x) T)
+| pt_rcd_trm : forall n G x T ds a t T',
   defs_has (open_defs (in_sto x) ds) (def_trm a t) ->
   ty_trm ty_general G empty t T' ->
-  possible_types G x (val_new T ds) (typ_rcd (dec_trm a T'))
-| pt_rcd_typ : forall G x T ds A T' S U,
+  possible_types n G x (val_new T ds) (typ_rcd (dec_trm a T'))
+| pt_rcd_typ : forall n G x T ds A T' S U,
   defs_has (open_defs (in_sto x) ds) (def_typ A T') ->
   subtyp ty_general G empty S T' ->
   subtyp ty_general G empty T' U ->
-  possible_types G x (val_new T ds) (typ_rcd (dec_typ A S U))
-| pt_lambda : forall L G x S t T S' T',
+  possible_types n G x (val_new T ds) (typ_rcd (dec_typ A S U))
+| pt_lambda : forall L n G x S t T S' T',
   (forall y, y \notin L ->
    ty_trm ty_general G (y ~ S) (open_trm (in_ctx y) t) (open_typ (in_ctx y) T)) ->
   subtyp ty_general G empty S' S ->
   (forall y, y \notin L ->
    subtyp ty_general G (y ~ S') (open_typ (in_ctx y) T) (open_typ (in_ctx y) T')) ->
-  possible_types G x (val_lambda S t) (typ_all S' T')
-| pt_and : forall G x v S1 S2,
-  possible_types G x v S1 ->
-  possible_types G x v S2 ->
-  possible_types G x v (typ_and S1 S2)
-| pt_sel : forall G x v y A S,
-  possible_types G x v S ->
+  possible_types n G x (val_lambda S t) (typ_all S' T')
+| pt_and : forall n n1 n2 G x v S1 S2,
+  possible_types n1 G x v S1 ->
+  possible_types n2 G x v S2 ->
+  possible_types (n+(max n1 n2)) G x v (typ_and S1 S2)
+| pt_sel : forall n n1 G x v y A S,
+  possible_types n1 G x v S ->
   ty_trm ty_precise G empty (trm_var y) (typ_rcd (dec_typ A S S)) ->
-  possible_types G x v (typ_sel y A)
-| pt_bnd : forall G x v S S',
-  possible_types G x v S ->
+  possible_types (n+n1) G x v (typ_sel y A)
+| pt_bnd : forall n n1 G x v S S',
+  possible_types n1 G x v S ->
   S = open_typ (in_sto x) S' ->
-  possible_types G x v (typ_bnd S')
+  possible_types (n+n1+1) G x v (typ_bnd S')
 .
 
 Lemma var_new_typing: forall Gs G s x T ds,
@@ -2775,12 +2775,12 @@ Proof.
   specialize (H Neqm). destruct H as [? Contra]. inversion Contra.
 Qed.
 
-Lemma pt_piece_rcd: forall Gs s x T ds d D,
+Lemma pt_piece_rcd: forall n Gs s x T ds d D,
   wf_sto Gs s ->
   binds x (val_new T ds) s ->
   defs_has (open_defs (in_sto x) ds) d ->
   ty_def Gs empty d D ->
-  possible_types Gs x (val_new T ds) (typ_rcd D).
+  possible_types n Gs x (val_new T ds) (typ_rcd D).
 Proof.
   introv Hwf Bis Hhas Hdef.
   inversion Hdef; subst; econstructor; eauto;
@@ -2831,11 +2831,11 @@ Proof.
       assumption.
 Qed.
 
-Lemma pt_rcd_has_piece: forall Gs s x T ds D,
+Lemma pt_rcd_has_piece: forall n Gs s x T ds D,
   wf_sto Gs s ->
   binds x (val_new T ds) s ->
   record_has (open_typ (in_sto x) T) D ->
-  possible_types Gs x (val_new T ds) (typ_rcd D).
+  possible_types n Gs x (val_new T ds) (typ_rcd D).
 Proof.
   introv Hwf Bis Hhas.
   lets Hdefs: (new_ty_defs Hwf Bis).
@@ -2843,19 +2843,19 @@ Proof.
   eapply pt_piece_rcd; eauto.
 Qed.
 
-Lemma pt_rcd_trm_inversion: forall Gs s x v a T,
+Lemma pt_rcd_trm_inversion: forall n Gs s x v a T,
   wf_sto Gs s ->
   binds x v s ->
-  possible_types Gs x v (typ_rcd (dec_trm a T)) ->
+  possible_types n Gs x v (typ_rcd (dec_trm a T)) ->
   exists S ds t,
     v = val_new S ds /\
     defs_has (open_defs (in_sto x) ds) (def_trm a t) /\
     ty_trm ty_general Gs empty t T.
 Proof.
   introv Hwf Bis Hp. inversion Hp; subst.
-  - induction T0; simpl in H3; try solve [inversion H3].
-    induction d; simpl in H3; try solve [inversion H3].
-    unfold open_typ in H3. simpl in H3. inversions H3.
+  - induction T0; simpl in H4; try solve [inversion H4].
+    induction d; simpl in H4; try solve [inversion H4].
+    unfold open_typ in H4. simpl in H4. inversions H4.
     lets Hty: (val_new_typing Hwf Bis). inversion Hty; subst.
     pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H3 y FrL).
     unfold open_typ in H3. simpl in H3. inversion H3; subst.
@@ -2885,10 +2885,10 @@ Proof.
   - repeat eexists. eassumption. assumption.
 Qed.
 
-Lemma pt_rcd_typ_inversion: forall Gs s x v A S U,
+Lemma pt_rcd_typ_inversion: forall n Gs s x v A S U,
   wf_sto Gs s ->
   binds x v s ->
-  possible_types Gs x v (typ_rcd (dec_typ A S U)) ->
+  possible_types n Gs x v (typ_rcd (dec_typ A S U)) ->
   exists T ds T',
     v = val_new T ds /\
     defs_has (open_defs (in_sto x) ds) (def_typ A T') /\
@@ -2896,9 +2896,9 @@ Lemma pt_rcd_typ_inversion: forall Gs s x v A S U,
     subtyp ty_general Gs empty T' U.
 Proof.
   introv Hwf Bis Hp. inversion Hp; subst.
-  - induction T; simpl in H3; try solve [inversion H3].
-    induction d; simpl in H3; try solve [inversion H3].
-    unfold open_typ in H3. simpl in H3. inversions H3.
+  - induction T; simpl in H4; try solve [inversion H4].
+    induction d; simpl in H4; try solve [inversion H4].
+    unfold open_typ in H4. simpl in H4. inversions H4.
     lets Hty: (val_new_typing Hwf Bis). inversion Hty; subst.
     pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H3 y FrL).
     unfold open_typ in H3. simpl in H3. inversion H3; subst.
@@ -2954,32 +2954,38 @@ Proof.
     + apply rh_and. apply IHHsub. assumption.
 Qed.
 
-Lemma pt_record_sub_has: forall G x v T1 T2,
-  (forall D, record_has T1 D -> possible_types G x v (typ_rcd D)) ->
+Lemma pt_record_sub_has: forall n G x v T1 T2,
+  (forall D, record_has T1 D -> possible_types n G x v (typ_rcd D)) ->
   record_sub T1 T2 ->
-  (forall D, record_has T2 D -> possible_types G x v (typ_rcd D)).
+  (forall D, record_has T2 D -> possible_types n G x v (typ_rcd D)).
 Proof.
   introv HP Hsub. intros D Hhas. apply HP; eauto using record_sub_has.
 Qed.
 
-Lemma pt_has_record: forall G x v T,
-  (forall D, record_has T D -> possible_types G x v (typ_rcd D)) ->
+Lemma max_and: forall n, 0+(max n n)=n.
+Proof.
+  intros. rewrite Max.max_idempotent. omega.
+Qed.
+
+Lemma pt_has_record: forall n G x v T,
+  (forall D, record_has T D -> possible_types n G x v (typ_rcd D)) ->
   record_type T ->
-  possible_types G x v T.
+  possible_types n G x v T.
 Proof.
   introv HP Htype. destruct Htype as [ls Htyp]. induction Htyp.
   - apply HP; eauto. apply rh_one.
-  - apply pt_and.
+  - rewrite <- (max_and n).
+    apply pt_and.
     + apply IHHtyp; eauto.
       intros D0 HH0. apply HP; eauto. apply rh_and; eauto.
     + apply HP; eauto. apply rh_andl.
 Qed.
 
-Lemma pt_has_sub: forall G x v T U,
-  (forall D, record_has T D -> possible_types G x v (typ_rcd D)) ->
+Lemma pt_has_sub: forall n G x v T U,
+  (forall D, record_has T D -> possible_types n G x v (typ_rcd D)) ->
   record_type T ->
   record_sub T U ->
-  possible_types G x v U.
+  possible_types n G x v U.
 Proof.
   introv HP Htype Hsub. induction Hsub.
   - apply pt_has_record; eauto.
@@ -2988,7 +2994,8 @@ Proof.
     apply rs_drop. apply rs_refl.
     eapply record_type_sub_closed; eauto.
     apply rs_drop. apply rs_refl.
-  - apply pt_and.
+  - rewrite <- (max_and n).
+    apply pt_and.
     + apply IHHsub; eauto. eapply pt_record_sub_has; eauto.
       apply rs_drop. apply rs_refl.
       eapply record_type_sub_closed; eauto.
@@ -2996,11 +3003,11 @@ Proof.
     + apply HP; eauto. apply rh_andl.
 Qed.
 
-Lemma possible_types_closure_record: forall Gs s x T ds U,
+Lemma possible_types_closure_record: forall n Gs s x T ds U,
   wf_sto Gs s ->
   binds x (val_new T ds) s ->
   record_sub (open_typ (in_sto x) T) U ->
-  possible_types Gs x (val_new T ds) U.
+  possible_types n Gs x (val_new T ds) U.
 Proof.
   introv Hwf Bis Hsub.
   apply pt_has_sub with (T:=open_typ (in_sto x) T).
@@ -3009,11 +3016,47 @@ Proof.
   assumption.
 Qed.
 
-Lemma pt_and_inversion: forall Gs s x v T1 T2,
+Lemma pt_monotonic: forall n Gs x v T,
+  possible_types n Gs x v T -> forall n', n <= n' ->
+  possible_types n' Gs x v T.
+Proof.
+  Hint Constructors possible_types.
+  introv Hp. inversion Hp; subst; eauto; introv LE.
+  + assert (exists n0', n' = n0' + (n0 + max n1 n2) /\ 0 <= n0') as Eq'. {
+      apply NPeano.Nat.le_exists_sub. apply LE.
+    }
+    destruct Eq' as [n0' [Eq' ?]].
+    repeat rewrite Plus.plus_assoc in Eq'.
+    subst.
+    eapply pt_and; eauto.
+  + assert (exists n0', n' = n0' + (n0 + n1) /\ 0 <= n0') as Eq'. {
+      apply NPeano.Nat.le_exists_sub. apply LE.
+    }
+    destruct Eq' as [n0' [Eq' ?]].
+    repeat rewrite Plus.plus_assoc in Eq'.
+    subst.
+    eapply pt_sel; eauto.
+  + assert (exists n0', n' = n0' + (n0 + n1 + 1) /\ 0 <= n0') as Eq'. {
+      apply NPeano.Nat.le_exists_sub. apply LE.
+    }
+    destruct Eq' as [n0' [Eq' ?]].
+    repeat rewrite Plus.plus_assoc in Eq'.
+    subst.
+    eapply pt_bnd; eauto.
+Qed.
+
+Lemma pt_monotonic0: forall n Gs x v T,
+  possible_types 0 Gs x v T ->
+  possible_types n Gs x v T.
+Proof.
+  intros. eapply pt_monotonic; eauto. omega.
+Qed.
+
+Lemma pt_and_inversion: forall n Gs s x v T1 T2,
   wf_sto Gs s ->
   binds x v s ->
-  possible_types Gs x v (typ_and T1 T2) ->
-  possible_types Gs x v T1 /\ possible_types Gs x v T2.
+  possible_types n Gs x v (typ_and T1 T2) ->
+  possible_types n Gs x v T1 /\ possible_types n Gs x v T2.
 Proof.
   introv Hwf Bis Hp. dependent induction Hp.
   - assert (record_type (open_typ (in_sto x0) T)) as Htype. {
@@ -3023,7 +3066,10 @@ Proof.
     destruct (record_sub_and Htype x) as [Hsub1 Hsub2].
     split;
     eapply possible_types_closure_record; eauto.
-  - split; assumption.
+  - lets M1: (Max.le_max_l n1 n2).
+    lets M2: (Max.le_max_r n1 n2).
+    split;
+    eapply pt_monotonic; eauto; try omega.
 Qed.
 
 (*
@@ -3036,19 +3082,19 @@ Let SS = Ts(G, x, v). We first show SS is closed wrt G |-# _ <: _.
 Assume T0 in SS and G |- T0 <: U0.s We show U0 in SS by an induction on subtyping derivations of G |-# T0 <: U0.
 *)
 
-Lemma possible_types_closure_tight: forall Gs s x v T0 U0,
+Lemma possible_types_closure_tight: forall n Gs s x v T0 U0,
   wf_sto Gs s ->
   binds x v s ->
-  possible_types Gs x v T0 ->
+  possible_types n Gs x v T0 ->
   subtyp ty_tight Gs empty T0 U0 ->
-  possible_types Gs x v U0.
+  possible_types n Gs x v U0.
 Proof.
   introv Hwf Bis HT0 Hsub. dependent induction Hsub;
   assert (@empty typ ~= @empty typ) as HE by reflexivity.
   - (* Top *) apply pt_top.
   - (* Bot *) inversion HT0; subst.
     lets Htype: (open_record_type (in_sto x) (record_new_typing (val_new_typing Hwf Bis))).
-    destruct Htype as [ls Htyp]. rewrite H4 in Htyp. inversion Htyp.
+    destruct Htype as [ls Htyp]. rewrite H5 in Htyp. inversion Htyp.
   - (* Refl-<: *) assumption.
   - (* Trans-<: *)
     apply IHHsub2; try assumption.
@@ -3062,6 +3108,7 @@ Proof.
     destruct HT0 as [HT HU].
     assumption.
   - (* <:-And *)
+    rewrite <- (max_and n).
     apply pt_and. apply IHHsub1; assumption. apply IHHsub2; assumption.
   - (* Fld-<:-Fld *)
     apply pt_rcd_trm_inversion with (s:=s) in HT0; eauto.
@@ -3091,6 +3138,7 @@ Proof.
       eapply tight_bounds_eq; eauto.
     }
     subst.
+    rewrite <- (LibNat.plus_zero_l n).
     eapply pt_sel. eassumption. assumption.
   - (* Sel-<: sto *)
     destruct H0 as [[Contra ?] | [? ?]]. inversion Contra. subst.
@@ -3098,7 +3146,7 @@ Proof.
     assert (record_type (open_typ (in_sto x) T0)) as B. {
       eapply record_type_new; eassumption.
     }
-    rewrite H6 in B. destruct B as [? B]. inversion B.
+    rewrite H7 in B. destruct B as [? B]. inversion B.
     assert (S = T) as B. {
       eapply tight_bounds_eq; eauto.
     }
@@ -3106,13 +3154,14 @@ Proof.
     assert (S0 = T) as B. {
       eapply unique_tight_bounds; eauto.
     }
-    subst. assumption.
+    subst.
+    eapply pt_monotonic; eauto; try omega.
   - (* All-<:-All *)
     inversion HT0; subst.
     assert (record_type (open_typ (in_sto x) T)) as B. {
       eapply record_type_new; eassumption.
     }
-    rewrite H6 in B. destruct B as [? B]. inversion B.
+    rewrite H7 in B. destruct B as [? B]. inversion B.
     apply_fresh pt_lambda as y.
     eapply H4; eauto.
     eapply subtyp_trans. eassumption. eassumption.
@@ -3120,7 +3169,7 @@ Proof.
       rewrite concat_empty_l. eauto.
     }
     eapply subtyp_trans.
-    eapply narrow_subtyping. eapply H9; eauto.
+    eapply narrow_subtyping. eapply H10; eauto.
     eapply subenv_last_only. eapply Hsub.
     rewrite <- concat_empty_l. eapply ok_push; eauto.
     rewrite C. eauto.
