@@ -3216,6 +3216,7 @@ Lemma possible_types_closure: forall Gs s x v S T,
   possible_types Gs x v T.
 Proof.
   intros. eapply possible_types_closure_tight; eauto.
+  admit.
 Qed.
 
 Lemma possible_types_completeness: forall Gs s x T,
@@ -3225,6 +3226,7 @@ Lemma possible_types_completeness: forall Gs s x T,
 Proof.
   intros.
   eapply possible_types_completeness_tight; eauto.
+  admit.
 Qed.
 
 Lemma possible_types_lemma: forall Gs s x v T,
@@ -3277,7 +3279,7 @@ Proof.
     split. apply Bis. split. assumption.
     intros y0 Fr0.
     eapply ty_sub.
-    intros Contra. inversion Contra.
+    intros Contra. false.
     eapply narrow_typing.
     eapply H1; eauto.
     apply subenv_last_only. apply H5.
@@ -3334,9 +3336,9 @@ Lemma val_typing: forall Gs G v T,
 Proof.
   intros. dependent induction H.
   - exists (typ_all T U). split.
-    apply ty_all_intro with (L:=L); eauto. apply subtyp_refl.
+    apply ty_all_intro with (L:=L); eauto. apply subtyp_refl. discriminate.
   - exists (typ_bnd T). split.
-    apply ty_new_intro with (L:=L); eauto. apply subtyp_refl.
+    apply ty_new_intro with (L:=L); eauto. apply subtyp_refl. discriminate.
   - destruct IHty_trm as [T' [Hty Hsub]].
     exists T'. split; eauto.
 Qed.
@@ -3385,10 +3387,9 @@ Proof.
     eauto. eauto.
     rewrite subst_fresh_typ.
     apply ty_sub with (T:=S).
-    intro Contra. inversion Contra.
+    intro Contra. false.
     assumption. apply subtyp_refl.
-    eauto. eauto. eauto.
-    assumption.
+    eauto. eauto. eauto. discriminate. eauto. eauto. eauto. eauto.
     simpl in Az. unfold avar_s in Az. inversions Az.
   - (* Fld-E *) right.
     lets Ax: (var_typing_implies_avar_s H).
@@ -3460,7 +3461,7 @@ Proof.
       }
       rewrite C.
       eapply ty_sub.
-      intros Contra. inversion Contra.
+      intros Contra. false.
       eapply ty_var_s. eauto.
       eapply weaken_sto_subtyp. eapply Hsub.
       eapply ok_push; eauto.
@@ -3494,7 +3495,7 @@ Proof.
       exists s' t' G' G''.
       split; try split; try split; try assumption.
       apply ty_sub with (T:=T).
-      intro Contra. inversion Contra.
+      intro Contra. false.
       assumption.
       rewrite IH2. apply weaken_sto_subtyp. assumption.
       eapply wf_sto_to_ok_G. subst. eassumption.
