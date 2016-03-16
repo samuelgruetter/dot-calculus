@@ -326,13 +326,13 @@ with subtyp : tymode -> ctx -> ctx -> typ -> typ -> Prop :=
     restricted_by x G G' ->
     ty_trm ty_general Gs G' (trm_var (avar_c x)) (typ_rcd (dec_typ A S T)) ->
     subtyp m Gs G (typ_sel (avar_c x) A) T
-| subtyp_sel2_s: forall m mt Gs G x A T, m <> ty_precise ->
+| subtyp_sel2_s: forall m mt Gs G x A S T, m <> ty_precise ->
     ((m = ty_general /\ mt = ty_general) \/ (m = ty_tight /\ mt = ty_precise)) ->
-    ty_trm mt Gs empty (trm_var (avar_s x)) (typ_rcd (dec_typ A T T)) ->
-    subtyp m Gs G T (typ_sel (avar_s x) A)
-| subtyp_sel1_s: forall m mt Gs G x A T, m <> ty_precise ->
+    ty_trm mt Gs empty (trm_var (avar_s x)) (typ_rcd (dec_typ A S T)) ->
+    subtyp m Gs G S (typ_sel (avar_s x) A)
+| subtyp_sel1_s: forall m mt Gs G x A S T, m <> ty_precise ->
     ((m = ty_general /\ mt = ty_general) \/ (m = ty_tight /\ mt = ty_precise)) ->
-    ty_trm mt Gs empty (trm_var (avar_s x)) (typ_rcd (dec_typ A T T)) ->
+    ty_trm mt Gs empty (trm_var (avar_s x)) (typ_rcd (dec_typ A S T)) ->
     subtyp m Gs G (typ_sel (avar_s x) A) T
 | subtyp_all: forall L m Gs G S1 T1 S2 T2, m <> ty_precise ->
     subtyp ty_general Gs G S2 S1 ->
@@ -1904,11 +1904,11 @@ Proof.
 
   - destruct o as [[Contra ?] | [? ?]]. inversion Contra. subst.
     eapply subtyp_sel2_s; eauto. discriminate.
-    eapply precise_to_general_typing; assumption.
+    eapply precise_to_general_typing. eassumption.
 
   - destruct o as [[Contra ?] | [? ?]]. inversion Contra. subst.
     eapply subtyp_sel1_s; eauto. discriminate.
-    eapply precise_to_general_typing; assumption.
+    eapply precise_to_general_typing. eassumption.
 
   - apply_fresh subtyp_all as z; eauto; try discriminate.
 
@@ -2511,27 +2511,14 @@ Proof.
       rewrite C in Hg.
       eapply subtyp_sel2_s.
       discriminate. left. split; reflexivity.
-      eapply subtyp_trans. apply Hg.
-      
-      assert (empty & (subst_ctx x0 (in_sto y) G2) = subst_ctx x0 (in_sto y) G2) as D. {
-        rewrite concat_empty_l. reflexivity.
-      }
-
-      rewrite <- D.
-      admit.
-      (*
-      eapply weaken_subtyp.
-      eapply proj2. eapply tight_bound_completeness.
-      eassumption.
-      instantiate (1:=defs_nil). instantiate (1:=typ_top). admit.
       eapply Hg.
-      rewrite concat_empty_l. unfold subst_ctx. apply ok_map. eauto.*)
       reflexivity.
     + assert (exists GA2 GB2, G2 = GA2 & GB2 /\ G' = x0 ~ S & GA2) as B. {
         admit.
       }
       destruct B as [GA2 [GB2 [Heq2 Heq']]]. subst.
-      eapply subtyp_sel2.
+      eapply subtyp_sel2_c.
+      discriminate.
       instantiate (1:=(subst_ctx x0 (in_sto y) GA2)). admit.
       specialize (H s GA2 x0). simpl in H. rewrite If_r in H.
       eapply H; eauto.
@@ -2540,7 +2527,9 @@ Proof.
   - (* subtyp_sel1 *)
     admit.
   - (* subtyp_sel2_tight *)
-    simpl. eapply subtyp_sel2_tight; eauto.
+    simpl. eapply subtyp_sel2_s; eauto.
+
+(*
     lets B: (precise_fresh_ty_trm t H3 H4); eauto.
     simpl in B. apply notin_union_r in B. destruct B as [B ?].
     assert (subst_typ x0 (in_sto y) T = T) as C. {
@@ -2548,6 +2537,7 @@ Proof.
       assumption.
     }
     rewrite C. assumption.
+*)
   - (* subtyp_sel1_tight *)
     simpl. eapply subtyp_sel1_tight; eauto.
     lets B: (precise_fresh_ty_trm t H3 H4); eauto.
