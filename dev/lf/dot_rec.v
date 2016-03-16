@@ -3187,6 +3187,7 @@ If `G ~ s` and `G |- x: T` then, for some value `v`,
 
 Lemma possible_types_closure_tight_rules:
   (forall m Gs G t T, ty_trm m Gs G t T -> forall n s x v,
+   G = empty ->
    m = ty_tight n ->
    wf_sto Gs s ->
    binds x v s ->
@@ -3194,34 +3195,122 @@ Lemma possible_types_closure_tight_rules:
    possible_types (S n) Gs x v T
   ) /\
   (forall m Gs G T U, subtyp m Gs G T U -> forall n s x v,
+   G = empty ->
    m = ty_tight n ->
    wf_sto Gs s ->
    binds x v s ->
    possible_types (S n) Gs x v T ->
    possible_types (S n) Gs x v U).
 Proof.
-  apply ts_mutind; intros; eauto 4; try solve [false].
-  - inversions H2.
+  apply ts_mutind; intros; subst; eauto 4; try solve [false].
+  - inversions H3.
     eapply pt_monotonic. eapply possible_types_completeness_for_values; eauto.
     eapply bound__precise; eauto.
     omega.
-  - inversions H0. unfold avar_s in H3. inversions H3.
+  - inversions H1. unfold avar_s in H4. inversions H4.
     assert (0+(S n)+1=S (S n)) as A by omega. rewrite <- A.
     eapply pt_bnd. eapply H; eauto.
     reflexivity.
-  - unfold avar_s in H3. inversions H3.
+  - unfold avar_s in H4. inversions H4.
     assert (possible_types (S n) Gs x0 v (typ_bnd T)) as Hp. {
       eapply H; eauto.
     }
     inversion Hp; subst.
-    + lets Htype: (record_type_new H1 H2). rewrite H7 in Htype. inversion Htype. inversion H0.
+    + lets Htype: (record_type_new H2 H3). rewrite H7 in Htype. inversion Htype. inversion H0.
     + eapply pt_monotonic. eapply H4. omega.
   - assert (possible_types (S n0) Gs x0 v T) as Hp1 by solve [eapply H; eauto].
     assert (possible_types (S n0) Gs x0 v U) as Hp2 by solve [eapply H0; eauto].
     rewrite <- (max_and (S n0)). apply pt_and; assumption.
-  - inversions H0.
-    eapply pt_monotonic. eapply H; eauto. omega.
-  (* wip *)
+  - inversions H1. eapply pt_monotonic. eapply H; eauto.  omega.
+
+  - (* Bot *) inversion H3; subst.
+    lets Htype: (open_record_type (in_sto x) (record_new_typing (val_new_typing H1 H2))).
+    destruct Htype as [ls Htyp]. rewrite H7 in Htyp. inversion Htyp.
+  - (* And-<: *)
+    eapply pt_and_inversion in H3; eauto.
+    destruct H3 as [HT HU].
+    assumption.
+  - (* And-<: *)
+    eapply pt_and_inversion in H3; eauto.
+    destruct H3 as [HT HU].
+    assumption.
+  - (* <:-And *)
+    rewrite <- (max_and (Datatypes.S n0)).
+    apply pt_and; eauto.
+  - (* Fld-<:-Fld *)
+    eapply pt_rcd_trm_inversion in H4; eauto.
+    destruct H4 as [S [ds [t [Heq [Hhas Hty]]]]].
+    subst.
+    eapply pt_rcd_trm.
+    eassumption.
+    apply ty_sub with (T:=T).
+    intro Contra. false.
+    assumption.
+    eapply tight_to_general_subtyping. eauto.
+  - (* Typ-<:-Typ *)
+    eapply pt_rcd_typ_inversion in H5; eauto.
+    destruct H5 as [T [ds [T' [Heq [Hhas [Hsub1' Hsub2']]]]]].
+    subst.
+    eapply pt_rcd_typ.
+    eassumption.
+    eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
+    eapply subtyp_trans. eassumption. eapply tight_to_general_subtyping. eassumption.
+  - (* <:-Sel *)
+    inversion r; subst. false. eapply empty_middle_inv. eassumption.
+  - (* Sel-<: *)
+    inversion r; subst. false. eapply empty_middle_inv. eassumption.
+  - (* <:-Sel sto *)
+    destruct o as [[Contra ?] | [? ?]]. inversion Contra. subst.
+    assert (S = T) as B. {
+      eapply tight_bounds_eq; eauto.
+    }
+    subst.
+    rewrite <- (LibNat.plus_zero_l (S n0)).
+    eapply pt_sel. eassumption. assumption.
+  - (* Sel-<: sto *)
+    destruct o as [[Contra ?] | [? ?]]. inversion Contra. subst.
+    inversion H4; subst.
+    assert (record_type (open_typ (in_sto x0) T0)) as B. {
+      eapply record_type_new; eassumption.
+    }
+    rewrite H9 in B. destruct B as [? B]. inversion B.
+    assert (S = T) as B. {
+      eapply tight_bounds_eq; eauto.
+    }
+    subst.
+    assert (S0 = T) as B. {
+      eapply unique_tight_bounds; eauto.
+    }
+    subst.
+    eapply pt_monotonic; eauto; try omega.
+  - (* All-<:-All *)
+    inversion H5; subst.
+    assert (record_type (open_typ (in_sto x) T)) as B. {
+      eapply record_type_new; eassumption.
+    }
+    rewrite H9 in B. destruct B as [? B]. inversion B.
+    apply_fresh pt_lambda as y.
+    eapply H6; eauto.
+    eapply subtyp_trans. eassumption. eassumption.
+    assert (y ~ S2 = empty & (y ~ S2)) as C. {
+      rewrite concat_empty_l. eauto.
+    }
+    eapply subtyp_trans.
+    eapply narrow_subtyping. eapply H12; eauto.
+    eapply subenv_last_only. eauto.
+    rewrite <- concat_empty_l. eapply ok_push; eauto.
+    rewrite C. eauto.
+  - (* Rec-<:-Rec *)
+    inversion H4; subst.
+    assert (record_type (open_typ (in_sto x) T)) as B. {
+      eapply record_type_new; eassumption.
+    }
+    rewrite H8 in B. destruct B as [? B]. inversion B.
+    pick_fresh z. assert (z \notin L) as FrL by auto.
+    specialize (H z FrL).
+    admit.
+  - (* Monotonic *)
+    admit.
 Qed.
 
 Lemma possible_types_closure_tight_aux: forall m, forall n Gs s x v T0 U0,
