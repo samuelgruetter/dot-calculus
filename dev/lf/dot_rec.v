@@ -328,11 +328,11 @@ with subtyp : tymode -> ctx -> ctx -> typ -> typ -> Prop :=
     subtyp m Gs G (typ_sel (avar_c x) A) T
 | subtyp_sel2_s: forall m mt Gs G x A S T, m <> ty_precise ->
     ((m = ty_general /\ mt = ty_general) \/ (m = ty_tight /\ mt = ty_precise)) ->
-    ty_trm mt Gs empty (trm_var (avar_s x)) (typ_rcd (dec_typ A S T)) ->
+    ty_trm mt Gs G (trm_var (avar_s x)) (typ_rcd (dec_typ A S T)) ->
     subtyp m Gs G S (typ_sel (avar_s x) A)
 | subtyp_sel1_s: forall m mt Gs G x A S T, m <> ty_precise ->
     ((m = ty_general /\ mt = ty_general) \/ (m = ty_tight /\ mt = ty_precise)) ->
-    ty_trm mt Gs empty (trm_var (avar_s x)) (typ_rcd (dec_typ A S T)) ->
+    ty_trm mt Gs G (trm_var (avar_s x)) (typ_rcd (dec_typ A S T)) ->
     subtyp m Gs G (typ_sel (avar_s x) A) T
 | subtyp_all: forall L m Gs G S1 T1 S2 T2, m <> ty_precise ->
     subtyp ty_general Gs G S2 S1 ->
@@ -2151,6 +2151,20 @@ Proof.
     eapply r'.
     eapply H; eauto.
     eapply ok_restricted_by; eauto.
+  - (* subtyp_sel2_s *) subst.
+    destruct o as [[? ?] | [Contra ?]]. subst.
+    eapply subtyp_sel2_s.
+    discriminate.
+    left. split; reflexivity.
+    eapply H; eauto.
+    inversion Contra.
+  - (* subtyp_sel1_s *) subst.
+    destruct o as [[? ?] | [Contra ?]]. subst.
+    eapply subtyp_sel1_s.
+    discriminate.
+    left. split; reflexivity.
+    eapply H; eauto.
+    inversion Contra.
   - (* subtyp_all *)
     subst.
     apply_fresh subtyp_all as y; eauto 4.
