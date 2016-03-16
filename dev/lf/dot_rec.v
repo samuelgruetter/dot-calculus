@@ -2525,7 +2525,11 @@ Proof.
       rewrite C in Hg.
       eapply subtyp_sel2_s.
       discriminate. left. split; reflexivity.
-      eapply Hg.
+      assert (subst_ctx x0 (in_sto y) G2 = empty & subst_ctx x0 (in_sto y) G2) as D. {
+        rewrite concat_empty_l. reflexivity.
+      }
+      rewrite D. eapply weaken_ty_trm. eapply Hg.
+      rewrite concat_empty_l. unfold subst_ctx. eauto.
       reflexivity.
     + assert (exists GA2 GB2, G2 = GA2 & GB2 /\ G' = x0 ~ S & GA2) as B. {
         admit.
@@ -2541,8 +2545,10 @@ Proof.
   - (* subtyp_sel1 *)
     admit.
   - (* subtyp_sel2_tight *)
+    destruct o as [[? ?] | [Contra ?]]. subst.
     simpl. eapply subtyp_sel2_s; eauto.
-
+    simpl in H. eapply H; eauto 4.
+    inversion Contra.
 (*
     lets B: (precise_fresh_ty_trm t H3 H4); eauto.
     simpl in B. apply notin_union_r in B. destruct B as [B ?].
@@ -2553,14 +2559,10 @@ Proof.
     rewrite C. assumption.
 *)
   - (* subtyp_sel1_tight *)
-    simpl. eapply subtyp_sel1_tight; eauto.
-    lets B: (precise_fresh_ty_trm t H3 H4); eauto.
-    simpl in B. apply notin_union_r in B. destruct B as [B ?].
-    assert (subst_typ x0 (in_sto y) T = T) as C. {
-      apply subst_fresh_typ.
-      assumption.
-    }
-    rewrite C. assumption.
+    destruct o as [[? ?] | [Contra ?]]. subst.
+    simpl. eapply subtyp_sel1_s; eauto.
+    simpl in H. eapply H; eauto 4.
+    inversion Contra.
   - (* subtyp_all *)
     simpl. apply_fresh subtyp_all as z; eauto.
     assert (z \notin L) as FrL by eauto.
