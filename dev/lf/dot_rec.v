@@ -2723,8 +2723,8 @@ Proof.
   rewrite <- subst_intro_typ with (x:=y).
   eapply ty_rec_elim. apply ty_var_s. eapply wf_sto_val_new_in_G; eauto.
   eauto. eauto. eauto.
-  assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
-  specialize (H Heqm1). destruct H as [? Contra]. inversion Contra.
+  assert (ty_precise <> ty_general) as Neqm by discriminate.
+  specialize (H Neqm). destruct H as [? Contra]. inversion Contra.
 Qed.
 
 Lemma pt_piece_rcd: forall Gs s x T ds d D,
@@ -2735,7 +2735,8 @@ Lemma pt_piece_rcd: forall Gs s x T ds d D,
   possible_types Gs x (val_new T ds) (typ_rcd D).
 Proof.
   introv Hwf Bis Hhas Hdef.
-  inversion Hdef; subst; econstructor; eauto.
+  inversion Hdef; subst; econstructor; eauto;
+  eapply subtyp_refl; discriminate.
 Qed.
 
 Inductive record_has: typ -> dec -> Prop :=
@@ -2831,8 +2832,8 @@ Proof.
     unfold open_defs. simpl. unfold defs_has. simpl.
     rewrite If_l. reflexivity. reflexivity.
     eapply A.
-    assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
-    specialize (H Heqm1). destruct H. inversion H.
+    assert (ty_precise <> ty_general) as Neqm by discriminate.
+    specialize (H Neqm). destruct H. inversion H.
   - repeat eexists. eassumption. assumption.
 Qed.
 
@@ -2873,9 +2874,9 @@ Proof.
     repeat eexists.
     unfold open_defs. simpl. unfold defs_has. simpl.
     rewrite If_l. reflexivity. reflexivity.
-    eapply subtyp_refl. eapply subtyp_refl.
-    assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
-    specialize (H Heqm1). destruct H. inversion H.
+    eapply subtyp_refl. discriminate. eapply subtyp_refl. discriminate.
+    assert (ty_precise <> ty_general) as Neqm by discriminate.
+    specialize (H Neqm). destruct H. inversion H.
   - repeat eexists. eassumption. eassumption. eassumption.
 Qed.
 
@@ -2999,7 +3000,7 @@ Proof.
   - (* Top *) apply pt_top.
   - (* Bot *) inversion HT0; subst.
     lets Htype: (open_record_type (in_sto x) (record_new_typing (val_new_typing Hwf Bis))).
-    destruct Htype as [ls Htyp]. rewrite H3 in Htyp. inversion Htyp.
+    destruct Htype as [ls Htyp]. rewrite H4 in Htyp. inversion Htyp.
   - (* Refl-<: *) assumption.
   - (* Trans-<: *)
     apply IHHsub2; try assumption.
@@ -3021,7 +3022,7 @@ Proof.
     eapply pt_rcd_trm.
     eassumption.
     apply ty_sub with (T:=T).
-    intro Contra. inversion Contra.
+    intro Contra. false.
     assumption.
     assumption.
   - (* Typ-<:-Typ *)
@@ -3033,10 +3034,10 @@ Proof.
     eapply subtyp_trans. eassumption. eassumption.
     eapply subtyp_trans. eassumption. eassumption.
   - (* <:-Sel *)
-    inversion H; subst. false. eapply empty_middle_inv. eassumption.
+    inversion H0; subst. false. eapply empty_middle_inv. eassumption.
   - (* Sel-<: *)
-    inversion H; subst. false. eapply empty_middle_inv. eassumption.
-  - (* <:-Sel-tight *)
+    inversion H0; subst. false. eapply empty_middle_inv. eassumption.
+  - (* <:-Sel sto *)
     eapply pt_sel. eassumption. assumption.
   - (* Sel-<:-tight *)
     inversion HT0; subst.
