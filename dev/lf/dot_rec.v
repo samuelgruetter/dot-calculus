@@ -3150,10 +3150,10 @@ Proof.
         rewrite concat_empty_l. reflexivity.
       }
       rewrite A. eapply H5; eauto.
-      apply subtyp_refl.
-      apply subtyp_refl.
-    + assert (ty_precise = ty_precise) as Heqm1 by reflexivity.
-      specialize (H Heqm1). destruct H. inversion H.
+      apply subtyp_refl. discriminate.
+      apply subtyp_refl. discriminate.
+    + assert (ty_precise <> ty_general) as Neqm by discriminate.
+      specialize (H Neqm). destruct H. inversion H.
 Qed.
 
 (*
@@ -3169,7 +3169,7 @@ If `G ~ s` and `G |- x: T` then, for some value `v`,
 
 Lemma possible_types_completeness_tight: forall Gs s x T,
   wf_sto Gs s ->
-  ty_trm ty_general Gs empty (trm_var (avar_s x)) T ->
+  ty_trm ty_tight Gs empty (trm_var (avar_s x)) T ->
   exists v, binds x v s /\ possible_types Gs x v T.
 Proof.
   introv Hwf H. dependent induction H.
@@ -3200,7 +3200,7 @@ Qed.
 
 Lemma tight_ty_rcd_typ__new: forall Gs s x A S U,
   wf_sto Gs s ->
-  ty_trm ty_general Gs empty (trm_var (avar_s x)) (typ_rcd (dec_typ A S U)) ->
+  ty_trm ty_tight Gs empty (trm_var (avar_s x)) (typ_rcd (dec_typ A S U)) ->
   exists T ds, binds x (val_new T ds) s.
 Proof.
   introv Hwf Hty.
