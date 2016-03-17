@@ -3308,10 +3308,19 @@ Proof.
     }
     rewrite H9 in B. destruct B as [? B]. inversion B.
     pick_fresh z. assert (z \notin L) as FrL by auto.
-    specialize (H z FrL).
-    assert (possible_types n2 Gs x v (open_typ (in_sto x) T2)) as Hp. {
-      admit.
+    specialize (s z FrL).
+    assert (n1 + n2 = n0) as C. {
+      omega.
     }
+    assert (subtyp (ty_tight (pred n0)) Gs empty (open_typ (in_sto x) T1) (open_typ (in_sto x) T2)) as Hsub by admit.
+    assert (possible_types n0 Gs x v (open_typ (in_sto x) T2)) as Hp. {
+      destruct n0.
+      + assert (n2=0) by omega. subst.
+        eapply possible_types_closure_tight_zero with (n:=0) (T0:=(open_typ (in_sto x) T1)); try eassumption.
+      + eapply (proj2 IHl). eapply Hsub. omega. reflexivity. simpl. reflexivity.
+        eassumption. eassumption. eapply pt_monotonic. eassumption. omega.
+    }
+    rewrite C. rewrite <- (LibNat.plus_zero_l n0).
     eapply pt_bnd. eapply Hp. reflexivity.
 Qed.
 
