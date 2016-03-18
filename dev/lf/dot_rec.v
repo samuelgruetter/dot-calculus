@@ -3270,7 +3270,7 @@ Qed.
 Lemma (Canonical forms 1)
 If G ~ s and G |- x: all(x: T)U then s(x) = lambda(x: T')t where G |- T <: T' and G, x: T |- t: U.
  *)
-Lemma sel__canonical_forms_1: forall G s x T U,
+Lemma canonical_forms_1: forall G s x T U,
   wf_sto G s ->
   ty_trm ty_general sub_general G (trm_var (avar_f x)) (typ_all T U) ->
   (exists L T' t, binds x (val_lambda T' t) s /\ subtyp ty_general sub_general G T T' /\
@@ -3337,9 +3337,11 @@ Lemma val_typing: forall G v T,
 Proof.
   intros. dependent induction H.
   - exists (typ_all T U). split.
-    apply ty_all_intro with (L:=L); eauto. apply subtyp_refl.
+    apply ty_all_intro with (L:=L); eauto. discriminate.
+    apply subtyp_refl. discriminate.
   - exists (typ_bnd T). split.
-    apply ty_new_intro with (L:=L); eauto. apply subtyp_refl.
+    apply ty_new_intro with (L:=L); eauto. discriminate.
+    apply subtyp_refl. discriminate.
   - destruct IHty_trm as [T' [Hty Hsub]].
     exists T'. split; eauto.
 Qed.
@@ -3382,8 +3384,8 @@ Proof.
     apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
     rewrite subst_fresh_typ.
     apply ty_sub with (T:=S).
-    intro Contra. inversion Contra.
-    assumption. apply subtyp_refl.
+    intro Contra. eexists. reflexivity.
+    eapply general_to_sel_var_typing. assumption. apply subtyp_refl. discriminate.
     eauto. eauto. eauto. eauto.
   - (* Fld-E *) right.
     lets C: (canonical_forms_2 Hwf H).
@@ -3414,7 +3416,8 @@ Proof.
       rewrite <- subst_fresh_typ with (x:=y) (y:=x).
       eapply subst_ty_trm. eapply H0.
       apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
-      rewrite subst_fresh_typ. assumption. eauto. eauto. eauto. eauto.
+      rewrite subst_fresh_typ.
+      eapply general_to_sel_var_typing. assumption. eauto. eauto. eauto. eauto.
     + lets Hv: (val_typing H).
       destruct Hv as [T' [Htyp Hsub]].
       pick_fresh x. assert (x \notin L) as FrL by auto. specialize (H0 x FrL).
@@ -3424,7 +3427,7 @@ Proof.
       split. reflexivity. split.
       apply narrow_typing with (G:=G & x ~ T).
       assumption.
-      apply subenv_last. assumption.
+      apply subenv_last. apply general_to_sel_subtyping. assumption.
       apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
       apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
       apply wf_sto_push. assumption. eauto. eauto. assumption.
@@ -3464,7 +3467,7 @@ Proof.
       exists s' t' G' G''.
       split; try split; try split; try assumption.
       apply ty_sub with (T:=T).
-      intro Contra. inversion Contra.
+      intro Contra. false.
       assumption.
       rewrite IH2. apply weaken_subtyp. assumption.
       rewrite <- IH2. eapply wf_sto_to_ok_G. eassumption.
