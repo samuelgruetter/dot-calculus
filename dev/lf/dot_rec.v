@@ -3179,6 +3179,19 @@ Proof.
     exists v. split. apply Bis. eapply sel__possible_types_closure; eauto.
 Qed.
 
+Lemma sel__possible_types_lemma: forall G s x v T,
+  wf_sto G s ->
+  binds x v s ->
+  ty_trm ty_sel sub_general G (trm_var (avar_f x)) T ->
+  possible_types G x v T.
+Proof.
+  introv Hwf Bis Hty.
+  lets A: (sel__possible_types_completeness Hwf Hty).
+  destruct A as [v' [Bis' Hp]].
+  unfold binds in Bis. unfold binds in Bis'. rewrite Bis' in Bis. inversions Bis.
+  assumption.
+Qed.
+
 Lemma general_to_sel:
   (forall m1 m2 G t T,
      ty_trm m1 m2 G t T ->
@@ -3212,6 +3225,13 @@ Proof.
   intros. apply* general_to_sel.
 Qed.
 
+Lemma general_to_sel_subtyping: forall G T U,
+  subtyp ty_general sub_general G T U ->
+  subtyp ty_sel sub_general G T U.
+Proof.
+  intros. apply* general_to_sel.
+Qed.
+
 Lemma possible_types_completeness: forall G s x T,
   wf_sto G s ->
   ty_trm ty_general sub_general G (trm_var (avar_f x)) T ->
@@ -3227,11 +3247,8 @@ Lemma possible_types_lemma: forall G s x v T,
   ty_trm ty_general sub_general G (trm_var (avar_f x)) T ->
   possible_types G x v T.
 Proof.
-  introv Hwf Bis Hty.
-  lets A: (possible_types_completeness Hwf Hty).
-  destruct A as [v' [Bis' Hp]].
-  unfold binds in Bis. unfold binds in Bis'. rewrite Bis' in Bis. inversions Bis.
-  assumption.
+  intros. eapply sel__possible_types_lemma; eauto.
+  eapply general_to_sel_var_typing; eauto.
 Qed.
 
 Lemma ctx_binds_to_sto_binds_typing: forall G s x T,
@@ -3253,7 +3270,7 @@ Qed.
 Lemma (Canonical forms 1)
 If G ~ s and G |- x: all(x: T)U then s(x) = lambda(x: T')t where G |- T <: T' and G, x: T |- t: U.
  *)
-Lemma canonical_forms_1: forall G s x T U,
+Lemma sel__canonical_forms_1: forall G s x T U,
   wf_sto G s ->
   ty_trm ty_general sub_general G (trm_var (avar_f x)) (typ_all T U) ->
   (exists L T' t, binds x (val_lambda T' t) s /\ subtyp ty_general sub_general G T T' /\
@@ -3270,10 +3287,10 @@ Proof.
     split. apply Bis. split. assumption.
     intros y0 Fr0.
     eapply ty_sub.
-    intros Contra. inversion Contra.
+    intros Contra. false.
     eapply narrow_typing.
     eapply H1; eauto.
-    apply subenv_last. apply H5.
+    apply subenv_last. eapply general_to_sel_subtyping. eauto.
     apply ok_push. eapply wf_sto_to_ok_G; eauto. eauto.
     apply ok_push. eapply wf_sto_to_ok_G; eauto. eauto.
     eapply H6; eauto.
