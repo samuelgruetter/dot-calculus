@@ -311,7 +311,11 @@ with subtyp : tymode -> submode -> ctx -> typ -> typ -> Prop :=
     subtyp m1 m2 G S2 S1 ->
     (forall x, x \notin L ->
        subtyp ty_general sub_general (G & x ~ S2) (open_typ x T1) (open_typ x T2)) ->
-    subtyp m1 m2 G (typ_all S1 T1) (typ_all S2 T2).
+    subtyp m1 m2 G (typ_all S1 T1) (typ_all S2 T2)
+| subtyp_bnd: forall L m1 m2 G T1 T2, m1 <> ty_precise ->
+    (forall x, x \notin L ->
+       subtyp m1 m2 (G & x ~ typ_bnd T1) (open_typ x T1) (open_typ x T2)) ->
+    subtyp m1 m2 G (typ_bnd T1) (typ_bnd T2).
 
 Inductive wf_sto: ctx -> sto -> Prop :=
 | wf_sto_empty: wf_sto empty empty
@@ -458,6 +462,13 @@ Proof.
     specialize (H0 z zL G1 G2 (G3 & z ~ S2)).
     repeat rewrite concat_assoc in H0.
     apply* H0.
+  + intros. subst.
+    apply_fresh subtyp_bnd as z.
+    eauto.
+    assert (zL: z \notin L) by auto.
+    specialize (H z zL G1 G2 (G3 & z ~ typ_bnd T1)).
+    repeat rewrite concat_assoc in H.
+    apply* H.
 Qed.
 
 Lemma weaken_ty_trm:  forall m1 m2 G1 G2 t T,
@@ -653,6 +664,15 @@ Proof.
     specialize (H0 y FrL).
     specialize (H0 G1 (G2 & y ~ S2) x S).
     eapply H0; eauto.
+    rewrite concat_assoc. reflexivity.
+    rewrite concat_assoc. reflexivity.
+  - (* subtyp_bnd *)
+    subst.
+    apply_fresh subtyp_bnd as y; eauto.
+    assert (y \notin L) as FrL by eauto.
+    specialize (H y FrL).
+    specialize (H G1 (G2 & y ~ typ_bnd T1) x S).
+    eapply H; eauto.
     rewrite concat_assoc. reflexivity.
     rewrite concat_assoc. reflexivity.
 Qed.
@@ -1100,6 +1120,7 @@ Proof.
   eapply subtyp_sel2_tight; eauto; try discriminate.
   eapply subtyp_sel1_tight; eauto; try discriminate.
   eapply subtyp_all; eauto; try discriminate.
+  eapply subtyp_bnd; eauto; try discriminate.
 Qed.
 
 Lemma sel_to_general_var_typing: forall m2 G x T,
@@ -1182,6 +1203,7 @@ Proof.
   - eapply subtyp_sel1. discriminate.
     eapply precise_to_sel_var_typing. eassumption.
   - apply_fresh subtyp_all as z; eauto. discriminate.
+  - apply_fresh subtyp_bnd as z; eauto. discriminate.
 Grab Existential Variables. apply typ_top. apply typ_top.
 Qed.
 
@@ -1388,6 +1410,23 @@ Proof.
     rewrite <- B. rewrite concat_assoc. apply weaken_ty_trm. assumption.
     apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
     discriminate.
+  - (* subtyp_bnd *)
+    simpl. apply_fresh subtyp_bnd as z. assumption.
+    assert (z \notin L) as FrL by eauto.
+    assert (subst_fvar x y z = z) as A. {
+      unfold subst_fvar. rewrite If_r. reflexivity. eauto.
+    }
+    rewrite <- A at 2. rewrite <- A at 3.
+    rewrite <- subst_open_commute_typ. rewrite <- subst_open_commute_typ.
+    assert (subst_ctx x y G2 & z ~ typ_bnd (subst_typ x y T1) = subst_ctx x y (G2 & z ~ (typ_bnd T1))) as B. {
+      unfold subst_ctx. rewrite map_concat. rewrite map_single. reflexivity.
+    }
+    rewrite <- concat_assoc. rewrite B.
+    apply H; eauto.
+    rewrite concat_assoc. reflexivity.
+    rewrite concat_assoc. apply ok_push. assumption. eauto.
+    rewrite <- B. rewrite concat_assoc. apply weaken_ty_trm. assumption.
+    apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
 Qed.
 
 Lemma subst_ty_trm: forall y S G x t T,
