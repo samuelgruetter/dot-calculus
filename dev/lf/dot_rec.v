@@ -3257,6 +3257,7 @@ Proof.
   - eapply subtyp_sel2; eauto. discriminate.
   - eapply subtyp_sel1; eauto. discriminate.
   - apply_fresh subtyp_all as z; eauto. discriminate.
+  - admit.
 Qed.
 
 Lemma general_to_sel_var_typing: forall G x T,
