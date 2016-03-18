@@ -2443,6 +2443,8 @@ Proof.
     eauto.
   - (* all *)
     inversion Hmem; subst. inversion H3; subst.
+  - (* bnd *)
+    admit.
 Qed.
 
 Lemma has_member_monotonicity: forall G s x T0 ds T A S U,
@@ -3069,6 +3071,8 @@ Proof.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply H0; eauto.
+  - (* Rec -<:- Rec *)
+    admit.
 Qed.
 
 (*
@@ -3236,45 +3240,60 @@ Proof.
   assumption.
 Qed.
 
-Lemma general_to_sel:
+Lemma general_to_tight: forall G0 s0,
+  wf_sto G0 s0 ->
   (forall m1 m2 G t T,
      ty_trm m1 m2 G t T ->
-     m1 = ty_general ->
+     G = G0 ->
      m2 = sub_general ->
-     (exists x, t = trm_var (avar_f x)) ->
-     ty_trm ty_sel sub_general G t T) /\
+     ty_trm m1 sub_tight G t T) /\
   (forall m1 m2 G S U,
      subtyp m1 m2 G S U ->
-     m1 = ty_general ->
+     G = G0 ->
      m2 = sub_general ->
-     subtyp ty_sel sub_general G S U).
+     subtyp m1 sub_tight G S U).
 Proof.
-  apply ts_mutind; intros; subst; eauto 4;
+  introv Hwf. apply ts_mutind; intros; subst; eauto 4;
   try solve [false]; try solve [ev; inv_eq];
   try solve [econstructor; eauto; discriminate].
-  - admit.
-  - eapply ty_and_intro; eauto. discriminate.
-  - eapply subtyp_and2; eauto. discriminate.
-  - eapply subtyp_fld; eauto. discriminate.
-  - eapply subtyp_typ; eauto. discriminate.
-  - eapply subtyp_sel2; eauto. discriminate.
-  - eapply subtyp_sel1; eauto. discriminate.
-  - apply_fresh subtyp_all as z; eauto. discriminate.
-  - admit.
+  - assert (ty_trm ty_sel sub_tight G0 (trm_var (avar_f x)) (typ_rcd (dec_typ A S T))) as Hs. {
+      eapply H; eauto.
+    }
+    assert (exists S ds, binds x (val_new S ds) s0) as Bis. {
+      eapply tight_ty_rcd_typ__new; eauto.
+      destruct m1. false. eapply H; eauto.
+      eapply sel_to_general_var_typing. eapply H; eauto.
+    }
+    destruct Bis as [? [? Bis]].
+    lets Hsub: (tight_bound_completeness Hwf Bis Hs).
+    destruct m1. false. eapply Hsub. eapply sel_to_general_subtyping. eapply Hsub.
+  - assert (ty_trm ty_sel sub_tight G0 (trm_var (avar_f x)) (typ_rcd (dec_typ A S T))) as Hs. {
+      eapply H; eauto.
+    }
+    assert (exists S ds, binds x (val_new S ds) s0) as Bis. {
+      eapply tight_ty_rcd_typ__new; eauto.
+      destruct m1. false. eapply H; eauto.
+      eapply sel_to_general_var_typing. eapply H; eauto.
+    }
+    destruct Bis as [? [? Bis]].
+    lets Hsub: (tight_bound_completeness Hwf Bis Hs).
+    destruct m1. false. eapply Hsub. eapply sel_to_general_subtyping. eapply Hsub.
 Qed.
 
-Lemma general_to_sel_var_typing: forall G x T,
+Lemma general_to_tight_var_typing: forall G s x T,
+  wf_sto G s ->
   ty_trm ty_general sub_general G (trm_var (avar_f x)) T ->
-  ty_trm ty_sel sub_general G (trm_var (avar_f x)) T.
+  ty_trm ty_general sub_tight G (trm_var (avar_f x)) T.
 Proof.
-  intros. apply* general_to_sel.
+  intros. apply* general_to_tight.
 Qed.
 
-Lemma general_to_sel_subtyping: forall G T U,
+Lemma general_to_sel_subtyping: forall G s T U,
+  wf_sto G s ->
   subtyp ty_general sub_general G T U ->
-  subtyp ty_sel sub_general G T U.
+  subtyp ty_general sub_tight G T U.
 Proof.
-  intros. apply* general_to_sel.
+  intros. apply* general_to_tight.
 Qed.
 
 Lemma possible_types_completeness: forall G s x T,
@@ -3282,8 +3301,9 @@ Lemma possible_types_completeness: forall G s x T,
   ty_trm ty_general sub_general G (trm_var (avar_f x)) T ->
   exists v, binds x v s /\ possible_types G x v T.
 Proof.
-  intros. eapply sel__possible_types_completeness; eauto.
-  eapply general_to_sel_var_typing; eauto.
+  intros. apply possible_types_completeness_tight with (m1:=ty_general); eauto.
+  discriminate.
+  eapply general_to_tight_var_typing; eauto.
 Qed.
 
 Lemma possible_types_lemma: forall G s x v T,
@@ -3292,8 +3312,11 @@ Lemma possible_types_lemma: forall G s x v T,
   ty_trm ty_general sub_general G (trm_var (avar_f x)) T ->
   possible_types G x v T.
 Proof.
-  intros. eapply sel__possible_types_lemma; eauto.
-  eapply general_to_sel_var_typing; eauto.
+  introv Hwf Bis Hty.
+  lets A: (possible_types_completeness Hwf Hty).
+  destruct A as [v' [Bis' Hp]].
+  unfold binds in Bis. unfold binds in Bis'. rewrite Bis' in Bis. inversions Bis.
+  assumption.
 Qed.
 
 Lemma ctx_binds_to_sto_binds_typing: forall G s x T,
@@ -3335,7 +3358,7 @@ Proof.
     intros Contra. false.
     eapply narrow_typing.
     eapply H1; eauto.
-    apply subenv_last. eapply general_to_sel_subtyping. eauto.
+    apply subenv_last. admit.
     apply ok_push. eapply wf_sto_to_ok_G; eauto. eauto.
     apply ok_push. eapply wf_sto_to_ok_G; eauto. eauto.
     eapply H6; eauto.
@@ -3430,7 +3453,8 @@ Proof.
     rewrite subst_fresh_typ.
     apply ty_sub with (T:=S).
     intro Contra. eexists. reflexivity.
-    eapply general_to_sel_var_typing. assumption. apply subtyp_refl. discriminate.
+    admit. (*eapply general_to_sel_var_typing. assumption.*)
+    apply subtyp_refl. discriminate.
     eauto. eauto. eauto. eauto.
   - (* Fld-E *) right.
     lets C: (canonical_forms_2 Hwf H).
@@ -3462,7 +3486,7 @@ Proof.
       eapply subst_ty_trm. eapply H0.
       apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto. eauto.
       rewrite subst_fresh_typ.
-      eapply general_to_sel_var_typing. assumption. eauto. eauto. eauto. eauto.
+      admit. (*eapply general_to_sel_var_typing. assumption.*) eauto. eauto. eauto. eauto.
     + lets Hv: (val_typing H).
       destruct Hv as [T' [Htyp Hsub]].
       pick_fresh x. assert (x \notin L) as FrL by auto. specialize (H0 x FrL).
@@ -3472,7 +3496,7 @@ Proof.
       split. reflexivity. split.
       apply narrow_typing with (G:=G & x ~ T).
       assumption.
-      apply subenv_last. apply general_to_sel_subtyping. assumption.
+      apply subenv_last. admit. (*apply general_to_sel_subtyping. assumption.*)
       apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
       apply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
       apply wf_sto_push. assumption. eauto. eauto. assumption.
