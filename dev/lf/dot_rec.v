@@ -3103,7 +3103,6 @@ Proof.
   inversion Hpt; subst; repeat eexists; eauto.
 Qed.
 
-
 Lemma sel__general_to_tight: forall G0 s0,
   wf_sto G0 s0 ->
   (forall m1 m2 G t T,
@@ -3180,34 +3179,46 @@ Proof.
     exists v. split. apply Bis. eapply sel__possible_types_closure; eauto.
 Qed.
 
+Lemma general_to_sel:
+  (forall m1 m2 G t T,
+     ty_trm m1 m2 G t T ->
+     m1 = ty_general ->
+     m2 = sub_general ->
+     (exists x, t = trm_var (avar_f x)) ->
+     ty_trm ty_sel sub_general G t T) /\
+  (forall m1 m2 G S U,
+     subtyp m1 m2 G S U ->
+     m1 = ty_general ->
+     m2 = sub_general ->
+     subtyp ty_sel sub_general G S U).
+Proof.
+  apply ts_mutind; intros; subst; eauto 4;
+  try solve [false]; try solve [ev; inv_eq];
+  try solve [econstructor; eauto; discriminate].
+  - admit.
+  - eapply ty_and_intro; eauto. discriminate.
+  - eapply subtyp_and2; eauto. discriminate.
+  - eapply subtyp_fld; eauto. discriminate.
+  - eapply subtyp_typ; eauto. discriminate.
+  - eapply subtyp_sel2; eauto. discriminate.
+  - eapply subtyp_sel1; eauto. discriminate.
+  - apply_fresh subtyp_all as z; eauto. discriminate.
+Qed.
+
+Lemma general_to_sel_var_typing: forall G x T,
+  ty_trm ty_general sub_general G (trm_var (avar_f x)) T ->
+  ty_trm ty_sel sub_general G (trm_var (avar_f x)) T.
+Proof.
+  intros. apply* general_to_sel.
+Qed.
+
 Lemma possible_types_completeness: forall G s x T,
   wf_sto G s ->
   ty_trm ty_general sub_general G (trm_var (avar_f x)) T ->
   exists v, binds x v s /\ possible_types G x v T.
 Proof.
-  introv Hwf H. dependent induction H.
-  - assert (exists v, binds x v s /\ ty_trm ty_precise sub_general G (trm_val v) T) as A. {
-      destruct (ctx_binds_to_sto_binds_raw Hwf H) as [G1 [? [v [? [Bi Hty]]]]].
-      exists v. split. apply Bi. subst. rewrite <- concat_assoc.
-      eapply weaken_ty_trm. assumption. rewrite concat_assoc.
-      eapply wf_sto_to_ok_G. eassumption.
-    }
-    destruct A as [v [Bis Hty]].
-    exists v. split. apply Bis. eapply possible_types_completeness_for_values; eauto.
-  - specialize (IHty_trm Hwf).
-    destruct IHty_trm as [v [Bis Hp]].
-    exists v. split. assumption. eapply pt_bnd. eapply Hp. reflexivity.
-  - specialize (IHty_trm Hwf).
-    destruct IHty_trm as [v [Bis Hp]].
-    exists v. split. assumption. inversion Hp; subst.
-    + lets Htype: (record_type_new Hwf Bis). rewrite H4 in Htype. inversion Htype. inversion H0.
-    + assumption.
-  - specialize (IHty_trm1 Hwf). destruct IHty_trm1 as [v [Bis1 Hp1]].
-    specialize (IHty_trm2 Hwf). destruct IHty_trm2 as [v' [Bis2 Hp2]].
-    unfold binds in Bis1. unfold binds in Bis2. rewrite Bis2 in Bis1. inversions Bis1.
-    exists v. split. eauto. apply pt_and; assumption.
-  - specialize (IHty_trm Hwf). destruct IHty_trm as [v [Bis Hp]].
-    exists v. split. apply Bis. eapply possible_types_closure; eauto.
+  intros. eapply sel__possible_types_completeness; eauto.
+  eapply general_to_sel_var_typing; eauto.
 Qed.
 
 Lemma possible_types_lemma: forall G s x v T,
