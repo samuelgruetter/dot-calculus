@@ -312,10 +312,10 @@ with subtyp : tymode -> submode -> ctx -> typ -> typ -> Prop :=
     (forall x, x \notin L ->
        subtyp ty_general sub_general (G & x ~ S2) (open_typ x T1) (open_typ x T2)) ->
     subtyp m1 m2 G (typ_all S1 T1) (typ_all S2 T2)
-| subtyp_bnd: forall L G T1 T2,
+| subtyp_bnd: forall L m1 m2 G T1 T2, m1 <> ty_precise ->
     (forall x, x \notin L ->
-       subtyp ty_general sub_general (G & x ~ typ_bnd T1) (open_typ x T1) (open_typ x T2)) ->
-    subtyp ty_general sub_general G (typ_bnd T1) (typ_bnd T2).
+       subtyp m1 m2 (G & x ~ typ_bnd T1) (open_typ x T1) (open_typ x T2)) ->
+    subtyp m1 m2 G (typ_bnd T1) (typ_bnd T2).
 
 Inductive wf_sto: ctx -> sto -> Prop :=
 | wf_sto_empty: wf_sto empty empty
@@ -1120,6 +1120,7 @@ Proof.
   eapply subtyp_sel2_tight; eauto; try discriminate.
   eapply subtyp_sel1_tight; eauto; try discriminate.
   eapply subtyp_all; eauto; try discriminate.
+  eapply subtyp_bnd; eauto. try discriminate.
 Qed.
 
 Lemma sel_to_general_var_typing: forall m2 G x T,
@@ -1202,7 +1203,8 @@ Proof.
   - eapply subtyp_sel1. discriminate.
     eapply precise_to_sel_var_typing. eassumption.
   - apply_fresh subtyp_all as z; eauto. discriminate.
-Grab Existential Variables. apply typ_top. apply typ_top. apply typ_top.
+  - apply_fresh subtyp_bnd as z; eauto. discriminate.
+Grab Existential Variables. apply typ_top. apply typ_top.
 Qed.
 
 Lemma untight_subtyping: forall m1 G S U,
@@ -1409,7 +1411,7 @@ Proof.
     apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
     discriminate.
   - (* subtyp_bnd *)
-    simpl. apply_fresh subtyp_bnd as z.
+    simpl. apply_fresh subtyp_bnd as z. eauto.
     assert (z \notin L) as FrL by eauto.
     assert (subst_fvar x y z = z) as A. {
       unfold subst_fvar. rewrite If_r. reflexivity. eauto.
@@ -2181,7 +2183,7 @@ Proof.
     eapply H0; eauto. discriminate. apply subenv_push; eauto.
   - (* subtyp_bnd *)
     subst.
-    apply_fresh subtyp_bnd as y.
+    apply_fresh subtyp_bnd as y. eauto.
     eapply H; eauto. apply subenv_push; eauto.
 Qed.
 
@@ -2440,6 +2442,8 @@ Proof.
     eauto.
   - (* all *)
     inversion Hmem; subst. inversion H3; subst.
+  - (* bnd *)
+    admit.
 Qed.
 
 Lemma has_member_monotonicity: forall G s x T0 ds T A S U,
@@ -3066,6 +3070,8 @@ Proof.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply H0; eauto.
+  - (* Rec-<:-Rec *)
+    admit.
 Qed.
 
 (*
