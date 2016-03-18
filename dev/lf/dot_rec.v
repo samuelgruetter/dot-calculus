@@ -3177,6 +3177,7 @@ Proof.
     }
     destruct Bis as [? [? Bis]].
     eapply proj1. eapply tight_bound_completeness; eauto.
+  - admit.
 Qed.
 
 Lemma sel__general_to_tight_subtyping: forall G s S U,
