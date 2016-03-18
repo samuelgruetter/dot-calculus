@@ -2440,8 +2440,6 @@ Proof.
     eauto.
   - (* all *)
     inversion Hmem; subst. inversion H3; subst.
-  - (* bnd *)
-    admit.
 Qed.
 
 Lemma has_member_monotonicity: forall G s x T0 ds T A S U,
@@ -3068,8 +3066,6 @@ Proof.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply H0; eauto.
-  - (* Rec-<:-Rec *)
-    admit.
 Qed.
 
 (*
@@ -3175,7 +3171,6 @@ Proof.
     }
     destruct Bis as [? [? Bis]].
     eapply proj1. eapply tight_bound_completeness; eauto.
-  - admit.
 Qed.
 
 Lemma sel__general_to_tight_subtyping: forall G s S U,
