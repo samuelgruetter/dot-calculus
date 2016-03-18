@@ -1048,34 +1048,34 @@ Qed.
 Lemma tight_to_general:
   (forall m1 m2 G t T,
      ty_trm m1 m2 G t T ->
-     m1 = ty_general ->
+     m1 <> ty_sel ->
      m2 = sub_tight ->
-     ty_trm ty_general sub_general G t T) /\
+     ty_trm m1 sub_general G t T) /\
   (forall m1 m2 G S U,
      subtyp m1 m2 G S U ->
-     m1 = ty_general ->
+     m1 <> ty_sel ->
      m2 = sub_tight ->
-     subtyp ty_general sub_general G S U).
+     subtyp m1 sub_general G S U).
 Proof.
   apply ts_mutind; intros; subst; eauto 4; try solve [false].
   - apply precise_to_sel_var_typing in t.
-    eapply subtyp_sel2. discriminate. eauto.
+    eapply subtyp_sel2. assumption. eauto.
   - apply precise_to_sel_var_typing in t.
-    eapply subtyp_sel1. discriminate. eauto.
+    eapply subtyp_sel1. assumption. eauto.
 Qed.
 
 Lemma tight_to_general_typing: forall G t T,
   ty_trm ty_general sub_tight G t T ->
   ty_trm ty_general sub_general G t T.
 Proof.
-  intros. apply* tight_to_general.
+  intros. apply* tight_to_general. discriminate.
 Qed.
 
 Lemma tight_to_general_subtyping: forall G S U,
   subtyp ty_general sub_tight G S U ->
   subtyp ty_general sub_general G S U.
 Proof.
-  intros. apply* tight_to_general.
+  intros. apply* tight_to_general. discriminate.
 Qed.
 
 Lemma sel_to_general:
@@ -1132,6 +1132,15 @@ Proof.
   destruct m1. false. assumption. apply sel_to_general_subtyping. assumption.
 Qed.
 
+
+Lemma imprecise_to_general_subtyping: forall m1 m2 G T U, m1 <> ty_precise ->
+  subtyp m1 m2 G T U ->
+  subtyp ty_general m2 G T U.
+Proof.
+  intros.
+  destruct m1. false. apply sel_to_general_subtyping. assumption. assumption.
+Qed.
+
 Lemma precise_to_tight:
   (forall m1 m2 G t T,
      ty_trm m1 m2 G t T ->
@@ -1160,7 +1169,6 @@ Qed.
 Lemma tight_to_sel_subtyping:
   (forall m1 m2 G S U,
      subtyp m1 m2 G S U ->
-     m1 = ty_general ->
      m2 = sub_tight ->
      subtyp ty_sel sub_general G S U).
 Proof.
@@ -1175,6 +1183,16 @@ Proof.
     eapply precise_to_sel_var_typing. eassumption.
   - apply_fresh subtyp_all as z; eauto. discriminate.
 Grab Existential Variables. apply typ_top. apply typ_top.
+Qed.
+
+Lemma untight_subtyping: forall m1 G S U,
+  subtyp m1 sub_tight G S U ->
+  subtyp m1 sub_general G S U.
+Proof.
+  intros. destruct m1.
+  - apply* tight_to_general. discriminate.
+  - eapply tight_to_sel_subtyping. eassumption. reflexivity.
+  - apply tight_to_general_subtyping. assumption.
 Qed.
 
 (* ###################################################################### *)
@@ -2920,14 +2938,14 @@ Let SS = Ts(G, x, v). We first show SS is closed wrt G |-# _ <: _.
 Assume T0 in SS and G |- T0 <: U0.s We show U0 in SS by an induction on subtyping derivations of G |-# T0 <: U0.
 *)
 
-Lemma possible_types_closure_tight: forall G s x v T0 U0,
+Lemma possible_types_closure_tight: forall m1 G s x v T0 U0, m1 <> ty_precise ->
   wf_sto G s ->
   binds x v s ->
   possible_types G x v T0 ->
-  subtyp ty_general sub_tight G T0 U0 ->
+  subtyp m1 sub_tight G T0 U0 ->
   possible_types G x v U0.
 Proof.
-  introv Hwf Bis HT0 Hsub. dependent induction Hsub.
+  introv Neqm1 Hwf Bis HT0 Hsub. dependent induction Hsub.
   - (* Top *) apply pt_top.
   - (* Bot *) inversion HT0; subst.
     lets Htype: (open_record_type x (record_new_typing (val_new_typing Hwf Bis))).
@@ -2955,15 +2973,20 @@ Proof.
     apply ty_sub with (T:=T).
     intro Contra. false.
     assumption.
-    apply tight_to_general_subtyping. assumption.
+    apply untight_subtyping. eapply imprecise_to_general_subtyping.
+    eassumption. eassumption.
   - (* Typ-<:-Typ *)
     apply pt_rcd_typ_inversion with (s:=s) in HT0; eauto.
     destruct HT0 as [T [ds [T' [Heq [Hhas [Hsub1' Hsub2']]]]]].
     subst.
     eapply pt_rcd_typ.
     eassumption.
-    eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
-    eapply subtyp_trans. eassumption. eapply tight_to_general_subtyping. eassumption.
+    eapply subtyp_trans.
+    eapply untight_subtyping. eapply imprecise_to_general_subtyping.
+    eassumption. eassumption. eassumption.
+    eapply subtyp_trans. eassumption.
+    eapply untight_subtyping. eapply imprecise_to_general_subtyping. eassumption.
+    eassumption.
   - (* <:-Sel-tight *)
     eapply pt_sel. eassumption.
     assert (S = T) as B. {
@@ -2992,11 +3015,13 @@ Proof.
     rewrite H6 in B. destruct B as [? B]. inversion B.
     apply_fresh pt_lambda as y.
     eapply H4; eauto.
-    eapply subtyp_trans. eapply tight_to_general_subtyping. eassumption. eassumption.
+    eapply subtyp_trans.
+    eapply untight_subtyping. eapply imprecise_to_general_subtyping.
+    eassumption. eassumption. eassumption.
     eapply subtyp_trans.
     eapply narrow_subtyping. eapply H9; eauto.
     eapply subenv_last.
-    eapply tight_to_sel_subtyping. eapply Hsub. reflexivity. reflexivity.
+    eapply tight_to_sel_subtyping. eapply Hsub. reflexivity.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply ok_push. eapply wf_sto_to_ok_G. eassumption. eauto.
     eapply H0; eauto.
@@ -3038,9 +3063,99 @@ If `G ~ s` and `G |- x: T` then, for some value `v`,
 `s(x) = v` and `T in Ts(G, x, v)`.
 *)
 
-Lemma possible_types_completeness_tight: forall G s x T,
+Lemma possible_types_completeness_tight: forall m1 G s x T, m1 <> ty_precise ->
   wf_sto G s ->
-  ty_trm ty_general sub_tight G (trm_var (avar_f x)) T ->
+  ty_trm m1 sub_tight G (trm_var (avar_f x)) T ->
+  exists v, binds x v s /\ possible_types G x v T.
+Proof.
+  introv Neqm1 Hwf H. dependent induction H.
+  - assert (exists v, binds x v s /\ ty_trm ty_precise sub_general G (trm_val v) T) as A. {
+      destruct (ctx_binds_to_sto_binds_raw Hwf H) as [G1 [? [v [? [Bi Hty]]]]].
+      exists v. split. apply Bi. subst. rewrite <- concat_assoc.
+      eapply weaken_ty_trm. assumption. rewrite concat_assoc.
+      eapply wf_sto_to_ok_G. eassumption.
+    }
+    destruct A as [v [Bis Hty]].
+    exists v. split. apply Bis. eapply possible_types_completeness_for_values; eauto.
+  - specialize (IHty_trm Neqm1 Hwf).
+    destruct IHty_trm as [v [Bis Hp]].
+    exists v. split. assumption. eapply pt_bnd. eapply Hp. reflexivity.
+  - specialize (IHty_trm Neqm1 Hwf).
+    destruct IHty_trm as [v [Bis Hp]].
+    exists v. split. assumption. inversion Hp; subst.
+    + lets Htype: (record_type_new Hwf Bis). rewrite H4 in Htype. inversion Htype. inversion H0.
+    + assumption.
+  - specialize (IHty_trm1 Neqm1 Hwf). destruct IHty_trm1 as [v [Bis1 Hp1]].
+    specialize (IHty_trm2 Neqm1 Hwf). destruct IHty_trm2 as [v' [Bis2 Hp2]].
+    unfold binds in Bis1. unfold binds in Bis2. rewrite Bis2 in Bis1. inversions Bis1.
+    exists v. split. eauto. apply pt_and; assumption.
+  - specialize (IHty_trm Neqm1 Hwf). destruct IHty_trm as [v [Bis Hp]].
+    exists v. split. apply Bis. eapply possible_types_closure_tight; eauto.
+Qed.
+
+Lemma tight_ty_rcd_typ__new: forall m1 G s x A S U, m1 <> ty_precise ->
+  wf_sto G s ->
+  ty_trm m1 sub_tight G (trm_var (avar_f x)) (typ_rcd (dec_typ A S U)) ->
+  exists T ds, binds x (val_new T ds) s.
+Proof.
+  introv Neqm1 Hwf Hty.
+  destruct (possible_types_completeness_tight Neqm1 Hwf Hty) as [v [Bis Hpt]].
+  inversion Hpt; subst; repeat eexists; eauto.
+Qed.
+
+
+Lemma sel__general_to_tight: forall G0 s0,
+  wf_sto G0 s0 ->
+  (forall m1 m2 G t T,
+     ty_trm m1 m2 G t T ->
+     G = G0 ->
+     m1 = ty_sel ->
+     m2 = sub_general ->
+     ty_trm m1 sub_tight G t T) /\
+  (forall m1 m2 G S U,
+     subtyp m1 m2 G S U ->
+     G = G0 ->
+     m1 = ty_sel ->
+     m2 = sub_general ->
+     subtyp m1 sub_tight G S U).
+Proof.
+  intros G0 s0 Hwf.
+  apply ts_mutind; intros; subst; eauto 4; try solve [false].
+  - assert (exists S ds, binds x (val_new S ds) s0) as Bis. {
+      eapply tight_ty_rcd_typ__new; eauto.
+    }
+    destruct Bis as [? [? Bis]].
+    eapply proj2. eapply tight_bound_completeness; eauto.
+  - assert (exists S ds, binds x (val_new S ds) s0) as Bis. {
+      eapply tight_ty_rcd_typ__new; eauto.
+    }
+    destruct Bis as [? [? Bis]].
+    eapply proj1. eapply tight_bound_completeness; eauto.
+Qed.
+
+Lemma sel__general_to_tight_subtyping: forall G s S U,
+   wf_sto G s ->
+  subtyp ty_sel sub_general G S U ->
+  subtyp ty_sel sub_tight G S U.
+Proof.
+  intros. apply* sel__general_to_tight.
+Qed.
+
+Lemma sel__possible_types_closure: forall G s x v S T,
+  wf_sto G s ->
+  binds x v s ->
+  possible_types G x v S ->
+  subtyp ty_sel sub_general G S T ->
+  possible_types G x v T.
+Proof.
+  intros. eapply possible_types_closure_tight with (m1:=ty_sel); eauto.
+  discriminate.
+  eapply sel__general_to_tight_subtyping; eauto.
+Qed.
+
+Lemma sel__possible_types_completeness: forall G s x T,
+  wf_sto G s ->
+  ty_trm ty_sel sub_general G (trm_var (avar_f x)) T ->
   exists v, binds x v s /\ possible_types G x v T.
 Proof.
   introv Hwf H. dependent induction H.
@@ -3054,9 +3169,6 @@ Proof.
     exists v. split. apply Bis. eapply possible_types_completeness_for_values; eauto.
   - specialize (IHty_trm Hwf).
     destruct IHty_trm as [v [Bis Hp]].
-    exists v. split. assumption. eapply pt_bnd. eapply Hp. reflexivity.
-  - specialize (IHty_trm Hwf).
-    destruct IHty_trm as [v [Bis Hp]].
     exists v. split. assumption. inversion Hp; subst.
     + lets Htype: (record_type_new Hwf Bis). rewrite H4 in Htype. inversion Htype. inversion H0.
     + assumption.
@@ -3065,70 +3177,7 @@ Proof.
     unfold binds in Bis1. unfold binds in Bis2. rewrite Bis2 in Bis1. inversions Bis1.
     exists v. split. eauto. apply pt_and; assumption.
   - specialize (IHty_trm Hwf). destruct IHty_trm as [v [Bis Hp]].
-    exists v. split. apply Bis. eapply possible_types_closure_tight; eauto.
-Qed.
-
-Lemma tight_ty_rcd_typ__new: forall G s x A S U,
-  wf_sto G s ->
-  ty_trm ty_general sub_tight G (trm_var (avar_f x)) (typ_rcd (dec_typ A S U)) ->
-  exists T ds, binds x (val_new T ds) s.
-Proof.
-  introv Hwf Hty.
-  destruct (possible_types_completeness_tight Hwf Hty) as [v [Bis Hpt]].
-  inversion Hpt; subst; repeat eexists; eauto.
-Qed.
-
-
-Lemma general_to_tight: forall G0 s0,
-  wf_sto G0 s0 ->
-  (forall m1 m2 G t T,
-     ty_trm m1 m2 G t T ->
-     G = G0 ->
-     m1 <> ty_precise ->
-     m2 = sub_general ->
-     ty_trm m1 sub_tight G t T) /\
-  (forall m1 m2 G S U,
-     subtyp m1 m2 G S U ->
-     G = G0 ->
-     m1 <> ty_precise ->
-     m2 = sub_general ->
-     subtyp m1 sub_tight G S U).
-Proof.
-  intros G0 s0 Hwf.
-  apply ts_mutind; intros; subst; eauto.
-  - assert (exists S ds, binds x (val_new S ds) s0) as Bis. {
-      eapply tight_ty_rcd_typ__new; eauto.
-      eapply sel_to_general_var_typing; eauto.
-      eapply H; eauto; try discriminate.
-    }
-    destruct Bis as [? [? Bis]].
-    eapply sel_to_imprecise_subtyping.
-    eapply proj2. eapply tight_bound_completeness; eauto.
-  - assert (exists S ds, binds x (val_new S ds) s0) as Bis. {
-      eapply tight_ty_rcd_typ__new; eauto.
-      eapply sel_to_general_var_typing; eauto.
-    }
-    destruct Bis as [? [? Bis]].
-    eapply proj1. eapply tight_bound_completeness; eauto.
-Qed.
-
-Lemma general_to_tight_subtyping: forall G s S U,
-   wf_sto G s ->
-  subtyp ty_sel sub_general G S U ->
-  subtyp ty_sel sub_tight G S U.
-Proof.
-  intros. apply* general_to_tight.
-Qed.
-
-Lemma possible_types_closure: forall G s x v S T,
-  wf_sto G s ->
-  binds x v s ->
-  possible_types G x v S ->
-  subtyp ty_general sub_general G S T ->
-  possible_types G x v T.
-Proof.
-  intros. eapply possible_types_closure_tight; eauto.
-  eapply general_to_tight_subtyping; eauto.
+    exists v. split. apply Bis. eapply sel__possible_types_closure; eauto.
 Qed.
 
 Lemma possible_types_completeness: forall G s x T,
