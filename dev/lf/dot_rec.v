@@ -17,9 +17,16 @@ Inductive label: Set :=
 | label_typ: typ_label -> label
 | label_trm: trm_label -> label.
 
+Inductive fvar : Set :=
+| in_sto : var -> fvar
+| in_ctx : var -> fvar.
+
 Inductive avar : Set :=
   | avar_b : nat -> avar  (* bound var (de Bruijn index) *)
-  | avar_f : var -> avar. (* free var ("name"), refers to store or ctx *)
+  | avar_f : fvar -> avar. (* free var ("name"), refers to store or ctx *)
+
+Definition avar_s x := avar_f (in_sto x).
+Definition avar_c x := avar_f (in_ctx x).
 
 Inductive typ : Set :=
   | typ_top  : typ
@@ -83,13 +90,13 @@ Definition defs_hasnt(ds: defs)(l: label) := get_def l ds = None.
 (** Opening replaces in some syntax a bound variable with dangling index (k)
    by a free variable x. *)
 
-Definition open_rec_avar (k: nat) (u: var) (a: avar) : avar :=
+Definition open_rec_avar (k: nat) (u: fvar) (a: avar) : avar :=
   match a with
   | avar_b i => If k = i then avar_f u else avar_b i
   | avar_f x => avar_f x
   end.
 
-Fixpoint open_rec_typ (k: nat) (u: var) (T: typ): typ :=
+Fixpoint open_rec_typ (k: nat) (u: fvar) (T: typ): typ :=
   match T with
   | typ_top        => typ_top
   | typ_bot        => typ_bot
@@ -99,13 +106,13 @@ Fixpoint open_rec_typ (k: nat) (u: var) (T: typ): typ :=
   | typ_bnd T      => typ_bnd (open_rec_typ (S k) u T)
   | typ_all T1 T2  => typ_all (open_rec_typ k u T1) (open_rec_typ (S k) u T2)
   end
-with open_rec_dec (k: nat) (u: var) (D: dec): dec :=
+with open_rec_dec (k: nat) (u: fvar) (D: dec): dec :=
   match D with
   | dec_typ L T U => dec_typ L (open_rec_typ k u T) (open_rec_typ k u U)
   | dec_trm m T => dec_trm m (open_rec_typ k u T)
   end.
 
-Fixpoint open_rec_trm (k: nat) (u: var) (t: trm): trm :=
+Fixpoint open_rec_trm (k: nat) (u: fvar) (t: trm): trm :=
   match t with
   | trm_var a      => trm_var (open_rec_avar k u a)
   | trm_val v      => trm_val (open_rec_val k u v)
@@ -113,17 +120,17 @@ Fixpoint open_rec_trm (k: nat) (u: var) (t: trm): trm :=
   | trm_app f a    => trm_app (open_rec_avar k u f) (open_rec_avar k u a)
   | trm_let t1 t2  => trm_let (open_rec_trm k u t1) (open_rec_trm (S k) u t2)
   end
-with open_rec_val (k: nat) (u: var) (v: val): val :=
+with open_rec_val (k: nat) (u: fvar) (v: val): val :=
   match v with
   | val_new T ds => val_new (open_rec_typ (S k) u T) (open_rec_defs (S k) u ds)
   | val_lambda T e => val_lambda (open_rec_typ k u T) (open_rec_trm (S k) u e)
   end
-with open_rec_def (k: nat) (u: var) (d: def): def :=
+with open_rec_def (k: nat) (u: fvar) (d: def): def :=
   match d with
   | def_typ L T => def_typ L (open_rec_typ k u T)
   | def_trm m e => def_trm m (open_rec_trm k u e)
   end
-with open_rec_defs (k: nat) (u: var) (ds: defs): defs :=
+with open_rec_defs (k: nat) (u: fvar) (ds: defs): defs :=
   match ds with
   | defs_nil => defs_nil
   | defs_cons tl d => defs_cons (open_rec_defs k u tl) (open_rec_def k u d)
@@ -140,10 +147,18 @@ Definition open_defs u l := open_rec_defs  0 u l.
 (* ###################################################################### *)
 (** ** Free variables *)
 
+Definition var_of (v: fvar): var :=
+  match v with
+  | in_sto x => x
+  | in_ctx x => x
+  end.
+
+Definition fv_fvar (v: fvar) : vars := \{var_of v}.
+
 Definition fv_avar (a: avar) : vars :=
   match a with
   | avar_b i => \{}
-  | avar_f x => \{x}
+  | avar_f v => fv_fvar v
   end.
 
 Fixpoint fv_typ (T: typ) : vars :=
@@ -194,16 +209,16 @@ Definition fv_ctx_types(G: ctx): vars := (fv_in_values (fun T => fv_typ T) G).
 Inductive red : trm -> sto -> trm -> sto -> Prop :=
 | red_sel : forall x m s t T ds,
     binds x (val_new T ds) s ->
-    defs_has (open_defs x ds) (def_trm m t) ->
-    red (trm_sel (avar_f x) m) s t s
+    defs_has (open_defs (in_sto x) ds) (def_trm m t) ->
+    red (trm_sel (avar_s x) m) s t s
 | red_app : forall f a s T t,
     binds f (val_lambda T t) s ->
-    red (trm_app (avar_f f) (avar_f a)) s (open_trm a t) s
+    red (trm_app (avar_s f) (avar_s a)) s (open_trm (in_sto a) t) s
 | red_let : forall v t s x,
     x # s ->
-    red (trm_let (trm_val v) t) s (open_trm x t) (s & x ~ v)
+    red (trm_let (trm_val v) t) s (open_trm (in_sto x) t) (s & x ~ v)
 | red_let_var : forall t s x,
-    red (trm_let (trm_var (avar_f x)) t) s (open_trm x t) s
+    red (trm_let (trm_var (avar_s x)) t) s (open_trm (in_sto x) t) s
 | red_let_tgt : forall t0 t s t0' s',
     red t0 s t0' s' ->
     red (trm_let t0 t) s (trm_let t0' t) s'.
