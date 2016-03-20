@@ -1,3 +1,10 @@
+(* WIP --
+Follow the strategy in
+https://github.com/TiarkRompf/minidot/blob/master/dev2015/dot-smallstep1.v
+
+First, without rec-<:-rec.
+Then add rec-<:-rec.
+*)
 Set Implicit Arguments.
 
 Require Import LibLN.
