@@ -1177,51 +1177,60 @@ Lemma subst_rules: forall y S,
   (forall s G t T, ty_trm s G t T -> forall G1 G2 x,
     G = G1 & x ~ S & G2 ->
     ok (G1 & x ~ S & G2) ->
-    x \notin fv_ctx_types G1 ->
-    ty_trm ty_general sub_general (G1 & (subst_ctx x y G2)) (trm_var (avar_f y)) (subst_typ x y S) ->
-    m1 = ty_general ->
-    m2 = sub_general ->
-    ty_trm m1 m2 (G1 & (subst_ctx x y G2)) (subst_trm x y t) (subst_typ x y T)) /\
-  (forall G d D, ty_def G d D -> forall G1 G2 x,
+    x \notin fv_sto_vals s -> x \notin fv_ctx_types G1 ->
+    ty_trm s (G1 & (subst_ctx x (in_sto y) G2)) (trm_var (avar_s y)) (subst_typ x (in_sto y) S) ->
+    ty_trm s (G1 & (subst_ctx x (in_sto y) G2)) (subst_trm x (in_sto y) t) (subst_typ x (in_sto y) T)) /\
+  (forall s G d D, ty_def s G d D -> forall G1 G2 x,
     G = G1 & x ~ S & G2 ->
     ok (G1 & x ~ S & G2) ->
-    x \notin fv_ctx_types G1 ->
-    ty_trm ty_general sub_general (G1 & (subst_ctx x y G2)) (trm_var (avar_f y)) (subst_typ x y S) ->
-    ty_def (G1 & (subst_ctx x y G2)) (subst_def x y d) (subst_dec x y D)) /\
-  (forall G ds T, ty_defs G ds T -> forall G1 G2 x,
+    x \notin fv_sto_vals s -> x \notin fv_ctx_types G1 ->
+    ty_trm s (G1 & (subst_ctx x (in_sto y) G2)) (trm_var (avar_s y)) (subst_typ x (in_sto y) S) ->
+    ty_def s (G1 & (subst_ctx x (in_sto y) G2)) (subst_def x (in_sto y) d) (subst_dec x (in_sto y) D)) /\
+  (forall s G ds T, ty_defs s G ds T -> forall G1 G2 x,
     G = G1 & x ~ S & G2 ->
     ok (G1 & x ~ S & G2) ->
-    x \notin fv_ctx_types G1 ->
-    ty_trm ty_general sub_general (G1 & (subst_ctx x y G2)) (trm_var (avar_f y)) (subst_typ x y S) ->
-    ty_defs (G1 & (subst_ctx x y G2)) (subst_defs x y ds) (subst_typ x y T)) /\
-  (forall m1 m2 G T U, subtyp m1 m2 G T U -> forall G1 G2 x,
+    x \notin fv_sto_vals s -> x \notin fv_ctx_types G1 ->
+    ty_trm s (G1 & (subst_ctx x (in_sto y) G2)) (trm_var (avar_s y)) (subst_typ x (in_sto y) S) ->
+    ty_defs s (G1 & (subst_ctx x (in_sto y) G2)) (subst_defs x (in_sto y) ds) (subst_typ x (in_sto y) T)) /\
+  (forall s G T U, subtyp s G T U -> forall G1 G2 x,
     G = G1 & x ~ S & G2 ->
     ok (G1 & x ~ S & G2) ->
-    x \notin fv_ctx_types G1 ->
-    ty_trm ty_general sub_general (G1 & (subst_ctx x y G2)) (trm_var (avar_f y)) (subst_typ x y S) ->
-    m1 = ty_general ->
-    m2 = sub_general ->
-    subtyp m1 m2 (G1 & (subst_ctx x y G2)) (subst_typ x y T) (subst_typ x y U)).
+    x \notin fv_sto_vals s -> x \notin fv_ctx_types G1 ->
+    ty_trm s (G1 & (subst_ctx x (in_sto y) G2)) (trm_var (avar_s y)) (subst_typ x (in_sto y) S) ->
+    subtyp s (G1 & (subst_ctx x (in_sto y) G2)) (subst_typ x (in_sto y) T) (subst_typ x (in_sto y) U)) /\
+  (forall s G z T, ty_var_ctx s G z T -> forall G1 G2 x,
+    G = G1 & x ~ S & G2 ->
+    ok (G1 & x ~ S & G2) ->
+    x \notin fv_sto_vals s -> x \notin fv_ctx_types G1 ->
+    ty_trm s (G1 & (subst_ctx x (in_sto y) G2)) (trm_var (avar_s y)) (subst_typ x (in_sto y) S) ->
+    ty_var_ctx s (G1 & (subst_ctx x (in_sto y) G2)) z (subst_typ x (in_sto y) T)).
 Proof.
   intros y S. apply rules_mutind; intros; subst.
-  - (* ty_var *)
+  - (* ty_var_s *)
+    simpl. eapply ty_var_s. eapply b.
+    lets Frv: (fv_sto_vals_binds H2 b).
+    assert (subst_trm x0 (in_sto y) (trm_val v) = (trm_val v)) as A. {
+      rewrite subst_fresh_trm. reflexivity. apply Frv.
+    }
+    rewrite <- A. apply H; eauto.
+  - (* ty_var_c *)
     simpl. case_if.
     + apply binds_middle_eq_inv in b. subst. assumption. assumption.
-    + apply subst_fresh_ctx with (y:=y) in H1.
+    + apply subst_fresh_ctx with (y:=in_sto y) in H2.
       apply binds_subst in b.
-      apply ty_var. rewrite <- H1.
+      apply ty_var_c. rewrite <- H2.
       unfold subst_ctx. rewrite <- map_concat.
       apply binds_map. assumption. assumption.
   - (* ty_all_intro *)
     simpl.
     apply_fresh ty_all_intro as z; eauto.
     assert (z \notin L) as FrL by eauto.
-    assert (subst_fvar x y z = z) as A. {
+    assert (subst_fvar x (in_sto y) (in_ctx z) = (in_ctx z)) as A. {
       unfold subst_fvar. rewrite If_r. reflexivity. eauto.
     }
-    rewrite <- A at 2. rewrite <- subst_open_commute_trm.
-    rewrite <- A at 3. rewrite <- subst_open_commute_typ.
-    assert (subst_ctx x y G2 & z ~ subst_typ x y T = subst_ctx x y (G2 & z ~ T)) as B. {
+    rewrite <- A.
+    rewrite <- subst_open_commute_trm. rewrite <- subst_open_commute_typ.
+    assert (subst_ctx x (in_sto y) G2 & z ~ subst_typ x (in_sto y) T = subst_ctx x (in_sto y) (G2 & z ~ T)) as B. {
       unfold subst_ctx. rewrite map_concat. rewrite map_single. reflexivity.
     }
     rewrite <- concat_assoc. rewrite B.
@@ -1240,12 +1249,12 @@ Proof.
     simpl.
     apply_fresh ty_new_intro as z; eauto.
     assert (z \notin L) as FrL by eauto.
-    assert (subst_fvar x y z = z) as A. {
+    assert (subst_fvar x (in_sto y) (in_ctx z) = (in_ctx z)) as A. {
       unfold subst_fvar. rewrite If_r. reflexivity. eauto.
     }
-    rewrite <- A at 2. rewrite <- A at 3. rewrite <- A at 4.
+    rewrite <- A.
     rewrite <- subst_open_commute_typ. rewrite <- subst_open_commute_defs.
-    assert (subst_ctx x y G2 & z ~ subst_typ x y (open_typ z T) = subst_ctx x y (G2 & z ~ open_typ z T)) as B. {
+    assert (subst_ctx x (in_sto y) G2 & z ~ subst_typ x (in_sto y) (open_typ (in_ctx z) T) = subst_ctx x (in_sto y) (G2 & z ~ open_typ (in_ctx z) T)) as B. {
       unfold subst_ctx. rewrite map_concat. rewrite map_single. reflexivity.
     }
     rewrite <- concat_assoc. rewrite B.
@@ -1260,14 +1269,14 @@ Proof.
   - (* ty_let *)
     simpl.
     apply_fresh ty_let as z; eauto.
-    assert (subst_ctx x y G2 & z ~ subst_typ x y T = subst_ctx x y (G2 & z ~ T)) as B. {
+    assert (subst_ctx x (in_sto y) G2 & z ~ subst_typ x (in_sto y) T = subst_ctx x (in_sto y) (G2 & z ~ T)) as B. {
       unfold subst_ctx. rewrite map_concat. rewrite map_single. reflexivity.
     }
     rewrite <- concat_assoc. rewrite B.
-    assert (subst_fvar x y z = z) as A. {
+    assert (subst_fvar x (in_sto y) (in_ctx z) = (in_ctx z)) as A. {
       unfold subst_fvar. rewrite If_r. reflexivity. eauto.
     }
-    rewrite <- A at 2. rewrite <- subst_open_commute_trm.
+    rewrite <- A. rewrite <- subst_open_commute_trm.
     apply H0 with (x0:=z); eauto.
     rewrite concat_assoc. reflexivity.
     rewrite concat_assoc. apply ok_push. assumption. eauto.
@@ -1275,29 +1284,16 @@ Proof.
     apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
   - (* ty_rec_intro *)
     simpl. apply ty_rec_intro.
-    assert (trm_var (avar_f (If x = x0 then y else x)) = subst_trm x0 y (trm_var (avar_f x))) as A. {
-      simpl. reflexivity.
-    }
-    rewrite A.
-    assert (open_typ (If x = x0 then y else x) (subst_typ x0 y T) = subst_typ x0 y (open_typ x T)) as B. {
-      rewrite subst_open_commute_typ. unfold subst_fvar. reflexivity.
-    }
-    rewrite B.
-    apply H; eauto.
+    rewrite <- subst_open_commute_typ.
+    eapply H; eauto.
   - (* ty_rec_elim *)
     simpl. rewrite subst_open_commute_typ.
     apply ty_rec_elim.
     apply H; eauto.
   - (* ty_and_intro *)
-    simpl.
-    assert (trm_var (avar_f (If x = x0 then y else x)) = subst_trm x0 y (trm_var (avar_f x))) as A. {
-      simpl. reflexivity.
-    }
-    rewrite A.
-    apply ty_and_intro; eauto.
+    simpl. apply ty_and_intro; eauto.
   - (* ty_sub *)
     eapply ty_sub; eauto.
-    intro Contra. inversion Contra.
   - (* ty_def_typ *)
     simpl. apply ty_def_typ; eauto.
   - (* ty_def_trm *)
@@ -1326,8 +1322,10 @@ Proof.
     eapply subtyp_fld; eauto.
   - (* subtyp_typ *)
     eapply subtyp_typ; eauto.
-  - (* subtyp_sel2 *)
-    eapply subtyp_sel2; eauto.
+  - (* subtyp_sel2_c *)
+    simpl. case_if.
+    + eapply subtyp_sel2_s.
+    eapply subtyp_sel2_c; eauto.
     eapply H; eauto.
   - (* subtyp_sel1 *)
     eapply subtyp_sel1; eauto.
@@ -1337,12 +1335,12 @@ Proof.
   - (* subtyp_all *)
     simpl. apply_fresh subtyp_all as z; eauto.
     assert (z \notin L) as FrL by eauto.
-    assert (subst_fvar x y z = z) as A. {
+    assert (subst_fvar x (in_sto y) z = z) as A. {
       unfold subst_fvar. rewrite If_r. reflexivity. eauto.
     }
     rewrite <- A at 2. rewrite <- A at 3.
     rewrite <- subst_open_commute_typ. rewrite <- subst_open_commute_typ.
-    assert (subst_ctx x y G2 & z ~ subst_typ x y S2 = subst_ctx x y (G2 & z ~ S2)) as B. {
+    assert (subst_ctx x (in_sto y) G2 & z ~ subst_typ x (in_sto y) S2 = subst_ctx x (in_sto y) (G2 & z ~ S2)) as B. {
       unfold subst_ctx. rewrite map_concat. rewrite map_single. reflexivity.
     }
     rewrite <- concat_assoc. rewrite B.
@@ -1357,8 +1355,8 @@ Lemma subst_ty_trm: forall y S G x t T,
     ty_trm ty_general sub_general (G & x ~ S) t T -> 
     ok (G & x ~ S) ->
     x \notin fv_ctx_types G ->
-    ty_trm ty_general sub_general G (trm_var (avar_f y)) (subst_typ x y S) ->
-    ty_trm ty_general sub_general G (subst_trm x y t) (subst_typ x y T).
+    ty_trm ty_general sub_general G (trm_var (avar_f y)) (subst_typ x (in_sto y) S) ->
+    ty_trm ty_general sub_general G (subst_trm x (in_sto y) t) (subst_typ x (in_sto y) T).
 Proof.
   intros.
   apply (proj51 (subst_rules y S)) with (G1:=G) (G2:=empty) (x:=x) in H.
@@ -1376,8 +1374,8 @@ Lemma subst_ty_defs: forall y S G x ds T,
     ty_defs (G & x ~ S) ds T ->
     ok (G & x ~ S) ->
     x \notin fv_ctx_types G ->
-    ty_trm ty_general sub_general G (trm_var (avar_f y)) (subst_typ x y S) ->
-    ty_defs G (subst_defs x y ds) (subst_typ x y T).
+    ty_trm ty_general sub_general G (trm_var (avar_f y)) (subst_typ x (in_sto y) S) ->
+    ty_defs G (subst_defs x (in_sto y) ds) (subst_typ x (in_sto y) T).
 Proof.
   intros.
   apply (proj53 (subst_rules y S)) with (G1:=G) (G2:=empty) (x:=x) in H.
