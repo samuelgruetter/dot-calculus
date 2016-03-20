@@ -342,14 +342,14 @@ with ty_var_ctx: sto -> ctx -> var -> typ -> Prop :=
     subtyp s G T U ->
     ty_var_ctx s G t U.
 
-Inductive wf_sto: ctx -> sto -> Prop :=
-| wf_sto_empty: wf_sto empty empty
-| wf_sto_push: forall G s x T v,
-    wf_sto G s ->
-    x # G ->
+
+Inductive wf_sto: sto -> Prop :=
+| wf_sto_empty: wf_sto empty
+| wf_sto_push: forall s x T v,
+    wf_sto s ->
     x # s ->
-    ty_trm ty_precise sub_general G (trm_val v) T ->
-    wf_sto (G & x ~ T) (s & x ~ v).
+    ty_trm s empty (trm_val v) T ->
+    wf_sto (s & x ~ v).
 
 (* ###################################################################### *)
 (* ###################################################################### *)
@@ -374,14 +374,16 @@ with   ty_defs_mut   := Induction for ty_defs   Sort Prop.
 Combined Scheme ty_mutind from ty_trm_mut, ty_def_mut, ty_defs_mut.
 
 Scheme ts_ty_trm_mut := Induction for ty_trm    Sort Prop
-with   ts_subtyp     := Induction for subtyp    Sort Prop.
-Combined Scheme ts_mutind from ts_ty_trm_mut, ts_subtyp.
+with   ts_subtyp     := Induction for subtyp    Sort Prop
+with   ts_ty_var_ctx := Induction for ty_var_ctx Sort Prop.
+Combined Scheme ts_mutind from ts_ty_trm_mut, ts_subtyp, ts_ty_var_ctx.
 
 Scheme rules_trm_mut    := Induction for ty_trm    Sort Prop
 with   rules_def_mut    := Induction for ty_def    Sort Prop
 with   rules_defs_mut   := Induction for ty_defs   Sort Prop
-with   rules_subtyp     := Induction for subtyp    Sort Prop.
-Combined Scheme rules_mutind from rules_trm_mut, rules_def_mut, rules_defs_mut, rules_subtyp.
+with   rules_subtyp     := Induction for subtyp    Sort Prop
+with   rules_tyc        := Induction for ty_var_ctx Sort Prop.
+Combined Scheme rules_mutind from rules_trm_mut, rules_def_mut, rules_defs_mut, rules_subtyp, rules_tyc.
 
 (* ###################################################################### *)
 (** ** Tactics *)
@@ -423,7 +425,8 @@ Tactic Notation "apply_fresh" constr(T) "as" ident(x) :=
 
 Hint Constructors
   ty_trm ty_def ty_defs
-  subtyp.
+  subtyp
+  ty_var_ctx.
 
 Hint Constructors wf_sto.
 
