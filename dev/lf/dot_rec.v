@@ -520,6 +520,20 @@ Proof.
   rewrite <- EqG. assumption.
 Qed.
 
+Lemma weaken_ty_trm0:  forall s G t T,
+    ty_trm s empty t T ->
+    ok G ->                     
+    ty_trm s G t T.
+Proof.
+  intros.
+    assert (G = empty & G & empty) as EqG. {
+    rewrite concat_empty_r. rewrite concat_empty_l. reflexivity.
+  }
+  rewrite EqG. apply* weaken_rules.
+  rewrite concat_empty_r. reflexivity.
+  rewrite <- EqG. assumption.
+Qed.
+
 Lemma weaken_subtyp: forall s G1 G2 S U,
   subtyp s G1 S U ->
   ok (G1 & G2) ->
@@ -1170,6 +1184,13 @@ Inductive  possible_types: sto -> var -> typ -> Prop :=
   possible_types s x (typ_bnd S')
 .
 
+Lemma possible_types_realizability: forall s x T,
+  possible_types s x T ->
+  ty_trm s empty (trm_var (avar_s x)) T.                                    
+Proof.
+  admit.
+Qed.
+
 (* ###################################################################### *)
 (** ** The substitution principle *)
 
@@ -1178,31 +1199,31 @@ Lemma subst_rules: forall y S,
     G = G1 & x ~ S & G2 ->
     ok (G1 & x ~ S & G2) ->
     x \notin fv_sto_vals s -> x \notin fv_ctx_types G1 ->
-    ty_trm s (G1 & (subst_ctx x (in_sto y) G2)) (trm_var (avar_s y)) (subst_typ x (in_sto y) S) ->
+    possible_types s y (subst_typ x (in_sto y) S) ->
     ty_trm s (G1 & (subst_ctx x (in_sto y) G2)) (subst_trm x (in_sto y) t) (subst_typ x (in_sto y) T)) /\
   (forall s G d D, ty_def s G d D -> forall G1 G2 x,
     G = G1 & x ~ S & G2 ->
     ok (G1 & x ~ S & G2) ->
     x \notin fv_sto_vals s -> x \notin fv_ctx_types G1 ->
-    ty_trm s (G1 & (subst_ctx x (in_sto y) G2)) (trm_var (avar_s y)) (subst_typ x (in_sto y) S) ->
+    possible_types s y (subst_typ x (in_sto y) S) ->
     ty_def s (G1 & (subst_ctx x (in_sto y) G2)) (subst_def x (in_sto y) d) (subst_dec x (in_sto y) D)) /\
   (forall s G ds T, ty_defs s G ds T -> forall G1 G2 x,
     G = G1 & x ~ S & G2 ->
     ok (G1 & x ~ S & G2) ->
     x \notin fv_sto_vals s -> x \notin fv_ctx_types G1 ->
-    ty_trm s (G1 & (subst_ctx x (in_sto y) G2)) (trm_var (avar_s y)) (subst_typ x (in_sto y) S) ->
+    possible_types s y (subst_typ x (in_sto y) S) ->
     ty_defs s (G1 & (subst_ctx x (in_sto y) G2)) (subst_defs x (in_sto y) ds) (subst_typ x (in_sto y) T)) /\
   (forall s G T U, subtyp s G T U -> forall G1 G2 x,
     G = G1 & x ~ S & G2 ->
     ok (G1 & x ~ S & G2) ->
     x \notin fv_sto_vals s -> x \notin fv_ctx_types G1 ->
-    ty_trm s (G1 & (subst_ctx x (in_sto y) G2)) (trm_var (avar_s y)) (subst_typ x (in_sto y) S) ->
+    possible_types s y (subst_typ x (in_sto y) S) ->
     subtyp s (G1 & (subst_ctx x (in_sto y) G2)) (subst_typ x (in_sto y) T) (subst_typ x (in_sto y) U)) /\
   (forall s G z T, ty_var_ctx s G z T -> forall G1 G2 x,
     G = G1 & x ~ S & G2 ->
     ok (G1 & x ~ S & G2) ->
     x \notin fv_sto_vals s -> x \notin fv_ctx_types G1 ->
-    ty_trm s (G1 & (subst_ctx x (in_sto y) G2)) (trm_var (avar_s y)) (subst_typ x (in_sto y) S) ->
+    possible_types s y (subst_typ x (in_sto y) S) ->
     ty_var_ctx s (G1 & (subst_ctx x (in_sto y) G2)) z (subst_typ x (in_sto y) T)).
 Proof.
   intros y S. apply rules_mutind; intros; subst.
@@ -1215,7 +1236,9 @@ Proof.
     rewrite <- A. apply H; eauto.
   - (* ty_var_c *)
     simpl. case_if.
-    + apply binds_middle_eq_inv in b. subst. assumption. assumption.
+    + apply binds_middle_eq_inv in b. subst.
+      apply weaken_ty_trm0. apply possible_types_realizability. assumption.
+      unfold subst_ctx. eauto. eauto.
     + apply subst_fresh_ctx with (y:=in_sto y) in H2.
       apply binds_subst in b.
       apply ty_var_c. rewrite <- H2.
@@ -1237,8 +1260,6 @@ Proof.
     eapply H; eauto.
     rewrite concat_assoc. reflexivity.
     rewrite concat_assoc. apply ok_push. assumption. eauto.
-    rewrite <- B. rewrite concat_assoc. apply weaken_ty_trm. assumption.
-    apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
   - (* ty_all_elim *)
     simpl. rewrite subst_open_commute_typ.
     eapply ty_all_elim.
@@ -1261,8 +1282,6 @@ Proof.
     apply H; eauto.
     rewrite concat_assoc. reflexivity.
     rewrite concat_assoc. apply ok_push. assumption. eauto.
-    rewrite <- B. rewrite concat_assoc. apply weaken_ty_trm. assumption.
-    apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
   - (* ty_new_elim *)
     simpl. apply ty_new_elim.
     apply H; eauto.
@@ -1280,8 +1299,6 @@ Proof.
     apply H0 with (x0:=z); eauto.
     rewrite concat_assoc. reflexivity.
     rewrite concat_assoc. apply ok_push. assumption. eauto.
-    rewrite <- B. rewrite concat_assoc. apply weaken_ty_trm. assumption.
-    apply ok_push. apply ok_concat_map. eauto. unfold subst_ctx. eauto.
   - (* ty_rec_intro *)
     simpl. apply ty_rec_intro.
     rewrite <- subst_open_commute_typ.
@@ -1324,7 +1341,7 @@ Proof.
     eapply subtyp_typ; eauto.
   - (* subtyp_sel2_c *)
     simpl. case_if.
-    + eapply subtyp_sel2_s.
+    + inversion H4; subst.
     eapply subtyp_sel2_c; eauto.
     eapply H; eauto.
   - (* subtyp_sel1 *)
