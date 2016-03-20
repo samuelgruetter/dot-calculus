@@ -344,7 +344,7 @@ with ty_var_ctx: sto -> ctx -> var -> typ -> Prop :=
     ty_var_ctx s G x T
 | tyc_rec_elim : forall s G x T,
     ty_var_ctx s G x (typ_bnd T) ->
-    ty_var_ctx s G x (open_typ x T)
+    ty_var_ctx s G x (open_typ (in_ctx x) T)
 | tyc_sub : forall s G t T U,
     ty_var_ctx s G t T ->
     subtyp s G T U ->
