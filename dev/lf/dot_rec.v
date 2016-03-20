@@ -237,7 +237,7 @@ Inductive ty_trm : sto -> ctx -> trm -> typ -> Prop :=
 | ty_var_s : forall s G x T v,
    binds x v s ->
    ty_trm s G (trm_val v) T ->
-   ty_trm s G (trm_var (avar_c x)) T
+   ty_trm s G (trm_var (avar_s x)) T
 | ty_var_c : forall s G x T,
     binds x T G ->
     ty_trm s G (trm_var (avar_c x)) T
@@ -536,16 +536,11 @@ Qed.
 (* ###################################################################### *)
 (** ** Well-formed store *)
 
-Lemma wf_sto_to_ok_s: forall s G,
-  wf_sto G s -> ok s.
+Lemma wf_sto_ok: forall s,
+  wf_sto s -> ok s.
 Proof. intros. induction H; jauto. Qed.
 
-Lemma wf_sto_to_ok_G: forall s G,
-  wf_sto G s -> ok G.
-Proof. intros. induction H; jauto. Qed.
-
-Hint Resolve wf_sto_to_ok_s wf_sto_to_ok_G.
-
+(*
 Lemma ctx_binds_to_sto_binds_raw: forall s G x T,
   wf_sto G s ->
   binds x T G ->
@@ -573,23 +568,23 @@ Proof.
     - specialize (IHWf _ _ Bi). destruct IHWf as [G1 [G2 [T0' [Eq Ty]]]].
       subst. exists G1 (G2 & x ~ T) T0'. rewrite concat_assoc. auto.
 Qed.
+*)
 
-Lemma invert_wf_sto_concat: forall s G1 G2,
-  wf_sto (G1 & G2) s ->
-  exists s1 s2, s = s1 & s2 /\ wf_sto G1 s1.
+Lemma invert_wf_sto_concat: forall s1 s2,
+  wf_sto (s1 & s2) ->
+  wf_sto s1.
 Proof.
-  introv Wf. gen_eq G: (G1 & G2). gen G1 G2. induction Wf; introv Eq; subst.
-  - do 2 exists (@empty val). rewrite concat_empty_r.
-    apply empty_concat_inv in Eq. destruct Eq. subst. auto.
-  - destruct (env_case G2) as [Eq1 | [x' [T' [G2' Eq1]]]].
-    * subst G2. rewrite concat_empty_r in Eq. subst G1.
-      exists (s & x ~ v) (@empty val). rewrite concat_empty_r. auto.
-    * subst G2. rewrite concat_assoc in Eq. apply eq_push_inv in Eq.
-      destruct Eq as [? [? ?]]. subst x' T' G. specialize (IHWf G1 G2' eq_refl).
-      destruct IHWf as [s1 [s2 [Eq Wf']]]. subst.
-      exists s1 (s2 & x ~ v). rewrite concat_assoc. auto.
+  introv Wf. gen_eq s: (s1 & s2). gen s1 s2. induction Wf; introv Eq; subst.
+  - apply empty_concat_inv in Eq. destruct Eq. subst. auto.
+  - destruct (env_case s2) as [Eq1 | [x' [T' [s2' Eq1]]]].
+    * subst s2. rewrite concat_empty_r in Eq. subst s1.
+      eapply wf_sto_push; eauto.
+    * subst s2. rewrite concat_assoc in Eq. apply eq_push_inv in Eq.
+      destruct Eq as [? [? ?]]. subst x' T' s. specialize (IHWf s1 s2' eq_refl).
+      assumption.
 Qed.
 
+(*
 Lemma sto_unbound_to_ctx_unbound: forall s G x,
   wf_sto G s ->
   x # s ->
@@ -615,12 +610,13 @@ Proof.
     - subst. false (fresh_push_eq_inv Ub).
     - auto.
 Qed.
+*)
 
-Lemma typing_implies_bound: forall m1 m2 G x T,
-  ty_trm m1 m2 G (trm_var (avar_f x)) T ->
+Lemma typing_implies_bound_c: forall s G x T,
+  ty_trm s G (trm_var (avar_c x)) T ->
   exists S, binds x S G.
 Proof.
-  intros. remember (trm_var (avar_f x)) as t.
+  intros. remember (trm_var (avar_c x)) as t.
   induction H;
     try solve [inversion Heqt];
     try solve [inversion Heqt; eapply IHty_trm; eauto];
@@ -628,8 +624,20 @@ Proof.
   - inversion Heqt. subst. exists T. assumption.
 Qed.
 
-Lemma typing_bvar_implies_false: forall m1 m2 G a T,
-  ty_trm m1 m2 G (trm_var (avar_b a)) T ->
+Lemma typing_implies_bound_s: forall s G x T,
+  ty_trm s G (trm_var (avar_s x)) T ->
+  exists v, binds x v s.
+Proof.
+  intros. remember (trm_var (avar_s x)) as t.
+  induction H;
+    try solve [inversion Heqt];
+    try solve [inversion Heqt; eapply IHty_trm; eauto];
+    try solve [inversion Heqt; eapply IHty_trm1; eauto].
+  - inversion Heqt. subst. exists v. eauto.
+Qed.
+
+Lemma typing_bvar_implies_false: forall s G a T,
+  ty_trm s G (trm_var (avar_b a)) T ->
   False.
 Proof.
   intros. remember (trm_var (avar_b a)) as t. induction H; try solve [inversion Heqt].
@@ -638,7 +646,7 @@ Qed.
 
 (* ###################################################################### *)
 (** ** Extra Rec *)
-
+(*
 Lemma extra_bnd_rules:
   (forall m1 m2 G t T, ty_trm m1 m2 G t T -> forall G1 G2 x S G',
     G = G1 & (x ~ open_typ x S) & G2 ->
@@ -701,6 +709,7 @@ Proof.
     rewrite concat_assoc. reflexivity.
     rewrite concat_assoc. reflexivity.
 Qed.
+*)
 
 (* ###################################################################### *)
 (** ** Substitution *)
