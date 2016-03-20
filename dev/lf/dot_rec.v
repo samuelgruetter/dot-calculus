@@ -330,6 +330,7 @@ with subtyp : sto -> ctx -> typ -> typ -> Prop :=
        subtyp s (G & x ~ S2) (open_typ (in_ctx x) T1) (open_typ (in_ctx x) T2)) ->
     subtyp s G (typ_all S1 T1) (typ_all S2 T2)
 
+(* TODO: when adding rec-<:-rec subtyping, will need to restrict G in _intro and _sub *)
 with ty_var_ctx: sto -> ctx -> var -> typ -> Prop :=
 | tyc_var : forall s G x T,
     binds x T G ->
@@ -341,7 +342,6 @@ with ty_var_ctx: sto -> ctx -> var -> typ -> Prop :=
     ty_var_ctx s G t T ->
     subtyp s G T U ->
     ty_var_ctx s G t U.
-
 
 Inductive wf_sto: sto -> Prop :=
 | wf_sto_empty: wf_sto empty
