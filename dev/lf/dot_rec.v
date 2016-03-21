@@ -235,9 +235,8 @@ Inductive red : trm -> sto -> trm -> sto -> Prop :=
 (** ** Typing *)
 
 Inductive ty_trm : sto -> ctx -> trm -> typ -> Prop :=
-| ty_var_s : forall s G x T v,
-   binds x v s ->
-   ty_trm s G (trm_val v) T ->
+| ty_var_s : forall s G x T,
+   possible_types s x T ->
    ty_trm s G (trm_var (avar_s x)) T
 | ty_var_c : forall s G x T,
     binds x T G ->
@@ -349,7 +348,45 @@ with ty_var_ctx: sto -> ctx -> var -> typ -> Prop :=
 | tyc_sub : forall s G t T U,
     ty_var_ctx s G t T ->
     subtyp s G T U ->
-    ty_var_ctx s G t U.
+    ty_var_ctx s G t U
+
+with  possible_types: sto -> var -> typ -> Prop :=
+| pt_top : forall s x v,
+  binds x v s ->
+  possible_types s x typ_top
+| pt_rcd_trm : forall s x T ds a t T',
+  binds x (val_new T ds) s ->
+  defs_has (open_defs (in_sto x) ds) (def_trm a t) ->
+  ty_trm s empty t T' ->
+  possible_types s x (typ_rcd (dec_trm a T'))
+| pt_rcd_typ : forall s x T ds A T' S U,
+  binds x (val_new T ds) s ->
+  defs_has (open_defs (in_sto x) ds) (def_typ A T') ->
+  subtyp s empty S T' ->
+  subtyp s empty T' U ->
+  possible_types s x (typ_rcd (dec_typ A S U))
+| pt_lambda : forall L s x S t T S' T',
+  binds x (val_lambda S t) s ->
+  (forall y, y \notin L ->
+   ty_trm s (y ~ S) (open_trm (in_sto y) t) (open_typ (in_sto y) T)) ->
+  subtyp s empty S' S ->
+  (forall y, y \notin L ->
+   subtyp s (y ~ S') (open_typ (in_sto y) T) (open_typ (in_sto y) T')) ->
+  possible_types s x (typ_all S' T')
+| pt_and : forall s x S1 S2,
+  possible_types s x S1 ->
+  possible_types s x S2 ->
+  possible_types s x (typ_and S1 S2)
+| pt_sel : forall s x y A S,
+  possible_types s x S ->
+  ty_trm s empty (trm_var y) (typ_rcd (dec_typ A S S)) ->
+  possible_types s x (typ_sel y A)
+| pt_bnd : forall s x S S',
+  possible_types s x S ->
+  S = open_typ (in_sto x) S' ->
+  possible_types s x (typ_bnd S')
+.
+
 
 Inductive wf_sto: sto -> Prop :=
 | wf_sto_empty: wf_sto empty
@@ -1143,52 +1180,6 @@ Proof.
   - simpl. reflexivity.
   - unfold get_def. simpl. rewrite <- subst_label_of_def.
     simpl in Eq. case_if. apply (IHds Eq).
-Qed.
-
-
-(* ###################################################################### *)
-Inductive  possible_types: sto -> var -> typ -> Prop :=
-| pt_top : forall s x v,
-  binds x v s ->
-  possible_types s x typ_top
-| pt_rcd_trm : forall s x T ds a t T',
-  binds x (val_new T ds) s ->
-  defs_has (open_defs (in_sto x) ds) (def_trm a t) ->
-  ty_trm s empty t T' ->
-  possible_types s x (typ_rcd (dec_trm a T'))
-| pt_rcd_typ : forall s x T ds A T' S U,
-  binds x (val_new T ds) s ->
-  defs_has (open_defs (in_sto x) ds) (def_typ A T') ->
-  subtyp s empty S T' ->
-  subtyp s empty T' U ->
-  possible_types s x (typ_rcd (dec_typ A S U))
-| pt_lambda : forall L s x S t T S' T',
-  binds x (val_lambda S t) s ->
-  (forall y, y \notin L ->
-   ty_trm s (y ~ S) (open_trm (in_sto y) t) (open_typ (in_sto y) T)) ->
-  subtyp s empty S' S ->
-  (forall y, y \notin L ->
-   subtyp s (y ~ S') (open_typ (in_sto y) T) (open_typ (in_sto y) T')) ->
-  possible_types s x (typ_all S' T')
-| pt_and : forall s x S1 S2,
-  possible_types s x S1 ->
-  possible_types s x S2 ->
-  possible_types s x (typ_and S1 S2)
-| pt_sel : forall s x y A S,
-  possible_types s x S ->
-  ty_trm s empty (trm_var y) (typ_rcd (dec_typ A S S)) ->
-  possible_types s x (typ_sel y A)
-| pt_bnd : forall s x S S',
-  possible_types s x S ->
-  S = open_typ (in_sto x) S' ->
-  possible_types s x (typ_bnd S')
-.
-
-Lemma possible_types_realizability: forall s x T,
-  possible_types s x T ->
-  ty_trm s empty (trm_var (avar_s x)) T.                                    
-Proof.
-  admit.
 Qed.
 
 (* ###################################################################### *)
