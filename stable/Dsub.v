@@ -455,32 +455,30 @@ Qed.
 
 (** Substitutions preserve local closure. *)
 
-Lemma subst_tt_type : forall T Z P,
-  type T -> type P -> type (subst_tt Z P T).
+Lemma subst_lc :
+  (forall T, type T -> forall z u, term u -> type (subst_t z u T)) /\
+  (forall e, term e -> forall z u, term u -> term (subst_e z u e)).
 Proof.
-  induction 1; intros; simpl; auto.
+  apply lc_mutind; intros; simpl; auto.
   case_var*.
-  apply_fresh* type_all as X. rewrite* subst_tt_open_tt_var.
-Qed.
-
-Lemma subst_te_term : forall e Z P,
-  term e -> type P -> term (subst_te Z P e).
-Proof.
-  lets: subst_tt_type. induction 1; intros; simpl; auto.
-  apply_fresh* term_abs as x. rewrite* subst_te_open_ee_var.
-  apply_fresh* term_tabs as x. rewrite* subst_te_open_te_var.
-Qed.
-
-Lemma subst_ee_term : forall e1 Z e2,
-  term e1 -> term e2 -> term (subst_ee Z e2 e1).
-Proof.
-  induction 1; intros; simpl; auto.
+  apply_fresh* type_all as X. rewrite* subst_t_open_t_var.
   case_var*.
-  apply_fresh* term_abs as y. rewrite* subst_ee_open_ee_var.
-  apply_fresh* term_tabs as Y. rewrite* subst_ee_open_te_var.
+  apply_fresh* term_abs as y. rewrite* subst_e_open_e_var.
 Qed.
 
-Hint Resolve subst_tt_type subst_te_term subst_ee_term.
+Lemma subst_t_type : forall T z u,
+  type T -> term u -> type (subst_t z u T).
+Proof.
+  intros. apply* (proj1 subst_lc).
+Qed.
+
+Lemma subst_e_term : forall e1 z e2,
+  term e1 -> term e2 -> term (subst_e z e2 e1).
+Proof.
+  intros. apply* (proj2 subst_lc).
+Qed.
+
+Hint Resolve subst_t_type subst_e_term.
 
 
 (* ********************************************************************** *)
