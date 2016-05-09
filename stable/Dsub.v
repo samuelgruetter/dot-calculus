@@ -488,8 +488,8 @@ Lemma wft_weaken : forall G T E F,
 Proof.
   intros. gen_eq K: (E & G). gen E F G.
   induction H; intros; subst; eauto.
-  (* case: var *)
-  apply (@wft_var U). apply* binds_weaken.
+  (* case: sel *)
+  apply (@wft_sel U). apply* binds_weaken.
   (* case: all *)
   apply_fresh* wft_all as Y. apply_ih_bind* H1.
 Qed.
