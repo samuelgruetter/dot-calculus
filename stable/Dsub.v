@@ -41,16 +41,14 @@ Fixpoint open_t_rec (k : nat) (f : trm) (T : typ) {struct T} : typ :=
   | typ_top         => typ_top
   | typ_bsel j      => If k = j then (typ_tsel f) else (typ_bsel j)
   | typ_fsel x      => typ_fsel x
-  | typ_tsel t      => typ_tsel t
+  | typ_tsel t      => typ_tsel (open_e_rec k f t)
   | typ_mem b T     => typ_mem b (open_t_rec k f T)
   | typ_all T1 T2   => typ_all (open_t_rec k f T1) (open_t_rec (S k) f T2)
-  end.
-
-Definition open_t T f := open_t_rec 0 f T.
+  end
 
 (** Opening up a term binder occuring in a term *)
 
-Fixpoint open_e_rec (k : nat) (f : trm) (e : trm) {struct e} : trm :=
+with open_e_rec (k : nat) (f : trm) (e : trm) {struct e} : trm :=
   match e with
   | trm_bvar i    => If k = i then f else (trm_bvar i)
   | trm_fvar x    => trm_fvar x
@@ -59,6 +57,7 @@ Fixpoint open_e_rec (k : nat) (f : trm) (e : trm) {struct e} : trm :=
   | trm_app e1 e2 => trm_app (open_e_rec k f e1) (open_e_rec k f e2)
   end.
 
+Definition open_t T f := open_t_rec 0 f T.
 Definition open_e t u := open_e_rec 0 u t.
 
 (** Notation for opening up binders with variables *)
@@ -243,82 +242,50 @@ Definition progress := forall e T,
 (* ********************************************************************** *)
 (** * Additional Definitions Used in the Proofs *)
 
-(** Computing free type variables in a type *)
+(** Computing free variables in a type *)
 
-Fixpoint fv_tt (T : typ) {struct T} : vars :=
+Fixpoint fv_t (T : typ) {struct T} : vars :=
   match T with
   | typ_top         => \{}
-  | typ_bvar J      => \{}
-  | typ_fvar X      => \{X}
-  | typ_arrow T1 T2 => (fv_tt T1) \u (fv_tt T2)
-  | typ_all T1 T2   => (fv_tt T1) \u (fv_tt T2)
-  end.
+  | typ_bsel j      => \{}
+  | typ_fsel x      => \{x}
+  | typ_tsel t      => fv_e t
+  | typ_mem b T1   => (fv_t T1)
+  | typ_all T1 T2   => (fv_t T1) \u (fv_t T2)
+  end
 
-(** Computing free type variables in a term *)
+(** Computing free variables in a term *)
 
-Fixpoint fv_te (e : trm) {struct e} : vars :=
-  match e with
-  | trm_bvar i    => \{}
-  | trm_fvar x    => \{}
-  | trm_abs V e1  => (fv_tt V) \u (fv_te e1)
-  | trm_app e1 e2 => (fv_te e1) \u (fv_te e2)
-  | trm_tabs V e1 => (fv_tt V) \u (fv_te e1)
-  | trm_tapp e1 V => (fv_tt V) \u (fv_te e1)
-  end.
-
-(** Computing free term variables in a type *)
-
-Fixpoint fv_ee (e : trm) {struct e} : vars :=
+with fv_e (e : trm) {struct e} : vars :=
   match e with
   | trm_bvar i    => \{}
   | trm_fvar x    => \{x}
-  | trm_abs V e1  => (fv_ee e1)
-  | trm_app e1 e2 => (fv_ee e1) \u (fv_ee e2)
-  | trm_tabs V e1 => (fv_ee e1)
-  | trm_tapp e1 V => (fv_ee e1)
+  | trm_abs V e1  => (fv_t V) \u (fv_e e1)
+  | trm_mem T     => fv_t T
+  | trm_app e1 e2 => (fv_e e1) \u (fv_e e2)
   end.
 
 (** Substitution for free type variables in types. *)
 
-Fixpoint subst_tt (Z : var) (U : typ) (T : typ) {struct T} : typ :=
+Fixpoint subst_t (z : var) (u : trm) (T : typ) {struct T} : typ :=
   match T with
   | typ_top         => typ_top
-  | typ_bvar J      => typ_bvar J
-  | typ_fvar X      => If X = Z then U else (typ_fvar X)
-  | typ_arrow T1 T2 => typ_arrow (subst_tt Z U T1) (subst_tt Z U T2)
-  | typ_all T1 T2   => typ_all (subst_tt Z U T1) (subst_tt Z U T2)
-  end.
-
-(** Substitution for free type variables in terms. *)
-
-Fixpoint subst_te (Z : var) (U : typ) (e : trm) {struct e} : trm :=
-  match e with
-  | trm_bvar i    => trm_bvar i
-  | trm_fvar x    => trm_fvar x
-  | trm_abs V e1  => trm_abs  (subst_tt Z U V)  (subst_te Z U e1)
-  | trm_app e1 e2 => trm_app  (subst_te Z U e1) (subst_te Z U e2)
-  | trm_tabs V e1 => trm_tabs (subst_tt Z U V)  (subst_te Z U e1)
-  | trm_tapp e1 V => trm_tapp (subst_te Z U e1) (subst_tt Z U V)
-  end.
+  | typ_bsel j      => typ_bsel j
+  | typ_fsel x      => If x = z then (typ_tsel u) else (typ_fsel x)
+  | typ_tsel t      => typ_tsel (subst_e z u t)
+  | typ_mem b T1    => typ_mem b (subst_t z u T1)
+  | typ_all T1 T2   => typ_all (subst_t z u T1) (subst_t z u T2)
+  end
 
 (** Substitution for free term variables in terms. *)
 
-Fixpoint subst_ee (z : var) (u : trm) (e : trm) {struct e} : trm :=
+with subst_e (z : var) (u : trm) (e : trm) {struct e} : trm :=
   match e with
   | trm_bvar i    => trm_bvar i
   | trm_fvar x    => If x = z then u else (trm_fvar x)
-  | trm_abs V e1  => trm_abs V (subst_ee z u e1)
-  | trm_app e1 e2 => trm_app (subst_ee z u e1) (subst_ee z u e2)
-  | trm_tabs V e1 => trm_tabs V (subst_ee z u e1)
-  | trm_tapp e1 V => trm_tapp (subst_ee z u e1) V
-  end.
-
-(** Substitution for free type variables in environment. *)
-
-Definition subst_tb (Z : var) (P : typ) (b : bind) : bind :=
-  match b with
-  | bind_sub T => bind_sub (subst_tt Z P T)
-  | bind_typ T => bind_typ (subst_tt Z P T)
+  | trm_abs V e1  => trm_abs (subst_t z u V) (subst_e z u e1)
+  | trm_mem T1    => trm_mem (subst_t z u T1)
+  | trm_app e1 e2 => trm_app (subst_e z u e1) (subst_e z u e2)
   end.
 
 (* ********************************************************************** *)
@@ -329,19 +296,18 @@ Definition subst_tb (Z : var) (P : typ) (b : bind) : bind :=
 Hint Constructors type term wft ok okt value red.
 
 Hint Resolve
-  sub_top sub_refl_tvar sub_arrow
-  typing_var typing_app typing_tapp typing_sub.
+  sub_top sub_refl_tvar
+  typing_var typing_app typing_sub.
 
 (** Gathering free names already used in the proofs *)
 
 Ltac gather_vars :=
   let A := gather_vars_with (fun x : vars => x) in
   let B := gather_vars_with (fun x : var => \{x}) in
-  let C := gather_vars_with (fun x : trm => fv_te x) in
-  let D := gather_vars_with (fun x : trm => fv_ee x) in
-  let E := gather_vars_with (fun x : typ => fv_tt x) in
-  let F := gather_vars_with (fun x : env => dom x) in
-  constr:(A \u B \u C \u D \u E \u F).
+  let C := gather_vars_with (fun x : trm => fv_t x) in
+  let D := gather_vars_with (fun x : trm => fv_e x) in
+  let E := gather_vars_with (fun x : env => dom x) in
+  constr:(A \u B \u C \u D \u E).
 
 (** "pick_fresh x" tactic create a fresh variable with name x *)
 
@@ -376,16 +342,6 @@ Tactic Notation "apply_empty" constr(F) :=
 
 Tactic Notation "apply_empty" "*" constr(F) :=
   apply_empty F; auto*.
-
-(** Tactic to undo when Coq does too much simplification *)
-
-Ltac unsimpl_map_bind :=
-  match goal with |- context [ ?B (subst_tt ?Z ?P ?U) ] =>
-    unsimpl ((subst_tb Z P) (B U)) end.
-
-Tactic Notation "unsimpl_map_bind" "*" :=
-  unsimpl_map_bind; auto*.
-
 
 (* ********************************************************************** *)
 (** * Properties of Substitutions *)
