@@ -1,3 +1,10 @@
+(*
+ DSub (D<:)
+ T ::= Top | x.Type | { Type = T } | { Type <: T } | (z: T) -> T^z
+ t ::= x | { Type = T } | lambda x:T.t | t t
+*)
+
+(* based on *)
 (***************************************************************************
 * Preservation and Progress for System-F with Subtyping - Definitions      *
 * Brian Aydemir & Arthur Charguéraud, March 2007                           *
@@ -6,7 +13,6 @@
 Set Implicit Arguments.
 Require Import LibLN.
 Implicit Types x : var.
-Implicit Types X : var.
 
 (* ********************************************************************** *)
 (** * Description of the Language *)
@@ -15,82 +21,67 @@ Implicit Types X : var.
 
 Inductive typ : Set :=
   | typ_top   : typ
-  | typ_bvar  : nat -> typ
-  | typ_fvar  : var -> typ
-  | typ_arrow : typ -> typ -> typ
-  | typ_all   : typ -> typ -> typ.
+  | typ_bsel  : nat -> typ
+  | typ_fsel  : var -> typ
+  | typ_tsel  : trm -> typ
+  | typ_mem   : bool -> typ -> typ
+  | typ_all   : typ -> typ -> typ
 
 (** Representation of pre-terms *)
 
-Inductive trm : Set :=
+with trm : Set :=
   | trm_bvar : nat -> trm
   | trm_fvar : var -> trm
   | trm_abs  : typ -> trm -> trm
-  | trm_app  : trm -> trm -> trm
-  | trm_tabs : typ -> trm -> trm
-  | trm_tapp : trm -> typ -> trm.
+  | trm_mem  : typ -> trm
+  | trm_app  : trm -> trm -> trm.
 
-(** Opening up a type binder occuring in a type *)
-
-Fixpoint open_tt_rec (K : nat) (U : typ) (T : typ) {struct T} : typ :=
+Fixpoint open_t_rec (k : nat) (f : trm) (T : typ) {struct T} : typ :=
   match T with
   | typ_top         => typ_top
-  | typ_bvar J      => If K = J then U else (typ_bvar J)
-  | typ_fvar X      => typ_fvar X
-  | typ_arrow T1 T2 => typ_arrow (open_tt_rec K U T1) (open_tt_rec K U T2)
-  | typ_all T1 T2   => typ_all (open_tt_rec K U T1) (open_tt_rec (S K) U T2)
+  | typ_bsel j      => If k = j then (typ_tsel f) else (typ_bsel j)
+  | typ_fsel x      => typ_fsel x
+  | typ_tsel t      => typ_tsel t
+  | typ_mem b T     => typ_mem b (open_t_rec k f T)
+  | typ_all T1 T2   => typ_all (open_t_rec k f T1) (open_t_rec (S k) f T2)
   end.
 
-Definition open_tt T U := open_tt_rec 0 U T.
-
-(** Opening up a type binder occuring in a term *)
-
-Fixpoint open_te_rec (K : nat) (U : typ) (e : trm) {struct e} : trm :=
-  match e with
-  | trm_bvar i    => trm_bvar i
-  | trm_fvar x    => trm_fvar x
-  | trm_abs V e1  => trm_abs  (open_tt_rec K U V)  (open_te_rec K U e1)
-  | trm_app e1 e2 => trm_app  (open_te_rec K U e1) (open_te_rec K U e2)
-  | trm_tabs V e1 => trm_tabs (open_tt_rec K U V)  (open_te_rec (S K) U e1)
-  | trm_tapp e1 V => trm_tapp (open_te_rec K U e1) (open_tt_rec K U V)
-  end.
-
-Definition open_te t U := open_te_rec 0 U t.
+Definition open_t T f := open_t_rec 0 f T.
 
 (** Opening up a term binder occuring in a term *)
 
-Fixpoint open_ee_rec (k : nat) (f : trm) (e : trm) {struct e} : trm :=
+Fixpoint open_e_rec (k : nat) (f : trm) (e : trm) {struct e} : trm :=
   match e with
   | trm_bvar i    => If k = i then f else (trm_bvar i)
   | trm_fvar x    => trm_fvar x
-  | trm_abs V e1  => trm_abs V (open_ee_rec (S k) f e1)
-  | trm_app e1 e2 => trm_app (open_ee_rec k f e1) (open_ee_rec k f e2)
-  | trm_tabs V e1 => trm_tabs V (open_ee_rec k f e1)
-  | trm_tapp e1 V => trm_tapp (open_ee_rec k f e1) V
+  | trm_abs V e1  => trm_abs (open_t_rec k f V) (open_e_rec (S k) f e1)
+  | trm_mem T     => trm_mem (open_t_rec k f T)
+  | trm_app e1 e2 => trm_app (open_e_rec k f e1) (open_e_rec k f e2)
   end.
 
-Definition open_ee t u := open_ee_rec 0 u t.
+Definition open_e t u := open_e_rec 0 u t.
 
-(** Notation for opening up binders with type or term variables *)
+(** Notation for opening up binders with variables *)
 
-Notation "T 'open_tt_var' X" := (open_tt T (typ_fvar X)) (at level 67).
-Notation "t 'open_te_var' X" := (open_te t (typ_fvar X)) (at level 67).
-Notation "t 'open_ee_var' x" := (open_ee t (trm_fvar x)) (at level 67).
+Notation "t 'open_t_var' x" := (open_t t (trm_fvar x)) (at level 67).
+Notation "t 'open_e_var' x" := (open_e t (trm_fvar x)) (at level 67).
 
 (** Types as locally closed pre-types *)
 
 Inductive type : typ -> Prop :=
   | type_top :
       type typ_top
-  | type_var : forall X,
-      type (typ_fvar X)
-  | type_arrow : forall T1 T2,
+  | type_sel : forall X,
+      type (typ_fsel X)
+  | type_selc : forall T1,
       type T1 ->
-      type T2 ->
-      type (typ_arrow T1 T2)
+      type (typ_tsel (trm_mem T1))
+  | type_mem  : forall b T1,
+      type T1 ->
+      type (typ_mem b T1)
   | type_all : forall L T1 T2,
       type T1 ->
-      (forall X, X \notin L -> type (T2 open_tt_var X)) ->
+      (forall x, x \notin L -> type (T2 open_t_var x)) ->
       type (typ_all T1 T2).
 
 (** Terms as locally closed pre-terms *)
@@ -100,37 +91,19 @@ Inductive term : trm -> Prop :=
       term (trm_fvar x)
   | term_abs : forall L V e1,
       type V ->
-      (forall x, x \notin L -> term (e1 open_ee_var x)) ->
+      (forall x, x \notin L -> term (e1 open_e_var x)) ->
       term (trm_abs V e1)
+  | term_mem : forall T1,
+      type T1 ->
+      term (trm_mem T1)
   | term_app : forall e1 e2,
       term e1 ->
       term e2 ->
-      term (trm_app e1 e2)
-  | term_tabs : forall L V e1,
-      type V ->
-      (forall X, X \notin L -> term (e1 open_te_var X)) ->
-      term (trm_tabs V e1)
-  | term_tapp : forall e1 V,
-      term e1 ->
-      type V ->
-      term (trm_tapp e1 V).
-
-(** Binding are either mapping type or term variables.
- [X ~<: T] is a subtyping asumption and [x ~: T] is
- a typing assumption *)
-
-Inductive bind : Set :=
-  | bind_sub : typ -> bind
-  | bind_typ : typ -> bind.
-
-Notation "X ~<: T" := (X ~ bind_sub T)
-  (at level 23, left associativity) : env_scope.
-Notation "x ~: T" := (x ~ bind_typ T)
-  (at level 23, left associativity) : env_scope.
+      term (trm_app e1 e2).
 
 (** Environment is an associative list of bindings. *)
 
-Definition env := LibEnv.env bind.
+Definition env := LibEnv.env typ.
 
 (** Well-formedness of a pre-type T in an environment E:
   all the type variables of T must be bound via a
@@ -140,17 +113,19 @@ Definition env := LibEnv.env bind.
 Inductive wft : env -> typ -> Prop :=
   | wft_top : forall E,
       wft E typ_top
-  | wft_var : forall U E X,
-      binds X (bind_sub U) E ->
-      wft E (typ_fvar X)
-  | wft_arrow : forall E T1 T2,
+  | wft_sel : forall U E x,
+      binds x U E ->
+      wft E (typ_fsel x)
+  | wft_selc : forall E T1,
       wft E T1 ->
-      wft E T2 ->
-      wft E (typ_arrow T1 T2)
+      wft E (typ_tsel (trm_mem T1))
+  | wft_mem : forall E b T1,
+      wft E T1 ->
+      wft E (typ_mem b T1)
   | wft_all : forall L E T1 T2,
       wft E T1 ->
-      (forall X, X \notin L ->
-        wft (E & X ~<: T1) (T2 open_tt_var X)) ->
+      (forall x, x \notin L ->
+        wft (E & x ~ T1) (T2 open_t_var x)) ->
       wft E (typ_all T1 T2).
 
 (** A environment E is well-formed if it contains no duplicate bindings
@@ -160,10 +135,8 @@ Inductive wft : env -> typ -> Prop :=
 Inductive okt : env -> Prop :=
   | okt_empty :
       okt empty
-  | okt_sub : forall E X T,
-      okt E -> wft E T -> X # E -> okt (E & X ~<: T)
   | okt_typ : forall E x T,
-      okt E -> wft E T -> x # E -> okt (E & x ~: T).
+      okt E -> wft E T -> x # E -> okt (E & x ~ T).
 
 (** Subtyping relation *)
 
@@ -172,22 +145,34 @@ Inductive sub : env -> typ -> typ -> Prop :=
       okt E ->
       wft E S ->
       sub E S typ_top
-  | sub_refl_tvar : forall E X,
+  | sub_refl_tvar : forall E x,
       okt E ->
-      wft E (typ_fvar X) ->
-      sub E (typ_fvar X) (typ_fvar X)
-  | sub_trans_tvar : forall U E T X,
-      binds X (bind_sub U) E ->
+      wft E (typ_fsel x) ->
+      sub E (typ_fsel x) (typ_fsel x)
+  | sub_sel1 : forall S E T x,
+      binds x (typ_mem true S) E ->
+      sub E T S ->
+      sub E T (typ_fsel x)
+  | sub_sel2 : forall b U E T x,
+      binds x (typ_mem b U) E ->
       sub E U T ->
-      sub E (typ_fvar X) T
-  | sub_arrow : forall E S1 S2 T1 T2,
-      sub E T1 S1 ->
-      sub E S2 T2 ->
-      sub E (typ_arrow S1 S2) (typ_arrow T1 T2)
+      sub E (typ_fsel x) T
+  | sub_selc1 : forall S E T,
+      sub E T S ->
+      sub E T (typ_tsel (trm_mem S))
+  | sub_selc2 : forall U E T,
+      sub E U T ->
+      sub E (typ_tsel (trm_mem U)) T
+  | sub_mem_false : forall E b1 T1 T2,
+      sub E T1 T2 ->
+      sub E (typ_mem b1 T1) (typ_mem false T2)
+  | sub_mem_true : forall E T1 T2,
+      sub E T1 T2 -> sub E T2 T1 ->
+      sub E (typ_mem true T1) (typ_mem true T2)
   | sub_all : forall L E S1 S2 T1 T2,
       sub E T1 S1 ->
-      (forall X, X \notin L ->
-          sub (E & X ~<: T1) (S2 open_tt_var X) (T2 open_tt_var X)) ->
+      (forall x, x \notin L ->
+          sub (E & x ~ T1) (S2 open_t_var x) (T2 open_t_var x)) ->
       sub E (typ_all S1 S2) (typ_all T1 T2).
 
 (** Typing relation *)
@@ -195,24 +180,21 @@ Inductive sub : env -> typ -> typ -> Prop :=
 Inductive typing : env -> trm -> typ -> Prop :=
   | typing_var : forall E x T,
       okt E ->
-      binds x (bind_typ T) E ->
+      binds x T E ->
       typing E (trm_fvar x) T
   | typing_abs : forall L E V e1 T1,
       (forall x, x \notin L ->
-        typing (E & x ~: V) (e1 open_ee_var x) T1) ->
-      typing E (trm_abs V e1) (typ_arrow V T1)
-  | typing_app : forall T1 E e1 e2 T2,
-      typing E e1 (typ_arrow T1 T2) ->
-      typing E e2 T1 ->
-      typing E (trm_app e1 e2) T2
-  | typing_tabs : forall L E V e1 T1,
-      (forall X, X \notin L ->
-        typing (E & X ~<: V) (e1 open_te_var X) (T1 open_tt_var X)) ->
-      typing E (trm_tabs V e1) (typ_all V T1)
-  | typing_tapp : forall T1 E e1 T T2,
+        typing (E & x ~ V) (e1 open_e_var x) (T1 open_t_var x)) ->
+      typing E (trm_abs V e1) (typ_all V T1)
+  | typing_mem : forall E T1,
+      wft E T1 ->
+      typing E (trm_mem T1) (typ_mem true T1)
+  | typing_app : forall T1 E e1 e2 T2 T2',
       typing E e1 (typ_all T1 T2) ->
-      sub E T T1 ->
-      typing E (trm_tapp e1 T) (open_tt T2 T)
+      typing E e2 T1 ->
+      T2' = open_t T2 e2 ->
+      wft E T2 ->
+      typing E (trm_app e1 e2) T2'
   | typing_sub : forall S E e T,
       typing E e S ->
       sub E S T ->
@@ -223,8 +205,8 @@ Inductive typing : env -> trm -> typ -> Prop :=
 Inductive value : trm -> Prop :=
   | value_abs  : forall V e1, term (trm_abs V e1) ->
                  value (trm_abs V e1)
-  | value_tabs : forall V e1, term (trm_tabs V e1) ->
-                 value (trm_tabs V e1).
+  | value_mem : forall V, term (trm_mem V) ->
+                 value (trm_mem V).
 
 (** One-step reduction *)
 
@@ -237,18 +219,10 @@ Inductive red : trm -> trm -> Prop :=
       value e1 ->
       red e2 e2' ->
       red (trm_app e1 e2) (trm_app e1 e2')
-  | red_tapp : forall e1 e1' V,
-      type V ->
-      red e1 e1' ->
-      red (trm_tapp e1 V) (trm_tapp e1' V)
   | red_abs : forall V e1 v2,
       term (trm_abs V e1) ->
       value v2 ->
-      red (trm_app (trm_abs V e1) v2) (open_ee e1 v2)
-  | red_tabs : forall V1 e1 V2,
-      term (trm_tabs V1 e1) ->
-      type V2 ->
-      red (trm_tapp (trm_tabs V1 e1) V2) (open_te e1 V2).
+      red (trm_app (trm_abs V e1) v2) (open_e e1 v2).
 
 (** Our goal is to prove preservation and progress *)
 
