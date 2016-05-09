@@ -391,14 +391,17 @@ Qed.
 
 (** Substitution distributes on the open operation. *)
 
-Lemma subst_tt_open_tt_rec : forall T1 T2 X P n, type P ->
-  subst_tt X P (open_tt_rec n T2 T1) =
-  open_tt_rec n (subst_tt X P T2) (subst_tt X P T1).
+Lemma subst_open_rec : (forall T1 t2 x u n, term u ->
+  subst_t x u (open_t_rec n t2 T1) =
+  open_t_rec n (subst_e x u t2) (subst_t x u T1)) /\ (forall t1 t2 x u n, term u ->
+  subst_e x u (open_e_rec n t2 t1) =
+  open_e_rec n (subst_e x u t2) (subst_e x u t1)).
 Proof.
-  introv WP. generalize n.
-  induction T1; intros k; simpls; f_equal*.
+  apply typ_trm_mutind; intros; simpls; f_equal*.
   case_nat*.
-  case_var*. rewrite* <- open_tt_rec_type.
+  case_var*. rewrite* <- (proj1 open_rec_lc).
+  case_nat*.
+  case_var*. rewrite* <- (proj2 open_rec_lc).
 Qed.
 
 Lemma subst_tt_open_tt : forall T1 T2 X P, type P ->
