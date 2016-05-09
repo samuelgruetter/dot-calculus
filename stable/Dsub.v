@@ -304,7 +304,7 @@ Hint Resolve
 Ltac gather_vars :=
   let A := gather_vars_with (fun x : vars => x) in
   let B := gather_vars_with (fun x : var => \{x}) in
-  let C := gather_vars_with (fun x : trm => fv_t x) in
+  let C := gather_vars_with (fun x : typ => fv_t x) in
   let D := gather_vars_with (fun x : trm => fv_e x) in
   let E := gather_vars_with (fun x : env => dom x) in
   constr:(A \u B \u C \u D \u E).
@@ -343,27 +343,45 @@ Tactic Notation "apply_empty" constr(F) :=
 Tactic Notation "apply_empty" "*" constr(F) :=
   apply_empty F; auto*.
 
+Scheme typ_mut := Induction for typ Sort Prop
+with   trm_mut := Induction for trm Sort Prop.
+Combined Scheme typ_trm_mutind from typ_mut, trm_mut.
+
 (* ********************************************************************** *)
 (** * Properties of Substitutions *)
 
-(* ********************************************************************** *)
-(** ** Properties of type substitution in type *)
-
 (** Substitution on indices is identity on well-formed terms. *)
 
-Lemma open_tt_rec_type_core : forall T j V U i, i <> j ->
-  (open_tt_rec j V T) = open_tt_rec i U (open_tt_rec j V T) ->
-  T = open_tt_rec i U T.
+Lemma open_rec_lc_core : (forall T j v u i, i <> j ->
+  (open_t_rec j v T) = open_t_rec i u (open_t_rec j v T) ->
+  T = open_t_rec i u T) /\ (forall e j v u i, i <> j ->
+  open_e_rec j v e = open_e_rec i u (open_e_rec j v e) ->
+  e = open_e_rec i u e).
 Proof.
-  induction T; introv Neq H; simpl in *; inversion H; f_equal*.
-  case_nat*. case_nat*.
+  apply typ_trm_mutind;
+  try (introv IH1 IH2 Neq H);
+  try (introv IH Neq H);
+  try (introv Neq H);
+  simpl in *; inversion H; f_equal*.
+  case_nat*. case_nat*. case_nat*. case_nat*.
 Qed.
 
-Lemma open_tt_rec_type : forall T U,
-  type T -> forall k, T = open_tt_rec k U T.
+Lemma open_t_rec_type : forall T U,
+  type T -> forall k, T = open_t_rec k U T.
 Proof.
-  induction 1; intros; simpl; f_equal*. unfolds open_tt.
-  pick_fresh X. apply* (@open_tt_rec_type_core T2 0 (typ_fvar X)).
+  induction 1; intros; simpl; f_equal*.
+  rewrite <- (IHtype k). reflexivity.
+  unfolds open_t.
+  pick_fresh x. apply* ((proj1 open_rec_lc_core) T2 0 (trm_fvar x)).
+Qed.
+
+Lemma open_e_rec_term : forall u e,
+  term e -> forall k, e = open_e_rec k u e.
+Proof.
+  induction 1; intros; simpl; f_equal*.
+  eapply open_t_rec_type. eauto.
+  unfolds open_e. pick_fresh x. apply* ((proj2 open_rec_lc_core) e1 0 (trm_fvar x)).
+  eapply open_t_rec_type. eauto.
 Qed.
 
 (** Substitution for a fresh name is identity. *)
