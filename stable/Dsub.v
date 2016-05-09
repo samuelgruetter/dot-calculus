@@ -496,77 +496,19 @@ Qed.
 
 (** Through narrowing *)
 
-Lemma wft_narrow : forall V F U T E X,
-  wft (E & X ~<: V & F) T ->
-  ok (E & X ~<: U & F) ->
-  wft (E & X ~<: U & F) T.
+Lemma wft_narrow : forall V F U T E x,
+  wft (E & x ~ V & F) T ->
+  ok (E & x ~ U & F) ->
+  wft (E & x ~ U & F) T.
 Proof.
-  intros. gen_eq K: (E & X ~<: V & F). gen E F.
+  intros. gen_eq K: (E & x ~ V & F). gen E F.
   induction H; intros; subst; eauto.
   destruct (binds_middle_inv H) as [K|[K|K]]; try destructs K.
-    applys wft_var. apply* binds_concat_right.
-    subst. applys wft_var. apply~ binds_middle_eq.
-    applys wft_var. apply~ binds_concat_left.
+    applys wft_sel. apply* binds_concat_right.
+    subst. applys wft_sel. apply~ binds_middle_eq.
+    applys wft_sel. apply~ binds_concat_left.
      apply* binds_concat_left.
   apply_fresh* wft_all as Y. apply_ih_bind* H1.
-Qed.
-
-(** Through strengthening *)
-
-Lemma wft_strengthen : forall E F x U T,
- wft (E & x ~: U & F) T -> wft (E & F) T.
-Proof.
-  intros. gen_eq G: (E & x ~: U & F). gen F.
-  induction H; intros F EQ; subst; auto.
-  apply* (@wft_var U0).
-  destruct (binds_concat_inv H) as [?|[? ?]].
-    apply~ binds_concat_right.
-    destruct (binds_push_inv H1) as [[? ?]|[? ?]].
-      subst. false.
-      apply~ binds_concat_left.
-  (* todo: binds_cases tactic *)
-  apply_fresh* wft_all as Y. apply_ih_bind* H1.
-Qed.
-
-(** Through type substitution *)
-
-Lemma wft_subst_tb : forall F Q E Z P T,
-  wft (E & Z ~<: Q & F) T ->
-  wft E P ->
-  ok (E & map (subst_tb Z P) F) ->
-  wft (E & map (subst_tb Z P) F) (subst_tt Z P T).
-Proof.
-  introv WT WP. gen_eq G: (E & Z ~<: Q & F). gen F.
-  induction WT; intros F EQ Ok; subst; simpl subst_tt; auto.
-  case_var*.
-    apply_empty* wft_weaken.
-    destruct (binds_concat_inv H) as [?|[? ?]].
-      apply (@wft_var (subst_tt Z P U)).
-       apply~ binds_concat_right.
-       unsimpl_map_bind. apply~ binds_map.
-      destruct (binds_push_inv H1) as [[? ?]|[? ?]].
-        subst. false~.
-        applys wft_var. apply* binds_concat_left.
-  apply_fresh* wft_all as Y.
-   unsimpl ((subst_tb Z P) (bind_sub T1)).
-   lets: wft_type.
-   rewrite* subst_tt_open_tt_var.
-   apply_ih_map_bind* H0.
-Qed.
-
-(** Through type reduction *)
-
-Lemma wft_open : forall E U T1 T2,
-  ok E ->
-  wft E (typ_all T1 T2) ->
-  wft E U ->
-  wft E (open_tt T2 U).
-Proof.
-  introv Ok WA WU. inversions WA. pick_fresh X.
-  auto* wft_type. rewrite* (@subst_tt_intro X).
-  lets K: (@wft_subst_tb empty).
-  specializes_vars K. clean_empty K. apply* K.
-  (* todo: apply empty ? *)
 Qed.
 
 (* ********************************************************************** *)
@@ -583,10 +525,10 @@ Qed.
 
 Hint Extern 1 (ok _) => apply ok_from_okt.
 
-(** Extraction from a subtyping assumption in a well-formed environments *)
+(** Extraction from an assumption in a well-formed environments *)
 
-Lemma wft_from_env_has_sub : forall x U E,
-  okt E -> binds x (bind_sub U) E -> wft E U.
+Lemma wft_from_env_has : forall x U E,
+  okt E -> binds x U E -> wft E U.
 Proof.
   induction E using env_ind; intros Ok B.
   false* binds_empty_inv.
@@ -594,51 +536,18 @@ Proof.
     false (empty_push_inv H0).
     destruct (eq_push_inv H) as [? [? ?]]. subst. clear H.
      destruct (binds_push_inv B) as [[? ?]|[? ?]]. subst.
-       inversions H3. apply_empty* wft_weaken.
        apply_empty* wft_weaken.
-    destruct (eq_push_inv H) as [? [? ?]]. subst. clear H.
-     destruct (binds_push_inv B) as [[? ?]|[? ?]]. subst.
-       inversions H3.
-       apply_empty* wft_weaken.
-Qed.
-
-(** Extraction from a typing assumption in a well-formed environments *)
-
-Lemma wft_from_env_has_typ : forall x U E,
-  okt E -> binds x (bind_typ U) E -> wft E U.
-Proof.
-  induction E using env_ind; intros Ok B.
-  false* binds_empty_inv.
-  inversions Ok.
-    false (empty_push_inv H0).
-    destruct (eq_push_inv H) as [? [? ?]]. subst. clear H.
-     destruct (binds_push_inv B) as [[? ?]|[? ?]]. subst.
-       inversions H3.
-       apply_empty* wft_weaken.
-    destruct (eq_push_inv H) as [? [? ?]]. subst. clear H.
-     destruct (binds_push_inv B) as [[? ?]|[? ?]]. subst.
-       inversions H3. apply_empty* wft_weaken.
        apply_empty* wft_weaken.
 Qed.
 
 (** Extraction from a well-formed environment *)
 
-Lemma wft_from_okt_typ : forall x T E,
-  okt (E & x ~: T) -> wft E T.
+Lemma wft_from_okt : forall x T E,
+  okt (E & x ~ T) -> wft E T.
 Proof.
   intros. inversions* H.
   false (empty_push_inv H1).
-  destruct (eq_push_inv H0) as [? [? ?]]. false.
-  destruct (eq_push_inv H0) as [? [? ?]]. inversions~ H4.
-Qed.
-
-Lemma wft_from_okt_sub : forall x T E,
-  okt (E & x ~<: T) -> wft E T.
-Proof.
-  intros. inversions* H.
-  false (empty_push_inv H1).
-  destruct (eq_push_inv H0) as [? [? ?]]. inversions~ H4.
-  destruct (eq_push_inv H0) as [? [? ?]]. false.
+  destruct (eq_push_inv H0) as [? [? ?]]. subst. assumption.
 Qed.
 
 (** Automation *)
@@ -652,10 +561,8 @@ Proof.
 Qed.
 
 Hint Resolve wft_weaken_right.
-Hint Resolve wft_from_okt_typ wft_from_okt_sub.
-Hint Immediate wft_from_env_has_sub wft_from_env_has_typ.
-Hint Resolve wft_subst_tb.
-
+Hint Resolve wft_from_okt.
+Hint Immediate wft_from_env_has.
 
 (* ********************************************************************** *)
 (** ** Properties of well-formedness of an environment *)
@@ -714,22 +621,6 @@ Proof.
       applys~ okt_sub. applys* wft_narrow.
      lets (?&?&?): (okt_push_typ_inv O).
       applys~ okt_typ. applys* wft_narrow.
-Qed.
-
-(** Through strengthening *)
-
-Lemma okt_strengthen : forall x T (E F:env),
-  okt (E & x ~: T & F) ->
-  okt (E & F).
-Proof.
- introv O. induction F using env_ind.
-  rewrite concat_empty_r in *. lets*: (okt_push_typ_inv O).
-  rewrite concat_assoc in *.
-   lets (U&[?|?]): okt_push_inv O; subst.
-     lets (?&?&?): (okt_push_sub_inv O).
-      applys~ okt_sub. applys* wft_strengthen.
-     lets (?&?&?): (okt_push_typ_inv O).
-      applys~ okt_typ. applys* wft_strengthen.
 Qed.
 
 (** Through type substitution *)
