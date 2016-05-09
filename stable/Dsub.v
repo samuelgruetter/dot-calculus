@@ -21,9 +21,7 @@ Implicit Types x : var.
 
 Inductive typ : Set :=
   | typ_top   : typ
-  | typ_bsel  : nat -> typ
-  | typ_fsel  : var -> typ
-  | typ_tsel  : trm -> typ
+  | typ_sel  : trm -> typ
   | typ_mem   : bool -> typ -> typ
   | typ_all   : typ -> typ -> typ
 
@@ -39,9 +37,7 @@ with trm : Set :=
 Fixpoint open_t_rec (k : nat) (f : trm) (T : typ) {struct T} : typ :=
   match T with
   | typ_top         => typ_top
-  | typ_bsel j      => If k = j then (typ_tsel f) else (typ_bsel j)
-  | typ_fsel x      => typ_fsel x
-  | typ_tsel t      => typ_tsel (open_e_rec k f t)
+  | typ_sel t       => typ_sel (open_e_rec k f t)
   | typ_mem b T     => typ_mem b (open_t_rec k f T)
   | typ_all T1 T2   => typ_all (open_t_rec k f T1) (open_t_rec (S k) f T2)
   end
@@ -70,12 +66,10 @@ Notation "t 'open_e_var' x" := (open_e t (trm_fvar x)) (at level 67).
 Inductive type : typ -> Prop :=
   | type_top :
       type typ_top
-  | type_fsel : forall X,
-      type (typ_fsel X)
-  | type_tsel : forall e1,
+  | type_sel : forall e1,
       term e1 ->
-      type (typ_tsel e1)
-  | type_mem  : forall b T1,
+      type (typ_sel e1)
+  | type_mem : forall b T1,
       type T1 ->
       type (typ_mem b T1)
   | type_all : forall L T1 T2,
@@ -114,10 +108,10 @@ Inductive wft : env -> typ -> Prop :=
       wft E typ_top
   | wft_sel : forall U E x,
       binds x U E ->
-      wft E (typ_fsel x)
+      wft E (typ_sel (trm_fvar x))
   | wft_selc : forall E T1,
       wft E T1 ->
-      wft E (typ_tsel (trm_mem T1))
+      wft E (typ_sel (trm_mem T1))
   | wft_mem : forall E b T1,
       wft E T1 ->
       wft E (typ_mem b T1)
@@ -144,24 +138,24 @@ Inductive sub : env -> typ -> typ -> Prop :=
       okt E ->
       wft E S ->
       sub E S typ_top
-  | sub_refl_tvar : forall E x,
+  | sub_refl_tvar : forall E t,
       okt E ->
-      wft E (typ_fsel x) ->
-      sub E (typ_fsel x) (typ_fsel x)
+      wft E (typ_sel t) ->
+      sub E (typ_sel t) (typ_sel t)
   | sub_sel1 : forall S E T x,
       binds x (typ_mem true S) E ->
       sub E T S ->
-      sub E T (typ_fsel x)
+      sub E T (typ_sel (trm_fvar x))
   | sub_sel2 : forall b U E T x,
       binds x (typ_mem b U) E ->
       sub E U T ->
-      sub E (typ_fsel x) T
+      sub E (typ_sel (trm_fvar x)) T
   | sub_selc1 : forall S E T,
       sub E T S ->
-      sub E T (typ_tsel (trm_mem S))
+      sub E T (typ_sel (trm_mem S))
   | sub_selc2 : forall U E T,
       sub E U T ->
-      sub E (typ_tsel (trm_mem U)) T
+      sub E (typ_sel (trm_mem U)) T
   | sub_mem_false : forall E b1 T1 T2,
       sub E T1 T2 ->
       sub E (typ_mem b1 T1) (typ_mem false T2)
@@ -247,9 +241,7 @@ Definition progress := forall e T,
 Fixpoint fv_t (T : typ) {struct T} : vars :=
   match T with
   | typ_top         => \{}
-  | typ_bsel j      => \{}
-  | typ_fsel x      => \{x}
-  | typ_tsel t      => fv_e t
+  | typ_sel t       => fv_e t
   | typ_mem b T1   => (fv_t T1)
   | typ_all T1 T2   => (fv_t T1) \u (fv_t T2)
   end
@@ -270,9 +262,7 @@ with fv_e (e : trm) {struct e} : vars :=
 Fixpoint subst_t (z : var) (u : trm) (T : typ) {struct T} : typ :=
   match T with
   | typ_top         => typ_top
-  | typ_bsel j      => typ_bsel j
-  | typ_fsel x      => If x = z then (typ_tsel u) else (typ_fsel x)
-  | typ_tsel t      => typ_tsel (subst_e z u t)
+  | typ_sel t       => typ_sel (subst_e z u t)
   | typ_mem b T1    => typ_mem b (subst_t z u T1)
   | typ_all T1 T2   => typ_all (subst_t z u T1) (subst_t z u T2)
   end
@@ -367,7 +357,7 @@ Proof.
   try (introv IH Neq H);
   try (introv Neq H);
   simpl in *; inversion H; f_equal*.
-  case_nat*. case_nat*. case_nat*. case_nat*.
+  case_nat*. case_nat*.
 Qed.
 
 Lemma open_rec_lc : (forall T,
@@ -386,7 +376,7 @@ Lemma subst_fresh : (forall T z u,
   z \notin fv_e e -> subst_e z u e = e).
 Proof.
   apply typ_trm_mutind; simpl; intros; f_equal*.
-  case_var*. case_var*.
+  case_var*.
 Qed.
 
 (** Substitution distributes on the open operation. *)
@@ -398,8 +388,6 @@ Lemma subst_open_rec : (forall T1 t2 x u n, term u ->
   open_e_rec n (subst_e x u t2) (subst_e x u t1)).
 Proof.
   apply typ_trm_mutind; intros; simpls; f_equal*.
-  case_nat*.
-  case_var*. rewrite* <- (proj1 open_rec_lc).
   case_nat*.
   case_var*. rewrite* <- (proj2 open_rec_lc).
 Qed.
@@ -460,7 +448,6 @@ Lemma subst_lc :
   (forall e, term e -> forall z u, term u -> term (subst_e z u e)).
 Proof.
   apply lc_mutind; intros; simpl; auto.
-  case_var*.
   apply_fresh* type_all as X. rewrite* subst_t_open_t_var.
   case_var*.
   apply_fresh* term_abs as y. rewrite* subst_e_open_e_var.
