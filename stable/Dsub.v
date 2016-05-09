@@ -404,33 +404,54 @@ Proof.
   case_var*. rewrite* <- (proj2 open_rec_lc).
 Qed.
 
-Lemma subst_tt_open_tt : forall T1 T2 X P, type P ->
-  subst_tt X P (open_tt T1 T2) =
-  open_tt (subst_tt X P T1) (subst_tt X P T2).
+Lemma subst_t_open_t : forall T1 t2 x u, term u ->
+  subst_t x u (open_t T1 t2) =
+  open_t (subst_t x u T1) (subst_e x u t2).
 Proof.
-  unfold open_tt. auto* subst_tt_open_tt_rec.
+  unfold open_t. auto* (proj1 subst_open_rec).
+Qed.
+
+Lemma subst_e_open_e : forall t1 t2 x u, term u ->
+  subst_e x u (open_e t1 t2) =
+  open_e (subst_e x u t1) (subst_e x u t2).
+Proof.
+  unfold open_e. auto* (proj2 subst_open_rec).
 Qed.
 
 (** Substitution and open_var for distinct names commute. *)
 
-Lemma subst_tt_open_tt_var : forall X Y U T, Y <> X -> type U ->
-  (subst_tt X U T) open_tt_var Y = subst_tt X U (T open_tt_var Y).
+Lemma subst_t_open_t_var : forall x y u T, y <> x -> term u ->
+  (subst_t x u T) open_t_var y = subst_t x u (T open_t_var y).
 Proof.
-  introv Neq Wu. rewrite* subst_tt_open_tt.
+  introv Neq Wu. rewrite* subst_t_open_t.
+  simpl. case_var*.
+Qed.
+
+Lemma subst_e_open_e_var : forall x y u e, y <> x -> term u ->
+  (subst_e x u e) open_e_var y = subst_e x u (e open_e_var y).
+Proof.
+  introv Neq Wu. rewrite* subst_e_open_e.
   simpl. case_var*.
 Qed.
 
 (** Opening up a body t with a type u is the same as opening
   up the abstraction with a fresh name x and then substituting u for x. *)
 
-Lemma subst_tt_intro : forall X T2 U,
-  X \notin fv_tt T2 -> type U ->
-  open_tt T2 U = subst_tt X U (T2 open_tt_var X).
+Lemma subst_t_intro : forall x T2 u,
+  x \notin fv_t T2 -> term u ->
+  open_t T2 u = subst_t x u (T2 open_t_var x).
 Proof.
-  introv Fr Wu. rewrite* subst_tt_open_tt.
-  rewrite* subst_tt_fresh. simpl. case_var*.
+  introv Fr Wu. rewrite* subst_t_open_t.
+  rewrite* (proj1 subst_fresh). simpl. case_var*.
 Qed.
 
+Lemma subst_e_intro : forall x t2 u,
+  x \notin fv_e t2 -> term u ->
+  open_e t2 u = subst_e x u (t2 open_e_var x).
+Proof.
+  introv Fr Wu. rewrite* subst_e_open_e.
+  rewrite* (proj2 subst_fresh). simpl. case_var*.
+Qed.
 
 (* ********************************************************************** *)
 (** ** Properties of type substitution in terms *)
