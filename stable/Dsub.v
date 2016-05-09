@@ -386,11 +386,12 @@ Qed.
 
 (** Substitution for a fresh name is identity. *)
 
-Lemma subst_tt_fresh : forall Z U T,
-  Z \notin fv_tt T -> subst_tt Z U T = T.
+Lemma subst_fresh : (forall T z u,
+  z \notin fv_t T -> subst_t z u T = T) /\ (forall e z u,
+  z \notin fv_e e -> subst_e z u e = e).
 Proof.
-  induction T; simpl; intros; f_equal*.
-  case_var*.
+  apply typ_trm_mutind; simpl; intros; f_equal*.
+  case_var*. case_var*.
 Qed.
 
 (** Substitution distributes on the open operation. *)
