@@ -70,22 +70,22 @@ Notation "t 'open_e_var' x" := (open_e t (trm_fvar x)) (at level 67).
 Inductive type : typ -> Prop :=
   | type_top :
       type typ_top
-  | type_sel : forall X,
+  | type_fsel : forall X,
       type (typ_fsel X)
-  | type_selc : forall T1,
-      type T1 ->
-      type (typ_tsel (trm_mem T1))
+  | type_tsel : forall e1,
+      term e1 ->
+      type (typ_tsel e1)
   | type_mem  : forall b T1,
       type T1 ->
       type (typ_mem b T1)
   | type_all : forall L T1 T2,
       type T1 ->
       (forall x, x \notin L -> type (T2 open_t_var x)) ->
-      type (typ_all T1 T2).
+      type (typ_all T1 T2)
 
 (** Terms as locally closed pre-terms *)
 
-Inductive term : trm -> Prop :=
+with term : trm -> Prop :=
   | term_var : forall x,
       term (trm_fvar x)
   | term_abs : forall L V e1,
@@ -347,6 +347,10 @@ Scheme typ_mut := Induction for typ Sort Prop
 with   trm_mut := Induction for trm Sort Prop.
 Combined Scheme typ_trm_mutind from typ_mut, trm_mut.
 
+Scheme type_mut := Induction for type Sort Prop
+with term_mut := Induction for term Sort Prop.
+Combined Scheme lc_mutind from type_mut, term_mut.
+
 (* ********************************************************************** *)
 (** * Properties of Substitutions *)
 
@@ -366,22 +370,13 @@ Proof.
   case_nat*. case_nat*. case_nat*. case_nat*.
 Qed.
 
-Lemma open_t_rec_type : forall T U,
-  type T -> forall k, T = open_t_rec k U T.
+Lemma open_rec_lc : (forall T,
+  type T -> forall u k, T = open_t_rec k u T) /\ (forall e,
+  term e -> forall u k, e = open_e_rec k u e).
 Proof.
-  induction 1; intros; simpl; f_equal*.
-  rewrite <- (IHtype k). reflexivity.
-  unfolds open_t.
+  apply lc_mutind; intros; simpl; f_equal*.
   pick_fresh x. apply* ((proj1 open_rec_lc_core) T2 0 (trm_fvar x)).
-Qed.
-
-Lemma open_e_rec_term : forall u e,
-  term e -> forall k, e = open_e_rec k u e.
-Proof.
-  induction 1; intros; simpl; f_equal*.
-  eapply open_t_rec_type. eauto.
-  unfolds open_e. pick_fresh x. apply* ((proj2 open_rec_lc_core) e1 0 (trm_fvar x)).
-  eapply open_t_rec_type. eauto.
+  pick_fresh x. apply* ((proj2 open_rec_lc_core) e1 0 (trm_fvar x)).
 Qed.
 
 (** Substitution for a fresh name is identity. *)
