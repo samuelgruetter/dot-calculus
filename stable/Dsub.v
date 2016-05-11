@@ -190,12 +190,10 @@ Inductive sub : env -> typ -> typ -> Prop :=
       (forall x, x \notin L ->
           sub (E & x ~ T1) (S2 open_t_var x) (T2 open_t_var x)) ->
       sub E (typ_all S1 S2) (typ_all T1 T2)
-(*
   | sub_trans : forall E T1 T2 T3,
       sub E T1 T2 ->
       sub E T2 T3 ->
       sub E T1 T3
-*)
 .
 
 (** Typing relation *)
@@ -953,7 +951,7 @@ Proof.
   apply* sub_mem_false.
   apply* sub_mem_true.
   apply_fresh* sub_all as Y. apply_ih_bind* H0.
-  (*apply* sub_trans.*)
+  apply* sub_trans.
 Qed.
 
 Lemma sub_weakening1 : forall E F G S T,
@@ -1018,17 +1016,14 @@ Proof.
   apply* sub_mem_false.
   apply* sub_mem_true.
   apply_fresh* sub_all as Y. apply_ih_bind* H0.
-  (*apply* sub_trans.*)
+  apply* sub_trans.
 Qed.
 
 Lemma sub_transitivity : forall Q,
   transitivity_on Q.
 Proof.
-(*
   intro Q. introv SsubQ QsubT.
   eapply sub_trans; eauto.
-*)
-admit.
 Qed.
 
 Lemma sub_narrowing : forall Q E F Z P S T,
