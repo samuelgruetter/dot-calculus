@@ -655,7 +655,7 @@ Qed.
 Lemma sub_regular : forall E S T,
   sub E S T -> okt E /\ wft E S /\ wft E T.
 Proof.
-  induction 1. auto*. auto*. auto*. jauto_set; auto. (* auto* too slow *)
+  induction 1. auto*. auto*. auto*. auto*. auto*. auto*. auto*. auto*.
   split. auto*. split;
    apply_fresh* wft_all as Y;
     forwards~: (H1 Y); apply_empty* (@wft_narrow T1).
