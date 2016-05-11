@@ -854,6 +854,21 @@ Proof.
   (*apply* sub_trans.*)
 Qed.
 
+Lemma sub_weakening1 : forall E F G S T,
+   sub E S T ->
+   okt (E & F & G) ->
+   sub (E & F & G) S T.
+Proof.
+  intros.
+  assert (E & F & G = E & (F & G) & empty) as A. {
+    rewrite concat_empty_r. rewrite concat_assoc. reflexivity.
+  }
+  rewrite A.
+  apply* sub_weakening.
+  rewrite concat_empty_r. assumption.
+  rewrite <- A. assumption.
+Qed.
+
 (* ********************************************************************** *)
 (** Narrowing and transitivity (3) *)
 
@@ -1016,17 +1031,19 @@ Qed.
 
 Lemma typing_narrowing : forall Q E F X P e T,
   sub E P Q ->
-  typing (E & X ~<: Q & F) e T ->
-  typing (E & X ~<: P & F) e T.
+  typing (E & X ~ Q & F) e T ->
+  typing (E & X ~ P & F) e T.
 Proof.
-  introv PsubQ Typ. gen_eq E': (E & X ~<: Q & F). gen F.
+  introv PsubQ Typ. gen_eq E': (E & X ~ Q & F). gen F.
   inductions Typ; introv EQ; subst; simpl.
-  binds_cases H0; apply* typing_var.
-  apply_fresh* typing_abs as y. apply_ih_bind* H0.
-  apply* typing_app.
-  apply_fresh* typing_tabs as Y. apply_ih_bind* H0.
-  apply* typing_tapp. apply* (@sub_narrowing Q).
-  apply* typing_sub. apply* (@sub_narrowing Q).
+  - binds_cases H0.
+    + apply* typing_var.
+    + subst. apply* typing_sub. apply* sub_weakening1.
+    + apply* typing_var.
+  - apply_fresh* typing_abs as y. apply_ih_bind* H0.
+  - apply* typing_mem. apply* wft_narrow.
+  - apply* typing_app. apply* wft_narrow.
+  - apply* typing_sub. apply* (@sub_narrowing Q).
 Qed.
 
 (************************************************************************ *)
