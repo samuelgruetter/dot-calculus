@@ -155,45 +155,52 @@ Inductive okt : env -> Prop :=
 
 (** Subtyping relation *)
 
-Inductive sub : env -> typ -> typ -> Prop :=
+Inductive sub_mode : Set :=
+  | notrans : sub_mode
+  | oktrans : sub_mode.
+
+Inductive sub : sub_mode -> env -> typ -> typ -> Prop :=
   | sub_top : forall E S,
       okt E ->
       wft E S ->
-      sub E S typ_top
+      sub notrans E S typ_top
   | sub_refl_sel : forall E t,
       okt E ->
       wft E (typ_sel t) ->
-      sub E (typ_sel t) (typ_sel t)
+      sub notrans E (typ_sel t) (typ_sel t)
   | sub_sel1 : forall T E U x,
       binds x T E ->
-      sub E T (typ_mem false U) ->
-      sub E (typ_sel (trm_fvar x)) U
+      sub oktrans E T (typ_mem false U) ->
+      sub notrans E (typ_sel (trm_fvar x)) U
   | sub_sel2 : forall T E S S1 x,
       binds x T E ->
-      sub E T (typ_mem true S1) ->
-      sub E S S1 ->
-      sub E S (typ_sel (trm_fvar x))
+      sub oktrans E T (typ_mem true S1) ->
+      sub oktrans E S S1 ->
+      sub notrans E S (typ_sel (trm_fvar x))
   | sub_selc1 : forall U E T,
-      sub E U T ->
-      sub E (typ_sel (trm_mem U)) T
+      sub oktrans E U T ->
+      sub notrans E (typ_sel (trm_mem U)) T
   | sub_selc2 : forall S E T,
-      sub E T S ->
-      sub E T (typ_sel (trm_mem S))
+      sub oktrans E T S ->
+      sub notrans E T (typ_sel (trm_mem S))
   | sub_mem_false : forall E b1 T1 T2,
-      sub E T1 T2 ->
-      sub E (typ_mem b1 T1) (typ_mem false T2)
+      sub oktrans E T1 T2 ->
+      sub notrans E (typ_mem b1 T1) (typ_mem false T2)
   | sub_mem_true : forall E T1 T2,
-      sub E T1 T2 -> sub E T2 T1 ->
-      sub E (typ_mem true T1) (typ_mem true T2)
+      sub oktrans E T1 T2 -> sub oktrans E T2 T1 ->
+      sub notrans E (typ_mem true T1) (typ_mem true T2)
   | sub_all : forall L E S1 S2 T1 T2,
-      sub E T1 S1 ->
+      sub oktrans E T1 S1 ->
       (forall x, x \notin L ->
-          sub (E & x ~ T1) (S2 open_t_var x) (T2 open_t_var x)) ->
-      sub E (typ_all S1 S2) (typ_all T1 T2)
+          sub oktrans (E & x ~ T1) (S2 open_t_var x) (T2 open_t_var x)) ->
+      sub notrans E (typ_all S1 S2) (typ_all T1 T2)
+  | sub_trans_ok : forall E T1 T2,
+      sub notrans E T1 T2 ->
+      sub oktrans E T1 T2
   | sub_trans : forall E T1 T2 T3,
-      sub E T1 T2 ->
-      sub E T2 T3 ->
-      sub E T1 T3
+      sub oktrans E T1 T2 ->
+      sub oktrans E T2 T3 ->
+      sub oktrans E T1 T3
 .
 
 (** Typing relation *)
@@ -219,7 +226,7 @@ Inductive typing : env -> trm -> typ -> Prop :=
       typing E (trm_app e1 e2) T2'
   | typing_sub : forall S E e T,
       typing E e S ->
-      sub E S T ->
+      sub oktrans E S T ->
       typing E e T.
 
 (** One-step reduction *)
@@ -341,7 +348,7 @@ Ltac get_env :=
   match goal with
   | |- wft ?E _ => E
   | |- wfe ?E _ => E
-  | |- sub ?E _ _  => E
+  | |- sub _ ?E _ _  => E
   | |- typing ?E _ _ => E
   end.
 
@@ -827,8 +834,8 @@ Qed.
 
 (** The subtyping relation is restricted to well-formed objects. *)
 
-Lemma sub_regular : forall E S T,
-  sub E S T -> okt E /\ wft E S /\ wft E T.
+Lemma sub_regular : forall m E S T,
+  sub m E S T -> okt E /\ wft E S /\ wft E T.
 Proof.
   induction 1; try auto*.
   splits*. destruct IHsub as [? [? Hmem]]. inversion Hmem; subst. assumption.
@@ -842,14 +849,14 @@ Qed.
 (** The typing relation is restricted to well-formed objects. *)
 
 Lemma typing_regular : forall E e T,
-  typing E e T -> okt E /\ term e /\ wft E T.
+  typing E e T -> okt E /\ wfe E e /\ wft E T.
 Proof.
   induction 1.
   splits*.
   splits.
    pick_fresh y. specializes H0 y. destructs~ H0.
     forwards*: okt_push_inv.
-   apply_fresh* term_abs as y.
+   apply_fresh* wfe_abs as y.
      pick_fresh y. forwards~ K: (H0 y). destructs K.
        forwards*: okt_push_inv.
      forwards~ K: (H0 y). destructs K. auto.
@@ -858,7 +865,7 @@ Proof.
       forwards*: okt_push_inv.
      forwards~ K: (H0 Y). destructs K.
       forwards*: okt_push_inv.
-  splits*. apply term_mem. apply* wft_type.
+  splits*.
   splits*.
   splits*. destructs~ (sub_regular H0).
 Qed.
@@ -884,23 +891,23 @@ Qed.
 
 Hint Extern 1 (okt ?E) =>
   match goal with
-  | H: sub _ _ _ |- _ => apply (proj31 (sub_regular H))
+  | H: sub _ _ _ _ |- _ => apply (proj31 (sub_regular H))
   | H: typing _ _ _ |- _ => apply (proj31 (typing_regular H))
   end.
 
 Hint Extern 1 (wft ?E ?T) =>
   match goal with
   | H: typing E _ T |- _ => apply (proj33 (typing_regular H))
-  | H: sub E T _ |- _ => apply (proj32 (sub_regular H))
-  | H: sub E _ T |- _ => apply (proj33 (sub_regular H))
+  | H: sub _ E T _ |- _ => apply (proj32 (sub_regular H))
+  | H: sub _ E _ T |- _ => apply (proj33 (sub_regular H))
   end.
 
 Hint Extern 1 (type ?T) =>
   let go E := apply (@wft_type E); auto in
   match goal with
   | H: typing ?E _ T |- _ => go E
-  | H: sub ?E T _ |- _ => go E
-  | H: sub ?E _ T |- _ => go E
+  | H: sub _ ?E T _ |- _ => go E
+  | H: sub _ ?E _ T |- _ => go E
   end.
 
 Hint Extern 1 (term ?e) =>
@@ -927,8 +934,9 @@ Hint Extern 1 (term ?e) =>
 Lemma sub_reflexivity : forall E T,
   okt E ->
   wft E T ->
-  sub E T T .
+  sub notrans E T T .
 Proof.
+  Hint Resolve sub_trans_ok.
   introv Ok WI. lets W: (wft_type WI). gen E.
   induction W; intros; inversions WI; eauto.
   destruct b. apply* sub_mem_true. apply* sub_mem_false.
@@ -938,10 +946,10 @@ Qed.
 (* ********************************************************************** *)
 (** Weakening (2) *)
 
-Lemma sub_weakening : forall E F G S T,
-   sub (E & G) S T ->
+Lemma sub_weakening : forall m E F G S T,
+   sub m (E & G) S T ->
    okt (E & F & G) ->
-   sub (E & F & G) S T.
+   sub m (E & F & G) S T.
 Proof.
   introv Typ. gen F. inductions Typ; introv Ok; auto.
   apply* sub_sel1. apply* binds_weaken.
@@ -954,10 +962,10 @@ Proof.
   apply* sub_trans.
 Qed.
 
-Lemma sub_weakening1 : forall E F G S T,
-   sub E S T ->
+Lemma sub_weakening1 : forall m E F G S T,
+   sub m E S T ->
    okt (E & F & G) ->
-   sub (E & F & G) S T.
+   sub m (E & F & G) S T.
 Proof.
   intros.
   assert (E & F & G = E & (F & G) & empty) as A. {
@@ -975,17 +983,17 @@ Qed.
 Section NarrowTrans.
 
 Definition transitivity_on Q := forall E S T,
-  sub E S Q -> sub E Q T -> sub E S T.
+  sub oktrans E S Q -> sub oktrans E Q T -> sub oktrans E S T.
 
 Hint Unfold transitivity_on.
 
 Hint Resolve wft_narrow.
 
-Lemma sub_narrowing_aux : forall Q F E z P S T,
+Lemma sub_narrowing_aux : forall Q m F E z P S T,
   transitivity_on Q ->
-  sub (E & z ~ Q & F) S T ->
-  sub E P Q ->
-  sub (E & z ~ P & F) S T.
+  sub m (E & z ~ Q & F) S T ->
+  sub oktrans E P Q ->
+  sub m (E & z ~ P & F) S T.
 Proof.
   introv TransQ SsubT PsubQ.
   inductions SsubT; introv.
@@ -1016,6 +1024,7 @@ Proof.
   apply* sub_mem_false.
   apply* sub_mem_true.
   apply_fresh* sub_all as Y. apply_ih_bind* H0.
+  apply* sub_trans_ok.
   apply* sub_trans.
 Qed.
 
@@ -1026,50 +1035,359 @@ Proof.
   eapply sub_trans; eauto.
 Qed.
 
-Lemma sub_narrowing : forall Q E F Z P S T,
-  sub E P Q ->
-  sub (E & Z ~ Q & F) S T ->
-  sub (E & Z ~ P & F) S T.
+Lemma sub_narrowing : forall Q m E F Z P S T,
+  sub oktrans E P Q ->
+  sub m (E & Z ~ Q & F) S T ->
+  sub m (E & Z ~ P & F) S T.
 Proof.
   intros.
   apply* sub_narrowing_aux.
   apply* sub_transitivity.
 Qed.
 
+Inductive notvar : typ -> Prop :=
+  | notvar_top   : notvar typ_top
+  | notvar_mem   : forall b T, notvar (typ_mem b T)
+  | notvar_all   : forall T1 T2, notvar (typ_all T1 T2).
+
+Hint Constructors notvar.
+
+Lemma sub_trans_notvar : forall E T1 T2 T3,
+  notvar T2 ->
+  sub notrans E T1 T2 ->
+  sub notrans E T2 T3 ->
+  sub notrans E T1 T3.
+Proof.
+  introv Hnotsel H12 H23.
+  inversion Hnotsel; subst.
+  - (* case top *)
+    inversion H23; subst.
+    + apply* sub_top.
+    + apply* sub_sel2. apply* sub_trans.
+    + apply* sub_selc2. apply* sub_trans.
+  - (* case mem *)
+    inversion H23; subst.
+    + apply* sub_top.
+    + apply* sub_sel2. eapply sub_trans; eauto.
+    + apply* sub_selc2. eapply sub_trans; eauto.
+    + inversion H12; subst.
+      * eapply sub_sel1; eauto.
+        eapply sub_trans. eapply H0. eapply sub_trans_ok. eapply sub_mem_false.
+        eapply sub_trans_ok. assumption.
+      * eapply sub_selc1; eauto.
+        eapply sub_trans. eassumption. eapply sub_trans_ok.
+        eapply sub_mem_false. assumption.
+      * eapply sub_mem_false; eauto using sub_trans, sub_trans_ok.
+      * eapply sub_mem_false; eauto using sub_trans, sub_trans_ok.
+    + inversion H12; subst.
+      * eapply sub_sel1; eauto.
+        eapply sub_trans. eapply H0. eapply sub_trans_ok. eapply sub_mem_false.
+        eapply sub_trans_ok. assumption.
+      * eapply sub_selc1; eauto.
+        eapply sub_trans. eassumption. eapply sub_trans_ok.
+        eapply sub_mem_true. assumption. assumption.
+      * eapply sub_mem_true; eauto using sub_trans, sub_trans_ok.
+  - (* case all *)
+    inversion H12; inversion H23; subst; auto.
+    + apply* sub_sel2; eauto using sub_trans, sub_trans_ok.
+    + apply* sub_selc2; eauto using sub_trans, sub_trans_ok.
+    + apply* sub_sel1; eauto using sub_trans, sub_trans_ok.
+      eapply sub_trans. eapply H0. eapply sub_trans_ok.
+      eapply sub_mem_false. eapply sub_trans_ok. assumption.
+    + apply* sub_selc1; eauto using sub_trans, sub_trans_ok.
+    + apply* sub_selc1; eauto using sub_trans, sub_trans_ok.
+    + apply* sub_selc1; eauto using sub_trans, sub_trans_ok.
+    + apply* sub_sel2; eauto using sub_trans, sub_trans_ok.
+    + apply* sub_selc2; eauto using sub_trans, sub_trans_ok.
+    + apply sub_all with (L:=L \u L0); eauto using sub_trans.
+      intros Y Fr.
+      apply sub_trans with (T2:=(T4 open_t_var Y)).
+      assert ((E & Y ~ T6) = (E & Y ~ T6 & empty)) as A. {
+        rewrite concat_empty_r. reflexivity.
+      }
+      rewrite A.
+      apply* (@sub_narrowing T0).
+      rewrite concat_empty_r.
+      eauto.
+      eauto.
+Qed.
+
+Inductive follow_ub : env -> typ -> typ -> Prop :=
+  | follow_ub_nil : forall E T,
+      wft E T ->
+      follow_ub E T T
+  | follow_ub_cons : forall E x TX Hi T,
+      binds x TX E ->
+      sub oktrans E TX (typ_mem false Hi) ->
+      follow_ub E Hi T ->
+      follow_ub E (typ_sel (trm_fvar x)) T
+  | follow_ub_cons_c : forall E Hi T,
+      follow_ub E Hi T ->
+      follow_ub E (typ_sel (trm_mem Hi)) T.
+
+Inductive follow_lb : env -> typ -> typ -> Prop :=
+  | follow_lb_nil : forall E T,
+      wft E T ->
+      follow_lb E T T
+  | follow_lb_cons : forall E x TX Lo T,
+      binds x TX E ->
+      sub oktrans E TX (typ_mem true Lo) ->
+      follow_lb E (typ_sel (trm_fvar x)) T ->
+      follow_lb E Lo T
+  | follow_lb_cons_c : forall E Lo T,
+      follow_lb E (typ_sel (trm_mem Lo)) T ->
+      follow_lb E Lo T.
+
+
+Hint Constructors follow_ub.
+Hint Constructors follow_lb.
+
+Lemma follow_lb_reg : forall E T1 T2,
+  follow_lb E T1 T2 ->
+  wft E T1 /\ wft E T2.
+Proof.
+  introv H. induction H; auto.
+  split.
+  apply sub_regular in H0. destruct H0 as [? [? A]]. inversion A; subst. assumption.
+  inversion IHfollow_lb. auto.
+  destruct IHfollow_lb as [A B].
+  split. inversion A; subst.  inversion H3; subst. assumption. assumption.
+Qed.
+
+Lemma invert_follow_lb : forall E T1 T2,
+  follow_lb E T1 T2 ->
+  (T1 = T2) \/
+  (exists t1 t2 Hi, (typ_sel X2) = T2 /\
+    binds X1 (bind_sub T1 Hi) E /\
+    sub oktrans E T1 Hi /\
+    follow_lb E (typ_fvar X1) (typ_fvar X2)) \/
+  ().
+Proof.
+  intros.
+  induction H.
+  auto.
+  destruct IHfollow_lb as [IH | IH].
+  subst.
+  right. exists X X Hi. auto.
+  right.
+    destruct IH as [X1 [X2 [Hi' [Heq [IH1 [IH2 IH3]]]]]].
+    subst.
+    exists X X2 Hi. auto.
+Qed.
+
+Definition st_middle (E: env) (B C: typ) : Prop :=
+  B = C \/
+  sub notrans E typ_top C \/
+  (notvar B /\ sub notrans E B C).
+
+Definition chain (E: env) (A D: typ): Prop :=
+  (exists B C, follow_ub E A B /\ st_middle E B C /\ follow_lb E C D).
+
+Lemma empty_chain: forall E T, wft E T -> chain E T T.
+Proof.
+  intros.
+  unfold chain. unfold st_middle.
+  exists T T.
+  auto.
+Qed.
+
+Lemma chain3sub: forall E C1 C2 D,
+  sub notrans E C1 C2 ->
+  follow_lb E C2 D ->
+  sub notrans E C1 D.
+Proof.
+  introv Hst Hflb.
+  induction Hflb.
+  assumption.
+  apply IHHflb.
+  eapply sub_trans_tvar_lower; eauto using sub_trans_ok.
+Qed.
+
+Lemma chain2sub: forall E B1 B2 C D,
+  sub notrans E B1 B2 ->
+  st_middle E B2 C ->
+  follow_lb E C D ->
+  sub notrans E B1 D.
+Proof.
+  introv Hst Hm Hflb.
+  unfold st_middle in Hm.
+  destruct Hm as [Hm | [Hm | [Hm1 Hm2]]]; subst.
+  apply (chain3sub Hst Hflb).
+  apply chain3sub with (C2:=C).
+    apply sub_trans_notvar with (T2:=typ_top); auto.
+    apply Hflb.
+  apply chain3sub with (C2:=C).
+    apply sub_trans_notvar with (T2:=B2); auto.
+    apply Hflb.
+Qed.
+
+
+Lemma chain1sub: forall E A B C D,
+  okt E ->
+  follow_ub E A B ->
+  st_middle E B C ->
+  follow_lb E C D ->
+  sub notrans E A D.
+Proof.
+  introv Hok Hfub Hm Hflb.
+  induction Hfub.
+  apply chain2sub with (B2:=T) (C:=C); try assumption.
+    apply sub_reflexivity; auto.
+  apply* sub_trans_tvar.
+    apply sub_trans_ok.
+    apply* IHHfub.
+Qed.
+
+Lemma prepend_chain: forall E A1 A2 D,
+  sub oktrans E A1 A2 ->
+  chain E A2 D ->
+  chain E A1 D.
+Proof.
+  fix 5.
+  introv Hsub Hch.
+  unfold chain in *. unfold st_middle in *.
+  inversion Hsub; inversion H; subst.
+  - (* case top *)
+    destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+    inversion Hch1; subst.
+    destruct Hch2 as [Hch2 | [Hch2 | [Hch2a Hch2b]]]; subst.
+    + exists A1 typ_top. auto 10.
+    + exists A1 C. auto 10.
+    + exists A1 C. auto 10.
+  - (* case bot *)
+    destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+    exists typ_bot C.
+    assert (wft E C) as HwfC. {
+      apply follow_lb_reg in Hch3. inversion Hch3. assumption.
+    }
+    auto 10.
+  - (* case refl_tvar *)
+    assumption.
+  - (* case trans_tvar *)
+    set (IH := (prepend_chain E T3 A2 D H5 Hch)).
+    destruct IH as [B [C [IH1 [IH2 IH3]]]].
+    exists B C.
+    split.
+    eapply follow_ub_cons. eassumption. assumption. assumption.
+    split; assumption.
+  - (* case trans_tvar_lower *)
+    set (Hch' := Hch).
+    destruct Hch' as [B [C [Hch1 [Hch2 Hch3]]]].
+    inversion Hch1; subst.
+    + destruct Hch2 as [Hch2 | [Hch2 | [Hch2a Hch2b]]].
+      subst.
+      apply (prepend_chain E A1 T0 D H5).
+      exists T0 T0.
+      set (Hflb := (follow_lb_cons H0 H4 Hch3)).
+      auto.
+      exists A1 C.
+      splits.
+      apply follow_ub_nil. auto.
+      right. left. apply Hch2. apply Hch3.
+      inversion Hch2a.
+    + assert (bind_sub Lo Hi = bind_sub T0 T3) as Heq. {
+        eapply binds_func; eassumption.
+      }
+      inversions Heq.
+      apply (prepend_chain E A1 T0 D H5).
+      apply (prepend_chain E T0 T3 D H4).
+      exists B C.
+      splits.
+      assumption.
+      assumption.
+      assumption.
+  - (* case arrow *)
+    destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+    inversion Hch1; subst.
+    exists (typ_arrow S1 S2) C.
+    destruct Hch2 as [Hch2 | [Hch2 | [Hch2a Hch2b]]].
+    subst.
+    auto 10.
+    auto 10.
+    set (Hst := (sub_trans_notvar (notvar_arrow _ _) H Hch2b)).
+    auto 10.
+  - (* case refl_all *)
+    assumption.
+  - (* case all *)
+    destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+    inversion Hch1; subst.
+    exists (typ_all S0 S1 S2) C.
+    destruct Hch2 as [Hch2 | [Hch2 | [Hch2a Hch2b]]].
+    subst.
+    auto 10.
+    auto 10.
+    set (Hst := (sub_trans_notvar (notvar_all _ _ _) H Hch2b)).
+    auto 10.
+  - (* case trans_ok *)
+    apply (prepend_chain E _ _ _ H (prepend_chain E _ _ _ H0 Hch)).
+  - (* case trans *)
+    apply (prepend_chain E _ _ _ H (prepend_chain E _ _ _ H0 Hch)).
+Qed.
+
+Lemma sub_trans_pushback : forall E T1 T3,
+  sub oktrans E T1 T3 ->
+  sub notrans E T1 T3.
+Proof.
+  introv Hst.
+  inversion Hst; subst.
+  assumption.
+  assert (wft E T3) as HwfT3 by auto.
+  assert (okt E) as Hok by auto.
+  set (Hch := (prepend_chain H (prepend_chain H0 (empty_chain HwfT3)))).
+  unfold chain in Hch.
+  destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
+  apply (chain1sub Hok Hch1 Hch2 Hch3).
+Qed.
+
 End NarrowTrans.
 
-(* ********************************************************************** *)
-(** Type substitution preserves subtyping (10) *)
-
-Definition subst_tb (Z : var) (P : typ) (b : typ) : typ :=
-  subst_t Z (trm_mem P) b.
-
-Ltac unsimpl_map_bind :=
-  match goal with |- context [ ?B (subst_t ?Z (trm_mem ?P) ?U) ] =>
-    unsimpl ((subst_tb Z P) (B U)) end.
-
-Tactic Notation "unsimpl_map_bind" "*" :=
-  unsimpl_map_bind; auto*.
-
-Lemma sub_through_subst_tb : forall Q E F Z S T P,
-  sub (E & Z ~ Q & F) S T ->
-  sub E (typ_mem true P) Q ->
-  sub (E & map (subst_tb Z P) F) (subst_tb Z P S) (subst_tb Z P T).
+Lemma contra_all_mem: forall E V T1 U,
+  sub E (typ_all V T1) (typ_mem false U) ->
+  False.
 Proof.
-  introv SsubT PsubQ.
-  assert (wft E P) as WfP. {
-    apply sub_regular in PsubQ. destruct PsubQ as [? [A ?]]. inversion A; subst.
-    assumption.
-  }
+  introv Hsub. remember (typ_all V T1) as LHS. remember (typ_mem false U) as RHS.
+  gen HeqLHS. gen HeqRHS. gen V T1 U.
+  induction Hsub; intros; try solve [inversion HeqRHS]; try solve [inversion HeqLHS].
+  subst. inversion Hsub1; subst.
+  assert (H
+  eapply IHHsub2. reflexivity.
+Lemma mem_inv_val: forall u Q U E F,
+  value u ->
+  typing E u Q ->
+  sub (E & F) Q (typ_mem false U) ->
+  exists S, sub (E & F) S U /\ trm_mem S = u.
+Proof.
+  introv VU TU Sub. gen VU. generalize dependent F. generalize dependent U.
+  induction TU; intros; subst; try solve [inversion VU].
+  inversion Sub
+
+Lemma mem_inv: forall u Q U E F,
+  (value u \/ (exists x, trm_fvar x = u)) ->
+  typing E u Q ->
+  sub (E & F) Q (typ_mem false U) ->
+  (exists S, sub (E & F) S U /\
+  (trm_mem S = u \/ (exists x, trm_fvar x = u /\ binds x S E))).
+Proof.
+  introv VU.  destruct VU as [VU | [x Eq]].
+
+(* ********************************************************************** *)
+(** Substitution preserves subtyping (10) *)
+
+Lemma sub_through_subst : forall Q E F Z S T u,
+  sub (E & Z ~ Q & F) S T ->
+  (value u \/ exists x, trm_fvar x = u) -> typing E u Q ->
+  sub (E & map (subst_t Z u) F) (subst_t Z u S) (subst_t Z u T).
+Proof.
+  introv SsubT VU TU.
+  assert (wfe E u) as WU by solve [apply typing_regular in TU; auto*].
   inductions SsubT; introv.
   - apply* sub_top.
-  - repeat unfold subst_tb at 2; simpl subst_t. apply* sub_refl_sel.
-    assert (typ_sel (subst_e Z (trm_mem P) t) = subst_tb Z P (typ_sel t)) as A. {
-      unfold subst_tb. simpl. reflexivity.
-    }
+  - simpl. apply* sub_refl_sel.
+    assert (typ_sel (subst_e Z u t) = subst_t Z u (typ_sel t)) as A by auto.
     rewrite A. auto*.
-  - repeat unfold subst_tb at 2; simpl subst_t. case_var.
+  - simpl. case_var.
     + apply binds_middle_eq_inv in H; eauto. subst.
+      apply sub_selc1.
       assert (sub (E & map (subst_tb Z P) F) (typ_mem true P) (typ_mem false (subst_t Z (trm_mem P) U))) as A. {
         apply (@sub_transitivity Q).
         apply_empty* sub_weakening.
