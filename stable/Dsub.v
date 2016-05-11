@@ -700,8 +700,7 @@ Lemma red_regular : forall t t',
   red t t' -> term t /\ term t'.
 Proof.
   induction 1; split; auto* value_regular.
-  inversions H. pick_fresh y. rewrite* (@subst_ee_intro y).
-  inversions H. pick_fresh Y. rewrite* (@subst_te_intro Y).
+  inversions H. pick_fresh y. rewrite* (@subst_e_intro y).
 Qed.
 
 (** Automation *)
