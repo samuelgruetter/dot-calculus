@@ -1011,21 +1011,6 @@ Proof.
   apply* typing_sub. apply* sub_weakening.
 Qed.
 
-(* ********************************************************************** *)
-(** Strengthening (6) *)
-
-Lemma sub_strengthening : forall x U E F S T,
-  sub (E & x ~: U & F) S T ->
-  sub (E & F) S T.
-Proof.
-  intros x U E F S T SsubT.
-  inductions SsubT; introv; auto* wft_strengthen.
-  (* case: fvar trans *)
-  apply* (@sub_trans_tvar U0). binds_cases H; auto*.
-  (* case: all *)
-  apply_fresh* sub_all as X. apply_ih_bind* H0.
-Qed.
-
 (************************************************************************ *)
 (** Preservation by Type Narrowing (7) *)
 
