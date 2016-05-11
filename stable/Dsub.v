@@ -1006,10 +1006,8 @@ Proof.
   apply* typing_var. apply* binds_weaken.
   apply_fresh* typing_abs as x. forwards~ K: (H x).
    apply_ih_bind (H0 x); eauto.
+  apply* typing_mem.
   apply* typing_app.
-  apply_fresh* typing_tabs as X. forwards~ K: (H X).
-   apply_ih_bind (H0 X); eauto.
-  apply* typing_tapp. apply* sub_weakening.
   apply* typing_sub. apply* sub_weakening.
 Qed.
 
