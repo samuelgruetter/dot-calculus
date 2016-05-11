@@ -1067,42 +1067,23 @@ Proof.
   - (* case top *)
     inversion H23; subst.
     + apply* sub_top.
-    + apply* sub_sel2. apply* sub_trans.
-    + apply* sub_selc2. apply* sub_trans.
+    + apply* sub_sel2.
   - (* case mem *)
     inversion H23; subst.
     + apply* sub_top.
-    + apply* sub_sel2. eapply sub_trans; eauto.
-    + apply* sub_selc2. eapply sub_trans; eauto.
+    + apply* sub_sel2.
     + inversion H12; subst.
       * eapply sub_sel1; eauto.
-        eapply sub_trans. eapply H0. eapply sub_trans_ok. eapply sub_mem_false.
-        eapply sub_trans_ok. assumption.
-      * eapply sub_selc1; eauto.
-        eapply sub_trans. eassumption. eapply sub_trans_ok.
-        eapply sub_mem_false. assumption.
       * eapply sub_mem_false; eauto using sub_trans, sub_trans_ok.
       * eapply sub_mem_false; eauto using sub_trans, sub_trans_ok.
     + inversion H12; subst.
       * eapply sub_sel1; eauto.
-        eapply sub_trans. eapply H0. eapply sub_trans_ok. eapply sub_mem_false.
-        eapply sub_trans_ok. assumption.
-      * eapply sub_selc1; eauto.
-        eapply sub_trans. eassumption. eapply sub_trans_ok.
-        eapply sub_mem_true. assumption. assumption.
       * eapply sub_mem_true; eauto using sub_trans, sub_trans_ok.
   - (* case all *)
     inversion H12; inversion H23; subst; auto.
     + apply* sub_sel2; eauto using sub_trans, sub_trans_ok.
-    + apply* sub_selc2; eauto using sub_trans, sub_trans_ok.
     + apply* sub_sel1; eauto using sub_trans, sub_trans_ok.
-      eapply sub_trans. eapply H0. eapply sub_trans_ok.
-      eapply sub_mem_false. eapply sub_trans_ok. assumption.
-    + apply* sub_selc1; eauto using sub_trans, sub_trans_ok.
-    + apply* sub_selc1; eauto using sub_trans, sub_trans_ok.
-    + apply* sub_selc1; eauto using sub_trans, sub_trans_ok.
     + apply* sub_sel2; eauto using sub_trans, sub_trans_ok.
-    + apply* sub_selc2; eauto using sub_trans, sub_trans_ok.
     + apply sub_all with (L:=L \u L0); eauto using sub_trans.
       intros Y Fr.
       apply sub_trans with (T2:=(T4 open_t_var Y)).
