@@ -1101,28 +1101,19 @@ Inductive follow_ub : env -> typ -> typ -> Prop :=
   | follow_ub_nil : forall E T,
       wft E T ->
       follow_ub E T T
-  | follow_ub_cons : forall E x TX Hi T,
-      binds x TX E ->
-      sub oktrans E TX (typ_mem false Hi) ->
+  | follow_ub_cons : forall E p Hi T,
+      has E p (typ_mem false Hi) ->
       follow_ub E Hi T ->
-      follow_ub E (typ_sel (trm_fvar x)) T
-  | follow_ub_cons_c : forall E Hi T,
-      follow_ub E Hi T ->
-      follow_ub E (typ_sel (trm_mem Hi)) T.
+      follow_ub E (typ_sel p) T.
 
 Inductive follow_lb : env -> typ -> typ -> Prop :=
   | follow_lb_nil : forall E T,
       wft E T ->
       follow_lb E T T
-  | follow_lb_cons : forall E x TX Lo T,
-      binds x TX E ->
-      sub oktrans E TX (typ_mem true Lo) ->
-      follow_lb E (typ_sel (trm_fvar x)) T ->
-      follow_lb E Lo T
-  | follow_lb_cons_c : forall E Lo T,
-      follow_lb E (typ_sel (trm_mem Lo)) T ->
+  | follow_lb_cons : forall E p Lo T,
+      has E p (typ_mem true Lo) ->
+      follow_lb E (typ_sel p) T ->
       follow_lb E Lo T.
-
 
 Hint Constructors follow_ub.
 Hint Constructors follow_lb.
@@ -1133,31 +1124,34 @@ Lemma follow_lb_reg : forall E T1 T2,
 Proof.
   introv H. induction H; auto.
   split.
-  apply sub_regular in H0. destruct H0 as [? [? A]]. inversion A; subst. assumption.
+  apply (proj2 sub_has_regular) in H. destruct H as [? [? A]]. inversion A; subst. assumption.
   inversion IHfollow_lb. auto.
-  destruct IHfollow_lb as [A B].
-  split. inversion A; subst.  inversion H3; subst. assumption. assumption.
 Qed.
 
 Lemma invert_follow_lb : forall E T1 T2,
   follow_lb E T1 T2 ->
-  (T1 = T2) \/
-  (exists t1 t2 Hi, (typ_sel X2) = T2 /\
-    binds X1 (bind_sub T1 Hi) E /\
-    sub oktrans E T1 Hi /\
-    follow_lb E (typ_fvar X1) (typ_fvar X2)) \/
-  ().
+  T1 = T2 \/
+  exists p1 p2 Lo, (typ_sel p2) = T2 /\
+    has E p1 (typ_mem true Lo)  /\
+    sub oktrans E T1 Lo /\
+    follow_lb E (typ_sel p1) (typ_sel p2).
 Proof.
   intros.
   induction H.
   auto.
   destruct IHfollow_lb as [IH | IH].
   subst.
-  right. exists X X Hi. auto.
+  right. repeat eexists; eauto.
+    eapply (proj2 sub_has_regular) in H. destruct H as [Hok [Hwf1 Hwf2]].
+    eapply sub_trans_ok. apply sub_reflexivity. apply Hok.
+    inversion Hwf2; subst. assumption.
   right.
-    destruct IH as [X1 [X2 [Hi' [Heq [IH1 [IH2 IH3]]]]]].
+    destruct IH as [p1 [p2 [Lo' [Heq [IH1 [IH2 IH3]]]]]].
     subst.
-    exists X X2 Hi. auto.
+    exists p p2 Lo. splits*.
+    eapply (proj2 sub_has_regular) in H. destruct H as [Hok [Hwf1 Hwf2]].
+    eapply sub_trans_ok. apply sub_reflexivity. apply Hok.
+    inversion Hwf2; subst. assumption.
 Qed.
 
 Definition st_middle (E: env) (B C: typ) : Prop :=
@@ -1185,7 +1179,7 @@ Proof.
   induction Hflb.
   assumption.
   apply IHHflb.
-  eapply sub_trans_tvar_lower; eauto using sub_trans_ok.
+  eapply sub_sel2; eauto using sub_trans_ok.
 Qed.
 
 Lemma chain2sub: forall E B1 B2 C D,
@@ -1218,9 +1212,7 @@ Proof.
   induction Hfub.
   apply chain2sub with (B2:=T) (C:=C); try assumption.
     apply sub_reflexivity; auto.
-  apply* sub_trans_tvar.
-    apply sub_trans_ok.
-    apply* IHHfub.
+  apply* sub_sel1.
 Qed.
 
 Lemma prepend_chain: forall E A1 A2 D,
@@ -1239,69 +1231,52 @@ Proof.
     + exists A1 typ_top. auto 10.
     + exists A1 C. auto 10.
     + exists A1 C. auto 10.
-  - (* case bot *)
-    destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
-    exists typ_bot C.
-    assert (wft E C) as HwfC. {
-      apply follow_lb_reg in Hch3. inversion Hch3. assumption.
-    }
-    auto 10.
-  - (* case refl_tvar *)
+  - (* case refl_sel *)
     assumption.
-  - (* case trans_tvar *)
-    set (IH := (prepend_chain E T3 A2 D H5 Hch)).
+  - (* case sel1 *)
+    admit.
+    (*
+    set (IH := (prepend_chain E (typ_sel t) A2 D Hsub Hch)).
     destruct IH as [B [C [IH1 [IH2 IH3]]]].
     exists B C.
     split.
-    eapply follow_ub_cons. eassumption. assumption. assumption.
+    assumption.
     split; assumption.
-  - (* case trans_tvar_lower *)
+    *)
+  - (* case sel2 *)
     set (Hch' := Hch).
     destruct Hch' as [B [C [Hch1 [Hch2 Hch3]]]].
     inversion Hch1; subst.
     + destruct Hch2 as [Hch2 | [Hch2 | [Hch2a Hch2b]]].
       subst.
-      apply (prepend_chain E A1 T0 D H5).
-      exists T0 T0.
-      set (Hflb := (follow_lb_cons H0 H4 Hch3)).
+      apply (prepend_chain E A1 (typ_sel t) D Hsub).
+      exists (typ_sel t) (typ_sel t).
+      set (Hflb := (follow_lb_cons H0 Hch3)).
       auto.
       exists A1 C.
       splits.
       apply follow_ub_nil. auto.
       right. left. apply Hch2. apply Hch3.
       inversion Hch2a.
-    + assert (bind_sub Lo Hi = bind_sub T0 T3) as Heq. {
-        eapply binds_func; eassumption.
-      }
-      inversions Heq.
-      apply (prepend_chain E A1 T0 D H5).
-      apply (prepend_chain E T0 T3 D H4).
+    + apply (prepend_chain E A1 (typ_sel t) D Hsub).
       exists B C.
       splits.
       assumption.
       assumption.
       assumption.
-  - (* case arrow *)
-    destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
-    inversion Hch1; subst.
-    exists (typ_arrow S1 S2) C.
-    destruct Hch2 as [Hch2 | [Hch2 | [Hch2a Hch2b]]].
-    subst.
-    auto 10.
-    auto 10.
-    set (Hst := (sub_trans_notvar (notvar_arrow _ _) H Hch2b)).
-    auto 10.
-  - (* case refl_all *)
-    assumption.
+  - (* case mem_false *)
+    admit.
+  - (* case mem_true *)
+    admit.
   - (* case all *)
     destruct Hch as [B [C [Hch1 [Hch2 Hch3]]]].
     inversion Hch1; subst.
-    exists (typ_all S0 S1 S2) C.
+    exists (typ_all S1 S2) C.
     destruct Hch2 as [Hch2 | [Hch2 | [Hch2a Hch2b]]].
     subst.
     auto 10.
     auto 10.
-    set (Hst := (sub_trans_notvar (notvar_all _ _ _) H Hch2b)).
+    set (Hst := (sub_trans_notvar (notvar_all _ _) H Hch2b)).
     auto 10.
   - (* case trans_ok *)
     apply (prepend_chain E _ _ _ H (prepend_chain E _ _ _ H0 Hch)).
