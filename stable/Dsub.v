@@ -166,7 +166,11 @@ Inductive sub : env -> typ -> typ -> Prop :=
       sub E T1 S1 ->
       (forall x, x \notin L ->
           sub (E & x ~ T1) (S2 open_t_var x) (T2 open_t_var x)) ->
-      sub E (typ_all S1 S2) (typ_all T1 T2).
+      sub E (typ_all S1 S2) (typ_all T1 T2)
+  | sub_trans : forall E T1 T2 T3,
+      sub E T1 T2 ->
+      sub E T2 T3 ->
+      sub E T1 T3.
 
 (** Typing relation *)
 
@@ -656,7 +660,7 @@ Qed.
 Lemma sub_regular : forall E S T,
   sub E S T -> okt E /\ wft E S /\ wft E T.
 Proof.
-  induction 1. auto*. auto*. auto*. auto*. auto*. auto*. auto*. auto*.
+  induction 1; try auto*.
   split. auto*. split;
    apply_fresh* wft_all as Y;
     forwards~: (H1 Y); apply_empty* (@wft_narrow T1).
@@ -774,6 +778,7 @@ Proof.
   apply* sub_mem_false.
   apply* sub_mem_true.
   apply_fresh* sub_all as Y. apply_ih_bind* H0.
+  apply* sub_trans.
 Qed.
 
 (* ********************************************************************** *)
