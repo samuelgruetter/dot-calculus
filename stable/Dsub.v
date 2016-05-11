@@ -569,42 +569,19 @@ Hint Immediate wft_from_env_has.
 
 (** Inversion lemma *)
 
-Lemma okt_push_inv : forall E X B,
-  okt (E & X ~ B) -> exists T, B = bind_sub T \/ B = bind_typ T.
+Lemma okt_push_inv : forall E x T,
+  okt (E & x ~ T) -> okt E /\ wft E T /\ x # E.
 Proof.
   introv O. inverts O.
     false* empty_push_inv.
-    lets (?&?&?): (eq_push_inv H). subst*.
-    lets (?&?&?): (eq_push_inv H). subst*.
+    lets (?&M&?): (eq_push_inv H). subst. eauto.
 Qed.
 
-Lemma okt_push_sub_inv : forall E X T,
-  okt (E & X ~<: T) -> okt E /\ wft E T /\ X # E.
-Proof.
-  introv O. inverts O.
-    false* empty_push_inv.
-    lets (?&M&?): (eq_push_inv H). subst. inverts~ M.
-    lets (?&?&?): (eq_push_inv H). false.
-Qed.
+Lemma okt_push_type : forall E x T,
+  okt (E & x ~ T) -> type T.
+Proof. intros. applys wft_type. forwards*: okt_push_inv. Qed.
 
-Lemma okt_push_sub_type : forall E X T,
-  okt (E & X ~<: T) -> type T.
-Proof. intros. applys wft_type. forwards*: okt_push_sub_inv. Qed.
-
-Lemma okt_push_typ_inv : forall E x T,
-  okt (E & x ~: T) -> okt E /\ wft E T /\ x # E.
-Proof.
-  introv O. inverts O.
-    false* empty_push_inv.
-    lets (?&?&?): (eq_push_inv H). false.
-    lets (?&M&?): (eq_push_inv H). subst. inverts~ M.
-Qed.
-
-Lemma okt_push_typ_type : forall E X T,
-  okt (E & X ~: T) -> type T.
-Proof. intros. applys wft_type. forwards*: okt_push_typ_inv. Qed.
-
-Hint Immediate okt_push_sub_type okt_push_typ_type.
+Hint Immediate okt_push_type.
 
 (** Through narrowing *)
 
