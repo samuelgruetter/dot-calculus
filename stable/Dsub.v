@@ -1010,57 +1010,34 @@ Qed.
 
 Section NarrowTrans.
 
-Definition transitivity_on Q := forall E S T,
-  sub oktrans E S Q -> sub oktrans E Q T -> sub oktrans E S T.
-
-Hint Unfold transitivity_on.
-
 Hint Resolve wft_narrow.
 
-Lemma sub_narrowing_aux : forall Q m F E z P S T,
-  transitivity_on Q ->
-  sub m (E & z ~ Q & F) S T ->
-  sub oktrans E P Q ->
-  sub m (E & z ~ P & F) S T.
+Lemma sub_has_narrowing_aux :
+  (forall m E0 S T, sub m E0 S T ->
+   forall Q E F z P,
+   E0 = (E & z ~ Q & F) ->
+   sub oktrans E P Q ->
+   sub m (E & z ~ P & F) S T)
+  /\
+  (forall E0 p T, has E0 p T ->
+   forall Q E F z P,
+   E0 = (E & z ~ Q & F) ->
+   sub oktrans E P Q ->
+   has (E & z ~ P & F) p T).
 Proof.
-  introv TransQ SsubT PsubQ.
-  inductions SsubT; introv.
+  Hint Constructors sub has.
+  apply sub_has_mutind; intros; subst; eauto.
   apply* sub_top.
   apply* sub_refl_sel.
+  apply_fresh* sub_all as Y. apply_ih_bind H0; eauto.
   tests EQ: (x = z).
     lets M: (@okt_narrow Q).
-    apply (@sub_sel1 P).
-      asserts~ N: (ok (E & z ~ P & F)).
-       lets: ok_middle_inv_r N.
-       apply~ binds_middle_eq.
-      apply TransQ.
-        do_rew* concat_assoc (apply_empty* sub_weakening).
-        binds_get H. auto*.
-    apply* (@sub_sel1 T). binds_cases H; auto.
-  tests EQ: (x = z).
-    lets M: (@okt_narrow Q).
-    apply (@sub_sel2 P) with (S1:=S1).
-      asserts~ N: (ok (E & z ~ P & F)).
-       lets: ok_middle_inv_r N.
-       apply~ binds_middle_eq.
-      apply TransQ.
-        do_rew* concat_assoc (apply_empty* sub_weakening).
-        binds_get H. auto*. auto*.
-    apply* (@sub_sel2 T). binds_cases H; auto.
-  apply* sub_selc1.
-  apply* sub_selc2.
-  apply* sub_mem_false.
-  apply* sub_mem_true.
-  apply_fresh* sub_all as Y. apply_ih_bind* H0.
-  apply* sub_trans_ok.
-  apply* sub_trans.
-Qed.
-
-Lemma sub_transitivity : forall Q,
-  transitivity_on Q.
-Proof.
-  intro Q. introv SsubQ QsubT.
-  eapply sub_trans; eauto.
+    apply binds_middle_eq_inv in b. subst.
+    eapply has_sub. apply has_var. apply* M. apply binds_middle_eq.
+      eapply ok_from_okt in o. eapply ok_middle_inv in o. destruct o as [o1 o2]. apply o2.
+      apply* sub_weakening1. auto.
+    apply has_var; eauto. binds_cases b; auto.
+  apply* has_mem.
 Qed.
 
 Lemma sub_narrowing : forall Q m E F Z P S T,
@@ -1069,8 +1046,7 @@ Lemma sub_narrowing : forall Q m E F Z P S T,
   sub m (E & Z ~ P & F) S T.
 Proof.
   intros.
-  apply* sub_narrowing_aux.
-  apply* sub_transitivity.
+  apply* (proj1 sub_has_narrowing_aux).
 Qed.
 
 Inductive notvar : typ -> Prop :=
