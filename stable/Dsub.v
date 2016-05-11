@@ -94,6 +94,14 @@ with term : trm -> Prop :=
       term e2 ->
       term (trm_app e1 e2).
 
+(** Values *)
+
+Inductive value : trm -> Prop :=
+  | value_abs  : forall V e1, term (trm_abs V e1) ->
+                 value (trm_abs V e1)
+  | value_mem : forall V, term (trm_mem V) ->
+                 value (trm_mem V).
+
 (** Environment is an associative list of bindings. *)
 
 Definition env := LibEnv.env typ.
@@ -106,12 +114,10 @@ Definition env := LibEnv.env typ.
 Inductive wft : env -> typ -> Prop :=
   | wft_top : forall E,
       wft E typ_top
-  | wft_sel : forall U E x,
-      binds x U E ->
-      wft E (typ_sel (trm_fvar x))
-  | wft_selc : forall E T1,
-      wft E T1 ->
-      wft E (typ_sel (trm_mem T1))
+  | wft_sel : forall E e,
+      value e \/ (exists x, trm_fvar x = e) ->
+      wfe E e ->
+      wft E (typ_sel e)
   | wft_mem : forall E b T1,
       wft E T1 ->
       wft E (typ_mem b T1)
@@ -119,7 +125,23 @@ Inductive wft : env -> typ -> Prop :=
       wft E T1 ->
       (forall x, x \notin L ->
         wft (E & x ~ T1) (T2 open_t_var x)) ->
-      wft E (typ_all T1 T2).
+      wft E (typ_all T1 T2)
+with wfe : env -> trm -> Prop :=
+  | wfe_var : forall U E x,
+      binds x U E ->
+      wfe E (trm_fvar x)
+   | wfe_abs : forall L E V e,
+      wft E V ->
+      (forall x, x \notin L -> wfe (E & x ~ V) (e open_e_var x)) ->
+      wfe E (trm_abs V e)
+  | wfe_mem : forall E T,
+      wft E T ->
+      wfe E (trm_mem T)
+  | wfe_app : forall E e1 e2,
+      wfe E e1 ->
+      wfe E e2 ->
+      wfe E (trm_app e1 e2)
+.
 
 (** A environment E is well-formed if it contains no duplicate bindings
   and if each type in it is well-formed with respect to the environment
@@ -202,14 +224,6 @@ Inductive typing : env -> trm -> typ -> Prop :=
       sub E S T ->
       typing E e T.
 
-(** Values *)
-
-Inductive value : trm -> Prop :=
-  | value_abs  : forall V e1, term (trm_abs V e1) ->
-                 value (trm_abs V e1)
-  | value_mem : forall V, term (trm_mem V) ->
-                 value (trm_mem V).
-
 (** One-step reduction *)
 
 Inductive red : trm -> trm -> Prop :=
@@ -287,17 +301,12 @@ with subst_e (z : var) (u : trm) (e : trm) {struct e} : trm :=
   | trm_app e1 e2 => trm_app (subst_e z u e1) (subst_e z u e2)
   end.
 
-(** Substitution for free type variables in environment. *)
-
-Definition subst_tb (Z : var) (P : typ) (b : typ) : typ :=
-  subst_t Z (trm_mem P) b.
-
 (* ********************************************************************** *)
 (** * Tactics *)
 
 (** Constructors as hints. *)
 
-Hint Constructors type term wft ok okt value red.
+Hint Constructors type term wft wfe ok okt value red.
 
 Hint Resolve
   sub_top sub_refl_sel
@@ -333,6 +342,7 @@ Tactic Notation "apply_fresh" "*" constr(T) "as" ident(x) :=
 Ltac get_env :=
   match goal with
   | |- wft ?E _ => E
+  | |- wfe ?E _ => E
   | |- sub ?E _ _  => E
   | |- typing ?E _ _ => E
   end.
@@ -355,14 +365,9 @@ Scheme type_mut := Induction for type Sort Prop
 with term_mut := Induction for term Sort Prop.
 Combined Scheme lc_mutind from type_mut, term_mut.
 
-(** Tactic to undo when Coq does too much simplification *)
-
-Ltac unsimpl_map_bind :=
-  match goal with |- context [ ?B (subst_t ?Z (trm_mem ?P) ?U) ] =>
-    unsimpl ((subst_tb Z P) (B U)) end.
-
-Tactic Notation "unsimpl_map_bind" "*" :=
-  unsimpl_map_bind; auto*.
+Scheme wft_mut := Induction for wft Sort Prop
+with wfe_mut := Induction for wfe Sort Prop.
+Combined Scheme wf_mutind from wft_mut, wfe_mut.
 
 (* ********************************************************************** *)
 (** * Properties of Substitutions *)
@@ -488,89 +493,169 @@ Proof.
   intros. apply* (proj2 subst_lc).
 Qed.
 
-Hint Resolve subst_t_type subst_e_term.
+Lemma subst_e_value : forall e1 z e2,
+  value e1 ->  term e2 -> value (subst_e z e2 e1).
+Proof.
+  intros. inversion H; subst; simpl.
+  - apply value_abs.
+    assert (trm_abs (subst_t z e2 V) (subst_e z e2 e0) = subst_e z e2 (trm_abs V e0)) as A. {
+      simpl. reflexivity.
+    }
+    rewrite A. apply* subst_e_term.
+  - apply value_mem.
+    assert (trm_mem (subst_t z e2 V) = subst_e z e2 (trm_mem V)) as A. {
+      simpl. reflexivity.
+    }
+    rewrite A. apply* subst_e_term.
+Qed.
 
+Lemma value_is_term: forall e, value e -> term e.
+Proof.
+  introv H. inversion H; subst; eauto.
+Qed.
+
+Hint Resolve subst_t_type subst_e_term subst_e_value value_is_term.
 
 (* ********************************************************************** *)
 (** * Properties of well-formedness of a type in an environment *)
 
 (** If a type is well-formed in an environment then it is locally closed. *)
 
+Lemma wf_lc : (forall E T, wft E T -> type T) /\
+              (forall E e, wfe E e -> term e).
+Proof.
+  apply wf_mutind; eauto.
+Qed.
+
 Lemma wft_type : forall E T,
   wft E T -> type T.
 Proof.
-  induction 1; eauto.
+  intros. eapply (proj1 wf_lc); eauto.
+Qed.
+
+Lemma wfe_term : forall E e,
+  wfe E e -> term e.
+Proof.
+  intros. eapply (proj2 wf_lc); eauto.
 Qed.
 
 (** Through weakening *)
+
+Lemma wf_weaken :
+  (forall E0 T, wft E0 T ->
+   forall E F G, E0 = E & G ->
+                 ok (E & F & G) ->
+                 wft (E & F & G) T)
+    /\
+  (forall E0 e, wfe E0 e ->
+   forall E F G, E0 = E & G ->
+                 ok (E & F & G) ->
+                 wfe (E & F & G) e).
+Proof.
+  apply wf_mutind; intros; subst; eauto.
+  apply_fresh* wft_all as Y. apply_ih_bind* H0.
+  apply (@wfe_var U). apply* binds_weaken.
+  apply_fresh* wfe_abs as y. apply_ih_bind* H0.
+Qed.
 
 Lemma wft_weaken : forall G T E F,
   wft (E & G) T ->
   ok (E & F & G) ->
   wft (E & F & G) T.
 Proof.
-  intros. gen_eq K: (E & G). gen E F G.
-  induction H; intros; subst; eauto.
-  (* case: sel *)
-  apply (@wft_sel U). apply* binds_weaken.
-  (* case: all *)
-  apply_fresh* wft_all as Y. apply_ih_bind* H1.
+  intros. eapply (proj1 wf_weaken); eauto.
 Qed.
 
 (** Through narrowing *)
+
+Lemma wf_narrow : (forall E0 T, wft E0 T -> forall V F U E x,
+  E0 = (E & x ~ V & F) ->
+  ok (E & x ~ U & F) ->
+  wft (E & x ~ U & F) T)
+  /\
+(forall E0 e, wfe E0 e -> forall V F U E x,
+  E0 = (E & x ~ V & F) ->
+  ok (E & x ~ U & F) ->
+  wfe (E & x ~ U & F) e).
+Proof.
+  apply wf_mutind; intros; subst; eauto.
+  apply_fresh* wft_all as Y. apply_ih_bind* H0.
+  destruct (binds_middle_inv b) as [K|[K|K]]; try destructs K.
+    applys wfe_var. apply* binds_concat_right.
+    subst. applys wfe_var. apply~ binds_middle_eq.
+    applys wfe_var. apply~ binds_concat_left.
+     apply* binds_concat_left.
+  apply_fresh* wfe_abs as y. apply_ih_bind* H0.
+Qed.
 
 Lemma wft_narrow : forall V F U T E x,
   wft (E & x ~ V & F) T ->
   ok (E & x ~ U & F) ->
   wft (E & x ~ U & F) T.
 Proof.
-  intros. gen_eq K: (E & x ~ V & F). gen E F.
-  induction H; intros; subst; eauto.
-  destruct (binds_middle_inv H) as [K|[K|K]]; try destructs K.
-    applys wft_sel. apply* binds_concat_right.
-    subst. applys wft_sel. apply~ binds_middle_eq.
-    applys wft_sel. apply~ binds_concat_left.
-     apply* binds_concat_left.
-  apply_fresh* wft_all as Y. apply_ih_bind* H1.
+  intros. eapply (proj1 wf_narrow); eauto.
 Qed.
 
-(** Through type substitution *)
+(** Through substitution *)
 
-Lemma wft_subst_tb : forall F Q E Z P T,
-  wft (E & Z ~ Q & F) T ->
-  wft E P ->
-  ok (E & map (subst_tb Z P) F) ->
-  wft (E & map (subst_tb Z P) F) (subst_tb Z P T).
+Lemma wf_subst : (forall E0 T, wft E0 T -> forall F Q E Z u,
+  E0 = E & Z ~ Q & F ->
+  (value u \/ exists x, trm_fvar x = u) -> wfe E u ->
+  ok (E & map (subst_t Z u) F) ->
+  wft (E & map (subst_t Z u) F) (subst_t Z u T)) /\
+  (forall E0 e, wfe E0 e -> forall F Q E Z u,
+  E0 = E & Z ~ Q & F ->
+  (value u \/ exists x, trm_fvar x = u) -> wfe E u ->
+  ok (E & map (subst_t Z u) F) ->
+  wfe (E & map (subst_t Z u) F) (subst_e Z u e)).
 Proof.
-  introv WT WP. gen_eq G: (E & Z ~ Q & F). gen F.
-  induction WT; intros F EQ Ok; subst; unfold subst_tb at 2; simpl subst_t; auto.
-  case_var*.
-    apply_empty* wft_weaken.
-    destruct (binds_concat_inv H) as [?|[? ?]].
-      apply (@wft_sel (subst_tb Z P U)).
+  apply wf_mutind; intros; subst; simpl; eauto.
+  - destruct o as [? | [? ?]].
+    + apply* wft_sel. left. apply subst_e_value. assumption. apply* wfe_term.
+    + subst. simpl. case_var*.
+      * apply_empty* wft_weaken.
+      * apply* wft_sel. rewrite* <- ((proj2 subst_fresh) (trm_fvar x) Z u).
+        simpl. auto.
+  - apply_fresh* wft_all as Y.
+    lets: wft_type.
+    rewrite* subst_t_open_t_var.
+    apply_ih_map_bind* H0. apply* wfe_term.
+  - case_var*.
+    + apply_empty* (proj2 wf_weaken).
+    + destruct (binds_concat_inv b) as [?|[? ?]].
+      apply (@wfe_var (subst_t Z u U)).
        apply~ binds_concat_right.
-      destruct (binds_push_inv H1) as [[? ?]|[? ?]].
+      destruct (binds_push_inv H3) as [[? ?]|[? ?]].
         subst. false~.
-        applys wft_sel. apply* binds_concat_left.
-  apply_fresh* wft_all as Y.
-   lets: wft_type.
-   rewrite* subst_t_open_t_var.
-   apply_ih_map_bind* H0.
+        applys wfe_var. apply* binds_concat_left.
+  - apply_fresh* wfe_abs as y.
+    lets: (proj2 wf_lc).
+    rewrite* subst_e_open_e_var.
+    apply_ih_map_bind* H0.
+Qed.
+
+Lemma wft_subst : forall F Q E Z u T,
+  wft (E & Z ~ Q & F) T ->
+  (value u \/ exists x, trm_fvar x = u) -> wfe E u ->
+  ok (E & map (subst_t Z u) F) ->
+  wft (E & map (subst_t Z u) F) (subst_t Z u T).
+Proof.
+  intros. eapply (proj1 wf_subst); eauto.
 Qed.
 
 (** Through type reduction *)
 
-Lemma wft_open : forall E U T1 T2,
+Lemma wft_open : forall E u T1 T2,
   ok E ->
   wft E (typ_all T1 T2) ->
-  wft E U ->
-  wft E (open_t T2 (trm_mem U)).
+  (value u \/ exists x, trm_fvar x = u) -> wfe E u ->
+  wft E (open_t T2 u).
 Proof.
-  introv Ok WA WU. inversions WA. pick_fresh X.
+  introv Ok WA VU WU. inversions WA. pick_fresh X.
   auto* wft_type. rewrite* (@subst_t_intro X).
-  lets K: (@wft_subst_tb empty).
+  lets K: (@wft_subst empty).
   specializes_vars K. clean_empty K. apply* K.
-  (* todo: apply empty ? *)
+  apply* wfe_term.
 Qed.
 
 (* ********************************************************************** *)
@@ -625,7 +710,7 @@ Qed.
 Hint Resolve wft_weaken_right.
 Hint Resolve wft_from_okt.
 Hint Immediate wft_from_env_has.
-Hint Resolve wft_subst_tb.
+Hint Resolve wft_subst.
 
 (* ********************************************************************** *)
 (** ** Properties of well-formedness of an environment *)
@@ -660,23 +745,24 @@ Proof.
   applys~ okt_push. applys* wft_narrow.
 Qed.
 
-(** Through type substitution *)
+(** Through substitution *)
 
-Lemma okt_subst_tb : forall Q Z P (E F:env),
+Lemma okt_subst : forall Q Z u (E F:env),
   okt (E & Z ~ Q & F) ->
-  wft E P ->
-  okt (E & map (subst_tb Z P) F).
+  (value u \/ exists x, trm_fvar x = u) -> wfe E u ->
+  okt (E & map (subst_t Z u) F).
 Proof.
- introv O W. induction F using env_ind.
+ introv O V W. induction F using env_ind.
   rewrite map_empty. rewrite concat_empty_r in *.
    lets*: (okt_push_inv O).
   rewrite map_push. rewrite concat_assoc in *.
    lets*: (okt_push_inv O).
+   apply okt_push. apply* IHF. apply* wft_subst. auto*.
 Qed.
 
 (** Automation *)
 
-Hint Resolve okt_narrow okt_subst_tb wft_weaken.
+Hint Resolve okt_narrow okt_subst wft_weaken.
 
 
 (* ********************************************************************** *)
@@ -704,15 +790,29 @@ Proof.
   unfold open_t. intros. apply* (proj1 notin_fv_open_rec).
 Qed.
 
+Lemma notin_fv_e_open : forall y x e,
+  x \notin fv_e (e open_e_var y) ->
+  x \notin fv_e e.
+Proof.
+  unfold open_e. intros. apply* (proj2 notin_fv_open_rec).
+Qed.
+
+Lemma notin_fv_wf_rec :
+  (forall E T,
+     wft E T -> forall x, x # E -> x \notin fv_t T) /\
+  (forall E e,
+     wfe E e -> forall x, x # E -> x \notin fv_e e).
+Proof.
+  apply wf_mutind; intros; simpl; eauto.
+  notin_simpl; auto. pick_fresh Y. apply* (@notin_fv_t_open Y).
+  rewrite notin_singleton. intro. subst. applys binds_fresh_inv b H.
+  notin_simpl; auto. pick_fresh y. apply* (@notin_fv_e_open y).
+Qed.
+
 Lemma notin_fv_wf : forall E x T,
   wft E T -> x # E -> x \notin fv_t T.
 Proof.
-  induction 1; intros Fr; simpl.
-  eauto.
-  rewrite notin_singleton. intro. subst. applys binds_fresh_inv H Fr.
-  notin_simpl; auto.
-  notin_simpl; auto.
-  notin_simpl; auto. pick_fresh Y. apply* (@notin_fv_t_open Y).
+  intros. eapply (proj1 notin_fv_wf_rec); eauto.
 Qed.
 
 Lemma map_subst_id : forall G z u,
@@ -734,6 +834,8 @@ Lemma sub_regular : forall E S T,
 Proof.
   induction 1; try auto*.
   splits*. destruct IHsub as [? [? Hmem]]. inversion Hmem; subst. assumption.
+  splits*. apply* wft_sel. left. apply value_mem. apply* wfe_term.
+  splits*. apply* wft_sel. left. apply value_mem. apply* wfe_term.
   split. auto*. split;
    apply_fresh* wft_all as Y;
     forwards~: (H1 Y); apply_empty* (@wft_narrow T1).
@@ -943,6 +1045,16 @@ End NarrowTrans.
 
 (* ********************************************************************** *)
 (** Type substitution preserves subtyping (10) *)
+
+Definition subst_tb (Z : var) (P : typ) (b : typ) : typ :=
+  subst_t Z (trm_mem P) b.
+
+Ltac unsimpl_map_bind :=
+  match goal with |- context [ ?B (subst_t ?Z (trm_mem ?P) ?U) ] =>
+    unsimpl ((subst_tb Z P) (B U)) end.
+
+Tactic Notation "unsimpl_map_bind" "*" :=
+  unsimpl_map_bind; auto*.
 
 Lemma sub_through_subst_tb : forall Q E F Z S T P,
   sub (E & Z ~ Q & F) S T ->
