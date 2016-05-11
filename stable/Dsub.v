@@ -180,13 +180,14 @@ Inductive typing : env -> trm -> typ -> Prop :=
         typing (E & x ~ V) (e1 open_e_var x) (T1 open_t_var x)) ->
       typing E (trm_abs V e1) (typ_all V T1)
   | typing_mem : forall E T1,
+      okt E ->
       wft E T1 ->
       typing E (trm_mem T1) (typ_mem true T1)
   | typing_app : forall T1 E e1 e2 T2 T2',
       typing E e1 (typ_all T1 T2) ->
       typing E e2 T1 ->
       T2' = open_t T2 e2 ->
-      wft E T2 ->
+      wft E T2' ->
       typing E (trm_app e1 e2) T2'
   | typing_sub : forall S E e T,
       typing E e S ->
@@ -670,31 +671,18 @@ Proof.
   splits*.
   splits.
    pick_fresh y. specializes H0 y. destructs~ H0.
-    forwards*: okt_push_typ_inv.
+    forwards*: okt_push_inv.
    apply_fresh* term_abs as y.
-     pick_fresh y. specializes H0 y. destructs~ H0.
-      forwards*: okt_push_typ_inv.
-     specializes H0 y. destructs~ H0.
-   pick_fresh y. specializes H0 y. destructs~ H0.
-    apply* wft_arrow.
-      forwards*: okt_push_typ_inv.
-      apply_empty* wft_strengthen.
-  splits*. destructs IHtyping1. inversion* H3.
-  splits.
-   pick_fresh y. specializes H0 y. destructs~ H0.
-    forwards*: okt_push_sub_inv.
-   apply_fresh* term_tabs as y.
      pick_fresh y. forwards~ K: (H0 y). destructs K.
-       forwards*: okt_push_sub_inv.
+       forwards*: okt_push_inv.
      forwards~ K: (H0 y). destructs K. auto.
    apply_fresh* wft_all as Y.
      pick_fresh y. forwards~ K: (H0 y). destructs K.
-      forwards*: okt_push_sub_inv.
+      forwards*: okt_push_inv.
      forwards~ K: (H0 Y). destructs K.
-      forwards*: okt_push_sub_inv.
-  splits*; destructs (sub_regular H0).
-   apply* term_tapp. applys* wft_type.
-   applys* wft_open T1.
+      forwards*: okt_push_inv.
+  splits*. apply term_mem. apply* wft_type.
+  splits*.
   splits*. destructs~ (sub_regular H0).
 Qed.
 
