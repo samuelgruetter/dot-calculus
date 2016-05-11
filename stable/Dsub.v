@@ -754,6 +754,7 @@ Lemma sub_reflexivity : forall E T,
 Proof.
   introv Ok WI. lets W: (wft_type WI). gen E.
   induction W; intros; inversions WI; eauto.
+  destruct b. apply* sub_mem_true. apply* sub_mem_false.
   apply_fresh* sub_all as Y.
 Qed.
 
