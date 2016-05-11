@@ -991,38 +991,6 @@ Proof.
     apply* term_mem. apply* wft_type.
 Qed.
 
-(** Substitution preserves typing (10) *)
-
-Lemma sub_through_subst_mem : forall Q E F z S T P,
-  sub (E & z ~ Q & F) S T ->
-  sub E (typ_mem true P) Q ->
-  sub (E & map (subst_t z (trm_mem P)) F) (subst_t z (trm_mem P) S) (subst_t z (trm_mem P) T).
-Proof.
-  introv SsubT PsubQ.
-  inductions SsubT; introv; simpl subst_t.
-  apply* sub_top.
-  case_var.
-    apply* sub_reflexivity.
-    apply* sub_reflexivity.
-     inversions H0. binds_cases H3.
-      apply* (@wft_var U).
-      apply* (@wft_var (subst_tt Z P U)). unsimpl_map_bind*.
-   case_var.
-    apply (@sub_transitivity Q).
-      apply_empty* sub_weakening.
-      rewrite* <- (@subst_tt_fresh Z P Q).
-        binds_get H. auto*.
-        apply* (@notin_fv_wf E).
-    apply* (@sub_trans_tvar (subst_tt Z P U)).
-      rewrite* (@map_subst_tb_id E Z P).
-        binds_cases H; unsimpl_map_bind*.
-  apply* sub_arrow.
-  apply_fresh* sub_all as X.
-   unsimpl (subst_tb Z P (bind_sub T1)).
-   do 2 rewrite* subst_tt_open_tt_var.
-   apply_ih_map_bind* H0.
-Qed.
-
 (* ********************************************************************** *)
 (** * Properties of Typing *)
 
