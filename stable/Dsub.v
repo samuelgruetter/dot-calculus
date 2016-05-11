@@ -605,14 +605,26 @@ Hint Resolve okt_narrow wft_weaken.
 (* ********************************************************************** *)
 (** ** Environment is unchanged by substitution from a fresh name *)
 
-Lemma notin_fv_tt_open : forall Y X T,
-  X \notin fv_tt (T open_tt_var Y) ->
-  X \notin fv_tt T.
+Ltac destruct_notin_union :=
+  match goal with
+    | H: _ \notin _ \u _ |- _ => eapply notin_union in H; destruct H
+  end.
+
+Lemma notin_fv_open_rec : (forall T k y x,
+  x \notin fv_t (open_t_rec k (trm_fvar y) T) ->
+  x \notin fv_t T) /\ (forall e k y x,
+  x \notin fv_e (open_e_rec k (trm_fvar y) e) ->
+  x \notin fv_e e).
 Proof.
- introv. unfold open_tt. generalize 0.
- induction T; simpl; intros k Fr; auto.
- specializes IHT1 k. specializes IHT2 k. auto.
- specializes IHT1 k. specializes IHT2 (S k). auto.
+  apply typ_trm_mutind; simpl; intros;
+  repeat destruct_notin_union; eauto using notin_union_l.
+Qed.
+
+Lemma notin_fv_t_open : forall y x T,
+  x \notin fv_t (T open_t_var y) ->
+  x \notin fv_t T.
+Proof.
+  unfold open_t. intros. apply* (proj1 notin_fv_open_rec).
 Qed.
 
 Lemma notin_fv_wf : forall E X T,
