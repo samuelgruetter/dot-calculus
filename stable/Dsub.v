@@ -627,14 +627,15 @@ Proof.
   unfold open_t. intros. apply* (proj1 notin_fv_open_rec).
 Qed.
 
-Lemma notin_fv_wf : forall E X T,
-  wft E T -> X # E -> X \notin fv_tt T.
+Lemma notin_fv_wf : forall E x T,
+  wft E T -> x # E -> x \notin fv_t T.
 Proof.
   induction 1; intros Fr; simpl.
   eauto.
   rewrite notin_singleton. intro. subst. applys binds_fresh_inv H Fr.
   notin_simpl; auto.
-  notin_simpl; auto. pick_fresh Y. apply* (@notin_fv_tt_open Y).
+  notin_simpl; auto.
+  notin_simpl; auto. pick_fresh Y. apply* (@notin_fv_t_open Y).
 Qed.
 
 Lemma map_subst_tb_id : forall G Z P,
