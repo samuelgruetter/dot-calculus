@@ -593,35 +593,13 @@ Proof.
   introv O W. induction F using env_ind.
   rewrite concat_empty_r in *. lets*: (okt_push_inv O).
   rewrite concat_assoc in *.
-   lets (T&[?|?]): okt_push_inv O; subst.
-     lets (?&?&?): (okt_push_sub_inv O).
-      applys~ okt_sub. applys* wft_narrow.
-     lets (?&?&?): (okt_push_typ_inv O).
-      applys~ okt_typ. applys* wft_narrow.
-Qed.
-
-(** Through type substitution *)
-
-Lemma okt_subst_tb : forall Q Z P (E F:env),
-  okt (E & Z ~<: Q & F) ->
-  wft E P ->
-  okt (E & map (subst_tb Z P) F).
-Proof.
- introv O W. induction F using env_ind.
-  rewrite map_empty. rewrite concat_empty_r in *.
-   lets*: (okt_push_sub_inv O).
-  rewrite map_push. rewrite concat_assoc in *.
-   lets (U&[?|?]): okt_push_inv O; subst.
-     lets (?&?&?): (okt_push_sub_inv O).
-      applys~ okt_sub. applys* wft_subst_tb.
-     lets (?&?&?): (okt_push_typ_inv O).
-      applys~ okt_typ. applys* wft_subst_tb.
+  lets (?&?&?): (okt_push_inv O).
+  applys~ okt_push. applys* wft_narrow.
 Qed.
 
 (** Automation *)
 
-Hint Resolve okt_narrow okt_subst_tb wft_weaken.
-Hint Immediate okt_strengthen.
+Hint Resolve okt_narrow wft_weaken.
 
 
 (* ********************************************************************** *)
