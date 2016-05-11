@@ -638,13 +638,12 @@ Proof.
   notin_simpl; auto. pick_fresh Y. apply* (@notin_fv_t_open Y).
 Qed.
 
-Lemma map_subst_tb_id : forall G Z P,
-  okt G -> Z # G -> G = map (subst_tb Z P) G.
+Lemma map_subst_id : forall G z u,
+  okt G -> z # G -> G = map (subst_t z u) G.
 Proof.
   induction 1; intros Fr; autorewrite with rew_env_map; simpl.
   auto.
-  rewrite* <- IHokt. rewrite* subst_tt_fresh. apply* notin_fv_wf.
-  rewrite* <- IHokt. rewrite* subst_tt_fresh. apply* notin_fv_wf.
+  rewrite* <- IHokt. rewrite* (proj1 subst_fresh). apply* notin_fv_wf.
 Qed.
 
 
