@@ -164,21 +164,12 @@ Inductive sub : env -> typ -> typ -> Prop :=
       okt E ->
       wft E (typ_sel t) ->
       sub E (typ_sel t) (typ_sel t)
-  | sub_sel1 : forall T E U x,
-      binds x T E ->
-      sub E T (typ_mem false U) ->
-      sub E (typ_sel (trm_fvar x)) U
-  | sub_sel2 : forall T E S S1 x,
-      binds x T E ->
-      sub E T (typ_mem true S1) ->
-      sub E S S1 ->
-      sub E S (typ_sel (trm_fvar x))
-  | sub_selc1 : forall U E T,
-      sub E U T ->
-      sub E (typ_sel (trm_mem U)) T
-  | sub_selc2 : forall S E T,
-      sub E T S ->
-      sub E T (typ_sel (trm_mem S))
+  | sub_sel1 : forall E U t,
+      has E t (typ_mem false U) ->
+      sub E (typ_sel t) U
+  | sub_sel2 : forall E S t,
+      has E t (typ_mem true S) ->
+      sub E S (typ_sel t)
   | sub_mem_false : forall E b1 T1 T2,
       sub E T1 T2 ->
       sub E (typ_mem b1 T1) (typ_mem false T2)
@@ -194,6 +185,23 @@ Inductive sub : env -> typ -> typ -> Prop :=
       sub E S T ->
       sub E T U ->
       sub E S U
+
+with has : env -> trm -> typ -> Prop :=
+  | has_var : forall E x T,
+      okt E ->
+      binds x T E ->
+      has E (trm_fvar x) T
+  | has_mem : forall E T,
+      okt E -> wft E T ->
+      has E (trm_mem T) (typ_mem true T)
+  | has_mem_false : forall E T,
+      has E (trm_mem T) (typ_mem true T) ->
+      has E (trm_mem T) (typ_mem false T)
+  | has_sub : forall E p T U,
+      (exists x, trm_fvar x = p) ->
+      has E p T ->
+      sub E T U ->
+      has E p U
 .
 
 (** Typing relation *)
@@ -342,6 +350,7 @@ Ltac get_env :=
   | |- wft ?E _ => E
   | |- wfe ?E _ => E
   | |- sub ?E _ _  => E
+  | |- has ?E _ _ => E
   | |- typing ?E _ _ => E
   end.
 
@@ -366,6 +375,10 @@ Combined Scheme lc_mutind from type_mut, term_mut.
 Scheme wft_mut := Induction for wft Sort Prop
 with wfe_mut := Induction for wfe Sort Prop.
 Combined Scheme wf_mutind from wft_mut, wfe_mut.
+
+Scheme sub_mut := Induction for sub Sort Prop
+with has_mut := Induction for has Sort Prop.
+Combined Scheme sub_has_mutind from sub_mut, has_mut.
 
 (* ********************************************************************** *)
 (** * Properties of Substitutions *)
@@ -827,16 +840,24 @@ Qed.
 
 (** The subtyping relation is restricted to well-formed objects. *)
 
+Lemma sub_has_regular : (forall E S T,
+  sub E S T -> okt E /\ wft E S /\ wft E T) /\ (forall E p T,
+  has E p T -> okt E /\ wft E (typ_sel p) /\ wft E T).
+Proof.
+  apply sub_has_mutind; intros; try auto*.
+  splits*. destruct H as [? [? A]]. inversion A; subst. assumption.
+  splits*. destruct H as [? [? A]]. inversion A; subst. assumption.
+  split. auto*. split;
+   apply_fresh* wft_all as Y;
+    forwards~: (H0 Y); apply_empty* (@wft_narrow T1).
+  splits*. apply wft_sel. left. apply value_mem. apply* wfe_term. apply* wfe_mem.
+  splits*. destruct H as [? [? A]]. inversion A; subst. apply* wft_mem.
+Qed.
+
 Lemma sub_regular : forall E S T,
   sub E S T -> okt E /\ wft E S /\ wft E T.
 Proof.
-  induction 1; try auto*.
-  splits*. destruct IHsub as [? [? Hmem]]. inversion Hmem; subst. assumption.
-  splits*. apply* wft_sel. left. apply value_mem. apply* wfe_term.
-  splits*. apply* wft_sel. left. apply value_mem. apply* wfe_term.
-  split. auto*. split;
-   apply_fresh* wft_all as Y;
-    forwards~: (H1 Y); apply_empty* (@wft_narrow T1).
+  intros. apply* (proj1 sub_has_regular).
 Qed.
 
 (** The typing relation is restricted to well-formed objects. *)
@@ -938,20 +959,33 @@ Qed.
 (* ********************************************************************** *)
 (** Weakening (2) *)
 
+Lemma sub_has_weakening : (forall E0 S T, sub E0 S T -> forall E F G,
+   E0 = E & G ->
+   okt (E & F & G) ->
+   sub (E & F & G) S T) /\ (forall E0 p T, has E0 p T -> forall E F G,
+   E0 = E & G ->
+   okt (E & F & G) ->
+   has (E & F & G) p T).
+Proof.
+  apply sub_has_mutind; intros; subst; auto.
+  apply* sub_sel1.
+  apply* sub_sel2.
+  apply* sub_mem_false.
+  apply* sub_mem_true.
+  apply_fresh* sub_all as Y. apply_ih_bind* H0.
+  apply* sub_trans.
+  apply* has_var. apply* binds_weaken.
+  apply* has_mem.
+  apply* has_mem_false.
+  apply* has_sub.
+Qed.
+
 Lemma sub_weakening : forall E F G S T,
    sub (E & G) S T ->
    okt (E & F & G) ->
    sub (E & F & G) S T.
 Proof.
-  introv Typ. gen F. inductions Typ; introv Ok; auto.
-  apply* sub_sel1. apply* binds_weaken.
-  apply* sub_sel2. apply* binds_weaken.
-  apply* sub_selc1.
-  apply* sub_selc2.
-  apply* sub_mem_false.
-  apply* sub_mem_true.
-  apply_fresh* sub_all as Y. apply_ih_bind* H0.
-  apply* sub_trans.
+  intros. apply* (proj1 sub_has_weakening).
 Qed.
 
 Lemma sub_weakening1 : forall E F G S T,
@@ -976,41 +1010,32 @@ Section NarrowTrans.
 
 Hint Resolve wft_narrow.
 
-Lemma sub_narrowing_aux : forall Q F E z P S T,
-  sub (E & z ~ Q & F) S T ->
-  sub E P Q ->
-  sub (E & z ~ P & F) S T.
+Lemma sub_has_narrowing_aux :
+  (forall E0 S T, sub E0 S T ->
+   forall Q E F z P,
+   E0 = (E & z ~ Q & F) ->
+   sub E P Q ->
+   sub (E & z ~ P & F) S T)
+  /\
+  (forall E0 p T, has E0 p T ->
+   forall Q E F z P,
+   E0 = (E & z ~ Q & F) ->
+   sub E P Q ->
+   has (E & z ~ P & F) p T).
 Proof.
-  introv SsubT PsubQ.
-  inductions SsubT; introv.
+  Hint Constructors sub has.
+  apply sub_has_mutind; intros; subst; eauto.
   apply* sub_top.
   apply* sub_refl_sel.
-  tests EQ: (x = z).
-    lets M: (@okt_narrow Q).
-    apply (@sub_sel1 P).
-      asserts~ N: (ok (E & z ~ P & F)).
-       lets: ok_middle_inv_r N.
-       apply~ binds_middle_eq.
-      apply sub_trans with (T:=Q).
-        do_rew* concat_assoc (apply_empty* sub_weakening).
-        binds_get H. auto*.
-    apply* (@sub_sel1 T). binds_cases H; auto.
-  tests EQ: (x = z).
-    lets M: (@okt_narrow Q).
-    apply (@sub_sel2 P) with (S1:=S1).
-      asserts~ N: (ok (E & z ~ P & F)).
-       lets: ok_middle_inv_r N.
-       apply~ binds_middle_eq.
-      apply sub_trans with (T:=Q).
-        do_rew* concat_assoc (apply_empty* sub_weakening).
-        binds_get H. auto*. auto*.
-    apply* (@sub_sel2 T). binds_cases H; auto.
-  apply* sub_selc1.
-  apply* sub_selc2.
-  apply* sub_mem_false.
-  apply* sub_mem_true.
   apply_fresh* sub_all as Y. apply_ih_bind H0; eauto.
-  apply* sub_trans.
+  tests EQ: (x = z).
+    lets M: (@okt_narrow Q).
+    apply binds_middle_eq_inv in b. subst.
+    eapply has_sub. eexists. reflexivity. apply has_var. apply* M. apply binds_middle_eq.
+      eapply ok_from_okt in o. eapply ok_middle_inv in o. destruct o as [o1 o2]. apply o2.
+      apply* sub_weakening1. auto.
+    apply has_var; eauto. binds_cases b; auto.
+  apply* has_mem.
 Qed.
 
 Lemma sub_narrowing : forall Q E F Z P S T,
@@ -1019,7 +1044,7 @@ Lemma sub_narrowing : forall Q E F Z P S T,
   sub (E & Z ~ P & F) S T.
 Proof.
   intros.
-  apply* sub_narrowing_aux.
+  apply* (proj1 sub_has_narrowing_aux).
 Qed.
 
 End NarrowTrans.
