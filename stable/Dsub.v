@@ -168,21 +168,13 @@ Inductive sub : sub_mode -> env -> typ -> typ -> Prop :=
       okt E ->
       wft E (typ_sel t) ->
       sub notrans E (typ_sel t) (typ_sel t)
-  | sub_sel1 : forall T E U x,
-      binds x T E ->
-      sub oktrans E T (typ_mem false U) ->
-      sub notrans E (typ_sel (trm_fvar x)) U
-  | sub_sel2 : forall T E S S1 x,
-      binds x T E ->
-      sub oktrans E T (typ_mem true S1) ->
+  | sub_sel1 : forall E U t,
+      has E t (typ_mem false U) ->
+      sub notrans E (typ_sel t) U
+  | sub_sel2 : forall E S S1 t,
+      has E t (typ_mem true S1) ->
       sub oktrans E S S1 ->
-      sub notrans E S (typ_sel (trm_fvar x))
-  | sub_selc1 : forall U E T,
-      sub oktrans E U T ->
-      sub notrans E (typ_sel (trm_mem U)) T
-  | sub_selc2 : forall S E T,
-      sub oktrans E T S ->
-      sub notrans E T (typ_sel (trm_mem S))
+      sub notrans E S (typ_sel t)
   | sub_mem_false : forall E b1 T1 T2,
       sub oktrans E T1 T2 ->
       sub notrans E (typ_mem b1 T1) (typ_mem false T2)
@@ -201,6 +193,19 @@ Inductive sub : sub_mode -> env -> typ -> typ -> Prop :=
       sub oktrans E T1 T2 ->
       sub oktrans E T2 T3 ->
       sub oktrans E T1 T3
+
+with has : env -> trm -> typ -> Prop :=
+  | has_var : forall E x T,
+      okt E ->
+      binds x T E ->
+      has E (trm_fvar x) T
+  | has_mem : forall E T,
+      okt E -> wft E T ->
+      has E (trm_mem T) (typ_mem true T)
+  | has_sub : forall E p T U,
+      has E p T ->
+      sub oktrans E T U ->
+      has E p U
 .
 
 (** Typing relation *)
@@ -349,6 +354,7 @@ Ltac get_env :=
   | |- wft ?E _ => E
   | |- wfe ?E _ => E
   | |- sub _ ?E _ _  => E
+  | |- has ?E _ _ => E
   | |- typing ?E _ _ => E
   end.
 
@@ -373,6 +379,10 @@ Combined Scheme lc_mutind from type_mut, term_mut.
 Scheme wft_mut := Induction for wft Sort Prop
 with wfe_mut := Induction for wfe Sort Prop.
 Combined Scheme wf_mutind from wft_mut, wfe_mut.
+
+Scheme sub_mut := Induction for sub Sort Prop
+with has_mut := Induction for has Sort Prop.
+Combined Scheme sub_has_mutind from sub_mut, has_mut.
 
 (* ********************************************************************** *)
 (** * Properties of Substitutions *)
@@ -834,16 +844,22 @@ Qed.
 
 (** The subtyping relation is restricted to well-formed objects. *)
 
+Lemma sub_has_regular : (forall m E S T,
+  sub m E S T -> okt E /\ wft E S /\ wft E T) /\ (forall E p T,
+  has E p T -> okt E /\ wft E (typ_sel p) /\ wft E T).
+Proof.
+  apply sub_has_mutind; intros; try auto*.
+  splits*. destruct H as [? [? A]]. inversion A; subst. assumption.
+  split. auto*. split;
+   apply_fresh* wft_all as Y;
+    forwards~: (H0 Y); apply_empty* (@wft_narrow T1).
+  splits*. apply wft_sel. left. apply value_mem. apply* wfe_term. apply* wfe_mem.
+Qed.
+
 Lemma sub_regular : forall m E S T,
   sub m E S T -> okt E /\ wft E S /\ wft E T.
 Proof.
-  induction 1; try auto*.
-  splits*. destruct IHsub as [? [? Hmem]]. inversion Hmem; subst. assumption.
-  splits*. apply* wft_sel. left. apply value_mem. apply* wfe_term.
-  splits*. apply* wft_sel. left. apply value_mem. apply* wfe_term.
-  split. auto*. split;
-   apply_fresh* wft_all as Y;
-    forwards~: (H1 Y); apply_empty* (@wft_narrow T1).
+  intros. apply* (proj1 sub_has_regular).
 Qed.
 
 (** The typing relation is restricted to well-formed objects. *)
@@ -946,20 +962,32 @@ Qed.
 (* ********************************************************************** *)
 (** Weakening (2) *)
 
+Lemma sub_has_weakening : (forall m E0 S T, sub m E0 S T -> forall E F G,
+   E0 = E & G ->
+   okt (E & F & G) ->
+   sub m (E & F & G) S T) /\ (forall E0 p T, has E0 p T -> forall E F G,
+   E0 = E & G ->
+   okt (E & F & G) ->
+   has (E & F & G) p T).
+Proof.
+  apply sub_has_mutind; intros; subst; auto.
+  apply* sub_sel1.
+  apply* sub_sel2.
+  apply* sub_mem_false.
+  apply* sub_mem_true.
+  apply_fresh* sub_all as Y. apply_ih_bind* H0.
+  apply* sub_trans.
+  apply* has_var. apply* binds_weaken.
+  apply* has_mem.
+  apply* has_sub.
+Qed.
+
 Lemma sub_weakening : forall m E F G S T,
    sub m (E & G) S T ->
    okt (E & F & G) ->
    sub m (E & F & G) S T.
 Proof.
-  introv Typ. gen F. inductions Typ; introv Ok; auto.
-  apply* sub_sel1. apply* binds_weaken.
-  apply* sub_sel2. apply* binds_weaken.
-  apply* sub_selc1.
-  apply* sub_selc2.
-  apply* sub_mem_false.
-  apply* sub_mem_true.
-  apply_fresh* sub_all as Y. apply_ih_bind* H0.
-  apply* sub_trans.
+  intros. apply* (proj1 sub_has_weakening).
 Qed.
 
 Lemma sub_weakening1 : forall m E F G S T,
