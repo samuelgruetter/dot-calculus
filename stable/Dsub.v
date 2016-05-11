@@ -128,7 +128,7 @@ Inductive wft : env -> typ -> Prop :=
 Inductive okt : env -> Prop :=
   | okt_empty :
       okt empty
-  | okt_typ : forall E x T,
+  | okt_push : forall E x T,
       okt E -> wft E T -> x # E -> okt (E & x ~ T).
 
 (** Subtyping relation *)
@@ -585,13 +585,13 @@ Hint Immediate okt_push_type.
 
 (** Through narrowing *)
 
-Lemma okt_narrow : forall V (E F:env) U X,
-  okt (E & X ~<: V & F) ->
+Lemma okt_narrow : forall V (E F:env) U x,
+  okt (E & x ~ V & F) ->
   wft E U ->
-  okt (E & X ~<: U & F).
+  okt (E & x ~ U & F).
 Proof.
   introv O W. induction F using env_ind.
-  rewrite concat_empty_r in *. lets*: (okt_push_sub_inv O).
+  rewrite concat_empty_r in *. lets*: (okt_push_inv O).
   rewrite concat_assoc in *.
    lets (T&[?|?]): okt_push_inv O; subst.
      lets (?&?&?): (okt_push_sub_inv O).
