@@ -138,24 +138,25 @@ Inductive sub : env -> typ -> typ -> Prop :=
       okt E ->
       wft E S ->
       sub E S typ_top
-  | sub_refl_tvar : forall E t,
+  | sub_refl_sel : forall E t,
       okt E ->
       wft E (typ_sel t) ->
       sub E (typ_sel t) (typ_sel t)
-  | sub_sel1 : forall S E T x,
-      binds x (typ_mem true S) E ->
-      sub E T S ->
-      sub E T (typ_sel (trm_fvar x))
-  | sub_sel2 : forall b U E T x,
-      binds x (typ_mem b U) E ->
-      sub E U T ->
-      sub E (typ_sel (trm_fvar x)) T
-  | sub_selc1 : forall S E T,
-      sub E T S ->
-      sub E T (typ_sel (trm_mem S))
-  | sub_selc2 : forall U E T,
+  | sub_sel1 : forall T E U x,
+      binds x T E ->
+      sub E T (typ_mem false U) ->
+      sub E (typ_sel (trm_fvar x)) U
+  | sub_sel2 : forall T E S S1 x,
+      binds x T E ->
+      sub E T (typ_mem true S1) ->
+      sub E S S1 ->
+      sub E S (typ_sel (trm_fvar x))
+  | sub_selc1 : forall U E T,
       sub E U T ->
       sub E (typ_sel (trm_mem U)) T
+  | sub_selc2 : forall S E T,
+      sub E T S ->
+      sub E T (typ_sel (trm_mem S))
   | sub_mem_false : forall E b1 T1 T2,
       sub E T1 T2 ->
       sub E (typ_mem b1 T1) (typ_mem false T2)
@@ -291,7 +292,7 @@ with subst_e (z : var) (u : trm) (e : trm) {struct e} : trm :=
 Hint Constructors type term wft ok okt value red.
 
 Hint Resolve
-  sub_top sub_refl_tvar
+  sub_top sub_refl_sel
   typing_var typing_app typing_sub.
 
 (** Gathering free names already used in the proofs *)
@@ -661,6 +662,7 @@ Lemma sub_regular : forall E S T,
   sub E S T -> okt E /\ wft E S /\ wft E T.
 Proof.
   induction 1; try auto*.
+  splits*. destruct IHsub as [? [? Hmem]]. inversion Hmem; subst. assumption.
   split. auto*. split;
    apply_fresh* wft_all as Y;
     forwards~: (H1 Y); apply_empty* (@wft_narrow T1).
@@ -793,54 +795,55 @@ Hint Unfold transitivity_on.
 
 Hint Resolve wft_narrow.
 
-Lemma sub_narrowing_aux : forall Q F E Z P S T,
+Lemma sub_narrowing_aux : forall Q F E z P S T,
   transitivity_on Q ->
-  sub (E & Z ~<: Q & F) S T ->
+  sub (E & z ~ Q & F) S T ->
   sub E P Q ->
-  sub (E & Z ~<: P & F) S T.
+  sub (E & z ~ P & F) S T.
 Proof.
   introv TransQ SsubT PsubQ.
   inductions SsubT; introv.
   apply* sub_top.
-  apply* sub_refl_tvar.
-  tests EQ: (X = Z).
+  apply* sub_refl_sel.
+  tests EQ: (x = z).
     lets M: (@okt_narrow Q).
-    apply (@sub_trans_tvar P).
-      asserts~ N: (ok (E & Z ~<: P & F)).
+    apply (@sub_sel1 P).
+      asserts~ N: (ok (E & z ~ P & F)).
        lets: ok_middle_inv_r N.
        apply~ binds_middle_eq.
       apply TransQ.
         do_rew* concat_assoc (apply_empty* sub_weakening).
         binds_get H. auto*.
-    apply* (@sub_trans_tvar U). binds_cases H; auto.
-  apply* sub_arrow.
+    apply* (@sub_sel1 T). binds_cases H; auto.
+  tests EQ: (x = z).
+    lets M: (@okt_narrow Q).
+    apply (@sub_sel2 P) with (S1:=S1).
+      asserts~ N: (ok (E & z ~ P & F)).
+       lets: ok_middle_inv_r N.
+       apply~ binds_middle_eq.
+      apply TransQ.
+        do_rew* concat_assoc (apply_empty* sub_weakening).
+        binds_get H. auto*. auto*.
+    apply* (@sub_sel2 T). binds_cases H; auto.
+  apply* sub_selc1.
+  apply* sub_selc2.
+  apply* sub_mem_false.
+  apply* sub_mem_true.
   apply_fresh* sub_all as Y. apply_ih_bind* H0.
+  apply* sub_trans.
 Qed.
 
 Lemma sub_transitivity : forall Q,
   transitivity_on Q.
 Proof.
-  intro Q. introv SsubQ QsubT. asserts* W: (type Q).
-  gen E S T. set_eq Q' EQ: Q. gen Q' EQ.
-  induction W; intros Q' EQ E S SsubQ;
-    induction SsubQ; try discriminate; inversions EQ;
-      intros T QsubT; inversions keep QsubT;
-        eauto 4 using sub_trans_tvar.
-  (* case: all / top -> only needed to fix well-formedness,
-     by building back what has been deconstructed too much *)
-  assert (sub E (typ_all S1 S2) (typ_all T1 T2)).
-    apply_fresh* sub_all as y.
-  auto*.
-  (* case: all / all *)
-  apply_fresh sub_all as Y. auto*.
-  applys~ (H0 Y). lets: (IHW T1).
-  apply_empty* (@sub_narrowing_aux T1).
+  intro Q. introv SsubQ QsubT.
+  eapply sub_trans; eauto.
 Qed.
 
 Lemma sub_narrowing : forall Q E F Z P S T,
   sub E P Q ->
-  sub (E & Z ~<: Q & F) S T ->
-  sub (E & Z ~<: P & F) S T.
+  sub (E & Z ~ Q & F) S T ->
+  sub (E & Z ~ P & F) S T.
 Proof.
   intros.
   apply* sub_narrowing_aux.
