@@ -767,9 +767,12 @@ Lemma sub_weakening : forall E F G S T,
    sub (E & F & G) S T.
 Proof.
   introv Typ. gen F. inductions Typ; introv Ok; auto.
-  (* case: fvar trans *)
-  apply* sub_trans_tvar. apply* binds_weaken.
-  (* case: all *)
+  apply* sub_sel1. apply* binds_weaken.
+  apply* sub_sel2. apply* binds_weaken.
+  apply* sub_selc1.
+  apply* sub_selc2.
+  apply* sub_mem_false.
+  apply* sub_mem_true.
   apply_fresh* sub_all as Y. apply_ih_bind* H0.
 Qed.
 
