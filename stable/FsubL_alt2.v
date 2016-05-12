@@ -211,10 +211,6 @@ Inductive sub : sub_mode -> env -> typ -> typ -> Prop :=
       sub oktrans E T1 S1 ->
       sub oktrans E S2 T2 ->
       sub notrans E (typ_arrow S1 S2) (typ_arrow T1 T2)
-  | sub_refl_all : forall E T0 T1 T2,
-      okt E ->
-      wft E (typ_all T0 T1 T2) ->
-      sub notrans E (typ_all T0 T1 T2) (typ_all T0 T1 T2)
   | sub_all : forall L E S0 S1 S2 T0 T1 T2,
       sub oktrans E S0 T0 ->
       sub oktrans E T1 S1 ->
@@ -397,7 +393,7 @@ Definition subst_tb (Z : var) (P : typ) (b : bind) : bind :=
 Hint Constructors type term wft ok okt value red.
 
 Hint Resolve
-  sub_top sub_bot sub_refl_tvar sub_arrow sub_refl_all
+  sub_top sub_bot sub_refl_tvar sub_arrow
   typing_var typing_app typing_tapp typing_sub.
 
 (** Gathering free names already used in the proofs *)
@@ -1213,6 +1209,8 @@ Proof.
   introv Ok WI. lets W: (wft_type WI). gen E.
   destruct m; induction W; intros; inversions WI; eauto using sub_trans_ok.
   apply sub_arrow; apply sub_trans_ok; auto.
+  apply_fresh sub_all as Y; eauto using sub_trans_ok.
+  apply sub_trans_ok. apply_fresh* sub_all as Y.
 Qed.
 
 (* ********************************************************************** *)
@@ -1293,9 +1291,6 @@ Proof.
         do_rew* concat_assoc (apply_empty* sub_weakening).
     apply* (@sub_trans_tvar_lower T0 T1). binds_cases H; auto.
   apply* sub_arrow.
-  apply sub_refl_all.
-    apply* (@okt_narrow Q0 Q1).
-    apply* (@wft_narrow Q0 Q1).
   apply_fresh* sub_all as Y. apply_ih_bind H0.
     auto.
     apply TransQ1.
@@ -1446,11 +1441,6 @@ Proof.
     apply sub_trans_ok. apply* (@sub_trans_tvar_lower (subst_tt Z P T0) (subst_tt Z P T1)).
     binds_cases H; unsimpl_map_bind_sub*.
   apply sub_trans_ok. apply* sub_arrow.
-  apply sub_trans_ok. apply* sub_refl_all.
-   change (typ_all (subst_tt Z P T0) (subst_tt Z P T1) (subst_tt Z P T2))
-          with
-          (subst_tt Z P (typ_all T0 T1 T2)).
-   auto*.
   apply sub_trans_ok. apply_fresh* sub_all as X.
    unsimpl (subst_tb Z P (bind_sub T0 T1)).
    repeat rewrite* subst_tt_open_tt_var.
@@ -1655,7 +1645,6 @@ Proof.
       eapply typing_regular in H. destruct H as [? [A ?]].
       eapply A.
     + false. eapply binds_empty_inv; eauto.
-    + eapply pt_all; eauto.
     + apply_fresh pt_all as Y. eauto.
       eapply sub_trans; eauto.
       eapply sub_trans; eauto.
@@ -1743,8 +1732,6 @@ Proof.
   clear Typ. clear Hv.
   inversion Hpt; subst; introv Eqv Hsub; try solve [inversion Hsub].
   inversion Eqv; subst. inversion Hsub; subst; introv HsubU.
-  splits*. eexists. exists L. intros Y Fr. splits*.
-  specialize (H Y Fr). eapply typing_narrowing_empty; eauto.
 
   splits.
   eapply sub_trans; eauto.
@@ -1785,6 +1772,7 @@ Proof.
   (* case: tapp *)
   inversions Red; try solve [ apply* typing_tapp ].
   destruct~ (typing_inv_tabs Typ (U10:=T0) (U11:=T1) (U2:=T2)) as [P1 [S20 [S21 [L P2]]]].
+    apply* sub_reflexivity.
     apply* (@sub_transitivity T).
     pick_fresh X. forwards~ K: (P2 X). destruct K.
      rewrite* (@subst_te_intro X).
@@ -1841,7 +1829,6 @@ Proof.
     subst. apply sub_trans_pushback_empty in H. inversion H.
       apply value_not_bot in Typ; try assumption. congruence.
       false* binds_empty_inv.
-      inversions H0. forwards*: IHTyp.
       inversions H0. forwards*: IHTyp.
 Qed.
 
