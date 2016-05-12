@@ -190,10 +190,10 @@ Inductive sub : env -> typ -> typ -> Prop :=
       (forall x, x \notin L ->
           sub (E & x ~ T1) (S2 open_t_var x) (T2 open_t_var x)) ->
       sub E (typ_all S1 S2) (typ_all T1 T2)
-  | sub_trans : forall E T1 T2 T3,
-      sub E T1 T2 ->
-      sub E T2 T3 ->
-      sub E T1 T3
+  | sub_trans : forall E S T U,
+      sub E S T ->
+      sub E T U ->
+      sub E S U
 .
 
 (** Typing relation *)
@@ -974,20 +974,14 @@ Qed.
 
 Section NarrowTrans.
 
-Definition transitivity_on Q := forall E S T,
-  sub E S Q -> sub E Q T -> sub E S T.
-
-Hint Unfold transitivity_on.
-
 Hint Resolve wft_narrow.
 
 Lemma sub_narrowing_aux : forall Q F E z P S T,
-  transitivity_on Q ->
   sub (E & z ~ Q & F) S T ->
   sub E P Q ->
   sub (E & z ~ P & F) S T.
 Proof.
-  introv TransQ SsubT PsubQ.
+  introv SsubT PsubQ.
   inductions SsubT; introv.
   apply* sub_top.
   apply* sub_refl_sel.
@@ -997,7 +991,7 @@ Proof.
       asserts~ N: (ok (E & z ~ P & F)).
        lets: ok_middle_inv_r N.
        apply~ binds_middle_eq.
-      apply TransQ.
+      apply sub_trans with (T:=Q).
         do_rew* concat_assoc (apply_empty* sub_weakening).
         binds_get H. auto*.
     apply* (@sub_sel1 T). binds_cases H; auto.
@@ -1007,7 +1001,7 @@ Proof.
       asserts~ N: (ok (E & z ~ P & F)).
        lets: ok_middle_inv_r N.
        apply~ binds_middle_eq.
-      apply TransQ.
+      apply sub_trans with (T:=Q).
         do_rew* concat_assoc (apply_empty* sub_weakening).
         binds_get H. auto*. auto*.
     apply* (@sub_sel2 T). binds_cases H; auto.
@@ -1015,15 +1009,8 @@ Proof.
   apply* sub_selc2.
   apply* sub_mem_false.
   apply* sub_mem_true.
-  apply_fresh* sub_all as Y. apply_ih_bind* H0.
+  apply_fresh* sub_all as Y. apply_ih_bind H0; eauto.
   apply* sub_trans.
-Qed.
-
-Lemma sub_transitivity : forall Q,
-  transitivity_on Q.
-Proof.
-  intro Q. introv SsubQ QsubT.
-  eapply sub_trans; eauto.
 Qed.
 
 Lemma sub_narrowing : forall Q E F Z P S T,
@@ -1033,7 +1020,6 @@ Lemma sub_narrowing : forall Q E F Z P S T,
 Proof.
   intros.
   apply* sub_narrowing_aux.
-  apply* sub_transitivity.
 Qed.
 
 End NarrowTrans.
