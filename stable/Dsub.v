@@ -1221,6 +1221,10 @@ Inductive possible_types : env -> trm -> typ -> Prop :=
   sub empty V' V ->
   (forall X, X \notin L -> sub (E & X ~ V') (T1 open_t_var X) (T1' open_t_var X)) ->
   possible_types E (trm_abs V e1) (typ_all V' T1')
+| pt_sel : forall E v p S,
+  possible_types E v S ->
+  has E p (typ_mem true S) ->
+  possible_types E v (typ_sel p)
 .
 
 Lemma possible_types_value : forall E p T,
@@ -1249,6 +1253,37 @@ Proof.
     apply typing_regular in H. destruct H as [? [A ?]]. assumption.
 Qed.
 
+Lemma sub_mem_inv: forall E S U,
+  sub E (typ_mem true S) (typ_mem false U) ->
+  sub E S U.
+Proof.
+  intros.
+Lemma has_inv_var: forall E x S U,
+  binds x (typ_mem true S) E ->
+  has E (trm_fvar x) (typ_mem false U) ->
+  sub E S U.
+Proof.
+  introv Bi HU. generalize dependent S.
+  remember (typ_mem false U) as MU.
+  assert (sub E MU (typ_mem false U)) as A. {
+    subst. apply* sub_reflexivity.
+  }
+  clear HeqMU. generalize dependent U.
+  remember (trm_fvar x) as p. generalize dependent x.
+  induction HU; intros; subst; eauto.
+  - inversion Heqp; subst. unfold binds in *. rewrite H0 in Bi. inversion Bi.
+    subst.
+  - inversion Heqp.
+  - eapply sub_trans. eapply IHHU. reflexivity.
+Lemma has_inv: forall E p S U,
+  has E p (typ_mem true S) ->
+  has E p (typ_mem false U) ->
+  sub E S U.
+Proof.
+  introv HS HU. remember (typ_mem true S) as MS.
+  generalize dependent U. generalize dependent S.
+  induction HS; intros; subst.
+  -
 Lemma possible_types_closure : forall v T U E,
   possible_types E v T ->
   sub E T U ->
@@ -1257,7 +1292,7 @@ Proof.
   introv Hpt Hsub. generalize dependent v.
   induction Hsub; intros; eauto.
   - apply pt_top. apply* possible_types_value. apply* possible_types_wfe.
-  - inversion Hpt.
+  - inversion Hpt; subst.
   - inversion Hpt; subst. apply_fresh* pt_arrow as y.
     eapply sub_trans; eassumption. eapply sub_trans; eassumption.
   - inversion Hpt; subst. apply_fresh* pt_all as Y.
