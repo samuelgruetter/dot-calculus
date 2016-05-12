@@ -189,8 +189,8 @@ Inductive sub : sub_mode -> env -> typ -> typ -> Prop :=
   | sub_trans_ok : forall E T1 T2,
       sub notrans E T1 T2 ->
       sub oktrans E T1 T2
-  | sub_trans : forall E T1 T2 T3,
-      sub oktrans E T1 T2 ->
+  | sub_trans_axiom : forall E T1 T2 T3,
+      sub notrans E T1 T2 ->
       sub oktrans E T2 T3 ->
       sub oktrans E T1 T3
 
@@ -204,7 +204,7 @@ with has : env -> trm -> typ -> Prop :=
       has E (trm_mem T) (typ_mem true T)
   | has_sub : forall E p T U,
       has E p T ->
-      sub oktrans E T U ->
+      sub notrans E T U ->
       has E p U
 .
 
@@ -862,6 +862,12 @@ Proof.
   intros. apply* (proj1 sub_has_regular).
 Qed.
 
+Lemma wft_has_sel : forall E p T, has E p T -> wft E (typ_sel p).
+Proof.
+  intros. apply (proj2 sub_has_regular) in H. destruct H as [? [? ?]].
+  auto.
+Qed.
+
 (** The typing relation is restricted to well-formed objects. *)
 
 Lemma typing_regular : forall E e T,
@@ -976,7 +982,7 @@ Proof.
   apply* sub_mem_false.
   apply* sub_mem_true.
   apply_fresh* sub_all as Y. apply_ih_bind* H0.
-  apply* sub_trans.
+  apply* sub_trans_axiom.
   apply* has_var. apply* binds_weaken.
   apply* has_mem.
   apply* has_sub.
@@ -1016,13 +1022,13 @@ Lemma sub_has_narrowing_aux :
   (forall m E0 S T, sub m E0 S T ->
    forall Q E F z P,
    E0 = (E & z ~ Q & F) ->
-   sub oktrans E P Q ->
+   sub notrans E P Q ->
    sub m (E & z ~ P & F) S T)
   /\
   (forall E0 p T, has E0 p T ->
    forall Q E F z P,
    E0 = (E & z ~ Q & F) ->
-   sub oktrans E P Q ->
+   sub notrans E P Q ->
    has (E & z ~ P & F) p T).
 Proof.
   Hint Constructors sub has.
@@ -1041,12 +1047,60 @@ Proof.
 Qed.
 
 Lemma sub_narrowing : forall Q m E F Z P S T,
-  sub oktrans E P Q ->
+  sub notrans E P Q ->
   sub m (E & Z ~ Q & F) S T ->
   sub m (E & Z ~ P & F) S T.
 Proof.
   intros.
   apply* (proj1 sub_has_narrowing_aux).
+Qed.
+
+Lemma sub_trans: forall E T1 T2 T3,
+  sub oktrans E T1 T2 ->
+  sub oktrans E T2 T3 ->
+  sub oktrans E T1 T3.
+Proof.
+  introv H12 H23. remember oktrans as m. rewrite Heqm. clear Heqm.
+  induction H12; eauto; inversion H23; subst; eauto 4.
+Qed.
+
+Lemma has_mem_good: forall E t S U,
+  has E t (typ_mem true S) ->
+  has E t (typ_mem false U) ->
+  sub oktrans E S U.
+Proof.
+  introv HS HU.
+  remember (typ_mem true S) as MS.
+  generalize dependent U. generalize dependent S.
+  induction HS; intros; subst; eauto.
+  - generalize dependent S.
+    remember (typ_mem false U) as MU.
+    assert (sub notrans E MU (typ_mem false U)) as A. {
+      subst.
+      eapply (proj2 sub_has_regular) in HU.
+      apply* sub_reflexivity.
+    }
+    clear HeqMU. generalize dependent U.
+    remember (trm_fvar x) as t. generalize dependent x.
+    induction HU; intros; subst; eauto.
+    inversion Heqt. subst. unfold binds in *. rewrite H2 in H1. inversion H1. subst.
+    inversion A; subst. assumption.
+    inversion Heqt.
+    apply* IHHU.
+    
+Lemma sub_untrans_aux: forall E T1 T2 T3,
+  sub notrans E T1 T2 ->
+  sub notrans E T2 T3 ->
+  sub notrans E T1 T3.
+Proof.
+  introv H12 H23. remember notrans as m. gen Heqm.
+  induction H12; intros; subst; eauto; inversion H23; subst; eauto using wft_has_sel;
+  try solve [apply* sub_sel1].
+  - inversion H; subst. inversion H1; subst.
+    unfold binds in *. rewrite H6 in H2. inversion H2.
+    inversion H4
+  - apply* sub_top. apply* wft_has_sel.
+  - apply*
 Qed.
 
 Inductive notvar : typ -> Prop :=
