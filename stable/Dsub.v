@@ -411,6 +411,12 @@ Proof.
   pick_fresh x. apply* ((proj2 open_rec_lc_core) e1 0 (trm_fvar x)).
 Qed.
 
+Lemma open_t_var_type : forall x T,
+  type T -> T open_t_var x = T.
+Proof.
+  intros. unfold open_t. rewrite* <- (proj1 open_rec_lc).
+Qed.
+
 (** Substitution for a fresh name is identity. *)
 
 Lemma subst_fresh : (forall T z u,
@@ -1299,7 +1305,7 @@ Proof.
   - inversion Heqp.
 Qed.
 
-Lemma has_mem_eq: forall p b1 b2 S U,
+Lemma has_empty_mem_eq: forall p b1 b2 S U,
   has empty p (typ_mem b1 S) ->
   has empty p (typ_mem b2 U) ->
   S = U.
@@ -1310,6 +1316,16 @@ Proof.
   try solve [destruct H as [x ?]; inversion H].
   - destruct H as [x ?]; inversion H; subst.
     false. apply* has_empty_var_false.
+Qed.
+
+Lemma has_empty_value: forall p T,
+  has empty p T ->
+  value p.
+Proof.
+  intros. apply has_regular_e in H.
+  destruct H as [[HV | [x Eq]] Hwf].
+  - assumption.
+  - subst. inversion Hwf; subst. false. apply* binds_empty_inv.
 Qed.
 
 Lemma possible_types_closure : forall v T U,
@@ -1323,7 +1339,7 @@ Proof.
   - apply pt_top. apply* possible_types_value. apply* possible_types_wfe.
   - inversion Hpt; subst.
     assert (S = U) as Eq. {
-      apply* has_mem_eq.
+      apply* has_empty_mem_eq.
     }
     subst. assumption.
   - apply* pt_sel.
@@ -1411,21 +1427,18 @@ Proof.
   induction Typ; introv QEQ; introv Red;
    try solve [inversion Typ; congruence]; try solve [ inversion Red ].
   - (* case: app *)
-  inversions Red; try solve [ apply* typing_app ].
-  destruct~ (typing_inv_abs Typ1 (U1:=T1) (U2:=T2)) as [P1 [S2 [L P2]]].
-    apply* sub_reflexivity.
-    pick_fresh X. forwards~ K: (P2 X). destruct K.
-     rewrite* (@subst_e_intro X). erewrite <- (proj1 subst_fresh).
+    inversions Red; try solve [ apply* typing_app ].
+    destruct~ (typing_inv_abs Typ1 (U1:=T1) (U2:=T2)) as [P1 [S2 [L P2]]].
+     apply* sub_reflexivity.
+     pick_fresh X. forwards~ K: (P2 X). destruct K.
+      rewrite* (@subst_e_intro X).
+      erewrite <- (proj1 subst_fresh).
       eapply typing_through_subst.
-        eapply typing_sub. eapply typing_narrowing_empty. eapply P1. eassumption.
-        assert (T2 open_t_var X=T2) as A. {
-          unfold open_t. rewrite <- (proj1 open_rec_lc). reflexivity.
-          apply* wft_type.
-        }
-        rewrite <- A. assert (X \notin L) as FrL by auto.
-        specialize (P2 X FrL). destruct P2 as [P2t P2s].
-        eassumption.
-        assumption. assumption. auto*.
+      eapply typing_sub. eapply typing_narrowing_empty. eapply P1. eassumption.
+      rewrite <- (@open_t_var_type X).
+      assert (X \notin L) as FrL by auto.
+      specialize (P2 X FrL). destruct P2 as [P2t P2s].
+      eassumption. apply* wft_type. assumption. assumption. auto*.
   - (* case: appvar *)
     inversions Red; try solve [ apply* typing_appvar ].
     assert (value e2) as HV2. {
