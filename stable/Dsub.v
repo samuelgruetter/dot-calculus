@@ -957,7 +957,7 @@ Hint Extern 1 (type ?T) =>
 
 Hint Extern 1 (term ?e) =>
   match goal with
-  | H: typing _ ?e _ |- _ => apply (proj32 (typing_regular H))
+  | H: typing _ ?e _ |- _ => apply (wfe_term (proj32 (typing_regular H)))
   | H: red ?e _ |- _ => apply (proj1 (red_regular H))
   | H: red _ ?e |- _ => apply (proj2 (red_regular H))
   end.
@@ -1186,6 +1186,18 @@ Proof.
   - apply* typing_sub. apply* (@sub_narrowing Q).
 Qed.
 
+Lemma typing_narrowing_empty : forall Q X P e T,
+  sub empty P Q ->
+  typing (X ~ Q) e T ->
+  typing (X ~ P) e T.
+Proof.
+  intros.
+  rewrite <- (concat_empty_r (X ~ P)).
+  rewrite <- (concat_empty_l (X ~ P)).
+  eapply typing_narrowing; eauto.
+  rewrite concat_empty_r. rewrite concat_empty_l. auto.
+Qed.
+
 (************************************************************************ *)
 (** Preservation by Substitution (8) *)
 
@@ -1333,33 +1345,20 @@ Proof.
   - eapply possible_types_closure; eauto.
 Qed.
 
-Lemma typing_inv_abs : forall E S1 e1 T,
-  typing E (trm_abs S1 e1) T ->
-  forall U1 U2, sub E T (typ_arrow U1 U2) ->
-     sub E U1 S1
+Lemma typing_inv_abs : forall S1 e1 T,
+  typing empty (trm_abs S1 e1) T ->
+  forall U1 U2, sub empty T (typ_all U1 U2) ->
+     sub empty U1 S1
   /\ exists S2, exists L, forall x, x \notin L ->
-     typing (E & x ~: S1) (e1 open_ee_var x) S2 /\ sub E S2 U2.
+     typing (x ~ S1) (e1 open_e_var x) (S2 open_t_var x) /\ sub (x ~ U1) (S2 open_t_var x) (U2 open_t_var x).
 Proof.
-  introv Typ. gen_eq e: (trm_abs S1 e1). gen S1 e1.
-  induction Typ; intros S1 b1 EQ U1 U2 Sub; inversions EQ.
-  inversions* Sub. auto* (@sub_transitivity T).
-Qed.
-
-Lemma typing_inv_tabs : forall E S1 e1 T,
-  typing E (trm_tabs S1 e1) T ->
-  forall U1 U2, sub E T (typ_all U1 U2) ->
-     sub E U1 S1
-  /\ exists S2, exists L, forall X, X \notin L ->
-     typing (E & X ~<: U1) (e1 open_te_var X) (S2 open_tt_var X)
-     /\ sub (E & X ~<: U1) (S2 open_tt_var X) (U2 open_tt_var X).
-Proof.
-  intros E S1 e1 T H. gen_eq e: (trm_tabs S1 e1). gen S1 e1.
-  induction H; intros S1 b EQ U1 U2 Sub; inversion EQ.
-  inversions Sub. splits. auto.
-   exists T1. let L1 := gather_vars in exists L1.
-   intros Y Fr. splits.
-    apply_empty* (@typing_narrowing S1). auto.
-  auto* (@sub_transitivity T).
+  introv Typ Hsub.
+  apply possible_types_typing in Typ; eauto.
+  assert (possible_types (trm_abs S1 e1) (typ_all U1 U2)) as Hc. {
+    eapply possible_types_closure; eauto.
+  }
+  inversion Hc; subst.
+  repeat eexists; eauto.
 Qed.
 
 (* ********************************************************************** *)
