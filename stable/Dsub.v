@@ -1508,12 +1508,129 @@ Proof.
   inversion Typ; subst; eauto.
 Qed.
 
+(* Pushback *)
+Inductive psub : typ -> typ -> Prop :=
+  | psub_top : forall S,
+      wft empty S ->
+      psub S typ_top
+  | psub_refl_sel : forall t,
+      wft empty (typ_sel t) ->
+      psub (typ_sel t) (typ_sel t)
+  | psub_sel1 : forall U t T,
+      has empty t (typ_mem false T) ->
+      psub T U ->
+      psub (typ_sel t) U
+  | psub_sel2 : forall S t T,
+      has empty t (typ_mem true T) ->
+      sub empty S T ->
+      psub S (typ_sel t)
+  | psub_mem_false : forall b1 T1 T2,
+      sub empty T1 T2 ->
+      psub (typ_mem b1 T1) (typ_mem false T2)
+  | psub_mem_true : forall T1 T2,
+      sub empty T1 T2 -> sub empty T2 T1 ->
+      psub (typ_mem true T1) (typ_mem true T2)
+  | psub_all : forall L S1 S2 T1 T2,
+      sub empty T1 S1 ->
+      (forall x, x \notin L ->
+          sub (x ~ T1) (S2 open_t_var x) (T2 open_t_var x)) ->
+      psub (typ_all S1 S2) (typ_all T1 T2).
+
+Lemma psub_sub: forall S U,
+  psub S U -> sub empty S U.
+Proof.
+  intros. induction H; eauto.
+  - eapply sub_trans. eapply sub_sel1; eauto. eauto.
+  - eapply sub_trans. eauto. eapply sub_sel2; eauto.
+  - eapply sub_mem_false; eauto.
+  - eapply sub_mem_true; eauto.
+  - apply_fresh* sub_all as y.
+    rewrite concat_empty_l. eapply H0; eauto.
+Qed.
+
+Lemma psub_reflexivity : forall T,
+  wft empty T ->
+  psub T T .
+Proof.
+  Hint Constructors psub.
+  introv WI. lets W: (wft_type WI). remember empty as E. gen E.
+  induction W; intros; inversions WI; eauto.
+  destruct b.
+  apply* psub_mem_true. apply* sub_reflexivity. apply* sub_reflexivity.
+  apply* psub_mem_false. apply* sub_reflexivity.
+  apply_fresh* psub_all as Y. apply* sub_reflexivity. apply* sub_reflexivity.
+  rewrite <- concat_empty_l. apply* okt_push.
+  assert (Y \notin L0) as Fr by auto.
+  specialize (H5 Y Fr). rewrite concat_empty_l in H5. eapply H5.
+Grab Existential Variables.
+pick_fresh y. apply y.
+Qed.
+
+Lemma psub_trans_aux: forall S T U,
+  sub empty S T ->
+  psub T U ->
+  psub S U.
+Proof.
+  introv HST HSU. generalize dependent U.
+  remember empty as E. gen HeqE.
+  induction HST; intros; subst.
+  - inversion HSU; subst.
+    + apply* psub_top.
+    + apply* psub_sel2. eapply sub_trans. eapply sub_top; eauto. eauto.
+  - assumption.
+  - apply* psub_sel1.
+  - inversion HSU; subst.
+    + apply* psub_top.
+      apply has_regular in H. destruct H as [? [? A]]. inversion A; subst.
+      assumption.
+    + apply* psub_sel2.
+      apply has_regular in H. destruct H as [? [? A]]. inversion A; subst.
+      apply* sub_reflexivity.
+    + assert (S = T) by solve [eapply has_empty_mem_eq; eauto]. subst.
+      inversion H1; subst. assumption. assumption.
+    + apply* psub_sel2. eapply sub_trans. eapply sub_sel2. eauto. eauto.
+  - inversion HSU; subst.
+    + apply* psub_top.
+    + apply* psub_sel2. eapply sub_trans. eapply sub_mem_false. eauto. eauto.
+    + apply* psub_mem_false. eapply sub_trans; eauto.
+  - inversion HSU; subst.
+    + apply* psub_top.
+    + apply* psub_sel2. eapply sub_trans. eapply sub_mem_true; eauto. eauto.
+    + apply* psub_mem_false. eapply sub_trans; eauto.
+    + apply* psub_mem_true. eapply sub_trans; eauto. eapply sub_trans; eauto.
+  - inversion HSU; subst.
+    + apply* psub_top. apply_fresh* wft_all as y.
+      assert (y \notin L) as Fr by auto. specialize (H y Fr).
+      apply sub_regular in H. destruct H as [? [? ?]].
+      apply_empty* wft_narrow.
+    + apply* psub_sel2. apply sub_trans with (T:=typ_all T1 T2).
+      apply_fresh* sub_all as y. assumption.
+    + apply_fresh* psub_all as y. eapply sub_trans; eauto.
+      rewrite <- (@concat_empty_l typ (y ~ T0)).
+      eapply sub_trans.
+      rewrite <- (@concat_empty_r typ (empty & y ~ T0)). eapply sub_narrowing; eauto.
+      rewrite concat_empty_r. eapply H; eauto.
+      rewrite concat_empty_l. eauto.
+  - eauto.
+Qed.
+
+Lemma trans_pushback: forall S U,
+  sub empty S U -> psub S U.
+Proof.
+  intros. eapply psub_trans_aux. eassumption.
+  eapply psub_reflexivity.
+  auto*.
+Qed.
+
 Lemma loose_sub_sel1: forall E p P U,
   has E p P ->
   sub E P (typ_mem false U) ->
   sub E (typ_sel p) U.
 Proof.
-  admit.
+  introv Has Hsub. inversion Has; subst.
+  - eapply sub_sel1. eapply has_var. assumption. eassumption.
+    eapply sub_trans. eassumption. eassumption.
+  -
 Qed.
 
 Lemma loose_sub_sel2: forall E p P S,
