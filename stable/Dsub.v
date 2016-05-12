@@ -1312,6 +1312,27 @@ Proof.
       rewrite concat_empty_l in H. apply H.
 Qed.
 
+Lemma possible_types_typing : forall v T,
+  typing empty v T -> value v ->
+  possible_types v T.
+Proof.
+  introv Ht Hv.
+  remember Ht as Hc. clear HeqHc.
+  remember empty as E. generalize HeqE. generalize Hc.
+  induction Ht; intros; subst; eauto; try solve [inversion Hv].
+  - eapply typing_regular in Hc. destruct Hc as [? [? Hc]].
+    inversion Hc; subst.
+    apply_fresh pt_all as Y.
+    assert (Y \notin L) as Fr by eauto.
+    specialize (H Y Fr). rewrite concat_empty_l in H. eapply H.
+    eapply sub_reflexivity; eauto. eapply sub_reflexivity; eauto.
+    rewrite <- concat_empty_l. eauto.
+    assert (Y \notin L0) as Fr by eauto.
+    specialize (H7 Y Fr). rewrite concat_empty_l in H7. eapply H7.
+  - apply pt_mem_true. apply* sub_reflexivity. apply* sub_reflexivity.
+  - eapply possible_types_closure; eauto.
+Qed.
+
 Lemma typing_inv_abs : forall E S1 e1 T,
   typing E (trm_abs S1 e1) T ->
   forall U1 U2, sub E T (typ_arrow U1 U2) ->
