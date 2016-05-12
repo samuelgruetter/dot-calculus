@@ -1452,11 +1452,14 @@ Proof.
     apply* sub_reflexivity.
     pick_fresh X. forwards~ K: (P2 X). destruct K.
      rewrite* (@subst_t_intro X).
-     rewrite* (@subst_t_intro X).
-     apply typing_through_subst.
-       rewrite* concat_empty_r.
-  (* case sub *)
-  apply* typing_sub.
+     rewrite* (@subst_e_intro X).
+     eapply typing_through_subst.
+     eapply typing_sub. eapply typing_narrowing_empty. eapply P1. eassumption.
+     assert (X \notin L) as FrL by auto.
+     specialize (P2 X FrL). destruct P2 as [P2t P2s].
+     eassumption. assumption. assumption.
+  - (* case sub *)
+    apply* typing_sub.
 Qed.
 
 (* ********************************************************************** *)
