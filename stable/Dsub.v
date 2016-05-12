@@ -1120,80 +1120,6 @@ Proof.
     eauto. eauto.
 Qed.
 
-(** Type substitution preserves subtyping (10) *)
-
-Definition subst_tb (Z : var) (P : typ) (b : typ) : typ :=
-  subst_t Z (trm_mem P) b.
-
-Ltac unsimpl_map_bind :=
-  match goal with |- context [ ?B (subst_t ?Z (trm_mem ?P) ?U) ] =>
-    unsimpl ((subst_tb Z P) (B U)) end.
-
-Tactic Notation "unsimpl_map_bind" "*" :=
-  unsimpl_map_bind; auto*.
-
-Lemma sub_through_subst_tb : forall Q E F Z S T P,
-  sub (E & Z ~ Q & F) S T ->
-  sub E (typ_mem true P) Q ->
-  sub (E & map (subst_tb Z P) F) (subst_tb Z P S) (subst_tb Z P T).
-Proof.
-  introv SsubT PsubQ.
-  assert (wft E P) as WfP. {
-    apply sub_regular in PsubQ. destruct PsubQ as [? [A ?]]. inversion A; subst.
-    assumption.
-  }
-  inductions SsubT; introv.
-  - apply* sub_top.
-  - repeat unfold subst_tb at 2; simpl subst_t. apply* sub_refl_sel.
-    assert (typ_sel (subst_e Z (trm_mem P) t) = subst_tb Z P (typ_sel t)) as A. {
-      unfold subst_tb. simpl. reflexivity.
-    }
-    rewrite A. auto*.
-  - repeat unfold subst_tb at 2; simpl subst_t. case_var.
-    + apply binds_middle_eq_inv in H; eauto. subst.
-      assert (sub (E & map (subst_tb Z P) F) (typ_mem true P) (typ_mem false (subst_t Z (trm_mem P) U))) as A. {
-        apply (@sub_transitivity Q).
-        apply_empty* sub_weakening.
-        rewrite* <- ((proj1 subst_fresh) Q Z (trm_mem P)).
-        apply* (@notin_fv_wf E).
-      }
-      inversion A; subst. apply* sub_selc1.
-    + binds_cases H.
-      * apply sub_sel1 with (T:=T). auto.
-        rewrite* <- ((proj1 subst_fresh) T Z (trm_mem P)).
-        apply* (@notin_fv_wf E). apply* wft_from_env_has.
-      * apply sub_sel1 with (T:=subst_tb Z P T).
-        rewrite* (@map_subst_id E Z (trm_mem P)).
-        auto*.
-  - repeat unfold subst_tb at 2; simpl subst_t. case_var.
-    + apply binds_middle_eq_inv in H; eauto. subst.
-      assert (sub (E & map (subst_tb Z P) F) (typ_mem true P) (typ_mem true (subst_t Z (trm_mem P) S1))) as A. {
-        apply (@sub_transitivity Q).
-        apply_empty* sub_weakening.
-        rewrite* <- ((proj1 subst_fresh) Q Z (trm_mem P)).
-        apply* (@notin_fv_wf E).
-      }
-      inversion A; subst. apply sub_selc2.
-      apply (@sub_transitivity (subst_tb Z P S1)). auto*. auto*.
-    + binds_cases H.
-      * apply sub_sel2 with (T:=T) (S1:=subst_tb Z P S1). auto.
-        rewrite* <- ((proj1 subst_fresh) T Z (trm_mem P)).
-        apply* (@notin_fv_wf E). apply* wft_from_env_has.
-        auto*.
-      * apply sub_sel2 with (T:=subst_tb Z P T) (S1:=subst_tb Z P S1).
-        rewrite* (@map_subst_id E Z (trm_mem P)).
-        auto*. auto*.
-  - admit.
-  - admit.
-  - admit.
-  - admit.
-  - apply_fresh* sub_all as X.
-    rewrite* subst_t_open_t_var. rewrite* subst_t_open_t_var.
-    apply_ih_map_bind* H0.
-    apply* term_mem. apply* wft_type.
-    apply* term_mem. apply* wft_type.
-Qed.
-
 (* ********************************************************************** *)
 (** * Properties of Typing *)
 
@@ -1235,53 +1161,36 @@ Proof.
 Qed.
 
 (************************************************************************ *)
-(** Preservation by Term Substitution (8) *)
+(** Preservation by Substitution (8) *)
 
-Lemma typing_through_subst_ee : forall U E F x T e u,
-  typing (E & x ~: U & F) e T ->
-  typing E u U ->
-  typing (E & F) (subst_ee x u e) T.
+Lemma typing_through_subst_z : forall U E F z T e u x P,
+  typing (E & z ~ U & F) e T ->
+  trm_fvar x = u -> binds x P E -> sub E P U ->
+  typing (E & (map (subst_t z u) F)) (subst_e z u e) (subst_t z u T).
 Proof.
-  introv TypT TypU. inductions TypT; introv; simpl.
-  case_var.
-    binds_get H0. apply_empty* typing_weakening.
-    binds_cases H0; apply* typing_var.
-  apply_fresh* typing_abs as y.
-    rewrite* subst_ee_open_ee_var.
-    apply_ih_bind* H0.
-  apply* typing_app.
-  apply_fresh* typing_tabs as Y.
-    rewrite* subst_ee_open_te_var.
-    apply_ih_bind* H0.
-  apply* typing_tapp. apply* sub_strengthening.
-  apply* typing_sub. apply* sub_strengthening.
-Qed.
-
-(************************************************************************ *)
-(** Preservation by Type Substitution (11) *)
-
-Lemma typing_through_subst_te : forall Q E F Z e T P,
-  typing (E & Z ~<: Q & F) e T ->
-  sub E P Q ->
-  typing (E & map (subst_tb Z P) F) (subst_te Z P e) (subst_tt Z P T).
-Proof.
-  introv Typ PsubQ.
-  inductions Typ; introv; simpls subst_tt; simpls subst_te.
-  apply* typing_var. rewrite* (@map_subst_tb_id E Z P).
-   binds_cases H0; unsimpl_map_bind*.
-  apply_fresh* typing_abs as y.
-    unsimpl (subst_tb Z P (bind_typ V)).
-    rewrite* subst_te_open_ee_var.
-    apply_ih_map_bind* H0.
-  apply* typing_app.
-  apply_fresh* typing_tabs as Y.
-    unsimpl (subst_tb Z P (bind_sub V)).
-    rewrite* subst_te_open_te_var.
-    rewrite* subst_tt_open_tt_var.
-    apply_ih_map_bind* H0.
-  rewrite* subst_tt_open_tt. apply* typing_tapp.
-    apply* sub_through_subst_tt.
-  apply* typing_sub. apply* sub_through_subst_tt.
+  introv TypT EqU Bi TypU.
+  inductions TypT; introv; subst; simpl.
+  - case_var.
+    + binds_get H0.
+      rewrite (proj1 subst_fresh).
+      apply typing_sub with (S:=P).
+      apply_empty typing_weakening. apply* typing_var.
+      apply* okt_subst. apply_empty* sub_weakening.
+      apply* (@notin_fv_wf E).
+    + binds_cases H0.
+      rewrite (proj1 subst_fresh). eapply typing_var; eauto.
+      apply (@notin_fv_wf E). eapply wft_from_env_has. auto*. eapply B0. auto*.
+      apply* typing_var.
+  - apply_fresh* typing_abs as y.
+    rewrite* subst_e_open_e_var. rewrite* subst_t_open_t_var.
+    rewrite <- concat_assoc_map_push.
+    eapply H0; eauto. rewrite concat_assoc. auto.
+  - apply* typing_mem. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
+  - eapply typing_app. eapply IHTypT1; eauto. eapply IHTypT2; eauto.
+    eapply subst_t_open_t. auto*. apply* wft_subst.
+    apply ok_from_okt. apply* okt_subst.
+  - eapply typing_sub. eapply IHTypT; eauto.
+    eapply (proj1 sub_has_through_subst_z); eauto.
 Qed.
 
 (* ********************************************************************** *)
