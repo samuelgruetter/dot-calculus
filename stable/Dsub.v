@@ -863,14 +863,14 @@ Qed.
 (** The typing relation is restricted to well-formed objects. *)
 
 Lemma typing_regular : forall E e T,
-  typing E e T -> okt E /\ term e /\ wft E T.
+  typing E e T -> okt E /\ wfe E e /\ wft E T.
 Proof.
   induction 1.
   splits*.
   splits.
    pick_fresh y. specializes H0 y. destructs~ H0.
     forwards*: okt_push_inv.
-   apply_fresh* term_abs as y.
+   apply_fresh* wfe_abs as y.
      pick_fresh y. forwards~ K: (H0 y). destructs K.
        forwards*: okt_push_inv.
      forwards~ K: (H0 y). destructs K. auto.
@@ -879,7 +879,7 @@ Proof.
       forwards*: okt_push_inv.
      forwards~ K: (H0 Y). destructs K.
       forwards*: okt_push_inv.
-  splits*. apply term_mem. apply* wft_type.
+  splits*.
   splits*.
   splits*. destructs~ (sub_regular H0).
 Qed.
