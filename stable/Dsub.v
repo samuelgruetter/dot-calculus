@@ -602,6 +602,28 @@ Proof.
   rewrite concat_empty_l. rewrite concat_empty_r. auto.
 Qed.
 
+Lemma wfe_weaken : forall G T E F,
+  wfe (E & G) T ->
+  ok (E & F & G) ->
+  wfe (E & F & G) T.
+Proof.
+  intros. eapply (proj2 wf_weaken); eauto.
+Qed.
+
+Lemma wfe_weaken_empty : forall T E,
+  wfe empty T ->
+  ok E ->
+  wfe E T.
+Proof.
+  intros.
+  assert (E = empty & E & empty) as A. {
+    rewrite concat_empty_l. rewrite concat_empty_r. reflexivity.
+  }
+  rewrite A. apply wfe_weaken.
+  rewrite concat_empty_l. auto.
+  rewrite concat_empty_l. rewrite concat_empty_r. auto.
+Qed.
+
 (** Through narrowing *)
 
 Lemma wf_narrow : (forall E0 T, wft E0 T -> forall V F U E x,
@@ -1410,6 +1432,85 @@ Proof.
   introv Val Typ.
   eapply possible_types_typing in Typ; eauto.
   inversion Typ; subst; eauto.
+Qed.
+
+Lemma sub_has_through_subst : (forall E0 S T, sub E0 S T -> forall Q E F Z u,
+  E0 = (E & Z ~ Q & F) ->
+  value u -> possible_types u Q ->
+  sub (E & map (subst_t Z u) F) (subst_t Z u S) (subst_t Z u T)) /\
+  (forall E0 p T, has E0 p T -> forall Q E F Z u,
+  E0 = (E & Z ~ Q & F) ->
+  value u -> possible_types u Q ->
+  has (E & map (subst_t Z u) F) (subst_e Z u p) (subst_t Z u T)).
+Proof.
+  apply sub_has_mutind; intros; subst; simpl;
+  try assert (wfe E0 u) as Hwu by solve [
+    apply wfe_weaken_empty; [ apply* possible_types_wfe |
+    apply ok_from_okt in o; apply ok_remove in o; auto ]].
+  - apply* sub_top. apply* wft_subst.
+  - simpl. apply* sub_refl_sel.
+    assert (typ_sel (subst_e Z u t) = subst_t Z u (typ_sel t)) as A by auto.
+    rewrite A. apply* wft_subst.
+  - apply* sub_sel1.
+  - apply* sub_sel2.
+  - apply* sub_mem_false.
+  - apply* sub_mem_true.
+  - apply_fresh* sub_all as X.
+    rewrite* subst_t_open_t_var. rewrite* subst_t_open_t_var.
+    apply_ih_map_bind* H0.
+  - apply* sub_trans.
+  - case_var.
+    + apply binds_middle_eq_inv in b; eauto. subst.
+      apply has_sub with (T:=P). eexists. reflexivity. apply has_var. apply* okt_subst.
+      apply binds_concat_left_ok. apply ok_from_okt. apply* okt_subst. assumption.
+      rewrite (proj1 subst_fresh). apply_empty* sub_weakening1.
+      apply* (@notin_fv_wf E0).
+    + destruct (binds_concat_inv b) as [?|[? ?]].
+      apply* has_var.
+      destruct (binds_push_inv H0) as [[? ?]|[? ?]].
+        subst. false~.
+        applys has_var. apply* okt_subst. apply* binds_concat_left.
+        rewrite (proj1 subst_fresh). assumption.
+        apply* (@notin_fv_wf E0). apply* wft_from_env_has.
+  - apply* has_mem. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
+  - eapply has_sub.
+    destruct e as [z ?]. subst. simpl.
+    case_var. eexists. reflexivity. eexists. reflexivity.
+    eauto. eauto.
+Qed.
+
+Lemma typing_through_subst_z : forall U E F z T e u x P,
+  typing (E & z ~ U & F) e T ->
+  trm_fvar x = u -> binds x P E -> sub E P U ->
+  typing (E & (map (subst_t z u) F)) (subst_e z u e) (subst_t z u T).
+Proof.
+  introv TypT EqU Bi TypU.
+  inductions TypT; introv; subst; simpl.
+  - case_var.
+    + binds_get H0.
+      rewrite (proj1 subst_fresh).
+      apply typing_sub with (S:=P).
+      apply_empty typing_weakening. apply* typing_var.
+      apply* okt_subst. apply_empty* sub_weakening.
+      apply* (@notin_fv_wf E).
+    + binds_cases H0.
+      rewrite (proj1 subst_fresh). eapply typing_var; eauto.
+      apply (@notin_fv_wf E). eapply wft_from_env_has. auto*. eapply B0. auto*.
+      apply* typing_var.
+  - apply_fresh* typing_abs as y.
+    rewrite* subst_e_open_e_var. rewrite* subst_t_open_t_var.
+    rewrite <- concat_assoc_map_push.
+    eapply H0; eauto. rewrite concat_assoc. auto.
+  - apply* typing_mem. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
+  - eapply typing_app. eapply IHTypT1; eauto. eapply IHTypT2; eauto.
+    apply* wft_subst.
+    apply ok_from_okt. apply* okt_subst.
+  - eapply typing_appvar. eapply IHTypT1; eauto. eapply IHTypT2; eauto.
+    apply* (proj2 sub_has_through_subst_z).
+    eapply subst_t_open_t. auto*. apply* wft_subst.
+    apply ok_from_okt. apply* okt_subst.
+  - eapply typing_sub. eapply IHTypT; eauto.
+    eapply (proj1 sub_has_through_subst_z); eauto.
 Qed.
 
 Lemma typing_through_subst : forall V y v e T,
