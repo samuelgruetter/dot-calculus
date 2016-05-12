@@ -216,9 +216,10 @@ Inductive typing : env -> trm -> typ -> Prop :=
       okt E ->
       wft E T1 ->
       typing E (trm_mem T1) (typ_mem true T1)
-  | typing_app : forall T1 E e1 e2 T2 T2',
+  | typing_appvar : forall T1 E e1 e2 T2 T2',
       typing E e1 (typ_all T1 T2) ->
       typing E e2 T1 ->
+      has e2 M ->
       T2' = open_t T2 e2 ->
       wft E T2' ->
       typing E (trm_app e1 e2) T2'
@@ -1391,7 +1392,7 @@ Proof.
    try solve [inversion Typ; congruence]; try solve [ inversion Red ].
   (* case: app *)
   inversions Red; try solve [ apply* typing_app ].
-  lets A: (typing_inv_all Typ1 H3). destruct A as [S0 [e0 Eq]]. subst.
+  lets A: (canonical_form_abs H3 Typ1). destruct A as [V [e0 Eq]]. subst.
   destruct~ (typing_inv_abs Typ1 (U1:=T1) (U2:=T2)) as [P1 [S2 [L P2]]].
     apply* sub_reflexivity.
     pick_fresh X. forwards~ K: (P2 X). destruct K.
