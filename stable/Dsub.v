@@ -216,9 +216,15 @@ Inductive typing : env -> trm -> typ -> Prop :=
       okt E ->
       wft E T1 ->
       typing E (trm_mem T1) (typ_mem true T1)
-  | typing_app : forall T1 E e1 e2 T2 T2',
+  | typing_app : forall T1 E e1 e2 T2,
       typing E e1 (typ_all T1 T2) ->
       typing E e2 T1 ->
+      wft E T2 ->
+      typing E (trm_app e1 e2) T2
+  | typing_appvar : forall T1 E e1 e2 T2 T2' M,
+      typing E e1 (typ_all T1 T2) ->
+      typing E e2 T1 ->
+      has E e2 M ->
       T2' = open_t T2 e2 ->
       wft E T2' ->
       typing E (trm_app e1 e2) T2'
@@ -904,6 +910,7 @@ Proof.
       forwards*: okt_push_inv.
   splits*.
   splits*.
+  splits*.
   splits*. destructs~ (sub_regular H0).
 Qed.
 
@@ -1163,6 +1170,7 @@ Proof.
    apply_ih_bind (H0 x); eauto.
   apply* typing_mem.
   apply* typing_app.
+  eapply typing_appvar; eauto. eapply (proj2 sub_has_weakening); eauto.
   apply* typing_sub. apply* sub_weakening.
 Qed.
 
@@ -1183,6 +1191,7 @@ Proof.
   - apply_fresh* typing_abs as y. apply_ih_bind* H0.
   - apply* typing_mem. apply* wft_narrow.
   - apply* typing_app. apply* wft_narrow.
+  - apply* typing_appvar. apply* (proj2 sub_has_narrowing_aux). apply* wft_narrow.
   - apply* typing_sub. apply* (@sub_narrowing Q).
 Qed.
 
@@ -1225,6 +1234,10 @@ Proof.
     eapply H0; eauto. rewrite concat_assoc. auto.
   - apply* typing_mem. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
   - eapply typing_app. eapply IHTypT1; eauto. eapply IHTypT2; eauto.
+    apply* wft_subst.
+    apply ok_from_okt. apply* okt_subst.
+  - eapply typing_appvar. eapply IHTypT1; eauto. eapply IHTypT2; eauto.
+    apply* (proj2 sub_has_through_subst_z).
     eapply subst_t_open_t. auto*. apply* wft_subst.
     apply ok_from_okt. apply* okt_subst.
   - eapply typing_sub. eapply IHTypT; eauto.
