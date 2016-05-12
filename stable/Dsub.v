@@ -870,10 +870,16 @@ Proof.
   intros. apply* (proj1 sub_has_regular).
 Qed.
 
+Lemma has_regular : forall E p T,
+  has E p T -> okt E /\ wft E (typ_sel p) /\ wft E T.
+Proof.
+  intros. apply* (proj2 sub_has_regular).
+Qed.
+
 Lemma has_regular_e : forall E p T,
   has E p T -> (value p \/ (exists x, trm_fvar x = p)) /\ wfe E p.
 Proof.
-  intros. apply (proj2 sub_has_regular) in H. destruct H as [? [A ?]].
+  intros. apply has_regular in H. destruct H as [? [A ?]].
   inversion A; subst. split; assumption.
 Qed.
 
@@ -923,7 +929,7 @@ Qed.
 Hint Extern 1 (okt ?E) =>
   match goal with
   | H: sub _ _ _ |- _ => apply (proj31 (sub_regular H))
-  | H: has _ _ _ |- _ => apply (proj31 (proj2 (sub_has_regular H)))
+  | H: has _ _ _ |- _ => apply (proj31 (has_regular H))
   | H: typing _ _ _ |- _ => apply (proj31 (typing_regular H))
   end.
 
@@ -932,7 +938,7 @@ Hint Extern 1 (wft ?E ?T) =>
   | H: typing E _ T |- _ => apply (proj33 (typing_regular H))
   | H: sub E T _ |- _ => apply (proj32 (sub_regular H))
   | H: sub E _ T |- _ => apply (proj33 (sub_regular H))
-  | H: has E _ T |- _ => apply (proj33 (proj2 (sub_has_regular H)))
+  | H: has E _ T |- _ => apply (proj33 (has_regular H))
   end.
 
 Hint Extern 1 (wfe ?E ?e) =>
