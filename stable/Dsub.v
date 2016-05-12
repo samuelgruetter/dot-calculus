@@ -1361,14 +1361,24 @@ Proof.
   repeat eexists; eauto.
 Qed.
 
-Lemma typing_inv_all : forall e T1 T2,
-  typing empty e (typ_all T1 T2) ->
-  value e ->
-  exists S0 e0, trm_abs S0 e0 = e.
+(** Canonical Forms (14) *)
+
+Lemma canonical_form_abs : forall t U1 U2,
+  value t -> typing empty t (typ_all U1 U2) ->
+  exists V, exists e1, t = trm_abs V e1.
 Proof.
-  introv HT HV.
-  eapply possible_types_typing in HT; eauto.
-  inversion HT; subst; eauto.
+  introv Val Typ.
+  eapply possible_types_typing in Typ; eauto.
+  inversion Typ; subst; eauto.
+Qed.
+
+Lemma canonical_form_mem : forall t b T,
+  value t -> typing empty t (typ_mem b T) ->
+  exists V, t = trm_mem V.
+Proof.
+  introv Val Typ.
+  eapply possible_types_typing in Typ; eauto.
+  inversion Typ; subst; eauto.
 Qed.
 
 (* ********************************************************************** *)
@@ -1409,33 +1419,6 @@ Qed.
 (** * Progress *)
 
 (* ********************************************************************** *)
-(** Canonical Forms (14) *)
-
-Lemma canonical_form_abs : forall t U1 U2,
-  value t -> typing empty t (typ_arrow U1 U2) ->
-  exists V, exists e1, t = trm_abs V e1.
-Proof.
-  introv Val Typ. gen_eq E: (@empty bind).
-  gen_eq T: (typ_arrow U1 U2). gen U1 U2.
-  induction Typ; introv EQT EQE;
-   try solve [ inversion Val | inversion EQT | eauto ].
-    subst. inversion H.
-      false (binds_empty_inv H0).
-      inversions H0. forwards*: IHTyp.
-Qed.
-
-Lemma canonical_form_tabs : forall t U1 U2,
-  value t -> typing empty t (typ_all U1 U2) ->
-  exists V, exists e1, t = trm_tabs V e1.
-Proof.
-  introv Val Typ. gen_eq E: (@empty bind).
-  gen_eq T: (typ_all U1 U2). gen U1 U2.
-  induction Typ; introv EQT EQE;
-   try solve [ inversion Val | inversion EQT | eauto ].
-    subst. inversion H.
-      false* binds_empty_inv.
-      inversions H0. forwards*: IHTyp.
-Qed.
 
 (* ********************************************************************** *)
 (** Progress Result (16) *)
