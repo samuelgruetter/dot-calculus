@@ -1394,6 +1394,14 @@ Proof.
   inversion Typ; subst; eauto.
 Qed.
 
+Lemma typing_through_subst : forall V y v e T,
+  typing (y ~ V) e T ->
+  value v -> typing empty v V ->
+  typing empty (subst_e y v e) (subst_t y v T).
+Proof.
+  admit.
+Qed.
+
 (* ********************************************************************** *)
 (** Preservation Result (20) *)
 
@@ -1402,27 +1410,34 @@ Proof.
   introv Typ. gen_eq E: (@empty typ). gen e'.
   induction Typ; introv QEQ; introv Red;
    try solve [inversion Typ; congruence]; try solve [ inversion Red ].
-  (* case: app *)
+  - (* case: app *)
   inversions Red; try solve [ apply* typing_app ].
-  lets A: (canonical_form_abs H3 Typ1). destruct A as [V [e0 Eq]]. subst.
   destruct~ (typing_inv_abs Typ1 (U1:=T1) (U2:=T2)) as [P1 [S2 [L P2]]].
     apply* sub_reflexivity.
     pick_fresh X. forwards~ K: (P2 X). destruct K.
-     rewrite* (@subst_e_intro X).
-      apply_empty (@typing_through_subst_e V).
-       apply* (@typing_sub S2). apply_empty* sub_weakening.
-       auto*.
-  (* case: tapp *)
-  inversions Red; try solve [ apply* typing_tapp ].
-  destruct~ (typing_inv_tabs Typ (U1:=T1) (U2:=T2)) as [P1 [S2 [L P2]]].
+     rewrite* (@subst_e_intro X). erewrite <- (proj1 subst_fresh).
+      eapply typing_through_subst.
+        eapply typing_sub. eapply typing_narrowing_empty. eapply P1. eassumption.
+        assert (T2 open_t_var X=T2) as A. {
+          unfold open_t. rewrite <- (proj1 open_rec_lc). reflexivity.
+          apply* wft_type.
+        }
+        rewrite <- A. assert (X \notin L) as FrL by auto.
+        specialize (P2 X FrL). destruct P2 as [P2t P2s].
+        eassumption.
+        assumption. assumption. auto*.
+  - (* case: appvar *)
+    inversions Red; try solve [ apply* typing_appvar ].
+    assert (value e2) as HV2. {
+      eapply 
+    }
+    lets A: (canonical_form_abs H4 Typ1). destruct A as [V [e0 Eq]]. subst.
+    destruct~ (typing_inv_abs Typ1 (U1:=T1) (U2:=T2)) as [P1 [S2 [L P2]]].
     apply* sub_reflexivity.
     pick_fresh X. forwards~ K: (P2 X). destruct K.
-     rewrite* (@subst_te_intro X).
-     rewrite* (@subst_tt_intro X).
-     (* todo: apply empty here *)
-     asserts_rewrite (E = E & map (subst_tb X T) empty).
-       rewrite map_empty. rewrite~ concat_empty_r.
-     apply* (@typing_through_subst_te T1).
+     rewrite* (@subst_t_intro X).
+     rewrite* (@subst_t_intro X).
+     apply typing_through_subst.
        rewrite* concat_empty_r.
   (* case sub *)
   apply* typing_sub.
