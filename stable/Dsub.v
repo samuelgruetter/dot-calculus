@@ -574,6 +574,20 @@ Proof.
   intros. eapply (proj1 wf_weaken); eauto.
 Qed.
 
+Lemma wft_weaken_empty : forall T E,
+  wft empty T ->
+  ok E ->
+  wft E T.
+Proof.
+  intros.
+  assert (E = empty & E & empty) as A. {
+    rewrite concat_empty_l. rewrite concat_empty_r. reflexivity.
+  }
+  rewrite A. apply wft_weaken.
+  rewrite concat_empty_l. auto.
+  rewrite concat_empty_l. rewrite concat_empty_r. auto.
+Qed.
+
 (** Through narrowing *)
 
 Lemma wf_narrow : (forall E0 T, wft E0 T -> forall V F U E x,
@@ -1192,6 +1206,61 @@ Qed.
 
 (* ********************************************************************** *)
 (** Inversions for Typing (13) *)
+
+Inductive possible_types : env -> trm -> typ -> Prop :=
+| pt_top : forall E v, value v -> wfe E v -> possible_types E v typ_top
+| pt_mem : forall E b T, wft E T -> possible_types E (trm_mem T) (typ_mem b T)
+| pt_all : forall L E V V' e1 T1 T1',
+  (forall X, X \notin L -> typing (E & X ~ V) (e1 open_e_var X) (T1 open_t_var X)) ->
+  sub empty V' V ->
+  (forall X, X \notin L -> sub (E & X ~ V') (T1 open_t_var X) (T1' open_t_var X)) ->
+  possible_types E (trm_abs V e1) (typ_all V' T1')
+.
+
+Lemma possible_types_value : forall E p T,
+  possible_types E p T ->
+  value p.
+Proof.
+  introv Hpt. induction Hpt; eauto.
+  - apply value_mem. apply term_mem. apply* wft_type.
+  - apply value_abs. apply_fresh* term_abs as y.
+    assert (y \notin L) as Fr by auto.
+    specialize (H y Fr). apply typing_regular in H.
+    destruct H as [? [A ?]]. apply* wfe_term.
+Qed.
+
+Lemma possible_types_wfe : forall E p T,
+  possible_types E p T ->
+  wfe E p.
+Proof.
+  introv Hpt. induction Hpt; eauto.
+  - apply_fresh* wfe_abs as y.
+    apply wft_weaken_empty. auto*.
+    pick_fresh y. assert (y \notin L) as FrL by auto. specialize (H y FrL).
+    apply typing_regular in H. destruct H as [A [? ?]].
+    apply ok_from_okt in A. auto*.
+    assert (y \notin L) as FrL by auto. specialize (H y FrL).
+    apply typing_regular in H. destruct H as [? [A ?]]. assumption.
+Qed.
+
+Lemma possible_types_closure : forall v T U E,
+  possible_types E v T ->
+  sub E T U ->
+  possible_types E v U.
+Proof.
+  introv Hpt Hsub. generalize dependent v.
+  induction Hsub; intros; eauto.
+  - apply pt_top. apply* possible_types_value. apply* possible_types_wfe.
+  - inversion Hpt.
+  - inversion Hpt; subst. apply_fresh* pt_arrow as y.
+    eapply sub_trans; eassumption. eapply sub_trans; eassumption.
+  - inversion Hpt; subst. apply_fresh* pt_all as Y.
+    eapply sub_trans; eassumption. eapply sub_trans; eassumption.
+    eapply sub_trans.
+      eapply sub_narrowing_empty. eassumption. eassumption. auto*.
+      assert (Y \notin L) as Fr by auto. specialize (H Y Fr).
+      rewrite concat_empty_l in H. apply H.
+Qed.
 
 Lemma typing_inv_abs : forall E S1 e1 T,
   typing E (trm_abs S1 e1) T ->
