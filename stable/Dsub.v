@@ -1084,6 +1084,21 @@ Proof.
   rewrite <- A. assumption.
 Qed.
 
+Lemma sub_weakening_empty : forall E S T,
+   sub empty S T ->
+   okt E ->
+   sub E S T.
+Proof.
+  intros.
+  assert (empty & E & empty = E) as A. {
+    rewrite concat_empty_r. rewrite concat_empty_l. reflexivity.
+  }
+  rewrite <- A.
+  apply* sub_weakening.
+  rewrite concat_empty_r. assumption.
+  rewrite A. assumption.
+Qed.
+
 Lemma has_weakening : forall E F G p T,
    has (E & G) p T ->
    okt (E & F & G) ->
@@ -1490,6 +1505,132 @@ Proof.
   introv Val Typ.
   eapply possible_types_typing in Typ; eauto.
   inversion Typ; subst; eauto.
+Qed.
+
+Lemma loose_sub_sel1: forall E p P U,
+  has E p P ->
+  sub E P (typ_mem false U) ->
+  sub E (typ_sel p) U.
+Proof.
+  admit.
+Qed.
+
+Lemma loose_sub_sel2: forall E p P S,
+  has E p P ->
+  sub E P (typ_mem true S) ->
+  sub E S (typ_sel p).
+Proof.
+  admit.
+Qed.
+
+Lemma sub_has_through_subst : (forall E0 S T, sub E0 S T -> forall Q Z F u,
+  E0 = (Z ~ Q & F) ->
+  possible_types u Q ->
+  sub (map (subst_t Z u) F) (subst_t Z u S) (subst_t Z u T)) /\
+  (forall E0 p T0, has E0 p T0 -> forall Q F Z u b T,
+  E0 = (Z ~ Q & F) -> T0 = typ_mem b T ->
+  possible_types u Q ->
+  exists P, has (map (subst_t Z u) F) (subst_e Z u p) P /\ sub (map (subst_t Z u) F) P (subst_t Z u T0)).
+Proof.
+  apply sub_has_mutind; intros; subst; simpl;
+  try assert (wfe empty u) as Hwu by solve [
+    apply wfe_weaken_empty; [ apply* possible_types_wfe |
+    apply ok_from_okt in o; auto ]];
+  try assert (value u) as Hvu by solve [ apply* possible_types_value ];
+  try assert (empty & (map (subst_t Z u) F) = map (subst_t Z u) F) as EqF by solve [
+    rewrite concat_empty_l; auto ].
+  - apply* sub_top.
+    rewrite <- EqF. apply* okt_subst. rewrite concat_empty_l. eauto.
+    rewrite <- EqF. apply* wft_subst. rewrite concat_empty_l. eauto.
+    apply ok_from_okt. apply* okt_subst. rewrite concat_empty_l. eauto.
+  - simpl. apply* sub_refl_sel.
+    rewrite <- EqF. apply* okt_subst. rewrite concat_empty_l. eauto.
+    assert (typ_sel (subst_e Z u t) = subst_t Z u (typ_sel t)) as A by auto.
+    rewrite A.
+    rewrite <- EqF. apply* wft_subst. rewrite concat_empty_l. eauto.
+    apply ok_from_okt. apply* okt_subst. rewrite concat_empty_l. eauto.
+  - edestruct H as [P [IH1 IH2]]; eauto. eapply loose_sub_sel1; eauto.
+  - edestruct H as [P [IH1 IH2]]; eauto. eapply loose_sub_sel2; eauto.
+  - apply* sub_mem_false.
+  - apply* sub_mem_true.
+  - apply_fresh* sub_all as X.
+    rewrite* subst_t_open_t_var. rewrite* subst_t_open_t_var.
+    assert (map (subst_t Z u) F & X ~ subst_t Z u T1 = map (subst_t Z u) (F & X ~ T1)) as A. {
+     rewrite map_concat. rewrite map_single. reflexivity.
+    }
+    rewrite A. eapply H0; eauto. rewrite concat_assoc. reflexivity.
+  - apply* sub_trans.
+  - case_var.
+    + rewrite <- concat_empty_l in b. rewrite concat_assoc in b.
+      apply binds_middle_eq_inv in b; eauto. subst.
+      inversion H1; subst.
+      * exists (typ_mem true T). split.
+        apply has_mem; eauto.
+        rewrite <- EqF. apply* okt_subst. rewrite concat_empty_l. eauto.
+        eapply wft_weaken_empty. auto*.
+        apply ok_from_okt. rewrite <- EqF. apply* okt_subst. rewrite concat_empty_l. eauto.
+        rewrite (proj1 subst_fresh).
+        apply* sub_weakening_empty. apply sub_mem_true; eauto.
+        rewrite <- EqF. apply* okt_subst. rewrite concat_empty_l. eauto.
+        eapply notin_fv_wf; eauto.
+      * exists (typ_mem true T). split.
+        apply has_mem; eauto.
+        rewrite <- EqF. apply* okt_subst. rewrite concat_empty_l. eauto.
+        eapply wft_weaken_empty. auto*.
+        apply ok_from_okt. rewrite <- EqF. apply* okt_subst. rewrite concat_empty_l. eauto.
+        rewrite (proj1 subst_fresh).
+        apply* sub_weakening_empty. apply sub_mem_false; eauto.
+        rewrite <- EqF. apply* okt_subst. rewrite concat_empty_l. eauto.
+        eapply notin_fv_wf; eauto.
+      * rewrite concat_empty_l. auto*.
+    + rewrite <- concat_empty_l in b. rewrite concat_assoc in b.
+      destruct (binds_concat_inv b) as [?|[? ?]].
+      * eexists. split. eapply has_var; eauto.
+        rewrite <- EqF. apply* okt_subst. rewrite concat_empty_l. eauto.
+        simpl. eapply sub_reflexivity.
+        rewrite <- EqF. apply* okt_subst. rewrite concat_empty_l. eauto.
+        assert (typ_mem b0 (subst_t Z u T0) = subst_t Z u (typ_mem b0 T0)) as A. {
+          simpl. reflexivity.
+        }
+        assert (wft (Z ~ Q & F) (typ_mem b0 T0)) as B. {
+          eapply wft_from_env_has. eauto.
+          rewrite concat_empty_l in b. eapply b.
+        }
+        rewrite <- EqF. rewrite A. eapply wft_subst. rewrite concat_empty_l. eauto.
+        eauto. eauto.
+        apply ok_from_okt. apply* okt_subst. rewrite concat_empty_l. eauto.
+      * rewrite concat_empty_l in H0. apply binds_single_inv in H0. destruct H0.
+        subst. false*.
+  - inversion H0; subst.
+    assert (typ_mem b0 (subst_t Z u T0) = subst_t Z u (typ_mem b0 T0)) as A. {
+      simpl. reflexivity.
+    }
+    destruct b0.
+    * eexists. split. eapply has_mem.
+      rewrite <- EqF. apply* okt_subst. rewrite concat_empty_l. eauto.
+      rewrite <- EqF. apply* wft_subst. rewrite concat_empty_l. eauto.
+      apply ok_from_okt. apply* okt_subst. rewrite concat_empty_l. eauto.
+      eapply sub_reflexivity.
+      rewrite <- EqF. apply* okt_subst. rewrite concat_empty_l. eauto.
+      rewrite A.
+      rewrite <- EqF. apply* wft_subst. rewrite concat_empty_l. eauto.
+      apply ok_from_okt. apply* okt_subst. rewrite concat_empty_l. eauto.
+    * eexists. split. eapply has_mem.
+      rewrite <- EqF. apply* okt_subst. rewrite concat_empty_l. eauto.
+      rewrite <- EqF. apply* wft_subst. rewrite concat_empty_l. eauto.
+      apply ok_from_okt. apply* okt_subst. rewrite concat_empty_l. eauto.
+      eapply sub_reflexivity.
+      rewrite <- EqF. apply* okt_subst. rewrite concat_empty_l. eauto.
+      rewrite A.
+      rewrite <- EqF. apply* wft_subst. rewrite concat_empty_l. eauto.
+      apply ok_from_okt. apply* okt_subst. rewrite concat_empty_l. eauto.
+  - destruct e as [z ?]. subst. simpl.
+    admit. (* tricky because of non-generalization *)
+Grab Existential Variables.
+pick_fresh y. apply y.
+pick_fresh y. apply y.
+pick_fresh y. apply y.
+pick_fresh y. apply y.
 Qed.
 
 Lemma sub_through_subst : forall Q Z S T u,
