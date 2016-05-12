@@ -1421,6 +1421,12 @@ Qed.
 (* ********************************************************************** *)
 (** Preservation Result (20) *)
 
+Lemma value_red_contra: forall e e',
+  value e -> red e e' -> False.
+Proof.
+  introv Hv Hr. inversion Hv; subst; inversion Hr; subst; eauto.
+Qed.
+
 Lemma preservation_result : preservation.
 Proof.
   introv Typ. gen_eq E: (@empty typ). gen e'.
@@ -1441,10 +1447,7 @@ Proof.
       eassumption. apply* wft_type. assumption. assumption. auto*.
   - (* case: appvar *)
     inversions Red; try solve [ apply* typing_appvar ].
-    assert (value e2) as HV2. {
-      eapply 
-    }
-    lets A: (canonical_form_abs H4 Typ1). destruct A as [V [e0 Eq]]. subst.
+    lets HV2: (has_empty_value H). false. eapply value_red_contra in HV2; eauto.
     destruct~ (typing_inv_abs Typ1 (U1:=T1) (U2:=T2)) as [P1 [S2 [L P2]]].
     apply* sub_reflexivity.
     pick_fresh X. forwards~ K: (P2 X). destruct K.
