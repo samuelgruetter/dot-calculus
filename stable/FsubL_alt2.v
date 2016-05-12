@@ -8,7 +8,10 @@
   cf. https://github.com/samuelgruetter/dot-calculus/blob/master/ln/Fsub_Infrastructure.v
   cf. https://github.com/samuelgruetter/dot-calculus/blob/master/ln/Fsub_Part1A.v
 
-- compared to FsubL, simpler pushback argument
+- compared to FsubL, simpler pushback argument on just empty env
+
+TODO: strangely, we still need a tiny bit of possible types, because
+      non-empty env emerges. figure out how essential it is.
 
 ***************************************************************************)
 
