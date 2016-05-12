@@ -860,6 +860,13 @@ Proof.
   intros. apply* (proj1 sub_has_regular).
 Qed.
 
+Lemma has_regular_e : forall E p T,
+  has E p T -> (value p \/ (exists x, trm_fvar x = p)) /\ wfe E p.
+Proof.
+  intros. apply (proj2 sub_has_regular) in H. destruct H as [? [A ?]].
+  inversion A; subst. split; assumption.
+Qed.
+
 (** The typing relation is restricted to well-formed objects. *)
 
 Lemma typing_regular : forall E e T,
@@ -906,6 +913,7 @@ Qed.
 Hint Extern 1 (okt ?E) =>
   match goal with
   | H: sub _ _ _ |- _ => apply (proj31 (sub_regular H))
+  | H: has _ _ _ |- _ => apply (proj31 (proj2 (sub_has_regular H)))
   | H: typing _ _ _ |- _ => apply (proj31 (typing_regular H))
   end.
 
@@ -914,6 +922,13 @@ Hint Extern 1 (wft ?E ?T) =>
   | H: typing E _ T |- _ => apply (proj33 (typing_regular H))
   | H: sub E T _ |- _ => apply (proj32 (sub_regular H))
   | H: sub E _ T |- _ => apply (proj33 (sub_regular H))
+  | H: has E _ T |- _ => apply (proj33 (proj2 (sub_has_regular H)))
+  end.
+
+Hint Extern 1 (wfe ?E ?e) =>
+  match goal with
+  | H: typing E e _ |- _ => apply (proj32 (typing_regular H))
+  | H: has E e _ |- _ => apply (proj2 (has_regular_e H))
   end.
 
 Hint Extern 1 (type ?T) =>
@@ -1050,6 +1065,61 @@ Qed.
 End NarrowTrans.
 
 (* ********************************************************************** *)
+(** Substitution preserves subtyping (10) *)
+
+Lemma has_value_var : forall E u T,
+  has E u T ->
+  (value u \/ exists x, trm_fvar x = u).
+Proof.
+  intros. apply has_regular_e in H. destruct H as [A ?].
+  apply A.
+Qed.
+
+Hint Resolve has_value_var.
+
+Lemma sub_has_through_subst_z : (forall E0 S T, sub E0 S T -> forall Q E F Z u x P,
+  E0 = (E & Z ~ Q & F) ->
+  trm_fvar x = u -> binds x P E -> sub E P Q ->
+  sub (E & map (subst_t Z u) F) (subst_t Z u S) (subst_t Z u T)) /\
+  (forall E0 p T, has E0 p T -> forall Q E F Z u x P,
+  E0 = (E & Z ~ Q & F) ->
+  trm_fvar x = u -> binds x P E -> sub E P Q ->
+  has (E & map (subst_t Z u) F) (subst_e Z u p) (subst_t Z u T)).
+Proof.
+  apply sub_has_mutind; intros; subst; simpl.
+  - apply* sub_top. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
+  - simpl. apply* sub_refl_sel.
+    assert (typ_sel (subst_e Z (trm_fvar x) t) = subst_t Z (trm_fvar x) (typ_sel t)) as A by auto.
+    rewrite A. auto*. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
+  - apply* sub_sel1.
+  - apply* sub_sel2.
+  - apply* sub_mem_false.
+  - apply* sub_mem_true.
+  - apply_fresh* sub_all as X.
+    rewrite* subst_t_open_t_var. rewrite* subst_t_open_t_var.
+    apply_ih_map_bind* H0.
+  - apply* sub_trans.
+  - case_var.
+    + apply binds_middle_eq_inv in b; eauto. subst.
+      apply has_sub with (T:=P). eexists. reflexivity. apply has_var. apply* okt_subst.
+      apply binds_concat_left_ok. apply ok_from_okt. apply* okt_subst. assumption.
+      rewrite (proj1 subst_fresh). apply_empty* sub_weakening1.
+      apply* (@notin_fv_wf E0).
+    + destruct (binds_concat_inv b) as [?|[? ?]].
+      apply* has_var.
+      destruct (binds_push_inv H0) as [[? ?]|[? ?]].
+        subst. false~.
+        applys has_var. apply* okt_subst. apply* binds_concat_left.
+        rewrite (proj1 subst_fresh). assumption.
+        apply* (@notin_fv_wf E0). apply* wft_from_env_has.
+  - apply* has_mem. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
+  - apply* has_mem_false.
+  - eapply has_sub.
+    destruct e as [z ?]. subst. simpl.
+    case_var. eexists. reflexivity. eexists. reflexivity.
+    eauto. eauto.
+Qed.
+
 (** Type substitution preserves subtyping (10) *)
 
 Definition subst_tb (Z : var) (P : typ) (b : typ) : typ :=
