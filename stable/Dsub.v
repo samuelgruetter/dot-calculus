@@ -1389,6 +1389,27 @@ Proof.
   - subst. inversion Hwf; subst. false. apply* binds_empty_inv.
 Qed.
 
+Lemma has_empty_mem_b: forall b b' p T,
+  has empty p (typ_mem b T) ->
+  has empty p (typ_mem b' T).
+Proof.
+  intros.
+  assert (value p) as HV by solve [apply* has_empty_value].
+  inversion H; subst.
+  - inversion HV.
+  - apply* has_mem.
+  - destruct H0 as [x Eq]. subst. inversion HV.
+Qed.
+
+Lemma has_trm_mem_empty: forall E T M,
+  has E (trm_mem T) M -> wft empty T ->
+  has empty (trm_mem T) M.
+Proof.
+  introv Hhas Hwf. inversion Hhas; subst; eauto.
+  - apply* has_mem.
+  - destruct H as [x Eq]. inversion Eq.
+Qed.
+
 Lemma possible_types_closure : forall v T U,
   possible_types v T ->
   sub empty T U ->
@@ -1471,24 +1492,133 @@ Proof.
   inversion Typ; subst; eauto.
 Qed.
 
-Lemma sub_has_through_subst : (forall E0 S T, sub E0 S T -> forall Q E F Z u,
-  E0 = (E & Z ~ Q & F) ->
-  value u -> possible_types u Q ->
-  sub (E & map (subst_t Z u) F) (subst_t Z u S) (subst_t Z u T)) /\
-  (forall E0 p T, has E0 p T -> forall Q E F Z u,
-  E0 = (E & Z ~ Q & F) ->
-  value u -> possible_types u Q ->
-  has (E & map (subst_t Z u) F) (subst_e Z u p) (subst_t Z u T)).
+Lemma sub_through_subst : forall Q Z S T u,
+  sub (Z ~ Q) S T ->
+  possible_types u Q ->
+  sub empty (subst_t Z u S) (subst_t Z u T).
 Proof.
-  apply sub_has_mutind; intros; subst; simpl;
+  introv Hsub Hpt.
+  inductions Hsub; introv; simpl subst_t;
+  try assert (wfe empty u) as Hwu by solve [ apply* possible_types_wfe ];
+  try assert (value u) as Hvu by solve [ apply* possible_types_value ].
+  - apply* sub_top. apply* wft_subst_empty.
+  - simpl. apply* sub_refl_sel.
+    assert (typ_sel (subst_e Z u t) = subst_t Z u (typ_sel t)) as A by auto.
+    rewrite A. apply* wft_subst_empty.
+  - inversion H; subst.
+    + apply binds_single_inv in H1. destruct H1. subst.
+      inversion Hpt; subst. simpl. rewrite If_l; eauto. rewrite (proj1 subst_fresh).
+      eapply sub_trans. eapply sub_sel1. eapply has_mem; eauto. eauto.
+      apply* notin_fv_wf.
+    + apply has_trm_mem_empty in H; eauto.
+      rewrite (proj2 subst_fresh). rewrite (proj1 subst_fresh).
+      apply* sub_sel1. apply* notin_fv_wf. simpl. apply* notin_fv_wf.
+    + destruct H0 as [x Eq]. subst.
+    edestruct H as [IH | IH]; eauto.
+    + apply* sub_sel1.
+    + destruct IH as [Eq [P [IH1 IH2]]]. rewrite Eq.
+      eapply sub_trans.
+      eapply sub_sel1. eapply has_weakening_empty. eapply has_empty_mem_b. eassumption.
+      auto*. assumption.
+  - apply* sub_sel2.
+  - apply* sub_mem_false.
+  - apply* sub_mem_true.
+  - apply_fresh* sub_all as X.
+    rewrite* subst_t_open_t_var. rewrite* subst_t_open_t_var.
+    apply_ih_map_bind* H0.
+  - apply* sub_trans.
+  - case_var.
+    + apply binds_middle_eq_inv in b; eauto. subst.
+      apply has_sub with (T:=P). eexists. reflexivity. apply has_var. apply* okt_subst.
+      apply binds_concat_left_ok. apply ok_from_okt. apply* okt_subst. assumption.
+      rewrite (proj1 subst_fresh). apply_empty* sub_weakening1.
+      apply* (@notin_fv_wf E0).
+    + destruct (binds_concat_inv b) as [?|[? ?]].
+      apply* has_var.
+      destruct (binds_push_inv H0) as [[? ?]|[? ?]].
+        subst. false~.
+        applys has_var. apply* okt_subst. apply* binds_concat_left.
+        rewrite (proj1 subst_fresh). assumption.
+        apply* (@notin_fv_wf E0). apply* wft_from_env_has.
+  - apply* has_mem. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
+  - eapply has_sub.
+    destruct e as [z ?]. subst. simpl.
+    case_var. eexists. reflexivity. eexists. reflexivity.
+    eauto. eauto.
+Qed.
+
+Lemma sub_has_through_subst : (forall E0 S T, sub E0 S T -> forall Q Z u,
+  E0 = (Z ~ Q) ->
+  possible_types u Q ->
+  sub empty (subst_t Z u S) (subst_t Z u T)).
+Proof.
+  eapply sub_ind; intros; subst; simpl;
   try assert (wfe E0 u) as Hwu by solve [
     apply wfe_weaken_empty; [ apply* possible_types_wfe |
-    apply ok_from_okt in o; apply ok_remove in o; auto ]].
+    apply ok_from_okt in o; apply ok_remove in o; auto ]];
+  try assert (value u) as Hvu by solve [ apply* possible_types_value ].
   - apply* sub_top. apply* wft_subst.
   - simpl. apply* sub_refl_sel.
     assert (typ_sel (subst_e Z u t) = subst_t Z u (typ_sel t)) as A by auto.
     rewrite A. apply* wft_subst.
-  - apply* sub_sel1.
+  - edestruct H as [IH | IH]; eauto.
+    + apply* sub_sel1.
+    + destruct IH as [Eq [P [IH1 IH2]]]. rewrite Eq.
+      eapply sub_trans.
+      eapply sub_sel1. eapply has_weakening_empty. eapply has_empty_mem_b. eassumption.
+      auto*. assumption.
+  - apply* sub_sel2.
+  - apply* sub_mem_false.
+  - apply* sub_mem_true.
+  - apply_fresh* sub_all as X.
+    rewrite* subst_t_open_t_var. rewrite* subst_t_open_t_var.
+    apply_ih_map_bind* H0.
+  - apply* sub_trans.
+  - case_var.
+    + apply binds_middle_eq_inv in b; eauto. subst.
+      apply has_sub with (T:=P). eexists. reflexivity. apply has_var. apply* okt_subst.
+      apply binds_concat_left_ok. apply ok_from_okt. apply* okt_subst. assumption.
+      rewrite (proj1 subst_fresh). apply_empty* sub_weakening1.
+      apply* (@notin_fv_wf E0).
+    + destruct (binds_concat_inv b) as [?|[? ?]].
+      apply* has_var.
+      destruct (binds_push_inv H0) as [[? ?]|[? ?]].
+        subst. false~.
+        applys has_var. apply* okt_subst. apply* binds_concat_left.
+        rewrite (proj1 subst_fresh). assumption.
+        apply* (@notin_fv_wf E0). apply* wft_from_env_has.
+  - apply* has_mem. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
+  - eapply has_sub.
+    destruct e as [z ?]. subst. simpl.
+    case_var. eexists. reflexivity. eexists. reflexivity.
+    eauto. eauto.
+Qed.
+
+Lemma sub_has_through_subst : (forall E0 S T, sub E0 S T -> forall Q E F Z u,
+  E0 = (E & Z ~ Q & F) ->
+  possible_types u Q ->
+  sub (E & map (subst_t Z u) F) (subst_t Z u S) (subst_t Z u T)) /\
+  (forall E0 p T, has E0 p T -> forall Q E F Z u,
+  E0 = (E & Z ~ Q & F) ->
+  possible_types u Q ->
+  ((has (E & map (subst_t Z u) F) (subst_e Z u p) (subst_t Z u T)) \/
+   ((subst_e Z u p)=u /\ exists P, has empty u (typ_mem true P) /\ sub (E & map (subst_t Z u) F) (typ_mem true P) (subst_t Z u T)))).
+Proof.
+  apply sub_has_mutind; intros; subst; simpl;
+  try assert (wfe E0 u) as Hwu by solve [
+    apply wfe_weaken_empty; [ apply* possible_types_wfe |
+    apply ok_from_okt in o; apply ok_remove in o; auto ]];
+  try assert (value u) as Hvu by solve [ apply* possible_types_value ].
+  - apply* sub_top. apply* wft_subst.
+  - simpl. apply* sub_refl_sel.
+    assert (typ_sel (subst_e Z u t) = subst_t Z u (typ_sel t)) as A by auto.
+    rewrite A. apply* wft_subst.
+  - edestruct H as [IH | IH]; eauto.
+    + apply* sub_sel1.
+    + destruct IH as [Eq [P [IH1 IH2]]]. rewrite Eq.
+      eapply sub_trans.
+      eapply sub_sel1. eapply has_weakening_empty. eapply has_empty_mem_b. eassumption.
+      auto*. assumption.
   - apply* sub_sel2.
   - apply* sub_mem_false.
   - apply* sub_mem_true.
