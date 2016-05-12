@@ -1,7 +1,9 @@
 (*
  DSub (D<:)
- T ::= Top | x.Type | { Type = T } | { Type <: T } | (z: T) -> T^z
- t ::= x | { Type = T } | lambda x:T.t | t t
+ T ::= Top | p.Type | { Type = T } | { Type <: T } | (z: T) -> T^z
+ t ::= p | t t
+ p ::= x | v
+ v ::= { Type = T } | lambda x:T.t
 *)
 
 (* based on *)
