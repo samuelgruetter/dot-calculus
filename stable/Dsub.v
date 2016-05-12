@@ -189,18 +189,14 @@ Inductive sub : env -> typ -> typ -> Prop :=
       sub E S U
 
 with has : env -> trm -> typ -> Prop :=
-  | has_var : forall E x T,
+  | has_var : forall E x TX b T,
       okt E ->
-      binds x T E ->
+      binds x TX E ->
+      sub E TX (typ_mem b T) ->
       has E (trm_fvar x) T
   | has_mem : forall E b T,
       okt E -> wft E T ->
       has E (trm_mem T) (typ_mem b T)
-  | has_sub : forall E p T U,
-      (exists x, trm_fvar x = p) ->
-      has E p T ->
-      sub E T U ->
-      has E p U
 .
 
 (** Typing relation *)
@@ -911,6 +907,7 @@ Proof.
   split. auto*. split;
    apply_fresh* wft_all as Y;
     forwards~: (H0 Y); apply_empty* (@wft_narrow T1).
+  splits*. destruct H as [? [? A]]. inversion A; subst. assumption.
   splits*. apply wft_sel. left. apply value_mem. apply* wfe_term. apply* wfe_mem.
 Qed.
 
@@ -1058,7 +1055,6 @@ Proof.
   apply* sub_trans.
   apply* has_var. apply* binds_weaken.
   apply* has_mem.
-  apply* has_sub.
 Qed.
 
 Lemma sub_weakening : forall E F G S T,
@@ -1149,11 +1145,12 @@ Proof.
   apply_fresh* sub_all as Y. apply_ih_bind H0; eauto.
   tests EQ: (x = z).
     lets M: (@okt_narrow Q).
-    apply binds_middle_eq_inv in b. subst.
-    eapply has_sub. eexists. reflexivity. apply has_var. apply* M. apply binds_middle_eq.
+    apply binds_middle_eq_inv in b0. subst.
+    eapply has_var. apply* M. apply binds_middle_eq.
       eapply ok_from_okt in o. eapply ok_middle_inv in o. destruct o as [o1 o2]. apply o2.
-      apply* sub_weakening1. auto.
-    apply has_var; eauto. binds_cases b; auto.
+      eapply sub_trans. eapply sub_weakening1; eauto. eapply H; eauto.
+      auto*.
+    eapply has_var; eauto. binds_cases b0; auto.
   apply* has_mem.
 Qed.
 
@@ -1216,23 +1213,32 @@ Proof.
     apply_ih_map_bind* H0.
   - apply* sub_trans.
   - case_var.
-    + apply binds_middle_eq_inv in b; eauto. subst.
-      apply has_sub with (T:=P). eexists. reflexivity. apply has_var. apply* okt_subst.
-      apply binds_concat_left_ok. apply ok_from_okt. apply* okt_subst. assumption.
-      rewrite (proj1 subst_fresh). apply_empty* sub_weakening1.
+    + apply binds_middle_eq_inv in b0; eauto. subst.
+      eapply has_var. apply* okt_subst.
+      apply binds_concat_left_ok. apply ok_from_okt. apply* okt_subst. eassumption.
+      eapply sub_trans.
+      instantiate (1:=(subst_t Z (trm_fvar x0) Q)).
+      apply_empty* sub_weakening1. rewrite (proj1 subst_fresh). auto.
       apply* (@notin_fv_wf E0).
-    + destruct (binds_concat_inv b) as [?|[? ?]].
-      apply* has_var.
-      destruct (binds_push_inv H0) as [[? ?]|[? ?]].
-        subst. false~.
-        applys has_var. apply* okt_subst. apply* binds_concat_left.
-        rewrite (proj1 subst_fresh). assumption.
-        apply* (@notin_fv_wf E0). apply* wft_from_env_has.
+      eapply H; eauto.
+    + assert (forall u, subst_t Z u (typ_mem b T) = typ_mem b (subst_t Z u T)) as A. {
+        intros. simpl. reflexivity.
+      }
+      destruct (binds_concat_inv b0) as [?|[? ?]].
+      * eapply has_var. auto*.
+        apply binds_concat_right. apply binds_map. eassumption.
+        instantiate (1:=b). rewrite <- A. eapply H; eauto.
+      * applys has_var. apply* okt_subst. instantiate (1:=TX).
+        eapply binds_concat_left_inv in H1. apply* binds_concat_left. auto*.
+        instantiate (1:=b). rewrite <- A.
+        assert (TX = subst_t Z (trm_fvar x0) TX) as B. {
+          rewrite (proj1 subst_fresh). reflexivity.
+          eapply binds_concat_left_inv in H1.
+          apply* (@notin_fv_wf E0). apply* wft_from_env_has.
+          auto*.
+        }
+        rewrite B. eapply H; eauto.
   - apply* has_mem. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
-  - eapply has_sub.
-    destruct e as [z ?]. subst. simpl.
-    case_var. eexists. reflexivity. eexists. reflexivity.
-    eauto. eauto.
 Qed.
 
 (* ********************************************************************** *)
@@ -1390,8 +1396,6 @@ Proof.
   inversion HS; subst; eauto; inversion HU; subst; eauto;
   try solve [false; apply* binds_empty_inv];
   try solve [destruct H as [x ?]; inversion H].
-  - destruct H as [x ?]; inversion H; subst.
-    false. apply* has_empty_var_false.
 Qed.
 
 Lemma has_empty_value: forall p T,
@@ -1413,7 +1417,6 @@ Proof.
   inversion H; subst.
   - inversion HV.
   - apply* has_mem.
-  - destruct H0 as [x Eq]. subst. inversion HV.
 Qed.
 
 Lemma has_trm_mem_empty: forall E T M,
@@ -1422,7 +1425,6 @@ Lemma has_trm_mem_empty: forall E T M,
 Proof.
   introv Hhas Hwf. inversion Hhas; subst; eauto.
   - apply* has_mem.
-  - destruct H as [x Eq]. inversion Eq.
 Qed.
 
 Lemma possible_types_closure : forall v T U,
@@ -1527,10 +1529,10 @@ Lemma sub_has_through_subst : (forall E0 S T, sub E0 S T -> forall Q Z F u,
   E0 = (Z ~ Q & F) ->
   possible_types u Q ->
   sub (map (subst_t Z u) F) (subst_t Z u S) (subst_t Z u T)) /\
-  (forall E0 p T0, has E0 p T0 -> forall Q F Z u b T,
-  E0 = (Z ~ Q & F) -> T0 = typ_mem b T ->
+  (forall E0 p T, has E0 p T -> forall Q F Z u,
+  E0 = (Z ~ Q & F) ->
   possible_types u Q ->
-  exists P, has (map (subst_t Z u) F) (subst_e Z u p) P /\ sub (map (subst_t Z u) F) P (subst_t Z u T0)).
+  exists P, has (map (subst_t Z u) F) (subst_e Z u p) P /\ sub (map (subst_t Z u) F) P (subst_t Z u T)).
 Proof.
   apply sub_has_mutind; intros; subst; simpl;
   try assert (wfe empty u) as Hwu by solve [
@@ -1561,8 +1563,8 @@ Proof.
     rewrite A. eapply H0; eauto. rewrite concat_assoc. reflexivity.
   - apply* sub_trans.
   - case_var.
-    + rewrite <- concat_empty_l in b. rewrite concat_assoc in b.
-      apply binds_middle_eq_inv in b; eauto. subst.
+    + rewrite <- concat_empty_l in b0. rewrite concat_assoc in b0.
+      apply binds_middle_eq_inv in b0; eauto. subst.
       inversion H1; subst.
       * exists (typ_mem true T). split.
         apply has_mem; eauto.
