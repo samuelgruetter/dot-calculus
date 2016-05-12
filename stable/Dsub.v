@@ -1472,25 +1472,25 @@ Qed.
 
 Lemma progress_result : progress.
 Proof.
-  introv Typ. gen_eq E: (@empty bind). lets Typ': Typ.
+  introv Typ. gen_eq E: (@empty typ). lets Typ': Typ.
   induction Typ; intros EQ; subst.
-  (* case: var *)
-  false* binds_empty_inv.
-  (* case: abs *)
-  left*.
-  (* case: app *)
-  right. destruct* IHTyp1 as [Val1 | [e1' Rede1']].
+  - (* case: var *)
+    false* binds_empty_inv.
+  - (* case: abs *)
+    left*.
+  - (* case: mem *)
+    left*.
+  - (* case: app *)
+    right. destruct* IHTyp1 as [Val1 | [e1' Rede1']].
     destruct* IHTyp2 as [Val2 | [e2' Rede2']].
       destruct (canonical_form_abs Val1 Typ1) as [S [e3 EQ]].
-        subst. exists* (open_ee e3 e2).
-  (* case: tabs *)
-  left*.
-  (* case: tapp *)
-  right. destruct~ IHTyp as [Val1 | [e1' Rede1']].
-    destruct (canonical_form_tabs Val1 Typ) as [S [e3 EQ]].
-      subst. exists* (open_te e3 T).
-      exists* (trm_tapp e1' T).
-  (* case: sub *)
-  auto*.
+        subst. exists* (open_e e3 e2).
+  - (* case: appvar *)
+    right. destruct* IHTyp1 as [Val1 | [e1' Rede1']].
+    destruct* IHTyp2 as [Val2 | [e2' Rede2']].
+      destruct (canonical_form_abs Val1 Typ1) as [S [e3 EQ]].
+        subst. exists* (open_e e3 e2).
+  - (* case: sub *)
+    auto*.
 Qed.
 
