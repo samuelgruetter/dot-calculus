@@ -216,10 +216,9 @@ Inductive typing : env -> trm -> typ -> Prop :=
       okt E ->
       wft E T1 ->
       typing E (trm_mem T1) (typ_mem true T1)
-  | typing_appvar : forall T1 E e1 e2 T2 T2',
+  | typing_app : forall T1 E e1 e2 T2 T2',
       typing E e1 (typ_all T1 T2) ->
       typing E e2 T1 ->
-      has e2 M ->
       T2' = open_t T2 e2 ->
       wft E T2' ->
       typing E (trm_app e1 e2) T2'
