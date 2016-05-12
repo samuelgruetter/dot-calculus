@@ -701,6 +701,20 @@ Proof.
   intros. eapply (proj1 wf_subst); eauto.
 Qed.
 
+Lemma wft_subst_empty : forall Q Z u T,
+  wft (Z ~ Q) T ->
+  (value u \/ exists x, trm_fvar x = u) -> wfe empty u ->
+  wft empty (subst_t Z u T).
+Proof.
+  intros.
+  assert (empty & map (subst_t Z u) empty = empty) as A. {
+    rewrite map_empty. rewrite concat_empty_l. reflexivity.
+  }
+  rewrite <- A. eapply wft_subst; eauto.
+  rewrite concat_empty_l. rewrite concat_empty_r. eauto.
+  rewrite A. eauto.
+Qed.
+
 (** Through type reduction *)
 
 Lemma wft_open : forall E u T1 T2,
@@ -1068,6 +1082,29 @@ Proof.
   apply* sub_weakening.
   rewrite concat_empty_r. assumption.
   rewrite <- A. assumption.
+Qed.
+
+Lemma has_weakening : forall E F G p T,
+   has (E & G) p T ->
+   okt (E & F & G) ->
+   has (E & F & G) p T.
+Proof.
+  intros. apply* (proj2 sub_has_weakening).
+Qed.
+
+Lemma has_weakening_empty : forall E p T,
+   has empty p T ->
+   okt E ->
+   has E p T.
+Proof.
+  intros.
+  assert (empty & E & empty = E) as A. {
+    rewrite concat_empty_r. rewrite concat_empty_l. reflexivity.
+  }
+  rewrite <- A.
+  apply* has_weakening.
+  rewrite concat_empty_r. assumption.
+  rewrite A. assumption.
 Qed.
 
 (* ********************************************************************** *)
