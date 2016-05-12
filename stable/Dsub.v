@@ -1361,20 +1361,32 @@ Proof.
   repeat eexists; eauto.
 Qed.
 
+Lemma typing_inv_all : forall e T1 T2,
+  typing empty e (typ_all T1 T2) ->
+  value e ->
+  exists S0 e0, trm_abs S0 e0 = e.
+Proof.
+  introv HT HV.
+  eapply possible_types_typing in HT; eauto.
+  inversion HT; subst; eauto.
+Qed.
+
 (* ********************************************************************** *)
 (** Preservation Result (20) *)
 
 Lemma preservation_result : preservation.
 Proof.
-  introv Typ. gen e'. induction Typ; introv Red;
-   try solve [ inversion Red ].
+  introv Typ. gen_eq E: (@empty typ). gen e'.
+  induction Typ; introv QEQ; introv Red;
+   try solve [inversion Typ; congruence]; try solve [ inversion Red ].
   (* case: app *)
   inversions Red; try solve [ apply* typing_app ].
+  lets A: (typing_inv_all Typ1 H3). destruct A as [S0 [e0 Eq]]. subst.
   destruct~ (typing_inv_abs Typ1 (U1:=T1) (U2:=T2)) as [P1 [S2 [L P2]]].
     apply* sub_reflexivity.
     pick_fresh X. forwards~ K: (P2 X). destruct K.
-     rewrite* (@subst_ee_intro X).
-     apply_empty (@typing_through_subst_ee V).
+     rewrite* (@subst_e_intro X).
+      apply_empty (@typing_through_subst_e V).
        apply* (@typing_sub S2). apply_empty* sub_weakening.
        auto*.
   (* case: tapp *)
