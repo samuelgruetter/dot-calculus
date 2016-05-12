@@ -193,7 +193,7 @@ with has : env -> trm -> typ -> Prop :=
       okt E ->
       binds x TX E ->
       sub E TX (typ_mem b T) ->
-      has E (trm_fvar x) T
+      has E (trm_fvar x) (typ_mem b T)
   | has_mem : forall E b T,
       okt E -> wft E T ->
       has E (trm_mem T) (typ_mem b T)
@@ -907,7 +907,6 @@ Proof.
   split. auto*. split;
    apply_fresh* wft_all as Y;
     forwards~: (H0 Y); apply_empty* (@wft_narrow T1).
-  splits*. destruct H as [? [? A]]. inversion A; subst. assumption.
   splits*. apply wft_sel. left. apply value_mem. apply* wfe_term. apply* wfe_mem.
 Qed.
 
@@ -1227,10 +1226,10 @@ Proof.
       destruct (binds_concat_inv b0) as [?|[? ?]].
       * eapply has_var. auto*.
         apply binds_concat_right. apply binds_map. eassumption.
-        instantiate (1:=b). rewrite <- A. eapply H; eauto.
+        rewrite <- A. eapply H; eauto.
       * applys has_var. apply* okt_subst. instantiate (1:=TX).
         eapply binds_concat_left_inv in H1. apply* binds_concat_left. auto*.
-        instantiate (1:=b). rewrite <- A.
+        rewrite <- A.
         assert (TX = subst_t Z (trm_fvar x0) TX) as B. {
           rewrite (proj1 subst_fresh). reflexivity.
           eapply binds_concat_left_inv in H1.
