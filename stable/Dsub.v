@@ -191,12 +191,9 @@ with has : env -> trm -> typ -> Prop :=
       okt E ->
       binds x T E ->
       has E (trm_fvar x) T
-  | has_mem : forall E T,
+  | has_mem : forall E b T,
       okt E -> wft E T ->
-      has E (trm_mem T) (typ_mem true T)
-  | has_mem_false : forall E T,
-      has E (trm_mem T) (typ_mem true T) ->
-      has E (trm_mem T) (typ_mem false T)
+      has E (trm_mem T) (typ_mem b T)
   | has_sub : forall E p T U,
       (exists x, trm_fvar x = p) ->
       has E p T ->
@@ -851,7 +848,6 @@ Proof.
    apply_fresh* wft_all as Y;
     forwards~: (H0 Y); apply_empty* (@wft_narrow T1).
   splits*. apply wft_sel. left. apply value_mem. apply* wfe_term. apply* wfe_mem.
-  splits*. destruct H as [? [? A]]. inversion A; subst. apply* wft_mem.
 Qed.
 
 Lemma sub_regular : forall E S T,
@@ -991,7 +987,6 @@ Proof.
   apply* sub_trans.
   apply* has_var. apply* binds_weaken.
   apply* has_mem.
-  apply* has_mem_false.
   apply* has_sub.
 Qed.
 
@@ -1113,7 +1108,6 @@ Proof.
         rewrite (proj1 subst_fresh). assumption.
         apply* (@notin_fv_wf E0). apply* wft_from_env_has.
   - apply* has_mem. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
-  - apply* has_mem_false.
   - eapply has_sub.
     destruct e as [z ?]. subst. simpl.
     case_var. eexists. reflexivity. eexists. reflexivity.
