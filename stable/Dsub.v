@@ -1622,23 +1622,32 @@ Proof.
   auto*.
 Qed.
 
-Lemma loose_sub_sel1: forall E p P U,
-  has E p P ->
-  sub E P (typ_mem false U) ->
-  sub E (typ_sel p) U.
+Lemma loose_sub_sel1: forall p P U,
+  has empty p P ->
+  sub empty P (typ_mem false U) ->
+  sub empty (typ_sel p) U.
 Proof.
   introv Has Hsub. inversion Has; subst.
   - eapply sub_sel1. eapply has_var. assumption. eassumption.
-    eapply sub_trans. eassumption. eassumption.
-  -
+    eapply sub_trans. eassumption. assumption.
+  - apply trans_pushback in Hsub. inversion Has; subst.
+    inversion Hsub; subst.
+    eapply sub_trans. eapply sub_sel1. eapply has_empty_mem_b. eassumption.
+    assumption.
 Qed.
 
-Lemma loose_sub_sel2: forall E p P S,
-  has E p P ->
-  sub E P (typ_mem true S) ->
-  sub E S (typ_sel p).
+Lemma loose_sub_sel2: forall p P S,
+  has empty p P ->
+  sub empty P (typ_mem true S) ->
+  sub empty S (typ_sel p).
 Proof.
-  admit.
+  introv Has Hsub. inversion Has; subst.
+  - eapply sub_sel2. eapply has_var. assumption. eassumption.
+    eapply sub_trans. eassumption. assumption.
+  - apply trans_pushback in Hsub. inversion Has; subst.
+    inversion Hsub; subst.
+    eapply sub_trans. eassumption.
+    eapply sub_sel2. eapply has_empty_mem_b. eassumption.
 Qed.
 
 Lemma sub_has_through_subst : (forall E0 S T, sub E0 S T -> forall Q Z F u,
