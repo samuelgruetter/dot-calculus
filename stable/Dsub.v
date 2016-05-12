@@ -245,10 +245,10 @@ Inductive red : trm -> trm -> Prop :=
 
 (** Our goal is to prove preservation and progress *)
 
-Definition preservation := forall E e e' T,
-  typing E e T ->
+Definition preservation := forall e e' T,
+  typing empty e T ->
   red e e' ->
-  typing E e' T.
+  typing empty e' T.
 
 Definition progress := forall e T,
   typing empty e T ->
