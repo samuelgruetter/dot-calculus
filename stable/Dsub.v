@@ -1409,66 +1409,6 @@ Qed.
 (* ********************************************************************** *)
 (** Inversions for Typing (13) *)
 
-Inductive possible_types : trm -> typ -> Prop :=
-| pt_top : forall v, value v -> wfe empty v -> possible_types v typ_top
-| pt_mem_true : forall T T', sub empty T T' -> sub empty T' T -> possible_types (trm_mem T) (typ_mem true T')
-| pt_mem_false : forall T U, sub empty T U -> possible_types (trm_mem T) (typ_mem false U)
-| pt_all : forall L V V' e1 T1 T1',
-  (forall X, X \notin L -> typing (X ~ V) (e1 open_e_var X) (T1 open_t_var X)) ->
-  sub empty V' V ->
-  (forall X, X \notin L -> sub (X ~ V') (T1 open_t_var X) (T1' open_t_var X)) ->
-  possible_types (trm_abs V e1) (typ_all V' T1')
-| pt_sel : forall v S,
-  possible_types v S ->
-  possible_types v (typ_sel (trm_mem S))
-.
-
-Lemma possible_types_value : forall p T,
-  possible_types p T ->
-  value p.
-Proof.
-  introv Hpt. induction Hpt; eauto.
-  - apply value_abs. apply_fresh* term_abs as y.
-    assert (y \notin L) as Fr by auto.
-    specialize (H y Fr). apply typing_regular in H.
-    destruct H as [? [A ?]]. apply* wfe_term.
-Qed.
-
-Lemma possible_types_wfe : forall p T,
-  possible_types p T ->
-  wfe empty p.
-Proof.
-  introv Hpt. induction Hpt; eauto.
-  - apply_fresh* wfe_abs as y.
-    assert (y \notin L) as FrL by auto. specialize (H y FrL).
-    apply typing_regular in H. destruct H as [? [A ?]].
-    rewrite concat_empty_l. assumption.
-Qed.
-
-Lemma possible_types_wft : forall p T,
-  possible_types p T ->
-  wft empty T.
-Proof.
-  introv Hpt. induction Hpt; eauto.
-  - apply_fresh* wft_all as y.
-    assert (y \notin L) as FrL by auto. specialize (H1 y FrL).
-    apply sub_regular in H1. destruct H1 as [? [? A]].
-    rewrite concat_empty_l. assumption.
-  - apply wft_sel. left. apply value_mem. apply* wfe_term. apply* wfe_mem.
-Qed.
-
-Lemma has_empty_var_false: forall x T,
-  has empty (trm_fvar x) T ->
-  False.
-Proof.
-  intros.
-  remember (trm_fvar x) as p. generalize dependent x.
-  remember empty as E. gen HeqE.
-  induction H; intros; subst; eauto.
-  - apply* binds_empty_inv.
-  - inversion Heqp.
-  - inversion Heqp.
-Qed.
 
 Inductive psub : typ -> typ -> Prop :=
   | psub_top : forall S,
@@ -1525,6 +1465,76 @@ Proof.
   - eapply sub_trans; eauto.
 Qed.
 
+Inductive possible_types : trm -> typ -> Prop :=
+| pt_top : forall v, value v -> wfe empty v -> possible_types v typ_top
+| pt_mem_true : forall T T', psub T T' -> psub T' T -> possible_types (trm_mem T) (typ_mem true T')
+| pt_mem_false : forall T U, psub T U -> possible_types (trm_mem T) (typ_mem false U)
+| pt_all : forall L V V' e1 T1 T1',
+  (forall X, X \notin L -> typing (X ~ V) (e1 open_e_var X) (T1 open_t_var X)) ->
+  psub V' V ->
+  (forall X, X \notin L -> sub (X ~ V') (T1 open_t_var X) (T1' open_t_var X)) ->
+  possible_types (trm_abs V e1) (typ_all V' T1')
+| pt_sel : forall v S,
+  possible_types v S ->
+  possible_types v (typ_sel (trm_mem S))
+.
+
+Lemma possible_types_value : forall p T,
+  possible_types p T ->
+  value p.
+Proof.
+  introv Hpt. induction Hpt; eauto.
+  - apply psub_sub in H. auto*.
+  - apply psub_sub in H. auto*.
+  - apply value_abs. apply_fresh* term_abs as y.
+    apply psub_sub in H0. auto*.
+    assert (y \notin L) as Fr by auto.
+    specialize (H y Fr). apply typing_regular in H.
+    destruct H as [? [A ?]]. apply* wfe_term.
+Qed.
+
+Lemma possible_types_wfe : forall p T,
+  possible_types p T ->
+  wfe empty p.
+Proof.
+  introv Hpt. induction Hpt; eauto.
+  - apply psub_sub in H. auto*.
+  - apply psub_sub in H. auto*.
+  - apply_fresh* wfe_abs as y.
+    apply psub_sub in H0. auto*.
+    assert (y \notin L) as FrL by auto. specialize (H y FrL).
+    apply typing_regular in H. destruct H as [? [A ?]].
+    rewrite concat_empty_l. assumption.
+Qed.
+
+Lemma possible_types_wft : forall p T,
+  possible_types p T ->
+  wft empty T.
+Proof.
+  introv Hpt. induction Hpt; eauto.
+  - apply psub_sub in H. auto*.
+  - apply psub_sub in H. auto*.
+  - apply_fresh* wft_all as y.
+    apply psub_sub in H0. auto*.
+    assert (y \notin L) as FrL by auto. specialize (H1 y FrL).
+    apply sub_regular in H1. destruct H1 as [? [? A]].
+    rewrite concat_empty_l. assumption.
+  - apply wft_sel. left. apply value_mem. apply* wfe_term. apply* wfe_mem.
+Qed.
+
+Lemma has_empty_var_false: forall x T,
+  has empty (trm_fvar x) T ->
+  False.
+Proof.
+  intros.
+  remember (trm_fvar x) as p. generalize dependent x.
+  remember empty as E. gen HeqE.
+  induction H; intros; subst; eauto.
+  - apply* binds_empty_inv.
+  - inversion Heqp.
+  - inversion Heqp.
+Qed.
+
 Lemma possible_types_closure_psub : forall v T U,
   possible_types v T ->
   psub T U ->
@@ -1536,40 +1546,53 @@ Proof.
   - inversion Hpt; subst. assumption.
   - apply* pt_sel.
   - inversion Hpt; subst.
-    * apply pt_mem_false. eapply sub_trans. eassumption. eapply psub_sub; eauto.
-    * apply pt_mem_false. eapply sub_trans. eassumption. eapply psub_sub; eauto.
+    * apply pt_mem_false. eapply psub_trans; eauto.
+    * apply pt_mem_false. eapply psub_trans; eauto.
   - inversion Hpt; subst. apply* pt_mem_true.
-    eapply sub_trans. eassumption. eapply psub_sub; eauto.
-    eapply sub_trans. eapply psub_sub; eauto. eassumption.
   - inversion Hpt; subst. apply_fresh* pt_all as y.
-    eapply sub_trans. eapply psub_sub; eauto. eassumption.
     eapply sub_trans.
       eapply sub_narrowing_empty. eapply psub_sub. eassumption. auto*. auto*.
 Qed.
 
-Lemma has_psub_sel1: forall t U,
-  has empty t (typ_mem false U) ->
-  psub (typ_sel t) U.
+Lemma psub_reflexivity : forall T,
+  wft empty T ->
+  psub T T .
 Proof.
-  admit.
+  introv WI. lets W: (wft_type WI). remember empty as E. gen E.
+  induction W; intros; inversions WI; eauto.
+  destruct b. apply* psub_mem_true. apply* psub_mem_false.
+  apply_fresh* psub_all as y.
+  assert (y \notin L0)as Fr0 by auto. specialize (H5 y Fr0).
+  rewrite concat_empty_l in H5.
+  apply* sub_reflexivity. rewrite <- concat_empty_l. apply* okt_push.
+Grab Existential Variables.
+pick_fresh y. apply y.
 Qed.
 
-Lemma has_psub_sel2: forall t S,
-  has empty t (typ_mem true S) ->
-  psub S (typ_sel t).
+Lemma sub_psub_aux:
+  (forall E S T, sub E S T -> E = empty -> psub S T) /\
+  (forall E p T, has E p T -> E = empty -> possible_types p T).
 Proof.
-  admit.
+  apply sub_has_mutind; intros; subst; eauto.
+  - specialize (H eq_refl). inversion H; subst.
+    eapply psub_trans. eapply psub_sel1.
+    apply psub_sub in H2. auto*.
+    assumption.
+  - specialize (H eq_refl). inversion H; subst.
+    eapply psub_trans. eassumption. eapply psub_sel2.
+    apply psub_sub in H1. auto*.
+  - apply_fresh* psub_all as y.
+    rewrite <- (@concat_empty_l typ (y ~ T1)). auto*.
+  - false. apply* binds_empty_inv.
+  - destruct b. apply pt_mem_true; eauto. apply pt_mem_false; eauto.
+  - admit.
+  - eapply possible_types_closure_psub; eauto.
 Qed.
 
 Lemma sub_psub: forall S T,
   sub empty S T -> psub S T.
 Proof.
-  intros. remember empty as E. gen HeqE.
-  induction H; intros; subst; eauto.
-  - apply* has_psub_sel1.
-  - apply* has_psub_sel2.
-  - apply_fresh* psub_all as y.
-    rewrite <- (@concat_empty_l typ (y ~ T1)). auto*.
+  intros. apply* (proj1 sub_psub_aux).
 Qed.
 
 Lemma possible_types_closure : forall v T U,
@@ -1594,11 +1617,11 @@ Proof.
     apply_fresh pt_all as Y.
     assert (Y \notin L) as Fr by eauto.
     specialize (H Y Fr). rewrite concat_empty_l in H. eapply H.
-    eapply sub_reflexivity; eauto. eapply sub_reflexivity; eauto.
+    eapply psub_reflexivity; eauto. eapply sub_reflexivity; eauto.
     rewrite <- concat_empty_l. eauto.
     assert (Y \notin L0) as Fr by eauto.
     specialize (H7 Y Fr). rewrite concat_empty_l in H7. eapply H7.
-  - apply pt_mem_true. apply* sub_reflexivity. apply* sub_reflexivity.
+  - apply pt_mem_true. apply* psub_reflexivity. apply* psub_reflexivity.
   - eapply possible_types_closure; eauto.
 Qed.
 
@@ -1616,6 +1639,7 @@ Proof.
   }
   inversion Hc; subst.
   repeat eexists; eauto.
+  apply* psub_sub.
 Qed.
 
 (** Canonical Forms (14) *)
