@@ -1676,6 +1676,202 @@ Qed.
 
 Hint Resolve okt_subst1 wft_subst1.
 
+
+(* ###################################################################### *)
+(** * Has member *)
+
+Inductive has_member: env -> trm -> typ -> bool -> typ -> Prop :=
+| hm_val : forall E v T b P T0,
+  value v -> typing empty v T0 -> sub E T0 T ->
+  has_member_rules E v T b P ->
+  has_member E v T b P
+with has_member_rules: env -> trm -> typ -> bool -> typ -> Prop :=
+| hm_refl : forall E v b P,
+  has_member_rules E v (typ_mem b P) b P
+| hm_sel : forall E v t T' b P,
+  has E t (typ_mem true T') ->
+  has_member E v T' b P ->
+  has_member_rules E v (typ_sel t) b P
+.
+
+Scheme hm_has_mut := Induction for has_member Sort Prop
+with hm_hasr_mut := Induction for has_member_rules Sort Prop.
+Combined Scheme hm_mutind from hm_has_mut, hm_hasr_mut.
+
+Lemma has_member_rules_inv: forall E v T b P, has_member_rules E v T b P ->
+  (T = typ_mem b P) \/
+  (exists t T', T = typ_sel t /\
+    has E t (typ_mem true T') /\
+    has_member E v T' b P).
+Proof.
+  intros. inversion H; subst.
+  - left. eauto.
+  - right. exists t T'. eauto.
+Qed.
+
+Lemma has_member_inv: forall E v T b P, has_member E v T b P ->
+  (T = typ_mem b P) \/
+  (exists t T', T = typ_sel t /\
+    has E t (typ_mem true T') /\
+    has_member E v T' b P).
+Proof.
+  intros. inversion H; subst. apply has_member_rules_inv in H3. apply H3.
+Qed.
+
+(*
+Lemma has_member_tightness: forall E v T b P,
+  has_member E v (typ_mem b P) b' P' ->
+  S = U.
+Proof.
+  introv Hwf Bis Hmem.
+  inversion Hmem; subst. inversion H0; subst.
+  reflexivity.
+Qed.
+ *)
+
+Lemma has_member_covariance: forall E T1 T2 x S2 U2,
+  wf_sto G s ->
+  subtyp ty_general sub_tight G T1 T2 ->
+  ty_trm ty_general sub_tight G (trm_var (avar_f x)) T1 ->
+  has_member G x T2 S2 U2 ->
+  exists S1 U1, has_member G x T1 S1 U1 /\
+                subtyp ty_general sub_tight G S2 S1 /\
+                subtyp ty_general sub_tight G U1 U2.
+Proof.
+  introv Hwf Hsub Hty Hmem.
+  generalize dependent U2.
+  generalize dependent S2.
+  dependent induction Hsub; subst; intros.
+  - (* top *)
+    inversion Hmem; subst. inversion H0.
+  - (* bot *)
+    exists S2 U2. split.
+    apply has_any. assumption. apply has_bot.
+    split; apply subtyp_refl.
+  - (* refl *)
+    exists S2 U2. eauto.
+  - (* trans *)
+    assert (ty_trm ty_general sub_tight G (trm_var (avar_f x)) T) as HS. {
+      eapply ty_sub. intros Hp. subst. eexists; eauto.
+      eapply Hty.
+      eassumption.
+    }
+    specialize (IHHsub2 Hwf HS S2 U2 Hmem).
+    destruct IHHsub2 as [S3 [U3 [Hmem3 [Hsub31 Hsub32]]]].
+    specialize (IHHsub1 Hwf Hty S3 U3 Hmem3).
+    destruct IHHsub1 as [S1 [U1 [Hmem1 [Hsub11 Hsub12]]]].
+    exists S1 U1. split. apply Hmem1. split; eauto.
+  - (* typ *)
+    apply has_member_inv in Hmem.
+    repeat destruct Hmem as [Hmem|Hmem].
+    + inversions Hmem.
+      exists S1 T1. split.
+      apply has_any. assumption. apply has_refl.
+      split; assumption.
+    + destruct Hmem as [y [T' [Heq _]]]. inversion Heq.
+    + inversion Hmem.
+  - (* sel2 *)
+    apply has_member_inv in Hmem.
+    repeat destruct Hmem as [Hmem|Hmem].
+    + inversion Hmem.
+    + destruct Hmem as [y [T' [Heq [Htyb Hmem]]]]. inversions Heq.
+      assert (T' = T) as HeqT. {
+        eapply unique_tight_bounds; eassumption.
+      }
+      subst. eauto.
+    + inversion Hmem.
+  - (* sel1 *)
+    exists S2 U2. split.
+    eapply has_any. assumption. eapply has_sel. eassumption. eassumption.
+    eauto.
+  - (* all *)
+    inversion Hmem; subst. inversion H2; subst.
+Qed.
+
+Lemma has_member_monotonicity: forall G s x T0 T S U,
+  wf_sto G s ->
+  binds x (val_def T0) s ->
+  has_member G x T S U ->
+  exists T1, has_member G x (typ_mem T0 T0) T1 T1 /\
+             subtyp ty_general sub_tight G S T1 /\
+             subtyp ty_general sub_tight G T1 U.
+Proof.
+  introv Hwf Bis Hmem. inversion Hmem; subst.
+  generalize dependent U. generalize dependent S.
+  dependent induction H; intros.
+  - (* var *)
+    destruct (corresponding_types Hwf H).
+    destruct H1 as [S0 [U0 [t [Bis' _]]]]. unfold binds in Bis'. unfold binds in Bis. rewrite Bis' in Bis. inversion Bis.
+    destruct H1 as [S0 [Bis' [Hty Heq]]]. unfold binds in Bis'. unfold binds in Bis. rewrite Bis in Bis'. inversions Bis'.
+    assert (S = U). {
+      eapply has_member_tightness. eassumption. eassumption.
+      eapply has_any.
+      eapply ty_var. eassumption.
+      eassumption.
+    }
+    subst.
+    exists U. eauto.
+  - (* sub *)
+    destruct (has_member_covariance Hwf H1 H0 Hmem) as [S' [U' [Hmem' [Hsub1' Hsub2']]]].
+    inversion Hmem'; subst.
+    specialize (IHty_trm Hwf Bis S' U' Hmem' H4).
+    destruct IHty_trm as [T1 [Hmem1 [Hsub1 Hsub2]]].
+    exists T1. eauto.
+Qed.
+
+Lemma has_mem_covariant_possible_types: forall v V E b T V0,
+  possible_types v V0 ->
+  sub empty V0 V -> sub E V (typ_mem b T) ->
+  exists P, trm_mem P = v /\ sub empty (typ_mem true P) V.
+Proof.
+  introv Hpt0 Hsub0 Hsub. generalize dependent V0. generalize dependent v.
+  remember (typ_mem b T) as M. gen HeqM.
+  induction Hsub; intros; subst; eauto; try solve [inversion HeqM];
+  lets Hpt: (possible_types_closure Hpt0 Hsub0).
+  - inversion Hpt; subst. inversion H3; subst. inversion H3; subst.
+    false. apply* binds_empty_inv. inversion H; subst.
+    inversion H1; subst.
+    * eexists. split. reflexivity.
+      eapply sub_trans.
+      eapply sub_mem_true; eassumption.
+      apply* sub_sel2.
+    * eexists. split. reflexivity.
+      eapply sub_trans.
+      eapply sub_mem_false; eassumption.
+      apply* sub_sel2.
+  - inversion Hpt; subst.
+    * eexists. split. reflexivity. apply* sub_mem_true.
+    * eexists. split. reflexivity. apply* sub_mem_false.
+  - inversion Hpt; subst. inversion HeqM; subst.
+    eexists. split. reflexivity. apply* sub_mem_true.
+  - specialize (IHHsub2 eq_refl v V0 Hpt0).
+    
+Lemma has_mem_covariant_possible_types: forall v V E b T,
+  possible_types v V ->
+  sub E V (typ_mem b T) ->
+  exists P, trm_mem P = v /\ sub empty (typ_mem true P) V.
+Proof.
+  introv Hpt Hsub. generalize dependent v.
+  remember (typ_mem b T) as M. gen HeqM.
+  induction Hsub; intros; subst; eauto; try solve [inversion HeqM].
+  - inversion Hpt; subst. inversion H3; subst. inversion H3; subst.
+    false. apply* binds_empty_inv. inversion H; subst.
+    inversion H1; subst.
+    * eexists. split. reflexivity.
+      eapply sub_trans.
+      eapply sub_mem_true; eassumption.
+      apply* sub_sel2.
+    * eexists. split. reflexivity.
+      eapply sub_trans.
+      eapply sub_mem_false; eassumption.
+      apply* sub_sel2.
+  - inversion Hpt; subst.
+    * eexists. split. reflexivity. apply* sub_mem_true.
+    * eexists. split. reflexivity. apply* sub_mem_false.
+  - inversion Hpt; subst. inversion HeqM; subst.
+    eexists. split. reflexivity. apply* sub_mem_true.
+    
+  - lets Hpt: (possible_types_closure) specialize (IHHsub2 eq_refl v Hpt).
 Lemma sub_through_subst : forall V y v S T F,
   gsub ((y ~ V) & F) S T ->
   value v -> typing empty v V ->
