@@ -189,14 +189,17 @@ Inductive sub : env -> typ -> typ -> Prop :=
       sub E S U
 
 with has : env -> trm -> typ -> Prop :=
-  | has_var : forall E x TX b T,
+  | has_var : forall E x T,
       okt E ->
-      binds x TX E ->
-      sub E TX (typ_mem b T) ->
-      has E (trm_fvar x) (typ_mem b T)
+      binds x T E ->
+      has E (trm_fvar x) T
   | has_mem : forall E b T,
       okt E -> wft E T ->
       has E (trm_mem T) (typ_mem b T)
+  | has_sub : forall E t T U,
+      has E t T ->
+      sub E T U ->
+      has E t U
 .
 
 (** Typing relation *)
@@ -1077,6 +1080,7 @@ Proof.
   apply* sub_trans.
   apply* has_var. apply* binds_weaken.
   apply* has_mem.
+  apply* has_sub.
 Qed.
 
 Lemma sub_weakening : forall E F G S T,
@@ -1167,12 +1171,12 @@ Proof.
   apply_fresh* sub_all as Y. apply_ih_bind H0; eauto.
   tests EQ: (x = z).
     lets M: (@okt_narrow Q).
-    apply binds_middle_eq_inv in b0. subst.
-    eapply has_var. apply* M. apply binds_middle_eq.
+    apply binds_middle_eq_inv in b. subst.
+    eapply has_sub. eapply has_var. apply* M. apply binds_middle_eq.
       eapply ok_from_okt in o. eapply ok_middle_inv in o. destruct o as [o1 o2]. apply o2.
-      eapply sub_trans. eapply sub_weakening1; eauto. eapply H; eauto.
+      eapply sub_weakening1; eauto.
       auto*.
-    eapply has_var; eauto. binds_cases b0; auto.
+    eapply has_var; eauto. binds_cases b; auto.
   apply* has_mem.
 Qed.
 
@@ -1235,32 +1239,26 @@ Proof.
     apply_ih_map_bind* H0.
   - apply* sub_trans.
   - case_var.
-    + apply binds_middle_eq_inv in b0; eauto. subst.
-      eapply has_var. apply* okt_subst.
+    + apply binds_middle_eq_inv in b; eauto. subst.
+      eapply has_sub. eapply has_var. apply* okt_subst.
       apply binds_concat_left_ok. apply ok_from_okt. apply* okt_subst. eassumption.
-      eapply sub_trans.
-      instantiate (1:=(subst_t Z (trm_fvar x0) Q)).
       apply_empty* sub_weakening1. rewrite (proj1 subst_fresh). auto.
       apply* (@notin_fv_wf E0).
-      eapply H; eauto.
-    + assert (forall u, subst_t Z u (typ_mem b T) = typ_mem b (subst_t Z u T)) as A. {
-        intros. simpl. reflexivity.
-      }
-      destruct (binds_concat_inv b0) as [?|[? ?]].
+    + destruct (binds_concat_inv b) as [?|[? ?]].
       * eapply has_var. auto*.
         apply binds_concat_right. apply binds_map. eassumption.
-        rewrite <- A. eapply H; eauto.
-      * applys has_var. apply* okt_subst. instantiate (1:=TX).
-        eapply binds_concat_left_inv in H1. apply* binds_concat_left. auto*.
-        rewrite <- A.
-        assert (TX = subst_t Z (trm_fvar x0) TX) as B. {
+      * applys has_var. apply* okt_subst.
+        assert (T = subst_t Z (trm_fvar x0) T) as B. {
           rewrite (proj1 subst_fresh). reflexivity.
-          eapply binds_concat_left_inv in H1.
+          eapply binds_concat_left_inv in H0.
           apply* (@notin_fv_wf E0). apply* wft_from_env_has.
           auto*.
         }
-        rewrite B. eapply H; eauto.
+        apply binds_concat_left. rewrite <- B.
+        apply binds_concat_left_inv in H0. apply H0.
+        auto*. auto*.
   - apply* has_mem. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
+  - apply* has_sub.
 Qed.
 
 (* ********************************************************************** *)
