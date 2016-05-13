@@ -196,6 +196,9 @@ with has : env -> trm -> typ -> Prop :=
   | has_mem : forall E b T,
       okt E -> wft E T ->
       has E (trm_mem T) (typ_mem b T)
+  | has_abs : forall E V e T,(* dummy case for smooth substitution lemma, see val_typing_has *)
+      okt E -> wfe E (trm_abs V e) -> wft E (typ_all V T) ->
+      has E (trm_abs V e) (typ_all V T) (* return typ doesn't matter, as long as it's moot for sel1 and sel2 *)
   | has_sub : forall E t T U,
       has E t T ->
       sub E T U ->
@@ -934,6 +937,7 @@ Proof.
    apply_fresh* wft_all as Y;
     forwards~: (H0 Y); apply_empty* (@wft_narrow T1).
   splits*. apply wft_sel. left. apply value_mem. apply* wfe_term. apply* wfe_mem.
+  splits*. apply wft_sel. left. apply value_abs. apply* wfe_term. assumption.
 Qed.
 
 Lemma sub_regular : forall E S T,
@@ -1080,6 +1084,7 @@ Proof.
   apply* sub_trans.
   apply* has_var. apply* binds_weaken.
   apply* has_mem.
+  apply* has_abs. apply* wfe_weaken.
   apply* has_sub.
 Qed.
 
@@ -1193,6 +1198,7 @@ Proof.
       auto*.
     eapply has_var; eauto. binds_cases b; auto.
   apply* has_mem.
+  apply* has_abs. eapply (proj2 wf_narrow); eauto.
 Qed.
 
 Lemma sub_narrowing : forall Q E F Z P S T,
@@ -1241,7 +1247,20 @@ Proof.
   - eapply has_sub. eapply IHtyping; eauto. assumption.
 Qed.
 
-Lemma sub_has_through_subst_z : (forall E0 S T, sub E0 S T -> forall Q E F Z u,
+Lemma val_typing_has: forall E u Q,
+  value u ->
+  typing E u Q ->
+  has E u Q.
+Proof.
+  introv Hv H.
+  lets R: (typing_regular H).
+  induction H; intros; subst; try solve [inversion Hv].
+  - apply* has_abs.
+  - apply* has_mem.
+  - apply* has_sub.
+Qed.
+
+Lemma sub_has_through_subst : (forall E0 S T, sub E0 S T -> forall Q E F Z u,
   E0 = (E & Z ~ Q & F) ->
   (value u \/ exists x, trm_fvar x = u) -> typing E u Q ->
   sub (E & map (subst_t Z u) F) (subst_t Z u S) (subst_t Z u T)) /\
@@ -1266,7 +1285,9 @@ Proof.
   - case_var.
     + apply binds_middle_eq_inv in b; eauto. subst.
       destruct H0 as [H0 | [x H0]].
-      * admit.
+      * apply_empty* has_weakening1.
+        rewrite (proj1 subst_fresh). apply* val_typing_has.
+        apply* (@notin_fv_wf E0).
       * subst. rewrite (proj1 subst_fresh).
         apply_empty* has_weakening1. apply var_typing_has. assumption.
         apply* (@notin_fv_wf E0).
@@ -1284,6 +1305,13 @@ Proof.
         apply binds_concat_left_inv in H2. apply H2.
         auto*. auto*.
   - apply* has_mem.
+  - apply* has_abs.
+    assert (trm_abs (subst_t Z u V) (subst_e Z u e) =
+            subst_e Z u (trm_abs V e)) as A by solve [simpl; reflexivity].
+    rewrite A. eapply (proj2 wf_subst); eauto.
+    assert (typ_all (subst_t Z u V) (subst_t Z u T) =
+            subst_t Z u (typ_all V T)) as B by solve [simpl; reflexivity].
+    rewrite B. apply* wft_subst.
   - apply* has_sub.
 Qed.
 
