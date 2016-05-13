@@ -1399,11 +1399,11 @@ Proof.
     apply* wft_subst.
     apply ok_from_okt. apply* okt_subst.
   - eapply typing_appvar. eapply IHTypT1; eauto. eapply IHTypT2; eauto.
-    apply* (proj2 sub_has_through_subst_z).
+    apply* (proj2 sub_has_through_subst).
     eapply subst_t_open_t. auto*. apply* wft_subst.
     apply ok_from_okt. apply* okt_subst.
   - eapply typing_sub. eapply IHTypT; eauto.
-    eapply (proj1 sub_has_through_subst_z); eauto.
+    eapply (proj1 sub_has_through_subst); eauto.
 Qed.
 
 (* ********************************************************************** *)
