@@ -1525,6 +1525,28 @@ Proof.
   - eapply sub_trans; eauto.
 Qed.
 
+Lemma possible_types_closure_psub : forall v T U,
+  possible_types v T ->
+  psub T U ->
+  possible_types v U.
+Proof.
+  introv Hpt Hsub. generalize dependent v.
+  induction Hsub; intros; subst; eauto.
+  - apply pt_top. apply* possible_types_value. apply* possible_types_wfe.
+  - inversion Hpt; subst. assumption.
+  - apply* pt_sel.
+  - inversion Hpt; subst.
+    * apply pt_mem_false. eapply sub_trans. eassumption. eapply psub_sub; eauto.
+    * apply pt_mem_false. eapply sub_trans. eassumption. eapply psub_sub; eauto.
+  - inversion Hpt; subst. apply* pt_mem_true.
+    eapply sub_trans. eassumption. eapply psub_sub; eauto.
+    eapply sub_trans. eapply psub_sub; eauto. eassumption.
+  - inversion Hpt; subst. apply_fresh* pt_all as y.
+    eapply sub_trans. eapply psub_sub; eauto. eassumption.
+    eapply sub_trans.
+      eapply sub_narrowing_empty. eapply psub_sub. eassumption. auto*. auto*.
+Qed.
+
 Lemma has_psub_sel1: forall t U,
   has empty t (typ_mem false U) ->
   psub (typ_sel t) U.
@@ -1548,28 +1570,6 @@ Proof.
   - apply* has_psub_sel2.
   - apply_fresh* psub_all as y.
     rewrite <- (@concat_empty_l typ (y ~ T1)). auto*.
-Qed.
-
-Lemma possible_types_closure_psub : forall v T U,
-  possible_types v T ->
-  psub T U ->
-  possible_types v U.
-Proof.
-  introv Hpt Hsub. generalize dependent v.
-  induction Hsub; intros; subst; eauto.
-  - apply pt_top. apply* possible_types_value. apply* possible_types_wfe.
-  - inversion Hpt; subst. assumption.
-  - apply* pt_sel.
-  - inversion Hpt; subst.
-    * apply pt_mem_false. eapply sub_trans. eassumption. eapply psub_sub; eauto.
-    * apply pt_mem_false. eapply sub_trans. eassumption. eapply psub_sub; eauto.
-  - inversion Hpt; subst. apply* pt_mem_true.
-    eapply sub_trans. eassumption. eapply psub_sub; eauto.
-    eapply sub_trans. eapply psub_sub; eauto. eassumption.
-  - inversion Hpt; subst. apply_fresh* pt_all as y.
-    eapply sub_trans. eapply psub_sub; eauto. eassumption.
-    eapply sub_trans.
-      eapply sub_narrowing_empty. eapply psub_sub. eassumption. auto*. auto*.
 Qed.
 
 Lemma possible_types_closure : forall v T U,
