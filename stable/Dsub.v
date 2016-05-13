@@ -1372,19 +1372,18 @@ Qed.
 (************************************************************************ *)
 (** Preservation by Substitution (8) *)
 
-Lemma typing_through_subst_z : forall U E F z T e u x P,
+Lemma typing_through_subst : forall U E F z T e u,
   typing (E & z ~ U & F) e T ->
-  trm_fvar x = u -> binds x P E -> sub E P U ->
+  (value u \/ exists x, trm_fvar x = u) -> typing E u U ->
   typing (E & (map (subst_t z u) F)) (subst_e z u e) (subst_t z u T).
 Proof.
-  introv TypT EqU Bi TypU.
+  introv TypT Hu TypU.
   inductions TypT; introv; subst; simpl.
   - case_var.
     + binds_get H0.
       rewrite (proj1 subst_fresh).
-      apply typing_sub with (S:=P).
-      apply_empty typing_weakening. apply* typing_var.
-      apply* okt_subst. apply_empty* sub_weakening.
+      apply_empty typing_weakening. assumption.
+      apply* okt_subst.
       apply* (@notin_fv_wf E).
     + binds_cases H0.
       rewrite (proj1 subst_fresh). eapply typing_var; eauto.
@@ -1394,14 +1393,12 @@ Proof.
     rewrite* subst_e_open_e_var. rewrite* subst_t_open_t_var.
     rewrite <- concat_assoc_map_push.
     eapply H0; eauto. rewrite concat_assoc. auto.
-  - apply* typing_mem. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
+  - apply* typing_mem.
   - eapply typing_app. eapply IHTypT1; eauto. eapply IHTypT2; eauto.
     apply* wft_subst.
-    apply ok_from_okt. apply* okt_subst.
   - eapply typing_appvar. eapply IHTypT1; eauto. eapply IHTypT2; eauto.
     apply* (proj2 sub_has_through_subst).
     eapply subst_t_open_t. auto*. apply* wft_subst.
-    apply ok_from_okt. apply* okt_subst.
   - eapply typing_sub. eapply IHTypT; eauto.
     eapply (proj1 sub_has_through_subst); eauto.
 Qed.
@@ -1641,12 +1638,18 @@ Proof.
   inversion Typ; subst; eauto.
 Qed.
 
-Lemma typing_through_subst : forall V y v e T,
+Lemma typing_through_subst1 : forall V y v e T,
   typing (y ~ V) e T ->
   value v -> typing empty v V ->
   typing empty (subst_e y v e) (subst_t y v T).
 Proof.
-  admit.
+  intros.
+  assert (empty & map (subst_t y v) empty = empty) as A. {
+    rewrite concat_empty_l. rewrite map_empty. reflexivity.
+  }
+  rewrite <- A. eapply typing_through_subst.
+  rewrite concat_empty_l. rewrite concat_empty_r. eauto.
+  left. assumption. assumption.
 Qed.
 
 (* ********************************************************************** *)
@@ -1670,7 +1673,7 @@ Proof.
      pick_fresh X. forwards~ K: (P2 X). destruct K.
       rewrite* (@subst_e_intro X).
       erewrite <- (proj1 subst_fresh).
-      eapply typing_through_subst.
+      eapply typing_through_subst1.
       eapply typing_sub. eapply typing_narrowing_empty. eapply P1. eassumption.
       rewrite <- (@open_t_var_type X).
       assert (X \notin L) as FrL by auto.
@@ -1684,7 +1687,7 @@ Proof.
     pick_fresh X. forwards~ K: (P2 X). destruct K.
      rewrite* (@subst_t_intro X).
      rewrite* (@subst_e_intro X).
-     eapply typing_through_subst.
+     eapply typing_through_subst1.
      eapply typing_sub. eapply typing_narrowing_empty. eapply P1. eassumption.
      assert (X \notin L) as FrL by auto.
      specialize (P2 X FrL). destruct P2 as [P2t P2s].
