@@ -1426,6 +1426,37 @@ Proof.
   - apply* has_mem.
 Qed.
 
+Lemma has_mem_rel: forall p b1 b2 S U E,
+  has E p (typ_mem b1 S) ->
+  has E p (typ_mem b2 U) ->
+  (trm_mem S = p /\ S = U) \/
+  (exists x TX, trm_fvar x = p /\ binds x TX E /\ sub E TX (typ_mem b1 S) /\ sub E TX (typ_mem b2 U)).
+Proof.
+  introv HS HU.
+  inversion HS; subst; eauto; inversion HU; subst; eauto.
+  -remember H4 as Bi. clear HeqBi.
+   unfold binds in H7,H4. rewrite H7 in H4. inversion H4. subst. clear H7. clear H4.
+   right. repeat eexists. eassumption. assumption. assumption.
+Qed.
+
+Lemma has_trm_mem_eq: forall T b1 b2 S U E,
+  has E (trm_mem T) (typ_mem b1 S) ->
+  has E (trm_mem T) (typ_mem b2 U) ->
+  S = U.
+Proof.
+  introv HS HU.
+  inversion HS; subst; eauto; inversion HU; subst; eauto.
+Qed.
+
+Lemma has_trm_mem_b: forall b b' P T E,
+  has E (trm_mem P) (typ_mem b T) ->
+  has E (trm_mem P) (typ_mem b' T).
+Proof.
+  intros.
+  inversion H; subst.
+  - apply* has_mem.
+Qed.
+
 Lemma possible_types_closure : forall v T U,
   possible_types v T ->
   sub empty T U ->
@@ -1577,38 +1608,6 @@ Proof.
   - eapply sub_mem_false; eauto.
   - eapply sub_mem_true; eauto.
   - apply_fresh* sub_all as y.
-Qed.
-
-
-Lemma has_mem_rel: forall p b1 b2 S U E,
-  has E p (typ_mem b1 S) ->
-  has E p (typ_mem b2 U) ->
-  (trm_mem S = p /\ S = U) \/
-  (exists x TX, trm_fvar x = p /\ binds x TX E /\ sub E TX (typ_mem b1 S) /\ sub E TX (typ_mem b2 U)).
-Proof.
-  introv HS HU.
-  inversion HS; subst; eauto; inversion HU; subst; eauto.
-  -remember H4 as Bi. clear HeqBi.
-   unfold binds in H7,H4. rewrite H7 in H4. inversion H4. subst. clear H7. clear H4.
-   right. repeat eexists. eassumption. assumption. assumption.
-Qed.
-
-Lemma has_trm_mem_eq: forall T b1 b2 S U E,
-  has E (trm_mem T) (typ_mem b1 S) ->
-  has E (trm_mem T) (typ_mem b2 U) ->
-  S = U.
-Proof.
-  introv HS HU.
-  inversion HS; subst; eauto; inversion HU; subst; eauto.
-Qed.
-
-Lemma has_trm_mem_b: forall b b' P T E,
-  has E (trm_mem P) (typ_mem b T) ->
-  has E (trm_mem P) (typ_mem b' T).
-Proof.
-  intros.
-  inversion H; subst.
-  - apply* has_mem.
 Qed.
 
 Lemma has_var_loose: forall x b T E,
