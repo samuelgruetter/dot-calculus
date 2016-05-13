@@ -1539,6 +1539,105 @@ Proof.
   inversion Typ; subst; eauto.
 Qed.
 
+(* Non-Tight Subtyping for Value Subst *)
+Inductive gsub : env -> typ -> typ -> Prop :=
+  | gsub_top : forall E S,
+      okt E ->
+      wft E S ->
+      gsub E S typ_top
+  | gsub_refl_sel : forall E t,
+      okt E ->
+      wft E (typ_sel t) ->
+      gsub E (typ_sel t) (typ_sel t)
+  | gsub_sela1 : forall E T U x,
+      binds x T E ->
+      gsub E T (typ_mem false U) ->
+      gsub E (typ_sel (trm_fvar x)) U
+  | gsub_sela2 : forall E TX T S x,
+      binds x TX E ->
+      gsub E TX (typ_mem true T) ->
+      gsub E S T ->
+      gsub E S (typ_sel (trm_fvar x))
+  | gsub_selc1 : forall E T U,
+      gsub E T U ->
+      gsub E (typ_sel (trm_mem T)) U
+  | gsub_selc2 : forall E T S,
+      gsub E S T ->
+      gsub E S (typ_sel (trm_mem T))
+  | gsub_mem_false : forall E b1 T1 T2,
+      gsub E T1 T2 ->
+      gsub E (typ_mem b1 T1) (typ_mem false T2)
+  | gsub_mem_true : forall E T1 T2,
+      gsub E T1 T2 -> sub E T2 T1 ->
+      gsub E (typ_mem true T1) (typ_mem true T2)
+  | gsub_all : forall L E S1 S2 T1 T2,
+      gsub E T1 S1 ->
+      (forall x, x \notin L ->
+          gsub (E & x ~ T1) (S2 open_t_var x) (T2 open_t_var x)) ->
+      gsub E (typ_all S1 S2) (typ_all T1 T2)
+  | gsub_trans : forall E S T U,
+      gsub E S T ->
+      gsub E T U ->
+      gsub E S U
+.
+
+Hint Constructors gsub.
+
+Lemma gsub_sub: forall E S T,
+  gsub E S T -> sub E S T.
+Proof.
+  intros. induction H; eauto.
+  - apply* sub_sel1. eapply has_var.
+    eapply sub_regular in IHgsub. destruct IHgsub. assumption.
+    eassumption. eassumption.
+  - eapply sub_trans. eassumption. apply* sub_sel2. eapply has_var.
+    eapply sub_regular in IHgsub1. destruct IHgsub1. assumption.
+    eassumption. eassumption.
+  - eapply sub_trans. apply* sub_sel1. eapply has_mem; eauto. eassumption.
+  - eapply sub_trans. eassumption. apply* sub_sel2. eapply has_mem; eauto.
+  - apply* sub_mem_false.
+  - apply* sub_mem_true.
+  - apply_fresh* sub_all as y.
+  - eapply sub_trans; eauto.
+Qed.
+
+Lemma gsub_reflexivity : forall E T,
+  okt E ->
+  wft E T ->
+  gsub E T T .
+Proof.
+  introv Ok WI. lets W: (wft_type WI). gen E.
+  induction W; intros; inversions WI; eauto.
+  destruct b.
+  apply* gsub_mem_true. apply* sub_reflexivity. apply* gsub_mem_false.
+  apply_fresh* gsub_all as Y.
+Qed.
+
+Lemma sub_gsub_aux:
+  (forall E S T, sub E S T -> gsub E S T) /\
+  (forall E p T0, has E p T0 -> (exists b T, T0 = typ_mem b T /\ (
+   (exists x TX, trm_fvar x = p /\ binds x TX E /\ gsub E TX T0) \/
+   (p = trm_mem T)))).
+Proof.
+  apply sub_has_mutind; intros; subst; eauto.
+  - destruct H as [b [T [Eq H]]]. inversions Eq.
+    destruct H as [H | H].
+    + destruct H as [x [TX [Eq [Bi IH]]]]. subst. apply* gsub_sela1.
+    + subst. apply* gsub_selc1. apply* gsub_reflexivity.
+      apply has_regular in h. destruct h as [? [? A]].
+      inversion A; subst. assumption.
+  - destruct H as [b [T [Eq H]]]. inversions Eq.
+    destruct H as [H | H].
+    + destruct H as [x [TX [Eq [Bi IH]]]]. subst. apply* gsub_sela2.
+      apply* gsub_reflexivity.
+      apply has_regular in h. destruct h as [? [? A]].
+      inversion A; subst. assumption.
+    + subst. apply* gsub_selc2. apply* gsub_reflexivity.
+      apply has_regular in h. destruct h as [? [? A]].
+      inversion A; subst. assumption.
+  - repeat eexists. left. repeat eexists. eassumption. assumption.
+Qed.
+
 (* Pushback *)
 Inductive phas : env -> trm -> typ -> Prop :=
   | phas_var : forall E x T,
