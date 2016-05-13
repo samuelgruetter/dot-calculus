@@ -1129,6 +1129,21 @@ Proof.
   intros. apply* (proj2 sub_has_weakening).
 Qed.
 
+Lemma has_weakening1 : forall E F G p T,
+   has E p T ->
+   okt (E & F & G) ->
+   has (E & F & G) p T.
+Proof.
+  intros.
+  assert (E & F & G = E & (F & G) & empty) as A. {
+    rewrite concat_empty_r. rewrite concat_assoc. reflexivity.
+  }
+  rewrite A.
+  apply* has_weakening.
+  rewrite concat_empty_r. assumption.
+  rewrite <- A. assumption.
+Qed.
+
 Lemma has_weakening_empty : forall E p T,
    has empty p T ->
    okt E ->
@@ -1216,20 +1231,30 @@ Qed.
 
 Hint Resolve has_value_var.
 
-Lemma sub_has_through_subst_z : (forall E0 S T, sub E0 S T -> forall Q E F Z u x P,
+Lemma var_typing_has: forall E x Q,
+  typing E (trm_fvar x) Q ->
+  has E (trm_fvar x) Q.
+Proof.
+  introv H. remember (trm_fvar x) as t. gen Heqt.
+  induction H; intros; subst; try solve [inversion Heqt].
+  - inversion Heqt. subst. apply* has_var.
+  - eapply has_sub. eapply IHtyping; eauto. assumption.
+Qed.
+
+Lemma sub_has_through_subst_z : (forall E0 S T, sub E0 S T -> forall Q E F Z u,
   E0 = (E & Z ~ Q & F) ->
-  trm_fvar x = u -> binds x P E -> sub E P Q ->
+  (value u \/ exists x, trm_fvar x = u) -> typing E u Q ->
   sub (E & map (subst_t Z u) F) (subst_t Z u S) (subst_t Z u T)) /\
-  (forall E0 p T, has E0 p T -> forall Q E F Z u x P,
+  (forall E0 p T, has E0 p T -> forall Q E F Z u,
   E0 = (E & Z ~ Q & F) ->
-  trm_fvar x = u -> binds x P E -> sub E P Q ->
+  (value u \/ exists x, trm_fvar x = u) -> typing E u Q ->
   has (E & map (subst_t Z u) F) (subst_e Z u p) (subst_t Z u T)).
 Proof.
   apply sub_has_mutind; intros; subst; simpl.
-  - apply* sub_top. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
+  - apply* sub_top.
   - simpl. apply* sub_refl_sel.
-    assert (typ_sel (subst_e Z (trm_fvar x) t) = subst_t Z (trm_fvar x) (typ_sel t)) as A by auto.
-    rewrite A. auto*. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
+    assert (typ_sel (subst_e Z u t) = subst_t Z u (typ_sel t)) as A by auto.
+    rewrite A. auto*.
   - apply* sub_sel1.
   - apply* sub_sel2.
   - apply* sub_mem_false.
@@ -1240,24 +1265,25 @@ Proof.
   - apply* sub_trans.
   - case_var.
     + apply binds_middle_eq_inv in b; eauto. subst.
-      eapply has_sub. eapply has_var. apply* okt_subst.
-      apply binds_concat_left_ok. apply ok_from_okt. apply* okt_subst. eassumption.
-      apply_empty* sub_weakening1. rewrite (proj1 subst_fresh). auto.
-      apply* (@notin_fv_wf E0).
+      destruct H0 as [H0 | [x H0]].
+      * admit.
+      * subst. rewrite (proj1 subst_fresh).
+        apply_empty* has_weakening1. apply var_typing_has. assumption.
+        apply* (@notin_fv_wf E0).
     + destruct (binds_concat_inv b) as [?|[? ?]].
       * eapply has_var. auto*.
         apply binds_concat_right. apply binds_map. eassumption.
       * applys has_var. apply* okt_subst.
-        assert (T = subst_t Z (trm_fvar x0) T) as B. {
+        assert (T = subst_t Z u T) as B. {
           rewrite (proj1 subst_fresh). reflexivity.
-          eapply binds_concat_left_inv in H0.
           apply* (@notin_fv_wf E0). apply* wft_from_env_has.
+          apply binds_concat_left_inv in H2. eassumption.
           auto*.
         }
         apply binds_concat_left. rewrite <- B.
-        apply binds_concat_left_inv in H0. apply H0.
+        apply binds_concat_left_inv in H2. apply H2.
         auto*. auto*.
-  - apply* has_mem. apply* wft_subst. apply ok_from_okt. apply* okt_subst.
+  - apply* has_mem.
   - apply* has_sub.
 Qed.
 
