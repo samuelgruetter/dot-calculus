@@ -697,6 +697,19 @@ Proof.
   intros. eapply (proj1 wf_subst); eauto.
 Qed.
 
+Lemma wft_subst1 : forall F Q Z u T,
+  wft (Z ~ Q & F) T ->
+  (value u \/ exists x, trm_fvar x = u) -> wfe empty u ->
+  ok (map (subst_t Z u) F) ->
+  wft (map (subst_t Z u) F) (subst_t Z u T).
+Proof.
+  intros.
+  rewrite <- (@concat_empty_l typ (map (subst_t Z u) F)).
+  apply* wft_subst.
+  rewrite concat_empty_l. eassumption.
+  rewrite concat_empty_l. eassumption.
+Qed.
+
 Lemma wft_subst_empty : forall Q Z u T,
   wft (Z ~ Q) T ->
   (value u \/ exists x, trm_fvar x = u) -> wfe empty u ->
@@ -826,6 +839,16 @@ Proof.
   rewrite map_push. rewrite concat_assoc in *.
    lets*: (okt_push_inv O).
    apply okt_push. apply* IHF. apply* wft_subst. auto*.
+Qed.
+
+Lemma okt_subst1 : forall Q Z u (F:env),
+  okt (Z ~ Q & F) ->
+  (value u \/ exists x, trm_fvar x = u) -> wfe empty u ->
+  okt (map (subst_t Z u) F).
+Proof.
+  intros.
+  rewrite <- concat_empty_l. apply* okt_subst.
+  rewrite concat_empty_l. eassumption.
 Qed.
 
 (** Automation *)
@@ -1374,6 +1397,19 @@ Proof.
     rewrite concat_empty_l. assumption.
 Qed.
 
+Lemma possible_types_wft : forall p T,
+  possible_types p T ->
+  wft empty T.
+Proof.
+  introv Hpt. induction Hpt; eauto.
+  - apply_fresh* wft_all as y.
+    assert (y \notin L) as FrL by auto. specialize (H1 y FrL).
+    apply sub_regular in H1. destruct H1 as [? [? A]].
+    rewrite concat_empty_l. assumption.
+Grab Existential Variables.
+pick_fresh y. apply y.
+Qed.
+
 Lemma has_empty_var_false: forall x T,
   has empty (trm_fvar x) T ->
   False.
@@ -1636,6 +1672,37 @@ Proof.
       apply has_regular in h. destruct h as [? [? A]].
       inversion A; subst. assumption.
   - repeat eexists. left. repeat eexists. eassumption. assumption.
+Qed.
+
+Hint Resolve okt_subst1 wft_subst1.
+
+Lemma sub_through_subst : forall V y v S T F,
+  gsub ((y ~ V) & F) S T ->
+  value v -> typing empty v V ->
+  gsub (map (subst_t y v) F) (subst_t y v S) (subst_t y v T).
+Proof.
+  introv Hsub Hv HV. remember (y ~ V & F) as E. generalize dependent F.
+  induction Hsub; intros; subst.
+  - apply* gsub_top. apply* wft_subst1.
+  - apply* gsub_refl_sel.
+    assert (typ_sel (subst_e y v t) = subst_t y v (typ_sel t)) as A. {
+      simpl. reflexivity.
+    }
+    unfold subst_e in A. rewrite A.
+    apply* wft_subst1.
+  - assert (gsub (map (subst_t y v) F) (subst_t y v T) (subst_t y v (typ_mem false U))) as IH. {
+      eapply IHHsub; eauto.
+    }
+    simpl. case_var.
+    + rewrite <- concat_empty_l in H. rewrite concat_assoc in H.
+      apply binds_middle_eq_inv in H. subst.
+      simpl in IH.
+      assert (subst_t y v V = V) as EqV. {
+        rewrite (proj1 subst_fresh). reflexivity.
+        eapply notin_fv_wf; eauto.
+      }
+      assert (possible_types 
+      eapply gsub_trans. eapply gsub_selc1.
 Qed.
 
 (* Pushback *)
