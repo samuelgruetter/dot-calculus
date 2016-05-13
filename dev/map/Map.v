@@ -169,5 +169,26 @@ Theorem preservation_of_subtyping: forall E S T,
   Fsub.sub E S T ->
   Dsub.sub (emb_env E) (emb_t S) (emb_t T).
 Proof.
-  admit.
+  intros. induction H.
+  - apply* sub_top. apply* okt_preserved. apply* wft_preserved.
+    apply* ok_from_okt. apply* okt_preserved.
+  - simpl. apply* sub_refl_sel. apply* okt_preserved.
+    apply wft_preserved in H0. simpl in H0. apply H0.
+    apply ok_from_okt. apply* okt_preserved.
+  - simpl. apply* sub_sel1. eapply has_sub. apply has_var.
+    apply* okt_preserved. eapply binds_sub_preserved; eauto.
+    apply* sub_mem_false.
+  - simpl. apply sub_all with (L:=dom (emb_env E)). auto. intros y Fr.
+    rewrite type_inc_bound_noop. rewrite type_inc_bound_noop.
+    rewrite open_t_var_type. rewrite open_t_var_type.
+    rewrite <- (@concat_empty_r typ (y ~ emb_t T1)). rewrite concat_assoc.
+    eapply sub_weakening1. assumption. rewrite concat_empty_r.
+    apply okt_push. apply* okt_preserved.
+    apply sub_regular in IHsub1. auto*. auto.
+    apply* wft_type. apply* wft_type. apply* wft_type. apply* wft_type.
+  - simpl. apply sub_all with (L:=L \u dom (emb_env E)); eauto.
+    apply* sub_mem_false. intros y Fry. assert (y \notin L) as Fr by auto.
+    specialize (H1 y Fr). unfold emb_env in H1. simpl in H1.
+    rewrite map_concat in H1. rewrite map_single in H1. simpl in H1.
+    repeat rewrite open_var_emb_commute in H1. apply H1.
 Qed.
