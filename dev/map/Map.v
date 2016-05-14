@@ -110,11 +110,48 @@ Proof.
   - simpl. rewrite IHT1. rewrite IHT2. reflexivity.
 Qed.
 
+Lemma lc_inc_bound_noop_inc:
+  (forall T T0,
+     type T0 -> forall y, T0 = T open_t_var y -> forall k,
+     inc_bound_rec k (T open_t_var y) = T open_t_var y ->
+     inc_bound_rec (S k) T = T)
+  /\
+  (forall e e0,
+     term e0 -> forall y, e0 = e open_e_var y -> forall k,
+     inc_bound_e_rec k (e open_e_var y) = e open_e_var y ->
+     inc_bound_e_rec (S k) e = e).
+Proof.
+  apply typ_trm_mutind; intros; simpl; eauto.
+  - f_equal. eapply H.
+Qed.
+
+Lemma lc_inc_bound_noop:
+  (forall T,
+    type T ->
+    inc_bound_rec 0 T = T)
+  /\
+  (forall e,
+    term e ->
+    inc_bound_e_rec 0 e = e).
+Proof.
+  apply lc_mutind; intros; simpl;
+  try solve [eauto; rewrite H; eauto].
+  - f_equal. rewrite* H.
+    pick_fresh y. assert (y \notin L) as FrL by auto.
+    specialize (H0 y FrL). apply* helper.
+  - f_equal. rewrite* H.
+    pick_fresh y. assert (y \notin L) as FrL by auto.
+    specialize (H0 y FrL). admit.
+  - f_equal. rewrite* H. rewrite* H0.
+Qed.
+
 Lemma type_inc_bound_noop: forall T,
   type T ->
   inc_bound T = T.
 Proof.
-  admit.
+  intros. set_eq T' EQ: T. gen T' EQ.
+  induction H; intros; subst; eauto.
+  -
 Qed.
 
 Lemma wft_preserved: forall E T,
@@ -192,3 +229,28 @@ Proof.
     rewrite map_concat in H1. rewrite map_single in H1. simpl in H1.
     repeat rewrite open_var_emb_commute in H1. apply H1.
 Qed.
+
+Fixpoint subst_tt (z : var) (U : typ) (T : typ) {struct T} : typ :=
+  match T with
+  | typ_sel (trm_fvar x) => If x = z then U else typ_sel (trm_fvar x)
+  | typ_sel e            => typ_sel (subst_te z U e)
+  | typ_top         => typ_top
+  | typ_mem b T1    => typ_mem b (subst_tt z U T1)
+  | typ_all T1 T2   => typ_all (subst_tt z U T1) (subst_tt z U T2)
+  end
+with subst_te (z : var) (U : typ) (e : trm) {struct e } : trm :=
+  match e with
+  | trm_bvar i    => trm_bvar i
+  | trm_fvar x    => trm_fvar x
+  | trm_abs V e1  => trm_abs (subst_tt z U V) (subst_te z U e1)
+  | trm_mem T1    => trm_mem (subst_tt z U T1)
+  | trm_app e1 e2 => trm_app (subst_te z U e1) (subst_te z U e2)
+  end.
+
+Lemma subst_tt_emb_commute: forall X U T,
+  type (emb_t U) -> type (emb_t T) ->
+  emb_t (Fsub.subst_tt X U T) = subst_tt X (emb_t U) (emb_t T).
+Proof.
+  intros. induction T; eauto.
+  - simpl. case_if; eauto.
+  - simpl. f_equal. rewrite IHT1. reflexivity. rewrite IH2.
