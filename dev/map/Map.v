@@ -352,6 +352,12 @@ Proof.
   admit.
 Qed.
 
+Lemma open_tt_emb_commute: forall T2 T,
+  emb_t (open_tt T2 T) = open_t (emb_t T2) (trm_mem (emb_t T)).
+Proof.
+  admit.
+Qed.
+
 Theorem preservation_of_typing: forall E t T,
   Fsub.typing E t T ->
   Dsub.typing (emb_env E) (emb_e t) (emb_t T).
@@ -378,6 +384,12 @@ Proof.
     rewrite map_concat in H0. rewrite map_single in H0. simpl in H0.
     rewrite open_var_emb_te_commute in H0. rewrite open_var_emb_commute in H0.
     apply H0.
-  - admit.
+  - apply* typing_appvar.
+    eapply typing_sub. eapply typing_mem. auto*. apply* wft_preserved.
+    apply sub_mem_false. apply* preservation_of_subtyping.
+    apply has_mem. auto*. apply* wft_preserved.
+    rewrite open_tt_emb_commute. auto. admit.
   - eapply typing_sub. eapply IHtyping. apply* preservation_of_subtyping.
+Grab Existential Variables.
+apply true.
 Qed.
