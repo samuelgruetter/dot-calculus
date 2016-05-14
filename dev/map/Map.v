@@ -231,6 +231,15 @@ Proof.
       auto*. auto*.
   - inversion H.
   - admit.
-  - admit.
+  - specialize (H x U H1). destruct H as [IH1 IH2].
+    simpl. split.
+    + eapply sub_trans.
+      eapply sub_sel1. eapply has_mem. auto*. auto*.
+      eapply sub_trans. eapply IH1.
+      apply* sub_sel2. apply* has_mem.
+    + eapply sub_trans.
+      eapply sub_sel1. eapply has_mem. auto*. auto*.
+      eapply sub_trans. eapply IH2.
+      apply* sub_sel2. apply* has_mem.
   - inversion H1.
 Qed.
