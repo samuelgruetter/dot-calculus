@@ -358,6 +358,20 @@ Proof.
   admit.
 Qed.
 
+Lemma open_val_emb_commute: forall v2 e1,
+  Fsub.value v2 ->
+  (emb_e (open_ee e1 v2)) = (open_e (emb_e e1) (emb_e v2)).
+Proof.
+  admit.
+Qed.
+
+Lemma open_te_emb_commute: forall V2 e1,
+  Fsub.type V2 ->
+  emb_e (open_te e1 V2) = open_e (emb_e e1) (trm_mem (emb_t V2)).
+Proof.
+  admit.
+Qed.
+
 Theorem preservation_of_typing: forall E t T,
   Fsub.typing E t T ->
   Dsub.typing (emb_env E) (emb_e t) (emb_t T).
@@ -392,4 +406,44 @@ Proof.
   - eapply typing_sub. eapply IHtyping. apply* preservation_of_subtyping.
 Grab Existential Variables.
 apply true.
+Qed.
+
+Lemma term_preserved: forall e,
+  Fsub.term e ->
+  Dsub.term (emb_e e).
+Proof.
+  admit.
+Qed.
+
+Lemma type_preserved: forall T,
+  Fsub.type T ->
+  Dsub.type (emb_t T).
+Proof.
+  admit.
+Qed.
+
+Lemma value_preserved: forall e,
+  Fsub.value e ->
+  Dsub.value (emb_e e).
+Proof.
+  admit.
+Qed.
+
+Theorem red_preserved: forall e e',
+  Fsub.red e e' ->
+  Dsub.red (emb_e e) (emb_e e').
+Proof.
+  intros. induction H; simpl.
+  - apply* red_app_1. apply* term_preserved.
+  - apply* red_app_2. apply* value_preserved.
+  - apply* red_app_1. apply* term_mem. apply* type_preserved.
+  - rewrite* open_val_emb_commute. apply* red_abs.
+    assert (trm_abs (emb_t V) (emb_e e1)=emb_e (Fsub.trm_abs V e1)) as A
+        by solve [simpl; auto].
+    rewrite A. apply* term_preserved. apply* value_preserved.
+  - rewrite* open_te_emb_commute. apply* red_abs.
+    inversion H; subst. apply_fresh* term_abs as y.
+    apply* type_mem. apply* type_preserved.
+    rewrite <- open_var_emb_te_commute. apply* term_preserved.
+    apply* value_mem. apply* term_mem. apply* type_preserved.
 Qed.
