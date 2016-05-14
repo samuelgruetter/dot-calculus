@@ -292,10 +292,13 @@ Proof.
   - inversion H.
   - specialize (H x U H2). destruct H as [IH1 IH2].
     simpl.
-    assert (wfe E (trm_abs (subst_tt x U V) (subst_te x U e))) as Hwfe. {
-      apply_fresh* wfe_abs as y. assert (y \notin L) as FrL by auto.
-      specialize (w0 y FrL). admit.
+    assert (ok E) as Ok by auto*.
+    assert (wft E U) as HwfU. {
+      apply (proj2 sub_has_regular) in H2. destruct H2 as [? [? A]].
+      inversion A; subst. assumption.
     }
+    assert (wfe E (trm_abs V e)) as Hwfe by auto*.
+    lets Hwfe': ((proj2 wf_subst_tt) E (trm_abs V e) Hwfe Ok x U HwfU).
     split; apply* sub_sel_abs.
   - specialize (H x U H1). destruct H as [IH1 IH2].
     simpl. split.
