@@ -327,3 +327,39 @@ Proof.
       apply* sub_sel2. apply* has_mem.
   - inversion H1.
 Qed.
+
+Lemma open_var_emb_e_commute: forall e y,
+  (emb_e (e open_ee_var y))=(emb_e e open_e_var y).
+Proof.
+  (*
+  intros. unfold Fsub.open_ee. unfold Dsub.open_e.
+  remember 0 as n. clear Heqn. generalize dependent n.
+  induction e; intros; simpl; eauto.
+  - case_if; eauto.
+  *)
+  admit.
+Qed.
+
+Theorem preservation_of_typing: forall E t T,
+  Fsub.typing E t T ->
+  Dsub.typing (emb_env E) (emb_e t) (emb_t T).
+Proof.
+  intros. induction H; simpl.
+  - apply typing_var. apply* okt_preserved. apply* binds_typ_preserved.
+  - apply_fresh* typing_abs as y. assert (y \notin L) as FrL by auto.
+    specialize (H0 y FrL). unfold emb_env in *.
+    rewrite map_concat in H0. rewrite map_single in H0. simpl in H0.
+    rewrite open_var_emb_e_commute in H0.
+    rewrite open_t_var_type. apply H0.
+    apply wft_type with (E:=(emb_env E)).
+    specialize (H y FrL). apply Fsub.typing_regular in H.
+    destruct H as [? [? A]].
+    apply* wft_preserved. apply ok_from_okt. apply* okt_preserved.
+    apply okt_push_typ_inv in H. auto*.
+    rewrite <- (@concat_empty_r bind E). apply* wft_strengthen.
+    rewrite concat_empty_r. eauto.
+  - admit.
+  - admit.
+  - admit.
+  - eapply typing_sub. eapply IHtyping. apply* preservation_of_subtyping.
+Qed.
