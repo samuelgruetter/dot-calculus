@@ -166,17 +166,32 @@ Proof.
   - case_if; eauto.
 Qed.
 
+Lemma subst_tt_open_t_var_rec :
+  (forall T X Y U, Y <> X -> type U -> forall k,
+   open_t_rec k (trm_fvar Y) (subst_tt X U T) = subst_tt X U (open_t_rec k (trm_fvar Y) T))
+  /\
+  (forall e X Y U, Y <> X -> type U -> forall k,
+   open_e_rec k (trm_fvar Y) (subst_te X U e) = subst_te X U (open_e_rec k (trm_fvar Y) e)).
+Proof.
+  apply typ_trm_mutind; intros; simpl; eauto;
+  try rewrite* H; try rewrite* H0.
+  - simpl. specialize (H X Y U H0 H1 k).
+    destruct t; simpl in *; eauto; try solve [f_equal; auto].
+    case_if; eauto. case_if; eauto. case_if; eauto.
+    rewrite <- (proj1 open_rec_lc). reflexivity. auto.
+  - case_if; eauto.
+Qed.
+
 Lemma subst_tt_open_t_var : forall X Y U T, Y <> X -> type U ->
   (subst_tt X U T) open_t_var Y = subst_tt X U (T open_t_var Y).
 Proof.
-  admit.
+  intros. unfold open_t. apply* (proj1 subst_tt_open_t_var_rec).
 Qed.
-
 
 Lemma subst_te_open_t_var : forall X Y U e, Y <> X -> type U ->
   (subst_te X U e) open_e_var Y = subst_te X U (e open_e_var Y).
 Proof.
-  admit.
+  intros. unfold open_e. apply* (proj2 subst_tt_open_t_var_rec).
 Qed.
 
 Lemma wf_subst_tt:
