@@ -6,31 +6,12 @@ Require Import LibLN.
 Implicit Types x : var.
 Implicit Types X : var.
 
-(* to adjust the bound identifier when shifting from a plain arrow to an all type *)
-Fixpoint inc_bound_rec (k: nat) (T : typ) {struct T} : typ :=
-  match T with
-  | typ_top         => typ_top
-  | typ_sel t       => typ_sel (inc_bound_e_rec k t)
-  | typ_mem b T     => typ_mem b (inc_bound_rec k T)
-  | typ_all T1 T2   => typ_all (inc_bound_rec k T1) (inc_bound_rec (S k) T2)
-  end
-with inc_bound_e_rec (k: nat) (e : trm) {struct e} : trm :=
-  match e with
-  | trm_bvar i    => trm_bvar (If (k <= i) then (S i) else i)
-  | trm_fvar x    => trm_fvar x
-  | trm_abs V e1  => trm_abs (inc_bound_rec k V) (inc_bound_e_rec (S k) e1)
-  | trm_mem T     => trm_mem (inc_bound_rec k T)
-  | trm_app e1 e2 => trm_app (inc_bound_e_rec k e1) (inc_bound_e_rec k e2)
-  end.
-
-Definition inc_bound T := inc_bound_rec 0 T.
-
 Fixpoint emb_t (T: Fsub.typ): Dsub.typ :=
   match T with
     | Fsub.typ_top => typ_top
     | Fsub.typ_bvar i => typ_sel (trm_bvar i)
     | Fsub.typ_fvar x => typ_sel (trm_fvar x)
-    | Fsub.typ_arrow T U => typ_all (emb_t T) (inc_bound (emb_t U))
+    | Fsub.typ_arrow T U => typ_all (emb_t T) (emb_t U)
     | Fsub.typ_all T U => typ_all (typ_mem false (emb_t T)) (emb_t U)
   end.
 
@@ -73,85 +54,15 @@ Proof.
   intros. apply binds_preserved in H. simpl in H. apply H.
 Qed.
 
-Lemma inc_bound_open_commute_rec:
-  (forall T y n k, k <= n ->
-     inc_bound_rec k (open_t_rec n (trm_fvar y) T) =
-     open_t_rec (S n) (trm_fvar y) (inc_bound_rec k T))
-  /\
-  (forall e y n k, k <= n ->
-     inc_bound_e_rec k (open_e_rec n (trm_fvar y) e) =
-     open_e_rec (S n) (trm_fvar y) (inc_bound_e_rec k e)).
-Proof.
-  apply typ_trm_mutind; intros; simpl; eauto;
-  try solve [rewrite H; auto; omega];
-  try solve [f_equal; [rewrite H; auto; omega | rewrite H0; auto; omega]].
-  - case_if; case_if; simpl; auto.
-    rewrite If_l in H0; congruence.
-    case_if; simpl; auto. omega.
-Qed.
-
-Lemma inc_bound_open_commute: forall T y n,
-  inc_bound (open_t_rec n (trm_fvar y) T) =
-  open_t_rec (S n) (trm_fvar y) (inc_bound T).
-Proof.
-  intros. unfold inc_bound. apply inc_bound_open_commute_rec.
-  omega.
-Qed.
-
 Lemma open_var_emb_commute: forall T y,
   (emb_t (T open_tt_var y))=(emb_t T open_t_var y).
 Proof.
   intros. unfold Fsub.open_tt. unfold Dsub.open_t.
   remember 0 as n. clear Heqn. generalize dependent n.
-  induction T; intros; eauto.
+  induction T; intros; simpl;
+  try rewrite IHT1; try rewrite IHT2;
+  eauto.
   - simpl. case_if; eauto.
-  - simpl. f_equal. rewrite IHT1. reflexivity.
-    rewrite IHT2. rewrite inc_bound_open_commute. reflexivity.
-  - simpl. rewrite IHT1. rewrite IHT2. reflexivity.
-Qed.
-
-Lemma lc_inc_bound_noop_inc:
-  (forall T T0,
-     type T0 -> forall y, T0 = T open_t_var y -> forall k,
-     inc_bound_rec k (T open_t_var y) = T open_t_var y ->
-     inc_bound_rec (S k) T = T)
-  /\
-  (forall e e0,
-     term e0 -> forall y, e0 = e open_e_var y -> forall k,
-     inc_bound_e_rec k (e open_e_var y) = e open_e_var y ->
-     inc_bound_e_rec (S k) e = e).
-Proof.
-  apply typ_trm_mutind; intros; simpl; eauto.
-  - f_equal. eapply H.
-Qed.
-
-Lemma lc_inc_bound_noop:
-  (forall T,
-    type T ->
-    inc_bound_rec 0 T = T)
-  /\
-  (forall e,
-    term e ->
-    inc_bound_e_rec 0 e = e).
-Proof.
-  apply lc_mutind; intros; simpl;
-  try solve [eauto; rewrite H; eauto].
-  - f_equal. rewrite* H.
-    pick_fresh y. assert (y \notin L) as FrL by auto.
-    specialize (H0 y FrL). apply* helper.
-  - f_equal. rewrite* H.
-    pick_fresh y. assert (y \notin L) as FrL by auto.
-    specialize (H0 y FrL). admit.
-  - f_equal. rewrite* H. rewrite* H0.
-Qed.
-
-Lemma type_inc_bound_noop: forall T,
-  type T ->
-  inc_bound T = T.
-Proof.
-  intros. set_eq T' EQ: T. gen T' EQ.
-  induction H; intros; subst; eauto.
-  -
 Qed.
 
 Lemma wft_preserved: forall E T,
@@ -164,9 +75,7 @@ Proof.
     eapply wfe_var. eapply binds_sub_preserved; eauto.
   - simpl. apply wft_all with (L:=dom (emb_env E)); eauto; intros.
     rewrite open_t_var_type. apply wft_weaken_right.
-    rewrite type_inc_bound_noop. eapply IHwft2; eauto.
-    apply* wft_type. apply ok_push; eauto.
-    rewrite type_inc_bound_noop. apply* wft_type. apply* wft_type.
+    eapply IHwft2; eauto. apply ok_push; eauto. apply* wft_type.
   - simpl. apply wft_all with (L:=L \u dom (emb_env E)); eauto. intros y Fry.
     assert (y \notin L) as Fr by auto. specialize (H1 y Fr).
     assert (ok (emb_env (E & y ~ bind_sub T1))) as A. {
@@ -216,13 +125,12 @@ Proof.
     apply* okt_preserved. eapply binds_sub_preserved; eauto.
     apply* sub_mem_false.
   - simpl. apply sub_all with (L:=dom (emb_env E)). auto. intros y Fr.
-    rewrite type_inc_bound_noop. rewrite type_inc_bound_noop.
     rewrite open_t_var_type. rewrite open_t_var_type.
     rewrite <- (@concat_empty_r typ (y ~ emb_t T1)). rewrite concat_assoc.
     eapply sub_weakening1. assumption. rewrite concat_empty_r.
     apply okt_push. apply* okt_preserved.
     apply sub_regular in IHsub1. auto*. auto.
-    apply* wft_type. apply* wft_type. apply* wft_type. apply* wft_type.
+    apply* wft_type. apply* wft_type.
   - simpl. apply sub_all with (L:=L \u dom (emb_env E)); eauto.
     apply* sub_mem_false. intros y Fry. assert (y \notin L) as Fr by auto.
     specialize (H1 y Fr). unfold emb_env in H1. simpl in H1.
@@ -248,9 +156,12 @@ with subst_te (z : var) (U : typ) (e : trm) {struct e } : trm :=
   end.
 
 Lemma subst_tt_emb_commute: forall X U T,
-  type (emb_t U) -> type (emb_t T) ->
+  type (emb_t U) ->
   emb_t (Fsub.subst_tt X U T) = subst_tt X (emb_t U) (emb_t T).
 Proof.
-  intros. induction T; eauto.
-  - simpl. case_if; eauto.
-  - simpl. f_equal. rewrite IHT1. reflexivity. rewrite IH2.
+  intros.
+  induction T; intros; subst; simpl; eauto;
+  try rewrite IHT1; try rewrite IHT2;
+  eauto.
+  - case_if; eauto.
+Qed.
