@@ -166,6 +166,12 @@ Inductive sub : env -> typ -> typ -> Prop :=
       okt E ->
       wft E (typ_sel t) ->
       sub E (typ_sel t) (typ_sel t)
+  | sub_sel_abs : forall E V1 e1 V2 e2,
+      okt E ->
+      wfe E (trm_abs V1 e1) ->
+      wfe E (trm_abs V2 e2) ->
+      (* strange, but helps avoid corners when embedding F<: *)
+      sub E (typ_sel (trm_abs V1 e1)) (typ_sel (trm_abs V2 e2))
   | sub_sel1 : forall E U t,
       has E t (typ_mem false U) ->
       sub E (typ_sel t) U
@@ -931,6 +937,7 @@ Lemma sub_has_regular : (forall E S T,
   has E p T -> okt E /\ wft E (typ_sel p) /\ wft E T).
 Proof.
   apply sub_has_mutind; intros; try auto*.
+  splits*; apply* wft_sel; left; apply value_abs; apply* wfe_term.
   splits*. destruct H as [? [? A]]. inversion A; subst. assumption.
   splits*. destruct H as [? [? A]]. inversion A; subst. assumption.
   split. auto*. split;
@@ -1076,6 +1083,7 @@ Lemma sub_has_weakening : (forall E0 S T, sub E0 S T -> forall E F G,
    has (E & F & G) p T).
 Proof.
   apply sub_has_mutind; intros; subst; auto.
+  apply* sub_sel_abs; apply* wfe_weaken.
   apply* sub_sel1.
   apply* sub_sel2.
   apply* sub_mem_false.
@@ -1188,6 +1196,7 @@ Proof.
   apply sub_has_mutind; intros; subst; eauto.
   apply* sub_top.
   apply* sub_refl_sel.
+  apply* sub_sel_abs; eapply (proj2 wf_narrow); eauto.
   apply_fresh* sub_all as Y. apply_ih_bind H0; eauto.
   tests EQ: (x = z).
     lets M: (@okt_narrow Q).
@@ -1274,6 +1283,13 @@ Proof.
   - simpl. apply* sub_refl_sel.
     assert (typ_sel (subst_e Z u t) = subst_t Z u (typ_sel t)) as A by auto.
     rewrite A. auto*.
+  - apply* sub_sel_abs.
+    assert (trm_abs (subst_t Z u V1) (subst_e Z u e1)=
+            subst_e Z u (trm_abs V1 e1)) as A by solve [simpl; reflexivity].
+    rewrite A. eapply (proj2 wf_subst); eauto.
+    assert (trm_abs (subst_t Z u V2) (subst_e Z u e2)=
+            subst_e Z u (trm_abs V2 e2)) as B by solve [simpl; reflexivity].
+    rewrite B. eapply (proj2 wf_subst); eauto.
   - apply* sub_sel1.
   - apply* sub_sel2.
   - apply* sub_mem_false.
@@ -1417,6 +1433,10 @@ Inductive psub : typ -> typ -> Prop :=
   | psub_refl_sel : forall t,
       wft empty (typ_sel t) ->
       psub (typ_sel t) (typ_sel t)
+  | psub_sel_abs : forall V1 e1 V2 e2,
+      wfe empty (trm_abs V1 e1) ->
+      wfe empty (trm_abs V2 e2) ->
+      psub (typ_sel (trm_abs V1 e1)) (typ_sel (trm_abs V2 e2))
   | psub_sel1 : forall U,
       wft empty U ->
       psub (typ_sel (trm_mem U)) U
@@ -1456,6 +1476,7 @@ Lemma psub_sub: forall S T,
   psub S T -> sub empty S T.
 Proof.
   intros. induction H; eauto.
+  - apply* sub_sel_abs.
   - apply* sub_sel1. apply* has_mem.
   - apply* sub_sel2. apply* has_mem.
   - apply* sub_mem_false.
@@ -1547,6 +1568,7 @@ Proof.
   introv Hpt Hsub. generalize dependent v.
   induction Hsub; intros; subst; eauto.
   - apply pt_top. apply* possible_types_value. apply* possible_types_wfe.
+  - inversion Hpt.
   - inversion Hpt; subst. assumption.
   - apply* pt_sel.
   - inversion Hpt; subst.

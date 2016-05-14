@@ -230,7 +230,13 @@ Proof.
       apply* sub_narrowing. eapply H; eauto. rewrite concat_empty_r. apply IH2.
       auto*. auto*.
   - inversion H.
-  - admit.
+  - specialize (H x U H2). destruct H as [IH1 IH2].
+    simpl.
+    assert (wfe E (trm_abs (subst_tt x U V) (subst_te x U e))) as Hwfe. {
+      apply_fresh* wfe_abs as y. assert (y \notin L) as FrL by auto.
+      specialize (w0 y FrL). admit.
+    }
+    split; apply* sub_sel_abs.
   - specialize (H x U H1). destruct H as [IH1 IH2].
     simpl. split.
     + eapply sub_trans.
