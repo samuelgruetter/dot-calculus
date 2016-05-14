@@ -172,50 +172,65 @@ Proof.
   admit.
 Qed.
 
-Lemma sub_subst_tt_admissible: forall T E,
-  wft E T ->
-  (forall x U, has E (trm_fvar x) (typ_mem true U) ->
-    sub E (subst_tt x U T) T /\ sub E T (subst_tt x U T)).
+Lemma sub_subst_tt_admissible_rec:
+  (forall E T,
+     wft E T ->
+     (forall x U,
+        has E (trm_fvar x) (typ_mem true U) ->
+        sub E (subst_tt x U T) T /\ sub E T (subst_tt x U T)))
+  /\
+  (forall E e,
+     wfe E e -> value e ->
+     (forall x U,
+        has E (trm_fvar x) (typ_mem true U) ->
+        sub E (typ_sel (subst_te x U e)) (typ_sel e) /\
+        sub E (typ_sel e) (typ_sel (subst_te x U e)))).
 Proof.
-  introv Hwf Has. induction Hwf; eauto.
-  - destruct H as [Hv | Hx].
-    + admit.
+  apply wf_mutind; intros; subst; eauto.
+  - destruct o as [Hv | Hx].
+    + inversion Hv; subst; simpl; specialize (H Hv x U H0); apply H.
     + destruct Hx as [z ?]. subst. simpl. case_if.
       * split. apply* sub_sel2. apply* sub_sel1.
         apply* has_sub. apply* sub_mem_false. apply* sub_reflexivity.
-        apply (proj2 sub_has_regular) in Has. inversion Has as [? [? A]].
+        apply (proj2 sub_has_regular) in H0. inversion H0 as [? [? A]].
         inversion A; subst. assumption.
       * split; apply* sub_refl_sel.
-  - simpl. specialize (IHHwf Has). destruct IHHwf as [IH1 IH2].
+  - simpl. specialize (H x U H0). destruct H as [IH1 IH2].
     destruct b.
     * split; apply* sub_mem_true.
     * split; apply* sub_mem_false.
   - simpl.
     assert (type U) as HU. {
-      apply (proj2 sub_has_regular) in Has. inversion Has as [? [? A]].
+      apply (proj2 sub_has_regular) in H1. inversion H1 as [? [? A]].
       inversion A; subst. apply* wft_type.
     }
     split.
     + apply_fresh* sub_all as y.
+      apply* H.
       assert (y \notin L) as FrL by auto. specialize (H0 y FrL).
       assert (has (E & y ~ T1) (trm_fvar x) (typ_mem true U)) as Has'. {
         rewrite <- (@concat_empty_r typ (y ~ T1)). rewrite concat_assoc.
         apply* has_weakening1. rewrite concat_empty_r. auto*.
       }
-      specialize (H0 Has').
+      specialize (H0 x U Has').
       destruct H0 as [IH1 IH2].
       rewrite subst_tt_open_t_var. apply IH1. auto*. auto*.
     + apply_fresh* sub_all as y.
+      apply* H.
       assert (y \notin L) as FrL by auto. specialize (H0 y FrL).
       assert (has (E & y ~ T1) (trm_fvar x) (typ_mem true U)) as Has'. {
         rewrite <- (@concat_empty_r typ (y ~ T1)). rewrite concat_assoc.
         apply* has_weakening1. rewrite concat_empty_r. auto*.
       }
-      specialize (H0 Has').
+      specialize (H0 x U Has').
       destruct H0 as [IH1 IH2].
       rewrite subst_tt_open_t_var.
       rewrite <- (@concat_empty_r typ (y ~ subst_tt x U T1)).
       rewrite concat_assoc.
-      apply* sub_narrowing. rewrite concat_empty_r. apply IH2.
+      apply* sub_narrowing. eapply H; eauto. rewrite concat_empty_r. apply IH2.
       auto*. auto*.
+  - inversion H.
+  - admit.
+  - admit.
+  - inversion H1.
 Qed.
