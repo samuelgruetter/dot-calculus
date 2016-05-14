@@ -328,8 +328,20 @@ Proof.
   - inversion H1.
 Qed.
 
-Lemma open_var_emb_e_commute: forall e y,
+Lemma open_var_emb_ee_commute: forall e y,
   (emb_e (e open_ee_var y))=(emb_e e open_e_var y).
+Proof.
+  (*
+  intros. unfold Fsub.open_ee. unfold Dsub.open_e.
+  remember 0 as n. clear Heqn. generalize dependent n.
+  induction e; intros; simpl; eauto.
+  - case_if; eauto.
+  *)
+  admit.
+Qed.
+
+Lemma open_var_emb_te_commute: forall e y,
+  (emb_e (e open_te_var y))=(emb_e e open_e_var y).
 Proof.
   (*
   intros. unfold Fsub.open_ee. unfold Dsub.open_e.
@@ -349,7 +361,7 @@ Proof.
   - apply_fresh* typing_abs as y. assert (y \notin L) as FrL by auto.
     specialize (H0 y FrL). unfold emb_env in *.
     rewrite map_concat in H0. rewrite map_single in H0. simpl in H0.
-    rewrite open_var_emb_e_commute in H0.
+    rewrite open_var_emb_ee_commute in H0.
     rewrite open_t_var_type. apply H0.
     apply wft_type with (E:=(emb_env E)).
     specialize (H y FrL). apply Fsub.typing_regular in H.
@@ -361,7 +373,11 @@ Proof.
   - apply* typing_app. apply* wft_preserved.
     apply Fsub.typing_regular in H. destruct H as [? [? A]]. inversion A; subst.
     assumption.
-  - admit.
+  - apply_fresh* typing_abs as y. assert (y \notin L) as FrL by auto.
+    specialize (H0 y FrL). unfold emb_env in *.
+    rewrite map_concat in H0. rewrite map_single in H0. simpl in H0.
+    rewrite open_var_emb_te_commute in H0. rewrite open_var_emb_commute in H0.
+    apply H0.
   - admit.
   - eapply typing_sub. eapply IHtyping. apply* preservation_of_subtyping.
 Qed.
