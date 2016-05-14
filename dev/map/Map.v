@@ -172,6 +172,66 @@ Proof.
   admit.
 Qed.
 
+
+Lemma subst_te_open_t_var : forall X Y U e, Y <> X -> type U ->
+  (subst_te X U e) open_e_var Y = subst_te X U (e open_e_var Y).
+Proof.
+  admit.
+Qed.
+
+Lemma wf_subst_tt:
+  (forall E T, wft E T -> ok E -> forall x U, wft E U -> wft E (subst_tt x U T))
+  /\
+  (forall E e, wfe E e -> ok E -> forall x U, wft E U -> wfe E (subst_te x U e)).
+Proof.
+  apply wf_mutind; intros; subst; eauto.
+  - specialize (H H0 x U H1). destruct o as [Hv | Hx].
+    + inversion Hv; subst.
+      * simpl. simpl in H. apply wft_sel.
+        left. apply value_abs. apply* wfe_term. auto.
+      * simpl. simpl in H. apply wft_sel.
+        left. apply value_mem. apply* wfe_term. auto.
+    + destruct Hx as [z ?]. subst. simpl. case_if; auto*.
+  - apply* wft_mem.
+  - simpl. apply_fresh* wft_all as y.
+    assert (y \notin L) as FrL by auto.
+    assert (ok (E & y ~ T1)) as Ok'. {
+      auto*.
+    }
+    specialize (H0 y FrL Ok' x U).
+    assert (wft (E & y ~ T1) U) as HU'. {
+      rewrite <- (@concat_empty_r typ (y ~ T1)). rewrite concat_assoc.
+      apply wft_weaken.
+      rewrite concat_empty_r. auto.
+      rewrite concat_empty_r. auto.
+    }
+    specialize (H0 HU'). rewrite <- subst_tt_open_t_var in H0.
+    rewrite <- (@concat_empty_r typ (y ~ subst_tt x U T1)).
+    rewrite concat_assoc.
+    eapply wft_narrow. rewrite concat_empty_r. eauto.
+    rewrite concat_empty_r. auto*. auto. apply* wft_type.
+  - simpl. auto*.
+  - simpl. apply_fresh* wfe_abs as y.
+    assert (y \notin L) as FrL by auto.
+    assert (ok (E & y ~ V)) as Ok'. {
+      auto*.
+    }
+    specialize (H0 y FrL Ok' x U).
+    assert (wft (E & y ~ V) U) as HU'. {
+      rewrite <- (@concat_empty_r typ (y ~ V)). rewrite concat_assoc.
+      apply wft_weaken.
+      rewrite concat_empty_r. auto.
+      rewrite concat_empty_r. auto.
+    }
+    specialize (H0 HU'). rewrite <- subst_te_open_t_var in H0.
+    rewrite <- (@concat_empty_r typ (y ~ subst_tt x U V)).
+    rewrite concat_assoc.
+    eapply (proj2 wf_narrow). eapply H0. rewrite concat_empty_r. eauto.
+    rewrite concat_empty_r. auto*. auto. apply* wft_type.
+  - simpl. auto*.
+  - simpl. auto*.
+Qed.
+
 Lemma sub_subst_tt_admissible_rec:
   (forall E T,
      wft E T ->
