@@ -37,7 +37,7 @@ Fixpoint open_tt_rec (K : nat) (U : typ) (T : typ) {struct T} : typ :=
   | typ_top         => typ_top
   | typ_bvar J      => If K = J then U else (typ_bvar J)
   | typ_fvar X      => typ_fvar X
-  | typ_arrow T1 T2 => typ_arrow (open_tt_rec K U T1) (open_tt_rec K U T2)
+  | typ_arrow T1 T2 => typ_arrow (open_tt_rec K U T1) (open_tt_rec (S K) U T2) (*useless extra slot, to match Dsub*)
   | typ_all T1 T2   => typ_all (open_tt_rec K U T1) (open_tt_rec (S K) U T2)
   end.
 
@@ -972,7 +972,7 @@ Lemma notin_fv_tt_open : forall Y X T,
 Proof.
  introv. unfold open_tt. generalize 0.
  induction T; simpl; intros k Fr; auto.
- specializes IHT1 k. specializes IHT2 k. auto.
+ specializes IHT1 k. specializes IHT2 (S k). auto.
  specializes IHT1 k. specializes IHT2 (S k). auto.
 Qed.
 
