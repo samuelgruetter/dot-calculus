@@ -358,7 +358,9 @@ Proof.
     apply okt_push_typ_inv in H. auto*.
     rewrite <- (@concat_empty_r bind E). apply* wft_strengthen.
     rewrite concat_empty_r. eauto.
-  - admit.
+  - apply* typing_app. apply* wft_preserved.
+    apply Fsub.typing_regular in H. destruct H as [? [? A]]. inversion A; subst.
+    assumption.
   - admit.
   - admit.
   - eapply typing_sub. eapply IHtyping. apply* preservation_of_subtyping.
