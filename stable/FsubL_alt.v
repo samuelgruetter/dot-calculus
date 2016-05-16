@@ -1308,57 +1308,58 @@ End NarrowTrans.
 (* ********************************************************************** *)
 (** Type substitution preserves subtyping (10) *)
 
-Lemma sub_through_subst_tt : forall Q0 Q1 F Z S T P,
-  sub (Z ~ bind_sub Q0 Q1 & F) S T ->
-  sub empty Q0 P ->
-  sub empty P Q1 ->
-  sub (map (subst_tb Z P) F) (subst_tt Z P S) (subst_tt Z P T).
+Lemma sub_through_subst_tt : forall Q0 Q1 E F Z S T P,
+  sub (E & Z ~ bind_sub Q0 Q1 & F) S T ->
+  sub E Q0 P ->
+  sub E P Q1 ->
+  sub (E & map (subst_tb Z P) F) (subst_tt Z P S) (subst_tt Z P T).
 Proof.
   introv SsubT Q0subP PsubQ1. lets R: (sub_regular Q0subP).
   destruct R as [_ [_ Pwf]].
   inductions SsubT; introv; simpl subst_tt.
-  apply* sub_top.
-  apply* sub_bot.
-  case_var.
-    apply* sub_reflexivity. apply* wft_weaken_empty.
+  - apply* sub_top.
+  - apply* sub_bot.
+  - case_var.
+    apply* sub_reflexivity.
     apply* sub_reflexivity.
     inversions H0. binds_cases H3.
+      apply* (@wft_var T0 T1).
       apply* (@wft_var (subst_tt Z P T0) (subst_tt Z P T1)). unsimpl_map_bind_sub*.
-  case_var.
+  - case_var.
     apply sub_trans with (T:=Q1).
-      apply_empty* sub_weakening_empty.
+      apply_empty* sub_weakening.
       rewrite* <- (@subst_tt_fresh Z P Q1).
-        rewrite <- concat_empty_l in H0. rewrite concat_assoc in H0. binds_get H0.
-        rewrite concat_empty_l. apply ok_from_okt. eapply proj1.
-        eapply sub_regular. eauto.
-        inversion H1. subst. rewrite subst_tt_fresh.
-          apply* sub_reflexivity. apply* wft_weaken_empty.
-        apply* (@notin_fv_wf empty). apply* (@notin_fv_wf empty).
-    apply* sub_tvar. instantiate (1:=subst_tt Z P T0).
+        binds_get H0. inversion H1. subst.
+        apply* sub_reflexivity. apply_empty* wft_weaken.
+        rewrite* subst_tt_fresh.
+        apply* (@notin_fv_wf E).
+        apply* (@notin_fv_wf E).
+    eapply sub_tvar. auto*. instantiate (1:=subst_tt Z P T0).
+      rewrite* (@map_subst_tb_id E Z P).
       binds_cases H0; unsimpl_map_bind_sub*.
-  case_var.
+  - case_var.
     apply sub_trans with (T:=Q0).
-      apply_empty* sub_weakening_empty.
+      apply_empty* sub_weakening.
       rewrite* <- (@subst_tt_fresh Z P Q0).
-        rewrite <- concat_empty_l in H0. rewrite concat_assoc in H0. binds_get H0.
-        rewrite concat_empty_l. apply ok_from_okt. eapply proj1.
-        eapply sub_regular. eauto.
-        inversion H1. subst. rewrite subst_tt_fresh.
-          apply* sub_reflexivity.
-        apply* (@notin_fv_wf empty). apply* (@notin_fv_wf empty).
-        apply_empty* sub_weakening_empty.
-    apply* sub_tvar_lower. instantiate (1:=subst_tt Z P T1).
+        binds_get H0. inversion H1. subst.
+        apply* sub_reflexivity.
+        rewrite* subst_tt_fresh.
+        apply* (@notin_fv_wf E).
+        apply* (@notin_fv_wf E).
+        apply_empty* sub_weakening.
+    eapply sub_tvar_lower. auto*. instantiate (1:=subst_tt Z P T1).
+      rewrite* (@map_subst_tb_id E Z P).
       binds_cases H0; unsimpl_map_bind_sub*.
-  apply* sub_arrow.
-  apply_fresh* sub_all as X.
-   unsimpl (subst_tb Z P (bind_sub T0 T1)).
-   repeat rewrite* subst_tt_open_tt_var.
-   assert (map (subst_tb Z P) F & X ~ subst_tb Z P (bind_sub T0 T1) =
-           map (subst_tb Z P) (F & X ~ bind_sub T0 T1)) as A. {
-     rewrite map_concat. rewrite map_single. reflexivity.
-   }
-   rewrite A. eapply H0; eauto. rewrite concat_assoc. reflexivity.
-  apply* sub_trans.
+  - apply* sub_arrow.
+  - apply_fresh* sub_all as X.
+    unsimpl (subst_tb Z P (bind_sub T0 T1)).
+    repeat rewrite* subst_tt_open_tt_var.
+    assert (E & map (subst_tb Z P) F & X ~ subst_tb Z P (bind_sub T0 T1) =
+            E & map (subst_tb Z P) (F & X ~ bind_sub T0 T1)) as A. {
+      rewrite map_concat. rewrite map_single. rewrite concat_assoc. reflexivity.
+    }
+    rewrite A. eapply H0; eauto. rewrite concat_assoc. reflexivity.
+  - apply* sub_trans.
 Qed.
 
 (* ********************************************************************** *)
@@ -1467,38 +1468,38 @@ Qed.
 (************************************************************************ *)
 (** Preservation by Type Substitution (11) *)
 
-Lemma typing_through_subst_te : forall Q0 Q1 F Z e T P,
-  typing (Z ~ bind_sub Q0 Q1 & F) e T ->
-  sub empty Q0 P ->
-  sub empty P Q1 ->
-  typing (map (subst_tb Z P) F) (subst_te Z P e) (subst_tt Z P T).
+Lemma typing_through_subst_te : forall Q0 Q1 E F Z e T P,
+  typing (E & Z ~ bind_sub Q0 Q1 & F) e T ->
+  sub E Q0 P ->
+  sub E P Q1 ->
+  typing (E & map (subst_tb Z P) F) (subst_te Z P e) (subst_tt Z P T).
 Proof.
   introv Typ Q0subP PsubQ1.
   inductions Typ; introv; simpls subst_tt; simpls subst_te.
-  apply* typing_var.
-   binds_cases H0; unsimpl_map_bind_typ*.
-  apply_fresh* typing_abs as y.
+  - apply* typing_var. rewrite* (@map_subst_tb_id E Z P).
+    binds_cases H0; unsimpl_map_bind_typ*.
+  - apply_fresh* typing_abs as y.
     unsimpl (subst_tb Z P (bind_typ V)).
     rewrite* subst_te_open_ee_var.
-    assert (map (subst_tb Z P) F & y ~ subst_tb Z P (bind_typ V)=
-            map (subst_tb Z P) (F & y ~ bind_typ V)) as A. {
-      rewrite map_concat. rewrite map_single. reflexivity.
+    assert (E & map (subst_tb Z P) F & y ~ subst_tb Z P (bind_typ V)=
+            E & map (subst_tb Z P) (F & y ~ bind_typ V)) as A. {
+      rewrite map_concat. rewrite map_single. rewrite concat_assoc. reflexivity.
     }
     rewrite A. eapply H0; eauto. rewrite concat_assoc. reflexivity.
-  apply* typing_app.
-  apply_fresh* typing_tabs as Y.
+  - apply* typing_app.
+  - apply_fresh* typing_tabs as Y.
     unsimpl (subst_tb Z P (bind_sub VS VU)).
     rewrite* subst_te_open_te_var.
     rewrite* subst_tt_open_tt_var.
-    assert (map (subst_tb Z P) F & Y ~ subst_tb Z P (bind_sub VS VU)=
-            map (subst_tb Z P) (F & Y ~ bind_sub VS VU)) as A. {
-      rewrite map_concat. rewrite map_single. reflexivity.
+    assert (E & map (subst_tb Z P) F & Y ~ subst_tb Z P (bind_sub VS VU)=
+            E & map (subst_tb Z P) (F & Y ~ bind_sub VS VU)) as A. {
+      rewrite map_concat. rewrite map_single. rewrite concat_assoc. reflexivity.
     }
     rewrite A. eapply H0; eauto. rewrite concat_assoc. reflexivity.
-  rewrite* subst_tt_open_tt. apply* typing_tapp.
+  - rewrite* subst_tt_open_tt. apply* typing_tapp.
     apply* sub_through_subst_tt.
     apply* sub_through_subst_tt.
-  apply* typing_sub. apply* sub_through_subst_tt.
+  - apply* typing_sub. apply* sub_through_subst_tt.
 Qed.
 
 (* ********************************************************************** *)
@@ -1640,9 +1641,10 @@ Proof.
     pick_fresh X. forwards~ K: (P2 X). destruct K.
      rewrite* (@subst_te_intro X).
      rewrite* (@subst_tt_intro X).
-     erewrite <- map_empty.
+     rewrite <- (@concat_empty_l bind (@empty bind)).
+     erewrite <- map_empty at 2.
      apply* (@typing_through_subst_te T0 T1).
-     rewrite concat_empty_r.
+     rewrite concat_empty_r. rewrite concat_empty_l.
      apply* typing_sub.
   (* case sub *)
   apply* typing_sub.
