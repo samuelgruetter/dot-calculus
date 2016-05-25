@@ -105,8 +105,9 @@ Read as "In context G, miniscala term t has type T and translates to nuDOT term 
     
     (G, l: class { z => (m: T)...}, z: l |- d as z.m : T ~> d')...
     (G, l: class { z => (m: T)...}, z: l |- T ~> T')...
-    ------------------------------------------------------------------------- trSeqCls
-    G |- (class l { z => d...}; t2) : T2 ~> let l = [z: /\(m: T')... | d'...]
+    G, l: class { z => (m: T)...} |- t2 : T2 ~> t2'
+    ------------------------------------------------------------------------------- trSeqCls
+    G |- (class l { z => d...}; t2) : T2 ~> let l = [z: /\(m: T')... | d'...] in t2'
     
     
     
