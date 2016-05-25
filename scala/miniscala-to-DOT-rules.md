@@ -127,6 +127,7 @@ Read as "In context G, miniscala term t has type T and translates to DOT term u"
     G, m: (x:S)T1 |- t2 : T2 ~> t2'
     --------------------------------------------------------------------- trSeqDef
     G |- (def m(x: S): T1 = t1; t2) : T2 ~> let m = lambda(x:S')t1' in t2'
+Leave out the above rule for the moment because DOT only supports methods as members, not lambdas (could encode them, though).
 
     
     (G, l: class l { z => d...}, z: l |- d : (m: T) ~> d')...
@@ -154,9 +155,26 @@ Note: There is no trDefVal rule yet, because excluding top-level uses of the sel
 
 
 
+Translating contexts (only needed for proofs) `G ~> G'`
+=======================================================
+
+    empty ~> empty
+
+    
+    G ~> G'
+    G |- T ~> T'
+    ------------------------
+    (G, x: T) ~> (G', x: T')
+
+
+
 Theorem (or conjecture)
 =======================
 
 If `empty |- t: T ~> t'`, then there exists `T'` such that `empty |- T ~> T'` and `empty |- t': T'` according to the DOT rules.
+
+To have a strong enough IH, we will have to state it as follows:
+
+If `G |- t: T ~> t'`, then there exist `G'` and `T'` such that `G ~> G'` and `G |- T ~> T'` and `G' |- t': T'` according to the DOT rules.
 
 
