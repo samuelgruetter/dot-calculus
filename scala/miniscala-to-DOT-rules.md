@@ -6,8 +6,7 @@ Miniscala Syntax
     Path         p ::= x
                        x.l                    no real paths at the moment, only length 1
     Term         t ::= x
-                       t.l
-                       t t
+                       t.m(t)
                        new p                  p has to refer to a class definition
                        s; t                   allows to construct blocks of statements followed by return expr
     Statement    s ::= d                      statements will later also include terms, but pointless if no side-effects
@@ -89,33 +88,39 @@ Read as "In context G, miniscala term t has type T and translates to DOT term u"
     --------------------------------- trNew
     G |- new p: p ~> new {z => d'...}
 
-
-    G |- class p {z => (l: T); d...}
-    G |- x: p ~> x
-    -------------------------------- trSel1
-    G |- x.l: [x/z]T ~> x.l
-
-
-    G |- class p {z => (l: T); d...}
-    z notin fv(T)
-    G |- t: p ~> t'
-    -------------------------------- trSel2
-    G |- t.l: T ~> t'.l
     
-    
-    G |- t1: (x:S)T ~> t1'
+    G |- x1: p ~> x1
+    G |- class p { z => (def m(x:S): T = t); d... }
     G |- x2: S ~> x2
-    ------------------------------ trApp1
-    G |- t1 x2 : [x2/x]T ~> t1' x2
+    ----------------------------------------------- trAppXX
+    G |- x1.m(x2) : [x2/x, x1/z]T ~> x1 x2
     
     
-    G |- t1: (x:S)T ~> t1'
+    G |- x1: p ~> x1
+    G |- class p { z => (def m(x:S): T = t); d... }
     x notin fv(T)
     G |- t2: S ~> t2'
-    ------------------------- trApp2
-    G |- t1 t2 : T ~> t1' t2'
+    ----------------------------------------------- trAppXT
+    G |- x1.m(t2) : [x1/z]T ~> x1 t2'
     
-
+    
+    G |- t1: p ~> t1'
+    G |- class p { z => (def m(x:S): T = t); d... }
+    z notin fv(T)
+    G |- x2: S ~> x2
+    ----------------------------------------------- trAppTX
+    G |- t1.m(x2) : [x2/x]T ~> t1' x2
+    
+    
+    G |- t1: p ~> t1'
+    G |- class p { z => (def m(x:S): T = t); d... }
+    z notin fv(T)
+    x notin fv(T)
+    G |- t2: S ~> t2'
+    ----------------------------------------------- trAppTT
+    G |- t1.m(t2) : T ~> t1' t2'
+    
+    
     G |- t1 : T1 ~> t1'
     G, l: T1 |- t2 : T2 ~> t2'
     --------------------------------------------------- trSeqVal
