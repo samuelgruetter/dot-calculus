@@ -30,6 +30,37 @@ object MutRec {
 /*
 Translation into DOT:
 
+let Lib1 = new { Lib1 =>
+  type T_Lib1 = { z =>
+    { type T_U = { y => Top } } /\
+    { type T_Author = { y => def book(u: z.U): z.T_Book } } /\
+    { type T_Book = { y => def author(u: z.U): z.T_Author } } /\
+    { def run(u: z.U): z.Book }
+  }
+  def new_Lib1(dummy: Top): Lib1.T_Lib1 = new { z =>
+    type T_U = { y => Top }
+    def new_U(dummy: Top): z.T_U = new {}
+    type T_Author = { y => def book(u: z.T_U): z.T_Book }
+    def new_Author(dummy: Top): z.T_Author = new {
+      def book(u: z.T_U): z.T_Book = z.new_Book(new {})
+    }
+    type T_Book = { y => def author(u: z.T_U): z.T_Author }
+    def new_Book(dummy: Top): z.T_Book = new {
+      def author(u: z.T_U): z.T_Author = z.new_Author(new {})
+    }
+    def run(u: z.T_U): z.T_Book = {
+      let a = (z.new_Book(new {})).author(z.new_U(new {})) in a.book(z.new_U(new {}))
+    }
+  }
+} in
+let lib1 = Lib1.new_Lib1(new {}) in
+lib1.run(lib1.new_U(new {}))
+
+
+
+
+Old translation into DOT which loops infinitely:
+
 // definition of class inside expr is replaced by only a wrapper object containing the signature, but no implementation
 // Note that Lib1.L0 is never used in this example, but it's generated anyways
 let Lib1 = new {
