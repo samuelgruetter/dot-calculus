@@ -1,0 +1,114 @@
+// Note: Nominality/branding is not enforced here, but by the miniscala typechecker
+
+let U = new { z =>
+  type T_U = { y => Top }
+  def new_U(dummy: Top): z.T_U = new {}
+} in
+let unit = U.new_U(new {}) in
+
+let Booleans = new { z =>
+  type T_Booleans = { bs =>
+    type T_BoolFun = { y => { def call(n: bs.T_Bool): bs.T_Bool } }
+    // no def new_BoolFun because it's abstract
+    
+    type T_Bool = { y =>
+      def destruct(ifTrue: bs.T_Bool): bs.T_BoolFun
+      def not(dummy: U.T_U): bs.T_Bool
+      def and(other: bs.T_Bool): bs.T_Bool
+      def or(other: bs.T_Bool): bs.T_Bool
+    }
+    // no new_Bool because it's abstract
+    
+    type T_True = { y => T_Bool /\ {
+      def destruct(ifTrue: bs.T_Bool): bs.T_BoolFun
+    }}
+    def new_True(dummy: Top): bs.T_True
+    
+    type T_False = { y => T_Bool /\ {
+      def destruct(ifTrue: bs.T_Bool): bs.T_BoolFun
+    }}
+    def new_False(dummy: Top): bs.T_False
+  }
+  def new_Booleans(dummy: Top): z.T_Booleans = new { bs =>
+    type T_BoolFun = { y => { def call(n: bs.T_Bool): bs.T_Bool } }
+    // no def new_BoolFun because it's abstract
+    
+    type T_Bool = { y =>
+      def destruct(ifTrue: bs.T_Bool): bs.T_BoolFun
+      def not(dummy: U.T_U): bs.T_Bool
+      def and(other: bs.T_Bool): bs.T_Bool
+      def or(other: bs.T_Bool): bs.T_Bool
+    }
+    // no new_Bool because it's abstract
+    
+    type T_True = { y => T_Bool /\ {
+      def destruct(ifTrue: bs.T_Bool): bs.T_BoolFun
+    }}
+    def new_True(dummy: Top): bs.T_True = new { self =>
+      def not(dummy: U.T_U): bs.T_Bool = {
+        self.destruct(bs.new_False(new {})).call(bs.new_True(new {})
+      }
+      
+      def and(other: bs.T_Bool): bs.T_Bool = {
+        self.destruct(other).call(bs.new_False(new {}))
+      }
+      
+      def or(other: bs.T_Bool): bs.T_Bool = {
+        self.destruct(bs.new_True(new {})).call(other)
+      }
+      
+      def destruct(ifTrue: bs.T_Bool): bs.T_BoolFun = {
+        let f = new { f =>
+          type T_f = { y => bs.T_BoolFun /\ {
+            def call(n: bs.T_Bool): bs.T_Bool
+          }}
+          def new_f(dummy: Top): f.T_f = new {
+            def call(ifFalse: bs.T_Bool): bs.T_Bool = ifFalse
+          }
+        }
+        f.new_f(new {})
+      }
+    }
+    
+    type T_False = { y => T_Bool /\ {
+      def destruct(ifTrue: bs.T_Bool): bs.T_BoolFun
+    }}
+    def new_False(dummy: Top): bs.T_False = new {
+      def not(dummy: U.T_U): bs.T_Bool = {
+        self.destruct(bs.new_False(new {})).call(bs.new_True(new {})
+      }
+      
+      def and(other: bs.T_Bool): bs.T_Bool = {
+        self.destruct(other).call(bs.new_False(new {}))
+      }
+      
+      def or(other: bs.T_Bool): bs.T_Bool = {
+        self.destruct(bs.new_True(new {})).call(other)
+      }
+      
+      def destruct(ifTrue: bs.T_Bool): bs.T_BoolFun = {
+        let f = new { f =>
+          type T_f = { y => bs.T_BoolFun /\ {
+            def call(n: bs.T_Bool): bs.T_Bool
+          }}
+          def new_f(dummy: Top): f.T_f = new {
+            def call(ifFalse: bs.T_Bool): bs.T_Bool = ifTrue
+          }
+        }
+        f.new_f(new {})
+      }
+    }  
+  }
+} in
+
+let booleans: Booleans.T_Booleans = Booleans.new_Booleans(new {}) in
+let tru: booleans.T_True = booleans.new_True(new {}) in
+let fls: booleans.T_False = booleans.new_False(new {}) in
+
+let a: booleans.T_Bool = tru in
+let b: booleans.T_False = fls in
+
+a.and(b.not(unit)).or(a.not(unit).and(b))
+
+
+
