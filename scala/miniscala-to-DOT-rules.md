@@ -69,7 +69,7 @@ Note: `class p { z => d...}` is also a type, and we can also interpret this `G |
     G |- class p { z0 => (class l { z => d...}); d'... } 
     G |- x: p ~> x
     ---------------------------------------------------- clLookup2
-    G |- class x.l { z => d...}
+    G |- class x.l { z => [x/z0]d...}
 
 
 Translating terms `G |- t: T ~> u`
