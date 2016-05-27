@@ -16,11 +16,11 @@ object MutRec {
       }
 
       def run(u: z.U): z.Book = {
-        val a = (new z.Book).author(new z.U)
+        val a: z.Author = (new z.Book).author(new z.U)
         a.book(new z.U)
       }
     }
-    val lib1 = new Lib1
+    val lib1: Lib1 = new Lib1
     lib1.run(new lib1.U)
 
     // end of actual program

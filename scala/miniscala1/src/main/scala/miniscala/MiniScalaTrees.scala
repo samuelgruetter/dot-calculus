@@ -17,10 +17,12 @@ object MiniScalaTrees {
 
   sealed trait Trm
   case class Var(name: String) extends Trm
-  case class Sel(qual: Trm, sel: String) extends Trm
-  case class App(func: Trm, arg: Trm) extends Trm
+  case class App(receiver: Trm, label: String, arg: Trm) extends Trm
   case class New(cls: Pth) extends Trm
-  case class Block(stats: Seq[Stat], ret: Trm) extends Trm
+  case class Block(stat: Stat, ret: Trm) extends Trm
+  object Block {
+    def apply(stats: Seq[Stat], ret: Trm): Trm = stats.foldRight(ret)((stat, oldRet) => Block(stat, oldRet))
+  }
 
   type Stat = Def
 

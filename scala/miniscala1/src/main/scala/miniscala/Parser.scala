@@ -45,7 +45,12 @@ object Parser {
   }
 
   def parseStat(stat: Stat): m.Stat = stat match {
-    case q"val ..$patsnel: $tpeopt = $expr" => null
+    case q"val $pat: $tpeopt = $expr" => tpeopt match {
+      case Some(tp: Type) => pat match {
+        case q"${name: Pat.Var.Term}" => m.DefVal(name.toString(), parseTyp(tp), parseTrm(expr))
+      }
+      case None => sys.error("val must have explicit type")
+    }
     case q"def $name(${argName: Term.Name}: $argTp0): $tpeopt = $expr" => tpeopt match {
       case Some(retTp: Type) => argTp0 match {
         case Some(targ"${argTp: Type}") => m.DefDef(name, argName, parseTyp(argTp), parseTyp(retTp), parseTrm(expr))
@@ -58,10 +63,9 @@ object Parser {
 
   def parseTrm(t: Term): m.Trm = t match {
     case q"${name: Term.Name}" => m.Var(name)
-    case q"$t.$l" => m.Sel(parseTrm(t), l)
-    case q"$expr($aexpr)" =>
+    case q"$expr1.$l($aexpr)" =>
       aexpr match {
-        case arg"${expr2: Term}" => m.App(parseTrm(expr), parseTrm(expr2))
+        case arg"${expr2: Term}" => m.App(parseTrm(expr1), l, parseTrm(expr2))
       }
     case q"new { ..$stat } with ..$ctorcalls { $param => ..$stats }" => ctorcalls match {
       case ctorcall :: Nil => ctorcall match {
