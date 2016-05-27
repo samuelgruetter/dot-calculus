@@ -8,61 +8,90 @@ Miniscala Syntax
     Term         t ::= x
                        t.m(t)
                        new p                  p has to refer to a class definition
-                       s; t                   allows to construct blocks of statements followed by return expr
-    Statement    s ::= d                      statements will later also include terms, but pointless if no side-effects
+                       s; t                   allows to construct blocks of statements ended by return expr
+    Statement    s ::= d                      will later also include terms, but pointless if no side-effects
     Definition   d ::= val l: T = t
                        def m(x: S): T = t
                        class l { z => d... }
     Type         T ::= p                      path referring to class (the only type which user programs can contain)
                        (x:S)T                 dependent method type
-                       class p { z => d... }  type of a path p referring to a class def (like dotty's ClassInfo)
+                       class { z => d... }    type of a path referring to a class def (like dotty's ClassInfo)
 
 Note: Vars, class labels, type labels, and def labels are all taken from the same set.
 Miniscala has no values and no reduction rules, but it reuses those of DOT.
 Note: This calculus is very lame: No inheritance, no subtyping, no type members...
 
-In miniscala, paths referring to a class are terms and types at the same time: They are terms because the definition typing rules assign types to them (their type is just their definition), and they are types because `new p` has type `p`.
-In the translation, they lose their term aspect and become just types. A class def inside an expression `class l { z => d....} in t` is translated to a wrapper object holding just the type: `let l = new { L0: {z => ...} } in t'`. If the class def appears as a member, it is just replaced by the type directly, without wrapping.
+Note: In the current version, the context G is not needed for the translation, but only for the typechecking (in particalar, to enforce nominality).
 
 
-Translating types `G |- T ~> U`
+Translating user types `T ~> U`
 ===============================
 
-Read as "In context G, miniscala type T translates to DOT type U".
-Not needed if we only want to typecheck without translating.
+Read as "miniscala type T translates to DOT type U".
+Only used for types that user programs can contain, i.e. for paths referring to classes.    
 
 
-    (G, z: p |- d: (l: T) ~> d')...
-    (G, z: p |- T ~> T')...
-    ----------------------------------------------- trTypClsOfCls
-    G |- class p {z => d...} ~> {z => /\(l: T')...}
+    ---------- trTypCls1       (for references to classes which are defined in a term)
+    x ~> x.T_x
+    
+
+    ------------ trTypCls2     (for references to classes which are members of an object)
+    x.l ~> x.T_l
+    
+
+
+Translating the type of a definition `d ~y~> (l: T')...`
+========================================================
+
+Translates the type of definition `d` occurring in a class whose self reference is `y`.
+
+Does two steps at once (because it's simpler to define like this):
+1) turn the definition (including implementation) into a declaration (without implementation)
+2) translate the type of the declaration
+Note that one definition in miniscala can result in 1 or 2 declarations in DOT, so we return a list.
+The y in ~y~> is the name of the outer self ref.
+
+
+    (d ~z~> (m: T')...)...
+    ------------------------------------------------------------------------------------ trTypOfDefCls
+    class l {z => d...} ~y~> (type T_l: {z => /\(m: T')...}); (def new_l(x: Top): y.T_l)
 
     
-    G |- S ~> S'     G, x: S |- T ~> T'
-    ----------------------------------- trTypMtd
-    G |- (x:S)T ~> all(x:S')T'
+    S ~> S'     T ~> T'
+    ---------------------------------------- trTypOfDefMtd
+    def m(x: S): T = t ~y~> def m(x: S'): T'
+
+
+Note: No rule for val defs yet, because they cannot yet be members of classes.
+
+
+
+Translating defs of classes `G |- d : (l: T) ~y~> d'...`
+========================================================
+
+
+    S ~> S'     T ~> T'      G, x: S |- t: T ~> t'
+    --------------------------------------------------------------------- trDefDef
+    G |- (def m(x: S): T = t) : (m: (x: S)T) ~y~> (def m(x: S'): T' = t')
 
     
-    G |- class x.l { z => d...}
-    --------------------------- trTypCls1
-    G |- x.l ~> x.l
+    (G, z: z0.l |- d : (m: T) ~z~> d'...)...     (d ~z~> (m: T')...)...
+    -------------------------------------------------------------------------------------------- trDefCls
+    G |- (class l { z => d...}) : (l: class {z => d...}) 
+         ~z0~> (type T_l = { z => /\(m: T')...}); (def new_l(x: Top): z0.T_l = new {z => d'...}
 
-    
-    G |- class x { z => d...}
-    ------------------------- trTypCls2
-    G |- x ~> x.L0
-    
-Note: `L0` is a designated label that we use to wrap types.
+Note: There is no trDefVal rule yet, because excluding top-level uses of the self ref on the RHS of the val def requires some additional tricks (eg "regular & restricted vars").
+
 
 
 Class lookup `G |- class p { z => d...}`
 ========================================
 
 Read as "In context `G`, the path `p` refers to a class whose definition is `{ z => d...}`".
-Note: `class p { z => d...}` is also a type, and we can also interpret this `G |- class p { z => d...}` judgment as a judgment saying that this type is well-formed (`p` indeed defined in `G`, with rhs `{ z => d...}`).
 
-    (x: class x { z => d...}) in G
-    ------------------------------ clLookup1
+
+    (x: class { z => d...}) in G
+    ---------------------------- clLookup1
     G |- class x { z => d...}
     
     
@@ -70,6 +99,7 @@ Note: `class p { z => d...}` is also a type, and we can also interpret this `G |
     G |- x: p ~> x
     ---------------------------------------------------- clLookup2
     G |- class x.l { z => [x/z0]d...}
+
 
 
 Translating terms `G |- t: T ~> u`
@@ -83,10 +113,14 @@ Read as "In context G, miniscala term t has type T and translates to DOT term u"
     G |- x: T ~> x
 
 
-    G |- class p {z => d...}
-    (G, z: p |- d : (m: T) ~> d')...
-    --------------------------------- trNew
-    G |- new p: p ~> new {z => d'...}
+    G |- class x {z => d...}
+    --------------------------------- trNew1
+    G |- new x: x ~> x.new_x(new {})
+
+
+    G |- class x.l {z => d...}
+    ------------------------------------ trNew2
+    G |- new x.l: x.l ~> x.new_l(new {})
 
     
     G |- x1: p ~> x1
@@ -127,37 +161,17 @@ Read as "In context G, miniscala term t has type T and translates to DOT term u"
     G |- (val l: T1 = t1; t2) : T2 ~> let l = t1' in t2'
 
     
-    G |- S ~> S'
-    G, x: S |- t1: T1 ~> t1'
-    G, m: (x:S)T1 |- t2 : T2 ~> t2'
-    --------------------------------------------------------------------- trSeqDef
-    G |- (def m(x: S): T1 = t1; t2) : T2 ~> let m = lambda(x:S')t1' in t2'
-Leave out the above rule for the moment because DOT only supports methods as members, not lambdas (could encode them, though).
-
-    
-    (G, l: class l { z => d...}, z: l |- d : (m: T) ~> d')...
-    (G, l: class l { z => d...}, z: l |- T ~> T')...
-     G, l: class l { z => d...} |- t2 : T2 ~> t2'
+    (G, l: class { z => d...}, z: l |- d : (m: T) ~z~> d'...)...
+    (d ~z~> (m: T'))...
+     G, l: class { z => d...} |- t2 : T2 ~> t2'
     ------------------------------------------------------------------------------------------- trSeqCls
-    G |- (class l { z => d...}; t2) : T2 ~> let l = new { type L0 = {z => /\(m: T')...} } in t2
-    
-    
-    
-Translating defs of classes `G |- d : (l: T) ~> d'`
-===================================================
+    G |- (class l { z => d...}; t2) : T2 
+         ~> let l = new { y =>
+              type T_l = {z => /\(m: T')...}
+              def new_l(x: Top): y.T_l = new { z => d'...}
+            } in t2
 
-
-    G |- S ~> S'     G, x: S |- T ~> T'      G, x: S |- t: T ~> t'
-    ------------------------------------------------------------------- trDefDef
-    G |- (def m(x: S): T = t) : (m: (x: S)T) ~> (def m(x: S'): T' = t')
-
-    
-    (G, z: z0.l |- d : (m: T) ~> d')...     (G, z: z0.l |- T ~> T')...
-    -------------------------------------------------------------------------------------------- trDefCls
-    G |- (class l { z => d...}) : (l: class z0.l {z => d...}) ~> (type l = { z => /\(m: T')...})
-
-Note: There is no trDefVal rule yet, because excluding top-level uses of the self ref on the RHS of the val def requires some additional tricks (eg "regular & restricted vars").
-
+Note: No trSeqDef for the moment because DOT only supports methods as members, not lambdas (could encode them, though).
 
 
 Translating contexts (only needed for proofs) `G ~> G'`
