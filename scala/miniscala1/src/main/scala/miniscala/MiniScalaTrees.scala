@@ -33,6 +33,4 @@ object MiniScalaTrees {
   case class TypCls(ref: Pth) extends Typ
   case class TypMtd(argName: String, argTyp: Typ, retTyp: Typ) extends Typ
   case class TypOfCls(selfName: String, members: Seq[(String, Typ)]) extends Typ
-
-  case class Prog(mainObjName: String, mainObjMembers: Seq[Def], mainExpr: Trm)
 }

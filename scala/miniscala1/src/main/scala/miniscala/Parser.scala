@@ -19,15 +19,12 @@ object Parser {
   implicit def termParamNameToString(n: Term.Param.Name): String = n.toString()
   implicit def ctorNameToString(n: Ctor.Name): String = n.toString()
 
-  def parseTopLevel(tree: Source): m.Prog = {
+  def parseTopLevel(tree: Source): m.Trm = {
     tree match {
       case source"""
-        object $mainObjName { $selfParam =>
-          ..$stats
-          def main(args: Array[String]): Unit = { println($aexpr) }
-        }"""
+        object $mainObjName { def main(args: Array[String]): Unit = println($aexpr) }"""
       => aexpr match {
-        case arg"${expr: Term}" => m.Prog(parseSelfRef(selfParam), parseStats(stats), parseTrm(expr))
+        case arg"${expr: Term}" => parseTrm(expr)
       }
     }
   }
