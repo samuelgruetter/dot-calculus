@@ -1,15 +1,16 @@
 package miniscala
 
+import java.io.InputStream
+
 import scala.collection.immutable.Seq
 import scala.meta._
 
 import miniscala.{MiniScalaTrees => m}
 
 object Parser {
-  def main(args: Array[String]): Unit = {
-    val stream = getClass.getResourceAsStream("MutRec.scala")
-    val tree = stream.parse[Source]
-    println(parseTopLevel(tree))
+  def parseMiniscala(input: InputStream): m.Trm = {
+    val tree = input.parse[Source]
+    parseTopLevel(tree)
   }
 
   // https://github.com/scalameta/scalameta/blob/master/docs/quasiquotes.md
