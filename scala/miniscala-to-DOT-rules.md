@@ -127,7 +127,7 @@ Read as "In context G, miniscala term t has type T and translates to DOT term u"
     G |- class p { z => (def m(x:S): T = t); d... }
     G |- x2: S ~> x2
     ----------------------------------------------- trAppXX
-    G |- x1.m(x2) : [x2/x, x1/z]T ~> x1 x2
+    G |- x1.m(x2) : [x2/x, x1/z]T ~> x1.m(x2)
     
     
     G |- x1: p ~> x1
@@ -135,7 +135,7 @@ Read as "In context G, miniscala term t has type T and translates to DOT term u"
     x notin fv(T)
     G |- t2: S ~> t2'
     ----------------------------------------------- trAppXT
-    G |- x1.m(t2) : [x1/z]T ~> x1 t2'
+    G |- x1.m(t2) : [x1/z]T ~> x1.m(t2')
     
     
     G |- t1: p ~> t1'
@@ -143,7 +143,7 @@ Read as "In context G, miniscala term t has type T and translates to DOT term u"
     z notin fv(T)
     G |- x2: S ~> x2
     ----------------------------------------------- trAppTX
-    G |- t1.m(x2) : [x2/x]T ~> t1' x2
+    G |- t1.m(x2) : [x2/x]T ~> t1'.m(x2)
     
     
     G |- t1: p ~> t1'
@@ -152,7 +152,7 @@ Read as "In context G, miniscala term t has type T and translates to DOT term u"
     x notin fv(T)
     G |- t2: S ~> t2'
     ----------------------------------------------- trAppTT
-    G |- t1.m(t2) : T ~> t1' t2'
+    G |- t1.m(t2) : T ~> t1'.m(t2')
     
     
     G |- t1 : T1 ~> t1'
@@ -164,12 +164,12 @@ Read as "In context G, miniscala term t has type T and translates to DOT term u"
     (G, l: class { z => d...}, z: l |- d : (m: T) ~z~> d'...)...
     (d ~z~> (m: T'))...
      G, l: class { z => d...} |- t2 : T2 ~> t2'
-    ------------------------------------------------------------------------------------------- trSeqCls
+    ------------------------------------------------------------- trSeqCls
     G |- (class l { z => d...}; t2) : T2 
          ~> let l = new { y =>
               type T_l = {z => /\(m: T')...}
               def new_l(x: Top): y.T_l = new { z => d'...}
-            } in t2
+            } in t2'
 
 Note: No trSeqDef for the moment because DOT only supports methods as members, not lambdas (could encode them, though).
 
