@@ -12,5 +12,8 @@ object Main {
     val s: String = LnMiniscalaToCoq.printTrm(t2)
     println(s)
     println()
+    val t3: DotTrees.Tm = MiniScalaToDot.translateProg(t1)
+    println(t3)
+    println()
   }
 }
