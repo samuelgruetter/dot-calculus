@@ -1,5 +1,7 @@
 package miniscala
 
+import scala.collection.immutable.Seq
+
 import miniscala.{MiniScalaTrees => ms}
 import miniscala.{DotTrees => dot}
 

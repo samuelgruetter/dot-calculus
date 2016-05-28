@@ -1,5 +1,7 @@
 package miniscala
 
+import scala.collection.immutable.Seq
+
 object DotTrees {
 
   sealed trait Vr
@@ -22,7 +24,9 @@ object DotTrees {
   case class TmVar(v: Vr) extends Tm
   case class TmApp(t1: Tm, l: String, t2: Tm) extends Tm
 
-  sealed trait Dm
+  sealed trait Dm {
+    def name: String
+  }
   case class DFun(name: String, argName: String, argType: Ty, retType: Ty, body: Tm) extends Dm
   case class DTy(name: String, tp: Ty) extends Dm
 

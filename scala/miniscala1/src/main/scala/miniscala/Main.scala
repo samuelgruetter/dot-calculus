@@ -15,5 +15,8 @@ object Main {
     val t3: DotTrees.Tm = MiniScalaToDot.translateProg(t1)
     println(t3)
     println()
+    val t4: LocallyNamelessDotTrees.Tm = DotTreesToLocallyNameless.translateProg(t3)._1
+    println(t4)
+    println()
   }
 }
