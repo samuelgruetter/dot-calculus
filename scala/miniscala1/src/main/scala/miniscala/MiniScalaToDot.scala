@@ -7,7 +7,7 @@ import miniscala.{DotTrees => dot}
 
 object MiniScalaToDot {
 
-  def translateProg(t: ms.Trm): dot.Tm = trTrm(Nil, t)._2
+  def translateProg(t: ms.Trm): dot.Tm = trTrm(Nil, t, Some(ms.TypCls(ms.PthVar("Any"))))._2
 
   // Why also typechecking during translation?
   // - enforce nominality
@@ -23,7 +23,13 @@ object MiniScalaToDot {
   def lookupDef(name: String, defs: Seq[ms.Def]): ms.Def = defs.find(_.name == name).get
 
   def checkConforms(actual: ms.Typ, expected: ms.Typ): Unit = {
-    if (actual != expected) sys.error(s"expected $expected but found $actual")
+    if (!isSubtype(actual, expected)) sys.error(s"expected $expected but found $actual")
+  }
+
+  // we need the type "Any" so that we can assign a type to the top-level program,
+  // because all other types start with a path (which is undefined at top-level)
+  def isSubtype(tp1: ms.Typ, tp2: ms.Typ): Boolean = {
+    tp1 == tp2 || tp2 == ms.TypCls(ms.PthVar("Any"))
   }
 
   def lookupClass(p: ms.Pth, ctx: Ctx): ms.TypOfCls = p match {
@@ -38,6 +44,7 @@ object MiniScalaToDot {
   val unit = dot.TmVar(dot.VObj("_", Seq()))
 
   def trTyp(t: ms.Pth): dot.Ty = t match {
+    case ms.PthVar("Any") => dot.TTop
     case ms.PthVar(name) => dot.TSel(dot.Var(name), "C")
     case ms.PthSel(prefix, sel) => dot.TSel(dot.Var(prefix), "C_" + sel)
   }
@@ -78,8 +85,7 @@ object MiniScalaToDot {
       )
       Seq(tpdef, defdef)
     case ms.DefDef(name, argName, argTp, retTp, body) =>
-      val (actualRetTp, body2) = trTrm((argName, argTp) :: ctx, body)
-      checkConforms(actualRetTp, retTp)
+      val (actualRetTp, body2) = trTrm((argName, argTp) :: ctx, body, Some(retTp))
       val ms.TypCls(argTpPth) = argTp
       val ms.TypCls(retTpPth) = retTp
       Seq(dot.DFun(name, argName, trTyp(argTpPth), trTyp(retTpPth), body2))
@@ -92,68 +98,73 @@ object MiniScalaToDot {
     trDef(ctx, ds.head, outerSelfRef) ++ trDefs(ctx, ds.tail, outerSelfRef)
   }
 
-  def trTrm(ctx: Ctx, t: ms.Trm): (ms.Typ, dot.Tm) = t match {
-    case ms.Var(name) => (lookupVar(name, ctx), dot.TmVar(dot.Var(name)))
+  def trTrm(ctx: Ctx, t: ms.Trm, expTp: Option[ms.Typ]): (ms.Typ, dot.Tm) = {
+    val (actualTp, t2) = t match {
+      case ms.Var(name) => (lookupVar(name, ctx), dot.TmVar(dot.Var(name)))
 
-    // TODO notin FV checks
-    case ms.App(ms.Var(x1), label, ms.Var(x2)) =>
-      val ms.TypCls(p1) = lookupVar(x1, ctx)
-      val ms.TypCls(p2) = lookupVar(x2, ctx)
-      val ms.TypOfCls(z, ds) = lookupClass(p1, ctx)
-      val ms.DefDef(_, argName, argTyp, retTyp, _) = lookupDef(label, ds).subst(z, x1)
-      checkConforms(ms.TypCls(p2), argTyp)
-      (retTyp.subst(argName, x2), dot.TmApp(dot.TmVar(dot.Var(x1)), label, dot.TmVar(dot.Var(x2))))
-    case ms.App(ms.Var(x1), label, t2) =>
-      val ms.TypCls(p1) = lookupVar(x1, ctx)
-      val (tp2, t2a) = trTrm(ctx, t2)
-      val ms.TypOfCls(z, ds) = lookupClass(p1, ctx)
-      val ms.DefDef(_, argName, argTyp, retTyp, _) = lookupDef(label, ds).subst(z, x1)
-      checkConforms(tp2, argTyp)
-      (retTyp, dot.TmApp(dot.TmVar(dot.Var(x1)), label, t2a))
-    case ms.App(t1, label, ms.Var(x2)) =>
-      val (ms.TypCls(p1), t1a) = trTrm(ctx, t1)
-      val ms.TypCls(p2) = lookupVar(x2, ctx)
-      val ms.TypOfCls(z, ds) = lookupClass(p1, ctx)
-      val ms.DefDef(_, argName, argTyp, retTyp, _) = lookupDef(label, ds)
-      checkConforms(ms.TypCls(p2), argTyp)
-      (retTyp.subst(argName, x2), dot.TmApp(t1a, label, dot.TmVar(dot.Var(x2))))
-    case ms.App(t1, label, t2) =>
-      val (ms.TypCls(p1), t1a) = trTrm(ctx, t1)
-      val (tp2, t2a) = trTrm(ctx, t2)
-      val ms.TypOfCls(z, ds) = lookupClass(p1, ctx)
-      val ms.DefDef(_, argName, argTyp, retTyp, _) = lookupDef(label, ds)
-      checkConforms(tp2, argTyp)
-      (retTyp, dot.TmApp(t1a, label, t2a))
+      // TODO notin FV checks
+      case ms.App(ms.Var(x1), label, ms.Var(x2)) =>
+        val ms.TypCls(p1) = lookupVar(x1, ctx)
+        val ms.TypCls(p2) = lookupVar(x2, ctx)
+        val ms.TypOfCls(z, ds) = lookupClass(p1, ctx)
+        val ms.DefDef(_, argName, argTyp, retTyp, _) = lookupDef(label, ds).subst(z, x1)
+        checkConforms(ms.TypCls(p2), argTyp)
+        (retTyp.subst(argName, x2), dot.TmApp(dot.TmVar(dot.Var(x1)), label, dot.TmVar(dot.Var(x2))))
+      case ms.App(ms.Var(x1), label, t2) =>
+        val ms.TypCls(p1) = lookupVar(x1, ctx)
+        val ms.TypOfCls(z, ds) = lookupClass(p1, ctx)
+        val ms.DefDef(_, argName, argTyp, retTyp, _) = lookupDef(label, ds).subst(z, x1)
+        val (tp2, t2a) = trTrm(ctx, t2, Some(argTyp))
+        (retTyp, dot.TmApp(dot.TmVar(dot.Var(x1)), label, t2a))
+      case ms.App(t1, label, ms.Var(x2)) =>
+        val (ms.TypCls(p1), t1a) = trTrm(ctx, t1, None)
+        val ms.TypCls(p2) = lookupVar(x2, ctx)
+        val ms.TypOfCls(z, ds) = lookupClass(p1, ctx)
+        val ms.DefDef(_, argName, argTyp, retTyp, _) = lookupDef(label, ds)
+        checkConforms(ms.TypCls(p2), argTyp)
+        (retTyp.subst(argName, x2), dot.TmApp(t1a, label, dot.TmVar(dot.Var(x2))))
+      case ms.App(t1, label, t2) =>
+        val (ms.TypCls(p1), t1a) = trTrm(ctx, t1, None)
+        val ms.TypOfCls(z, ds) = lookupClass(p1, ctx)
+        val ms.DefDef(_, argName, argTyp, retTyp, _) = lookupDef(label, ds)
+        val (tp2, t2a) = trTrm(ctx, t2, Some(argTyp))
+        (retTyp, dot.TmApp(t1a, label, t2a))
 
-    case ms.New(cls) =>
-      val _ = lookupClass(cls, ctx)
-      (ms.TypCls(cls), trCtorRef(cls))
+      case ms.New(cls) =>
+        val _ = lookupClass(cls, ctx)
+        (ms.TypCls(cls), trCtorRef(cls))
 
-    case ms.Block(ms.DefVal(name, tp1, t1), t2) =>
-      val (actualTp1, t1a) = trTrm(ctx, t1)
-      checkConforms(actualTp1, tp1)
-      val ctx2 = (name, tp1) :: ctx
-      val (tp2, t2a) = trTrm(ctx2, t2) // NOTE: here we get the type t2a, that's why we need to do typechecking
-      val ms.TypCls(tp1Pth) = tp1
-      val ms.TypCls(tp2Pth) = tp2
-      (tp2, dot.Let(name, t1a, trTyp(tp1Pth), t2a, trTyp(tp2Pth)))
-    case ms.Block(ms.DefClass(name, selfName, defs), t2) =>
-      val ctx2 = (name, ms.TypOfCls(selfName, defs)) :: ctx
-      val ctx3 = (selfName, ms.TypCls(ms.PthVar(name))) :: ctx2
-      val defs2 = trDefs(ctx3, defs, selfName)
-      val defsTp = trTypOfDefs(defs, selfName)
-      val (tp2, t2a) = trTrm(ctx2, t2)
-      val ms.TypCls(tp2Pth) = tp2
-      val obj = dot.VObj("_self", Seq(
-        dot.DTy("C", dot.TBind(selfName, defsTp)),
-        dot.DFun("new", "_dummy", dot.TTop, dot.TSel(dot.Var("_self"), "C"), dot.TmVar(dot.VObj(selfName, defs2)))
-      ))
-      val objTp = dot.TBind("_self", dot.TAnd(
-        dot.TAlias("C", dot.TBind(selfName, defsTp)),
-        dot.TFun("new", "_dummy", dot.TTop, dot.TSel(dot.Var("_self"), "C"))
-      ))
-      (tp2, dot.Let(name, dot.TmVar(obj), objTp, t2a, trTyp(tp2Pth)))
-    case ms.Block(ms.DefDef(name, argName, argTyp, retTyp, body), expr) => sys.error("not yet supported")
+      case ms.Block(ms.DefVal(name, tp1, t1), t2) =>
+        val (actualTp1, t1a) = trTrm(ctx, t1, None)
+        checkConforms(actualTp1, tp1)
+        val ctx2 = (name, tp1) :: ctx
+        val (tp2, t2a) = trTrm(ctx2, t2, expTp) // NOTE: here we get the type t2a, that's why we need to do typechecking, and why we need an expected type
+        val ms.TypCls(tp1Pth) = tp1
+        val ms.TypCls(tp2Pth) = tp2
+        (tp2, dot.Let(name, t1a, trTyp(tp1Pth), t2a, trTyp(tp2Pth)))
+      case ms.Block(ms.DefClass(name, selfName, defs), t2) =>
+        val ctx2 = (name, ms.TypOfCls(selfName, defs)) :: ctx
+        val ctx3 = (selfName, ms.TypCls(ms.PthVar(name))) :: ctx2
+        val defs2 = trDefs(ctx3, defs, selfName)
+        val defsTp = trTypOfDefs(defs, selfName)
+        val (tp2, t2a) = trTrm(ctx2, t2, expTp)
+        val ms.TypCls(tp2Pth) = tp2
+        val obj = dot.VObj("_self", Seq(
+          dot.DTy("C", dot.TBind(selfName, defsTp)),
+          dot.DFun("new", "_dummy", dot.TTop, dot.TSel(dot.Var("_self"), "C"), dot.TmVar(dot.VObj(selfName, defs2)))
+        ))
+        val objTp = dot.TBind("_self", dot.TAnd(
+          dot.TAlias("C", dot.TBind(selfName, defsTp)),
+          dot.TFun("new", "_dummy", dot.TTop, dot.TSel(dot.Var("_self"), "C"))
+        ))
+        (tp2, dot.Let(name, dot.TmVar(obj), objTp, t2a, trTyp(tp2Pth)))
+      case ms.Block(ms.DefDef(name, argName, argTyp, retTyp, body), expr) => sys.error("not yet supported")
+    }
+
+    expTp match {
+      case Some(tp) => checkConforms(actualTp, tp); (tp, t2)
+      case None => (actualTp, t2)
+    }
   }
 
 }
