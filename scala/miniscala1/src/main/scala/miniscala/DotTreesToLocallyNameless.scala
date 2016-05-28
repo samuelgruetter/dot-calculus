@@ -65,7 +65,7 @@ object DotTreesToLocallyNameless {
       labels.repr.map(label => ds.find(_.name == label) match {
         case Some(d) => translateDm(vars, d)
         case None => ln.DNone
-      }).reverse.dropWhile(_ == ln.DNone).reverse
+      }).reverse.dropWhile(_ == ln.DNone)
     }
 
     def translateTy(vars: LnTable, t: dot.Ty): ln.Ty = t match {

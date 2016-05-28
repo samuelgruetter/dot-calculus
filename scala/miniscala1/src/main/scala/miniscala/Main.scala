@@ -18,5 +18,8 @@ object Main {
     val t4: LocallyNamelessDotTrees.Tm = DotTreesToLocallyNameless.translateProg(t3)._1
     println(t4)
     println()
+    val s2: String = LnDotToCoq.printTm(t4)
+    println(s2)
+    println()
   }
 }
