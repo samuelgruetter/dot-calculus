@@ -37,13 +37,30 @@ Only used for types that user programs can contain, i.e. for paths referring to 
     AnyRef ~> Top
 
 
-    ---------- trTypCls1       (for references to classes which are defined in a term)
-    x ~> x.T_x
+    -------- trTypCls1         (for references to classes which are defined in a term)
+    x ~> x.T
     
 
     ------------ trTypCls2     (for references to classes which are members of an object)
     x.l ~> x.T_l
     
+
+
+Translating constructors `new p ~> t`
+=====================================
+
+
+    -------------------- trCtorAnyRef
+    new AnyRef ~> new {}
+    
+    
+    ------------------------- trCtorVar
+    new x ~> x.create(new {})
+
+
+    ----------------------------- trCtorSel
+    new x.l ~> x.create_l(new {})
+
 
 
 Translating the type of a definition `d ~y~> (l: T')...`
@@ -78,7 +95,7 @@ Translating defs of classes `G |- d ~y~> d'...`
 Also does typechecking: Checks that the actual types correspond to the declared types, but since all types are ascribed, no need to assign types in the judgment.
 
 
-    S ~> S'     T ~> T'      G, x: S |- t: T ~> t'
+    S ~> S'     T ~> T'      G, x: S |- t <= T ~> t'
     --------------------------------------------------------------------- trDefDef
     G |- (def m(x: S): T = t) ~y~> (def m(x: S'): T' = t')
 
@@ -144,56 +161,86 @@ X can be a term, type, path, def
 
 
 
-Translating terms `G |- t: T ~> u`
-==================================
+Finding the first supertype of a class whose reference does not contain the variable x `G |- p <: q without x`
+==============================================================================================================
 
-Read as "In context G, miniscala term t has type T and translates to DOT term u".
+Inputs: p, x. Output: q, the first supertype of p whose reference does not start with x.
+
+
+    x notin FV(p)
+    ---------------------
+    G |- p <: p without x
+
+
+    x in FV(p1)
+    G |- class p1 extends p2 { z => d...}
+    G |- p2 <: p3 without x
+    -------------------------------------
+    G |- p1 <: p3 without x
+
+
+Note: FV(p) is defined as follows: FV(x) = x, FV(x.l) = x
+
+
+
+Bidirectional term typechecking with simultaneous translation `G |- t => T ~> u` and `G |- t <= T ~> u`
+=======================================================================================================
+
+`G |- t => T ~> t'` means "In context G, the inferred type of t is T, and t translates to t'".
+`G |- t <= T ~> t'` means "In context G, t checks against the given type T and translates to t'".
 
 
     (x: T) in G
     -------------- trVar
-    G |- x: T ~> x
+    G |- x => T ~> x
 
 
-    G |- class x {z => d...}
-    --------------------------------- trNew1
-    G |- new x: x ~> x.new_x(new {})
+    G |- p <z d...
+    new p ~> t
+    -------------------- trNew
+    G |- new p => p ~> t
 
-
-    G |- class x.l {z => d...}
-    ------------------------------------ trNew2
-    G |- new x.l: x.l ~> x.new_l(new {})
     
-    
-    G |- t1: p ~> t1'
-    G |- p <z d0...; def m(x:S2): T0 = t; d1...
-    G |- t2: S1 ~> t2'
-    G |- S1 <: S2
+    G |- t1 => p ~> t1'
+    G |- p <z d0...; def m(x: S): T0 = t; d1...
+    G |- t2 <= S ~> t2'
     substIfOccurs z t1 T0 = T1
     substIfOccurs x t2 T1 = T2
     ----------------------------------------------- trApp
-    G |- t1.m(t2) : T2 ~> t1'.m(t2')
+    G |- t1.m(t2) => T2 ~> t1'.m(t2')
     
     
-    G |- t1 : T1 ~> t1'
-    G, l: T1 |- t2 : T2 ~> t2'
-    --------------------------------------------------- trSeqVal
-    G |- (val l: T1 = t1; t2) : T2 ~> let l = t1' in t2'
+    G |- t1 <= T1 ~> t1'
+    G, l: T1 |- t2 => T2a ~> t2'
+    G, l: T1 |- T2a <: T2b without l
+    ------------------------------------------------------ trSeqVal
+    G |- (val l: T1 = t1; t2) => T2b ~> let l = t1' in t2'
 
     
     G, l: extends p { z => d...} |- l <z da...
     (G, l: extends p { z => d...}, z: l |- da ~z~> d'...)...
     (d ~z~> (m: T'))...
-    G, l: extends p { z => d...} |- t2 : T2 ~> t2'
+    G, l: extends p { z => d...} |- t2 => T2a ~> t2'
+    G, l: T1 |- T2a <: T2b without l
     p ~> U
     ------------------------------------------------------------- trSeqCls
-    G |- (class l extends p { z => d...}; t2) : T2 
+    G |- (class l extends p { z => d...}; t2) => T2b
          ~> let l = new { y =>
               type T_l = {z => U /\ (/\(m: T')...)}
               def new_l(x: Top): y.T_l = new { z => da...}
             } in t2'
 
+
 Note: No trSeqDef for the moment because DOT only supports methods as members, not lambdas (could encode them, though).
+
+
+    G |- t => T1 ~> t'
+    G |- T1 <: T2
+    ------------------ trSbsm
+    G |- t <= T2 ~> t'
+
+
+Note: Whether the rules are bi-directional or not is not so important, we could also just inline trSbsm at all occurrences of `<=` and we'd still have algorithmic typing rules.
 
 
 
