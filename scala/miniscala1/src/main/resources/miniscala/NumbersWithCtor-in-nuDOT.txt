@@ -1,0 +1,121 @@
+let unit = new [d: Top|] in
+
+let Nats = new
+  [ Nats: { Nats =>
+    type Inst = (same as below)
+    type Tpl = (same as below)
+    def tpl(dummy: Top): Nats.Tpl }
+  | type Inst = { nats =>
+      {type Inst_Nat = { n => Top /\
+        {def plus(other: nats.Inst_Nat): nats.Inst_Nat} /\
+        {def succ(dummy: Top): nats.Inst_Succ}
+      }} /\
+      {type Tpl_Nat = [ n: nats.Inst_Nat |
+        { def succ(dummy: Top): nats.Inst_Succ }
+      ]} /\
+      {def tpl_Nat(dummy: Top): z.Tpl_Nat } /\
+
+      {type Inst_Zero = { z => nats.Inst_Nat /\
+        {def plus(other: nats.Inst_Nat): nats.Inst_Nat}
+      }} /\
+      {type Tpl_Zero = [ z: nats.Inst_Zero |
+        {def plus(other: nats.Nat): nats.Nat}
+      ]} /\
+      {def tpl_Zero(dummy: AnyRef): nats.Tpl_Zero} /\
+
+      {type Inst_Succ = { n => nats.Inst_Nat /\
+        { def pred(dummy: AnyRef): nats.Nat } /\
+        { def plus(other: nats.Nat): nats.Nat } /\
+        { def id(dummy: AnyRef): nats.Nat }
+      }} /\
+      {type Tpl_Succ = [ n : nats.Inst_Nat |
+        { def pred(dummy: AnyRef): nats.Nat } /\
+        { def plus(other: nats.Nat): nats.Nat } /\
+        { def id(dummy: AnyRef): nats.Nat }
+      ]} /\
+      {def tpl_Succ(pr: nats.Nat): nats.Tpl_Succ}
+    }
+    type Tpl = [ nats : Nats.Inst |
+      {type Inst_Nat = { n => Top /\
+        {def plus(other: nats.Inst_Nat): nats.Inst_Nat} /\
+        {def succ(dummy: Top): nats.Inst_Succ}
+      }} /\
+      {type Tpl_Nat = [ n: nats.Inst_Nat |
+        { def succ(dummy: Top): nats.Inst_Succ }
+      ]} /\
+      {def tpl_Nat(dummy: Top): z.Tpl_Nat } /\
+
+      {type Inst_Zero = { z => nats.Inst_Nat /\
+        {def plus(other: nats.Inst_Nat): nats.Inst_Nat}
+      }} /\
+      {type Tpl_Zero = [ z: nats.Inst_Zero |
+        {def plus(other: nats.Nat): nats.Nat}
+      ]} /\
+      {def tpl_Zero(dummy: AnyRef): nats.Tpl_Zero} /\
+
+      {type Inst_Succ = { n => nats.Inst_Nat /\
+        { def pred(dummy: AnyRef): nats.Nat } /\
+        { def plus(other: nats.Nat): nats.Nat } /\
+        { def id(dummy: AnyRef): nats.Nat }
+      }} /\
+      {type Tpl_Succ = [ n : nats.Inst_Nat |
+        { def pred(dummy: AnyRef): nats.Nat } /\
+        { def plus(other: nats.Nat): nats.Nat } /\
+        { def id(dummy: AnyRef): nats.Nat }
+      ]} /\
+      {def tpl_Succ(pr: nats.Nat): nats.Tpl_Succ}
+    ]
+    def tpl(dummy: Top): Nats.Tpl = [ nats: Nats.Inst |
+
+      // START READING HERE (the stuff above is just several repetitions of the signatures)
+
+      type Inst_Nat = { n => Top /\
+        {def plus(other: nats.Inst_Nat): nats.Inst_Nat} /\
+        {def succ(dummy: Top): nats.Inst_Succ}
+      }
+      type Tpl_Nat = [ n: nats.Inst_Nat |
+        { def succ(dummy: Top): nats.Inst_Succ }
+      ]
+      def tpl_Nat(dummy: Top): z.Tpl_Nat = [ n: nats.Inst_Nat |
+        def succ(dummy: Top): nats.Inst_Succ = new nats.tpl_Succ(n)
+      ]
+
+      type Inst_Zero = { z => nats.Inst_Nat /\
+        {def plus(other: nats.Inst_Nat): nats.Inst_Nat}
+      }
+      type Tpl_Zero = [ z: nats.Inst_Zero |
+        {def plus(other: nats.Nat): nats.Nat}
+      ]
+      def tpl_Zero(dummy: AnyRef): nats.Tpl_Zero = nats.tpl_Nat(unit) & [ z: nats.Inst_Zero |
+        def plus(other: nats.Nat): nats.Nat = other
+      ]
+
+      type Inst_Succ = { n => nats.Inst_Nat /\
+        { def pred(dummy: AnyRef): nats.Nat } /\
+        { def plus(other: nats.Nat): nats.Nat } /\
+        { def id(dummy: AnyRef): nats.Nat }
+      }
+      type Tpl_Succ = [ n : nats.Inst_Nat |
+        { def pred(dummy: AnyRef): nats.Nat } /\
+        { def plus(other: nats.Nat): nats.Nat } /\
+        { def id(dummy: AnyRef): nats.Nat }
+      ]
+      def tpl_Succ(pr: nats.Nat): nats.Tpl_Succ = nats.tpl_Nat(unit) & [ n: nats.Inst_Succ |
+        def pred(dummy: AnyRef): nats.Nat = pr
+        def plus(other: nats.Nat): nats.Nat = pr.plus(other).succ(unit)
+        // Note: It is known that n (the self) has a member named "succ", even
+        // though "succ" is never mentioned/repeated here, it's
+        // only inside nats.Inst_Nat
+        def id(dummy: AnyRef): nats.Nat = n.succ(unit).pred(unit)
+      ]
+    ]
+  ]
+in
+let nats: Nats.Inst = new Nats.tpl(unit) in
+
+let zero: nats.Inst_Nat = new nats.tpl_Zero(unit) in
+let one: nats.Inst_Nat = new nats.tpl_Succ(zero) in
+let two: nats.Inst_Nat = new nats.tpl_Succ(one) in
+let three: nats.Inst_Nat = new nats.tpl_Succ(two) in
+
+two.plus(three)
