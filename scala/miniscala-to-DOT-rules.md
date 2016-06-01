@@ -10,6 +10,7 @@ Miniscala Syntax
                        t.m(t)
                        new p                  p has to refer to a class definition
                        s; t                   allows to construct blocks of statements ended by return expr
+                       _abstract_             "body" of abstract defs
     Statement    s ::= d                      will later also include terms, but pointless if no side-effects
     Definition   d ::= val l: T = t
                        def m(x: S): T = t
@@ -19,11 +20,9 @@ Miniscala Syntax
 
 Note: Vars, class labels, type labels, and def labels are all taken from the same set.
 Miniscala has no values and no reduction rules, but it reuses those of DOT.
-Note: This calculus is very lame: No inheritance, no subtyping, no type members...
-
-Note: In the current version, the context G is not needed for the translation, but only for the typechecking (in particalar, to enforce nominality).
 
 TODO: If `new AnyRef` is allowed, we can enforce that all constructors take exactly 1 argument, instead of a useless DOT new {}.
+But how do we invoke parent class constructors then?
 
 
 Translating user types `T ~> U`
@@ -92,12 +91,17 @@ Note: No rule for val defs yet, because they cannot yet be members of classes.
 Translating defs of classes `G |- d ~y~> d'...`
 ===============================================
 
+Note: can return 0, 1 or 2 DOT definitions.
 Also does typechecking: Checks that the actual types correspond to the declared types, but since all types are ascribed, no need to assign types in the judgment.
 
 
     S ~> S'     T ~> T'      G, x: S |- t <= T ~> t'
     --------------------------------------------------------------------- trDefDef
     G |- (def m(x: S): T = t) ~y~> (def m(x: S'): T' = t')
+
+
+    --------------------------------------------- trDefAbsDef
+    G |- (def m(x: S): T = _abstract_) ~y~> empty
 
     
     G |- z0.l <z da...
