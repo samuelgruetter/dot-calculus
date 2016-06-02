@@ -1,0 +1,135 @@
+inheritance & nominality
+requires POT (DOT with paths of length > 1)
+
+Syntactic Sugar in POT for generic defs:
+
+    def f[X <: U](y: T1): T2 = t
+
+stands for
+
+    def f(x: { type A <: U }): { def apply(y: [x.A/X]T1): [x.A/X]T2 } = new {
+      def apply(y: [x.A/X]T1): [x.A/X]T2 = [x.A/X]t
+    }
+
+and on call site,
+
+    t0.f[X](t1)
+
+stands for
+
+    t0.f(new { type A = X }).call(t1)
+
+And here's a derivation I always have to reconstruct (note though that we don't apply exactly this to typecheck the branding):
+
+      A1 <: A2         B1 <: B2
+    -------------    -------------
+    A1 & B1 <: A2    A1 & B1 <: B2
+    ------------------------------
+        A1 & B1 <: A2 & B2
+
+Question: If A1 <: A2 and B1 <: B2, how can we prove this:
+
+    { z => A1 } & { z => B1} <: { z => A2 & B2 }
+
+Answer: Not really. Instead, before applying subtyping, wrap the LHS into one more { z0 => ...} using TVarPack, and only then apply subsumption and subtyping.
+
+Translation of MutRecInh:
+
+
+let Unit = new { Unit =>
+  val branding: { b =>
+    type R = { z => Top }
+    type A = { z => Top }
+    type C <: b.A
+    def brand[X <: b.R](x: b.A): b.C & X
+  } = new { b =>
+    type R = { z => Top }
+    type A = { z => Top }
+    type C = b.A
+    def brand[X <: b.R](x: b.A): b.C & X = x
+  }
+
+  def create(dummy: Top): Unit.branding.C = Unit.branding.brand(new {})
+} in
+let unit = Unit.create(new {}) in
+
+let Lib1 = new { Lib1 =>
+  val branding: { b =>
+    type R = (same as in "create" method below, but implementations removed)
+    type A = (same as in "create" method below, but implementations removed)
+    type C <: b.A
+    def brand[X <: b.R](x: b.A): b.C & X
+  } = new { b =>
+    type R = (same as in "create" method below, but implementations removed)
+    type A = (same as in "create" method below, but implementations removed)
+    type C = b.A
+    def brand[X <: b.R](x: b.A): b.C & X = x
+  }
+
+  def create(dummy: Top): Lib1.branding.C = Lib1.branding.brand(new { lib1 =>
+    val Entity = new { Entity =>
+      val branding: { b =>
+        type R = { z => Top /\
+          { def name(u: Unit): Unit }
+        }
+        type A = { z => Top /\
+          { def name(u: Unit): Unit }
+        }
+        type C <: b.A
+        def brand[X](x: b.A & X): b.C & X
+      } = new { b =>
+        type R = { z => Top /\
+          { def name(u: Unit): Unit }
+        }
+        type A = { z => Top /\
+          { def name(u: Unit): Unit }
+        }
+        type C = b.A
+        def brand[X <: b.R](x: X): b.C & X = x
+      }
+
+      def create(dummy: Top): Entity.branding.C = Entity.branding.brand[Entity.branding.R](new { e =>
+        def name(u: Unit): Unit = u
+      })
+    }
+
+    val Author = new { Author =>
+      val branding: { b =>
+        // "record" type
+        type R = { z => lib1.Entity.branding.A /\
+          { def book(u: Unit.branding.C): lib1.Book.branding.C }
+        }
+        // "alias" type: super type is branded
+        type A = { z => lib1.Entity.branding.C /\
+          { def book(u: Unit.branding.C): lib1.Book.branding.C }
+        }
+        // "class" type: fully branded
+        type C <: b.A
+        def brand[X](x: b.R & X): b.C & X
+      } = new { b =>
+        type A = { z => lib1.Entity.branding.C /\
+          { def book(u: Unit.branding.C): lib1.Book.branding.C }
+        }
+        type C = b.A
+        // X: full structural type
+        def brand[X <: b.R](x: X): b.C & X = {
+          lib1.Entity.branding.brand[X](x) // : lib1.Entity.branding.C & X
+        }
+      }
+
+      def create(dummy: Top): Author.branding.C = Author.branding.brand[Author.branding.R](new { a =>
+        def book(u: Unit.branding.C): lib1.Book.branding.C = lib1.Book.create(unit)
+      })
+    }
+
+    val Book = (symmetric to Author)
+
+    def run(u: Unit): lib1.Book.branding.C = {
+      let a: lib1.Author.branding.C = lib1.Book.create(new {}).author(unit) in
+      a.book(unit)
+    }
+  })
+} in
+
+let lib1: Lib1.branding.C = Lib1.create(new {}) in
+lib1.run(unit)
