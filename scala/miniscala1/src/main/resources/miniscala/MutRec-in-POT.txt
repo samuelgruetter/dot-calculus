@@ -1,0 +1,79 @@
+// no inheritance yet [one step at a time ;-)], but nominality
+// requires POT (DOT with paths of length > 1)
+
+let Unit = new { Unit =>
+  val branding: { b =>
+    type A = { z => Top }
+    type C <: b.A
+    def brand(x: b.A): b.C
+  } = new { b =>
+    type A = { z => Top }
+    type C = b.A
+    def brand(x: b.A): b.C = x
+  }
+
+  def create(dummy: Top): Unit.branding.C = Unit.branding.brand(new {})
+} in
+let unit = Unit.create(new {}) in
+
+let Lib1 = new { Lib1 =>
+  val branding: { b =>
+    type A = (same as in "create" method below, but implementations removed)
+    type C <: b.A
+    def brand(x: b.A): b.C
+  } = new { b =>
+    type A = (same as in "create" method below, but implementations removed)
+    type C = b.A
+    def brand(x: b.A): b.C
+  }
+
+  def create(dummy: Top): Lib1.branding.C = Lib1.branding.brand(new { lib1 =>
+    val Author = new { Author =>
+      val branding: { b =>
+        type A = { z =>
+          { def book(u: Unit.branding.C): lib1.Book.branding.C }
+        }
+        type C <: b.A
+        def brand(x: b.A): b.C
+      } = new { b =>
+        type A = { z =>
+          { def book(u: Unit.branding.C): lib1.Book.branding.C }
+        }
+        type C = b.A
+        def brand(x: b.A): b.C = x
+      }
+
+      def create(dummy: Top): Author.branding.C = Author.branding.brand(new { a =>
+        def book(u: Unit.branding.C): lib1.Book.branding.C = lib1.Book.create(unit)
+      })
+    }
+
+    val Book = new { Book =>
+      val branding: { b =>
+        type A = { z =>
+          { def author(u: Unit.branding.C): lib1.Author.branding.C }
+        }
+        type C <: b.A
+        def brand(x: b.A): b.C
+      } = new { b =>
+        type A = { z =>
+          { def author(u: Unit.branding.C): lib1.Author.branding.C }
+        }
+        type C = b.A
+        def brand(x: b.A): b.C = x
+      }
+
+      def create(dummy: Top): Book.branding.C = Book.branding.brand(new { b =>
+        def author(u: Unit.branding.C): lib1.Author.branding.C = lib1.Author.create(unit)
+      })
+    }
+
+    def run(u: Unit): lib1.Book.branding.C = {
+      let a: lib1.Author.branding.C = lib1.Book.create(new {}).author(unit) in
+      a.book(unit)
+    }
+  })
+} in
+
+let lib1: Lib1.branding.C = Lib1.create(new {}) in
+lib1.run(unit)
