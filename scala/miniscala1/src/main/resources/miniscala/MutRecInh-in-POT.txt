@@ -118,6 +118,7 @@ let Lib1 = new { Lib1 =>
       }
 
       def create(dummy: Top): Author.branding.C = Author.branding.brand[Author.branding.R](new { a =>
+        def name(u: Unit): Unit = u // must be copied from parent class!
         def book(u: Unit.branding.C): lib1.Book.branding.C = lib1.Book.create(unit)
       })
     }
