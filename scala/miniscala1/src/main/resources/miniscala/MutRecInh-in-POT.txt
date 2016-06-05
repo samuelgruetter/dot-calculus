@@ -63,7 +63,7 @@ let Lib1 = new { Lib1 =>
     type R = (same as in "create" method below, but implementations removed)
     type A = (same as in "create" method below, but implementations removed)
     type C = b.A
-    def brand[X <: b.R](x: b.A): b.C & X = x
+    def brand[X <: b.R](x: X): b.C & X = x
   }
 
   def create(dummy: Top): Lib1.branding.C = Lib1.branding.brand(new { lib1 =>
@@ -107,6 +107,9 @@ let Lib1 = new { Lib1 =>
         type C <: b.A
         def brand[X](x: b.R & X): b.C & X
       } = new { b =>
+        type R = { z => lib1.Entity.branding.A /\
+          { def book(u: Unit.branding.C): lib1.Book.branding.C }
+        }
         type A = { z => lib1.Entity.branding.C /\
           { def book(u: Unit.branding.C): lib1.Book.branding.C }
         }
