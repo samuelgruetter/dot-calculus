@@ -95,7 +95,7 @@ let Nats = new
         { def plus(other: nats.Nat): nats.Nat } /\
         { def id(dummy: AnyRef): nats.Nat }
       }
-      type Tpl_Succ = [ n : nats.Inst_Nat |
+      type Tpl_Succ = [ n : nats.Inst_Succ |
         { def pred(dummy: AnyRef): nats.Nat } /\
         { def plus(other: nats.Nat): nats.Nat } /\
         { def id(dummy: AnyRef): nats.Nat }
