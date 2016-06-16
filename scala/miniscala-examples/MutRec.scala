@@ -1,7 +1,7 @@
 object MutRec { def main(args: Array[String]): Unit = println({
 
   class Unit
-  val unit = new Unit
+  val unit: Unit = new Unit
   
   class Lib1 { lib1 =>
     class Author {
