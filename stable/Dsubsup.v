@@ -1,6 +1,6 @@
 (*
- DSub (D<:)
- T ::= Top | p.Type | { Type = T } | { Type <: T } | (z: T) -> T^z
+ DSubSup (D<:>)
+ T ::= Bot | Top | p.Type | { Type: S..U } | (z: T) -> T^z
  t ::= p | t t
  p ::= x | v
  v ::= { Type = T } | lambda x:T.t
@@ -22,9 +22,10 @@ Implicit Types x : var.
 (** Representation of pre-types *)
 
 Inductive typ : Set :=
+  | typ_bot   : typ
   | typ_top   : typ
   | typ_sel  : trm -> typ
-  | typ_mem   : bool -> typ -> typ
+  | typ_mem   : typ -> typ -> typ
   | typ_all   : typ -> typ -> typ
 
 (** Representation of pre-terms *)
@@ -38,9 +39,10 @@ with trm : Set :=
 
 Fixpoint open_t_rec (k : nat) (f : trm) (T : typ) {struct T} : typ :=
   match T with
+  | typ_bot         => typ_bot
   | typ_top         => typ_top
   | typ_sel t       => typ_sel (open_e_rec k f t)
-  | typ_mem b T     => typ_mem b (open_t_rec k f T)
+  | typ_mem T1 T2   => typ_mem (open_t_rec k f T1) (open_t_rec k f T2)
   | typ_all T1 T2   => typ_all (open_t_rec k f T1) (open_t_rec (S k) f T2)
   end
 
@@ -66,14 +68,17 @@ Notation "t 'open_e_var' x" := (open_e t (trm_fvar x)) (at level 67).
 (** Types as locally closed pre-types *)
 
 Inductive type : typ -> Prop :=
+  | type_bot :
+      type typ_bot
   | type_top :
       type typ_top
   | type_sel : forall e1,
       term e1 ->
       type (typ_sel e1)
-  | type_mem : forall b T1,
+  | type_mem : forall T1 T2,
       type T1 ->
-      type (typ_mem b T1)
+      type T2 ->
+      type (typ_mem T1 T2)
   | type_all : forall L T1 T2,
       type T1 ->
       (forall x, x \notin L -> type (T2 open_t_var x)) ->
@@ -114,15 +119,18 @@ Definition env := LibEnv.env typ.
   that T is a type *)
 
 Inductive wft : env -> typ -> Prop :=
+  | wft_bot : forall E,
+      wft E typ_bot
   | wft_top : forall E,
       wft E typ_top
   | wft_sel : forall E e,
       value e \/ (exists x, trm_fvar x = e) ->
       wfe E e ->
       wft E (typ_sel e)
-  | wft_mem : forall E b T1,
+  | wft_mem : forall E T1 T2,
       wft E T1 ->
-      wft E (typ_mem b T1)
+      wft E T2 ->
+      wft E (typ_mem T1 T2)
   | wft_all : forall L E T1 T2,
       wft E T1 ->
       (forall x, x \notin L ->
@@ -158,6 +166,10 @@ Inductive okt : env -> Prop :=
 (** Subtyping relation *)
 
 Inductive sub : env -> typ -> typ -> Prop :=
+  | sub_bot : forall E T,
+      okt E ->
+      wft E T ->
+      sub E typ_bot T
   | sub_top : forall E S,
       okt E ->
       wft E S ->
@@ -166,18 +178,15 @@ Inductive sub : env -> typ -> typ -> Prop :=
       okt E ->
       wft E (typ_sel t) ->
       sub E (typ_sel t) (typ_sel t)
-  | sub_sel1 : forall E U t,
-      has E t (typ_mem false U) ->
+  | sub_sel1 : forall E S U t,
+      has E t (typ_mem S U) ->
       sub E (typ_sel t) U
-  | sub_sel2 : forall E S t,
-      has E t (typ_mem true S) ->
+  | sub_sel2 : forall E S U t,
+      has E t (typ_mem S U) ->
       sub E S (typ_sel t)
-  | sub_mem_false : forall E b1 T1 T2,
-      sub E T1 T2 ->
-      sub E (typ_mem b1 T1) (typ_mem false T2)
-  | sub_mem_true : forall E T1 T2,
-      sub E T1 T2 -> sub E T2 T1 ->
-      sub E (typ_mem true T1) (typ_mem true T2)
+  | sub_mem : forall E S1 U1 S2 U2,
+      sub E S2 S1 -> sub E U1 U2 ->
+      sub E (typ_mem S1 U1) (typ_mem S2 U2)
   | sub_all : forall L E S1 S2 T1 T2,
       sub E T1 S1 ->
       (forall x, x \notin L ->
@@ -193,9 +202,9 @@ with has : env -> trm -> typ -> Prop :=
       okt E ->
       binds x T E ->
       has E (trm_fvar x) T
-  | has_mem : forall E b T,
+  | has_mem : forall E T,
       okt E -> wft E T ->
-      has E (trm_mem T) (typ_mem b T)
+      has E (trm_mem T) (typ_mem T T)
   | has_abs : forall E V e T,(* dummy case for smooth substitution lemma, see val_typing_has *)
       okt E -> wfe E (trm_abs V e) -> wft E (typ_all V T) ->
       has E (trm_abs V e) (typ_all V T) (* return typ doesn't matter, as long as it's moot for sel1 and sel2 *)
@@ -219,7 +228,7 @@ Inductive typing : env -> trm -> typ -> Prop :=
   | typing_mem : forall E T1,
       okt E ->
       wft E T1 ->
-      typing E (trm_mem T1) (typ_mem true T1)
+      typing E (trm_mem T1) (typ_mem T1 T1)
   | typing_app : forall T1 E e1 e2 T2,
       typing E e1 (typ_all T1 T2) ->
       typing E e2 T1 ->
@@ -276,9 +285,10 @@ Definition progress := forall e T,
 
 Fixpoint fv_t (T : typ) {struct T} : vars :=
   match T with
+  | typ_bot         => \{}
   | typ_top         => \{}
   | typ_sel t       => fv_e t
-  | typ_mem b T1   => (fv_t T1)
+  | typ_mem T1 T2   => (fv_t T1) \u (fv_t T2)
   | typ_all T1 T2   => (fv_t T1) \u (fv_t T2)
   end
 
@@ -297,9 +307,10 @@ with fv_e (e : trm) {struct e} : vars :=
 
 Fixpoint subst_t (z : var) (u : trm) (T : typ) {struct T} : typ :=
   match T with
+  | typ_bot         => typ_bot
   | typ_top         => typ_top
   | typ_sel t       => typ_sel (subst_e z u t)
-  | typ_mem b T1    => typ_mem b (subst_t z u T1)
+  | typ_mem T1 T2   => typ_mem (subst_t z u T1) (subst_t z u T2)
   | typ_all T1 T2   => typ_all (subst_t z u T1) (subst_t z u T2)
   end
 
@@ -322,7 +333,7 @@ with subst_e (z : var) (u : trm) (e : trm) {struct e} : trm :=
 Hint Constructors type term wft wfe ok okt value red.
 
 Hint Resolve
-  sub_top sub_refl_sel
+  sub_bot sub_top sub_refl_sel
   typing_var typing_app typing_sub.
 
 (** Gathering free names already used in the proofs *)
@@ -1060,7 +1071,7 @@ Lemma sub_reflexivity : forall E T,
 Proof.
   introv Ok WI. lets W: (wft_type WI). gen E.
   induction W; intros; inversions WI; eauto.
-  destruct b. apply* sub_mem_true. apply* sub_mem_false.
+  apply* sub_mem.
   apply_fresh* sub_all as Y.
 Qed.
 
@@ -1078,8 +1089,7 @@ Proof.
   apply sub_has_mutind; intros; subst; auto.
   apply* sub_sel1.
   apply* sub_sel2.
-  apply* sub_mem_false.
-  apply* sub_mem_true.
+  apply* sub_mem.
   apply_fresh* sub_all as Y. apply_ih_bind* H0.
   apply* sub_trans.
   apply* has_var. apply* binds_weaken.
@@ -1186,6 +1196,7 @@ Lemma sub_has_narrowing_aux :
 Proof.
   Hint Constructors sub has.
   apply sub_has_mutind; intros; subst; eauto.
+  apply* sub_bot.
   apply* sub_top.
   apply* sub_refl_sel.
   apply_fresh* sub_all as Y. apply_ih_bind H0; eauto.
@@ -1270,14 +1281,14 @@ Lemma sub_has_through_subst : (forall E0 S T, sub E0 S T -> forall Q E F Z u,
   has (E & map (subst_t Z u) F) (subst_e Z u p) (subst_t Z u T)).
 Proof.
   apply sub_has_mutind; intros; subst; simpl.
+  - apply* sub_bot.
   - apply* sub_top.
   - simpl. apply* sub_refl_sel.
     assert (typ_sel (subst_e Z u t) = subst_t Z u (typ_sel t)) as A by auto.
     rewrite A. auto*.
-  - apply* sub_sel1.
-  - apply* sub_sel2.
-  - apply* sub_mem_false.
-  - apply* sub_mem_true.
+  - apply* sub_sel1. eapply H. reflexivity. auto. auto.
+  - apply* sub_sel2. eapply H. reflexivity. auto. auto.
+  - apply* sub_mem.
   - apply_fresh* sub_all as X.
     rewrite* subst_t_open_t_var. rewrite* subst_t_open_t_var.
     apply_ih_map_bind* H0.
@@ -1411,6 +1422,9 @@ Qed.
 
 
 Inductive psub : typ -> typ -> Prop :=
+  | psub_bot : forall U,
+      wft empty U ->
+      psub typ_bot U
   | psub_top : forall S,
       wft empty S ->
       psub S typ_top
@@ -1423,12 +1437,9 @@ Inductive psub : typ -> typ -> Prop :=
   | psub_sel2 : forall S,
       wft empty S ->
       psub S (typ_sel (trm_mem S))
-  | psub_mem_false : forall b1 T1 T2,
-      psub T1 T2 ->
-      psub (typ_mem b1 T1) (typ_mem false T2)
-  | psub_mem_true : forall T1 T2,
-      psub T1 T2 -> psub T2 T1 ->
-      psub (typ_mem true T1) (typ_mem true T2)
+  | psub_mem : forall S1 U1 S2 U2,
+      psub S2 S1 -> psub U1 U2 ->
+      psub (typ_mem S1 U1) (typ_mem S2 U2)
   | psub_all : forall L S1 S2 T1 T2,
       psub T1 S1 ->
       (forall x, x \notin L ->
@@ -1458,8 +1469,7 @@ Proof.
   intros. induction H; eauto.
   - apply* sub_sel1. apply* has_mem.
   - apply* sub_sel2. apply* has_mem.
-  - apply* sub_mem_false.
-  - apply* sub_mem_true.
+  - apply* sub_mem.
   - apply_fresh* sub_all as y.
     rewrite concat_empty_l. auto*.
   - eapply sub_trans; eauto.
@@ -1467,8 +1477,7 @@ Qed.
 
 Inductive possible_types : nat -> trm -> typ -> Prop :=
 | pt_top : forall n v, value v -> wfe empty v -> possible_types n v typ_top
-| pt_mem_true : forall n T T', psub T T' -> psub T' T -> possible_types n (trm_mem T) (typ_mem true T')
-| pt_mem_false : forall n T U, psub T U -> possible_types n (trm_mem T) (typ_mem false U)
+| pt_mem : forall n T S U, psub S T -> psub T U -> possible_types n (trm_mem T) (typ_mem S U)
 | pt_all : forall L n V V' e1 T1 T1',
   (forall X, X \notin L -> typing (X ~ V) (e1 open_e_var X) (T1 open_t_var X)) ->
   psub V' V ->
@@ -1488,7 +1497,6 @@ Lemma possible_types_value : forall n p T,
 Proof.
   introv Hpt. induction Hpt; eauto.
   - apply psub_sub in H. auto*.
-  - apply psub_sub in H. auto*.
   - apply value_abs. apply_fresh* term_abs as y.
     apply psub_sub in H0. auto*.
     assert (y \notin L) as Fr by auto.
@@ -1503,7 +1511,6 @@ Lemma possible_types_wfe : forall n p T,
 Proof.
   introv Hpt. induction Hpt; eauto.
   - apply psub_sub in H. auto*.
-  - apply psub_sub in H. auto*.
   - apply_fresh* wfe_abs as y.
     apply psub_sub in H0. auto*.
     assert (y \notin L) as FrL by auto. specialize (H y FrL).
@@ -1516,8 +1523,7 @@ Lemma possible_types_wft : forall n p T,
   wft empty T.
 Proof.
   introv Hpt. induction Hpt; eauto.
-  - apply psub_sub in H. auto*.
-  - apply psub_sub in H. auto*.
+  - apply psub_sub in H. apply psub_sub in H0. apply* wft_mem.
   - apply_fresh* wft_all as y.
     apply psub_sub in H0. auto*.
     assert (y \notin L) as FrL by auto. specialize (H1 y FrL).
@@ -1546,13 +1552,12 @@ Lemma possible_types_closure_psub : forall n v T U,
 Proof.
   introv Hpt Hsub. generalize dependent v.
   induction Hsub; intros; subst; eauto.
+  - inversion Hpt.
   - apply pt_top. apply* possible_types_value. apply* possible_types_wfe.
   - inversion Hpt; subst. assumption.
   - apply* pt_sel.
   - inversion Hpt; subst.
-    * apply pt_mem_false. eapply psub_trans; eauto.
-    * apply pt_mem_false. eapply psub_trans; eauto.
-  - inversion Hpt; subst. apply* pt_mem_true.
+    apply pt_mem. eapply psub_trans; eauto. eapply psub_trans; eauto.
   - inversion Hpt; subst. apply_fresh* pt_all as y.
     eapply sub_trans.
     eapply sub_narrowing_empty. eapply psub_sub. eassumption. auto*. auto*.
@@ -1568,7 +1573,6 @@ Lemma psub_reflexivity : forall T,
 Proof.
   introv WI. lets W: (wft_type WI). remember empty as E. gen E.
   induction W; intros; inversions WI; eauto.
-  destruct b. apply* psub_mem_true. apply* psub_mem_false.
   apply_fresh* psub_all as y.
   assert (y \notin L0)as Fr0 by auto. specialize (H5 y Fr0).
   rewrite concat_empty_l in H5.
@@ -1585,16 +1589,16 @@ Proof.
   - specialize (H eq_refl).
     inversion H; subst.
     eapply psub_trans. eapply psub_sel1.
-    apply psub_sub in H3. auto*.
+    apply psub_sub in H4. auto*.
     assumption.
   - specialize (H eq_refl).
     inversion H; subst.
     eapply psub_trans. eassumption. eapply psub_sel2.
-    apply psub_sub in H1. auto*.
+    apply psub_sub in H4. auto*.
   - apply_fresh* psub_all as y.
     rewrite <- (@concat_empty_l typ (y ~ T1)). auto*.
   - false. apply* binds_empty_inv.
-  - destruct b. apply pt_mem_true; eauto. apply pt_mem_false; eauto.
+  - apply pt_mem; eauto.
   - apply* pt_all_shallow.
   - eapply possible_types_closure_psub; eauto.
 Qed.
@@ -1631,7 +1635,7 @@ Proof.
     rewrite <- concat_empty_l. eauto.
     assert (Y \notin L0) as Fr by eauto.
     specialize (H7 Y Fr). rewrite concat_empty_l in H7. eapply H7.
-  - apply pt_mem_true. apply* psub_reflexivity. apply* psub_reflexivity.
+  - apply pt_mem. apply* psub_reflexivity. apply* psub_reflexivity.
   - eapply possible_types_closure; eauto.
 Qed.
 
@@ -1761,4 +1765,3 @@ Proof.
   - (* case: sub *)
     auto*.
 Qed.
-
