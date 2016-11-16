@@ -50,9 +50,9 @@ Here is [the corresponding Coq script](dot_top_bot.v).
     (Let-Value)
                   s | let x = v in t  -->  s, x = v | t
     (Ctx)
-                               s | t  -->  s' | t'
-                      ------------------------------------
-                      let x = t in u  -->  let x = t' in u
+                                   s | t  -->  s' | t'
+                      ---------------------------------------------
+                      s | let x = t in u  -->  s' | let x = t' in u
 
 ***
 
