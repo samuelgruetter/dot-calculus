@@ -12,3 +12,13 @@ in Coq, based on previous work in the
 [namin/dot](https://github.com/namin/dot) and
 [TiarkRompf/minidot](https://github.com/TiarkRompf/minidot) repos.
 
+## Installation
+
+Works in Coq 8.4.6 and OCaml 4.02.3.
+
+- `opam switch create with-wadlerfest-dot 4.02.3`
+- `eval $(opam env)`
+- `opam pin add coq 8.4.6`
+
+Then, run `make` from the `ln` directory.
+
